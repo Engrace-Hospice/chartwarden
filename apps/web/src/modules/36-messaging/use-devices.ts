@@ -19,6 +19,7 @@ export type RowState = "revoking" | "failed";
 export type RevokeResult =
   | { readonly kind: "revoked"; readonly current: boolean }
   | { readonly kind: "step_up"; readonly error: unknown }
+  | { readonly kind: "not_found" }
   | { readonly kind: "failed" };
 
 export interface DevicesScope {
@@ -40,7 +41,8 @@ export function useDevices(scope: DevicesScope): UseDevices {
   const [view, setView] = useState<DevicesView>({ status: "loading" });
   const [rowState, setRowState] = useState<Readonly<Record<string, RowState>>>({});
   const [announcement, setAnnouncement] = useState("");
-  const generation = useRef(0);
+  const generation = useRef(0); // reads: the newest read wins
+  const mountScope = useRef(0); // mounts/people: a revoke settling after a change of scope is dropped
   const { userId } = scope;
 
   const read = useCallback(async (): Promise<void> => {
@@ -68,12 +70,14 @@ export function useDevices(scope: DevicesScope): UseDevices {
   }, [client, userId]);
 
   useEffect(() => {
+    mountScope.current += 1;
     generation.current += 1;
     setView({ status: "loading" });
     setRowState({});
     setAnnouncement("");
     void read();
     return () => {
+      mountScope.current += 1;
       generation.current += 1;
     };
   }, [read]);
@@ -81,7 +85,7 @@ export function useDevices(scope: DevicesScope): UseDevices {
   const revoke = useCallback(
     async (device: DeviceDto): Promise<RevokeResult> => {
       if (!client) return { kind: "failed" };
-      const gen = generation.current;
+      const gen = mountScope.current; // mutations are only invalidated by a scope change, never by another read
       setRowState((prev) => ({ ...prev, [device.id]: "revoking" }));
       const clearRow = (): void =>
         setRowState((prev) => {
@@ -89,7 +93,7 @@ export function useDevices(scope: DevicesScope): UseDevices {
           return rest;
         });
       const fail = (status?: number, error?: unknown): RevokeResult => {
-        if (gen !== generation.current) return { kind: "failed" };
+        if (gen !== mountScope.current) return { kind: "failed" };
         // A step-up refusal is not a failure of the row: the screen sends the person to verify, so no "could not revoke" alert.
         if (error !== undefined && isStepUpRequired(error)) {
           clearRow();
@@ -113,17 +117,16 @@ export function useDevices(scope: DevicesScope): UseDevices {
         // A 404 is one answer for "already gone", "not yours" and "not in your organization": never announce a revoke. Re-read the list
         // so it shows what is true, and say the session was not found.
         if (!data && response?.status === 404) {
-          if (gen === generation.current) {
-            clearRow();
-            setAnnouncement(notFoundAnnouncement(device.label));
-            generation.current += 1;
-            void read();
-          }
-          return { kind: "failed" };
+          if (gen !== mountScope.current) return { kind: "failed" };
+          clearRow();
+          setAnnouncement(notFoundAnnouncement(device.label));
+          generation.current += 1;
+          void read();
+          return { kind: "not_found" };
         }
         if (!data) return fail(response?.status, error);
         const current = (data as DeviceRevokeDto | undefined)?.current ?? false;
-        if (gen === generation.current) {
+        if (gen === mountScope.current) {
           setView((prev) =>
             prev.status === "ready"
               ? { status: "ready", devices: prev.devices.filter((d) => d.id !== device.id) }

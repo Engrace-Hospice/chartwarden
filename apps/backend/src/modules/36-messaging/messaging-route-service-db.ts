@@ -2257,7 +2257,7 @@ export function createDbMessagingRouteService(
               set: {
                 verificationStatus: "verified",
                 verifiedAt: new Date(),
-                sessionId: sql`coalesce(excluded.session_id, ${DE.sessionId})`,
+                sessionId: sql`excluded.session_id`, // never keep a link to a session that may no longer exist
                 consecutiveFailures: 0,
               },
             })

@@ -46,6 +46,10 @@ export function DeviceManager({
 
   const run = async (device: DeviceDto): Promise<void> => {
     const result = await revoke(device);
+    if (result.kind === "not_found") {
+      headingRef.current?.focus(); // the stale row is gone after the re-read
+      return;
+    }
     if (result.kind !== "revoked") return;
     if (result.current) onSignedOut();
     else headingRef.current?.focus(); // the row that held focus is gone

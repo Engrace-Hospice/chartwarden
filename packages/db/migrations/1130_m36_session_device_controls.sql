@@ -8,8 +8,8 @@
 --      endpoint registered before this migration or without a session: it is never touched by a revoke (the user removes it from notification
 --      preferences, as before).
 --   3. A partial index for the revoke's lookup (user_id leads; the RLS predicate is on user_id).
--- delivery_endpoint stays user-owned (RLS delivery_endpoint_self on app.user_id, FORCEd by arch:tenancy's NON_ORG_SCOPED posture) and keeps its
--- write-audit trigger; no table is added, so no manifest or ownership change.
+-- delivery_endpoint stays user-owned (RLS delivery_endpoint_self on app.user_id, FORCEd by arch:tenancy's NON_ORG_SCOPED posture) and carries no
+-- write-audit trigger by design (0017); its expiry is audited via endpointsExpired on m36.session.revoked. No table is added.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('messaging.sessions.manage', 'session_device', 'manage', 'admin', 'none', '')
 ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint

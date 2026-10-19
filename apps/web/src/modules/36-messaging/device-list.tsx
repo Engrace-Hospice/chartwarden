@@ -69,7 +69,13 @@ function Row({
           type="button"
           tone="secondary"
           size="sm"
-          aria-label={buttonName}
+          aria-label={
+            busy
+              ? `${REVOKING_LABEL}: ${buttonName}`
+              : state === "failed"
+                ? `${REVOKE_RETRY_LABEL}: ${buttonName}`
+                : buttonName
+          }
           aria-disabled={busy}
           onClick={() => {
             if (!busy) onRevoke();

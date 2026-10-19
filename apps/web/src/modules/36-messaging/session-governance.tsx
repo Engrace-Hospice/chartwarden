@@ -4,7 +4,7 @@
 // step-up screen and back; the list stays as it was. Every look and revoke is audited server-side; the page shows no IP address or user agent.
 import type { DeviceDto } from "@wardenx/types";
 import { Button, PageHeader } from "@wardenx/ui";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { stepUpRedirectFor } from "../../shell/step-up-redirect";
@@ -50,6 +50,10 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
       else headingRef.current?.focus();
       return;
     }
+    if (result.kind === "not_found") {
+      headingRef.current?.focus();
+      return;
+    }
     if (result.kind !== "step_up") return;
     const to = stepUpRedirectFor(result.error, `${location.pathname}${location.search}`);
     if (to) navigate(to);
@@ -91,8 +95,7 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
 export function SessionGovernance(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get("user") ?? "";
-  // Keyed on the URL value so the input and its invalid flag always start from what the URL says (Back/Forward included).
-  return <GovernanceBody key={fromUrl} fromUrl={fromUrl} setParams={setParams} />;
+  return <GovernanceBody fromUrl={fromUrl} setParams={setParams} />;
 }
 
 function GovernanceBody({
@@ -102,11 +105,16 @@ function GovernanceBody({
   readonly fromUrl: string;
   readonly setParams: ReturnType<typeof useSearchParams>[1];
 }): JSX.Element {
-  // The URL is the single source of truth for who is shown (Back and Forward work); `refresh` re-reads the same person.
+  // The URL is the single source of truth for who is shown ; `refresh` re-reads the same person.
   const showing = UUID.test(fromUrl) ? fromUrl : "";
   const [text, setText] = useState(fromUrl);
   const [badInput, setBadInput] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  // The input follows the URL (Back/Forward, a pasted link) without remounting, so a lookup keeps keyboard focus.
+  useEffect(() => {
+    setText(fromUrl);
+    setBadInput(false);
+  }, [fromUrl]);
   const invalid = badInput || (fromUrl !== "" && showing === "");
   const inputId = useId();
 

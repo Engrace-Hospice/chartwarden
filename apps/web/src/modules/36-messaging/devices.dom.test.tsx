@@ -131,7 +131,7 @@ describe("DeviceManager (self-service)", () => {
       del: () => gate,
     });
     fireEvent.click(await screen.findByRole("button", { name: "Revoke Safari · iOS" }));
-    const busy = await screen.findByRole("button", { name: "Revoke Safari · iOS" });
+    const busy = await screen.findByRole("button", { name: "Revoking: Revoke Safari · iOS" });
     expect(busy.textContent).toBe("Revoking");
     expect(busy.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(busy);
@@ -150,7 +150,7 @@ describe("DeviceManager (self-service)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Revoke Safari · iOS" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("It is still signed in");
-    expect(screen.getByRole("button", { name: "Revoke Safari · iOS" }).textContent).toBe(
+    expect(screen.getByRole("button", { name: "Try again: Revoke Safari · iOS" }).textContent).toBe(
       "Try again",
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
