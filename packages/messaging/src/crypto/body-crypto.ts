@@ -29,7 +29,7 @@ const DEK_INFO_PREFIX = "wardenx-message-dek:"; // HKDF `info` label, org-bound
  * error handler renders the standard envelope (not an untyped 500) and the web composer can say so.
  */
 export const MESSAGING_KEY_UNAVAILABLE = "MESSAGING_ENCRYPTION_UNAVAILABLE";
-/** Sent to clients; names no env var and no key length. The cause is in the server log. */
+/** Sent to clients; names no env var and no key length. The server log carries the code and stack (error-handler logs every 5xx). */
 const MESSAGING_KEY_UNAVAILABLE_MESSAGE = "Message encryption is unavailable";
 
 /** Load the 32-byte master KEK from MESSAGING_ENCRYPTION_KEY (base64). Fail-closed. */
