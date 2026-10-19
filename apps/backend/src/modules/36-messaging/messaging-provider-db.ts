@@ -411,14 +411,12 @@ export function createDbMessagingProvider(
             (m) => m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
           );
           // The portal caregiver row takes the same category refusal as the roster (F6): skipped, never added.
-          const portalExcluded = portalUserId
-            ? await excludedMemberUserIds(tx, orgId, [portalUserId])
-            : new Set<string>();
+          // Asked only when the row would be written, so the steady-state portal read costs no extra query.
+          const wantsPortalCaregiver =
+            !channelArchived && Boolean(portalUserId) && !activeUserIds.has(portalUserId!);
           const addPortalCaregiver =
-            !channelArchived &&
-            Boolean(portalUserId) &&
-            !activeUserIds.has(portalUserId!) &&
-            !portalExcluded.has(portalUserId!);
+            wantsPortalCaregiver &&
+            !(await excludedMemberUserIds(tx, orgId, [portalUserId!])).has(portalUserId!);
 
           if (toAdd.length > 0) {
             await tx.insert(CM).values(
