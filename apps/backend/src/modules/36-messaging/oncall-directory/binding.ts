@@ -7,11 +7,11 @@ import { derivePatient } from "@wardenx/messaging";
 import { ONCALL_DIRECTORY_FLAG_KEY, ROLE_SEND_FLAG_KEY } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";
+import { createDbRoleReplayLookup } from "../ack-requests/role-replay-lookup";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { cacheFlagRead } from "../presence/binding";
 import { getEscalationRouter } from "../seams";
-import { createDbRoleReplayLookup } from "../urgent/deps";
 import { type OnCallCoverageService, createOnCallCoverageService } from "./oncall-coverage-service";
 import type { RoleSendPorts } from "./role-send-service";
 

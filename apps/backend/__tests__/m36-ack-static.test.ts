@@ -118,6 +118,8 @@ describe("only an explicit transition writes an acknowledgment", () => {
         "apps/backend/src/modules/36-messaging/ack-delivery-failure/delivery-failure-service.ts",
         "apps/backend/src/modules/36-messaging/ack-delivery-failure/route-rules.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts",
+        // ADR-0081: the role-send binding wires the aggregate's select-only role-replay lookup (the urgent code must not name the request table).
+        "apps/backend/src/modules/36-messaging/oncall-directory/binding.ts",
         // WP 4.8 (ADR-0075): the deep-link resolver names the open request on a message through the aggregate's own read (a type and a lookup port), never its tables.
         "apps/backend/src/modules/36-messaging/delivery-target/delivery-target-service.ts",
         // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.

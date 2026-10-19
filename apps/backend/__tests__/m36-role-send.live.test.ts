@@ -34,12 +34,13 @@ import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import { guardEscalationRouter } from "../src/modules/36-messaging/ack-escalation/escalation-router-guard";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
+import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import { createDbChannelFactsLookup } from "../src/modules/36-messaging/medication-questions/deps";
 import { createMentionActorNameResolver } from "../src/modules/36-messaging/mention-non-member-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
-import { buildUrgentDeps, createDbRoleReplayLookup } from "../src/modules/36-messaging/urgent/deps";
+import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import {
   type LiveKit,
   STAFF_KEYS,
