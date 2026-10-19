@@ -12,17 +12,17 @@
  *   a patient with an active SUD privacy flag is SKIPPED (the real sync defers to M39's Part 2 release per user,
  *   which a SQL seed cannot honestly mirror);
  *   archived channels take no new members; only role 'member', source 'auto' rows are written.
- * Channels are never created here (the sync/portal path owns that) unless --create-missing is passed, which opens the
- * channel exactly as the sync does (retention_class care_related, title "Care team") for patients with an open roster.
+ * Missing channels are opened exactly as the sync does (retention_class care_related, title "Care team") for patients
+ * with an open roster; pass --no-create to only add members to channels that already exist.
  *
  * Idempotent: a user with a live membership (removed_at IS NULL) on the channel is left alone. Uses the admin connection.
- * Usage: bun run db:seed:messaging-members [-- --create-missing]
+ * Usage: bun run db:seed:messaging-members [-- --no-create]
  */
 import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "wardenx-demo";
-const CREATE_MISSING = process.argv.includes("--create-missing");
+const CREATE_MISSING = !process.argv.includes("--no-create");
 const EXCLUDED_CATEGORIES = ["patient_family", "external_auditor", "platform_staff"];
 
 async function main(): Promise<void> {
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       [orgId, patients.rows.map((r) => r.patient_id)],
     );
     console.log(
-      `✓ messaging channel members: ${ins.rowCount ?? 0} added, ${created} channel(s) created; ${noChannel.rows[0]?.n ?? 0} patient(s) with an open care team have no channel yet (the sync/portal path opens it${CREATE_MISSING ? "" : "; pass --create-missing to open it here"}).`,
+      `✓ messaging channel members: ${ins.rowCount ?? 0} added, ${created} channel(s) created; ${noChannel.rows[0]?.n ?? 0} patient(s) with an open care team have no channel yet${CREATE_MISSING ? "" : " (--no-create)"}.`,
     );
   } catch (err) {
     await db.query("ROLLBACK").catch(() => undefined);
