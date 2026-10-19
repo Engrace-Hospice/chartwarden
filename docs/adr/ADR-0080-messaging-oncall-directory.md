@@ -31,6 +31,8 @@ Checked in the code, not assumed:
 
 - **Patient scope.** The seam is patient-scoped, so the screen is entered with `?patient=<uuid>` from a patient's care team and shows an explanation without one. An organisation-wide "who is on call" view needs a router contract change (a patient-less query) owned by M19.
 - **Real router.** Until a named M19 owner binds one, the directory reports "roster not connected". The M19 side must enforce the org check and that the patient belongs to the org (ADR-0057).
+- **Patient-in-organisation check (review finding, MEDIUM).** M36 does not itself verify that `patient_id` belongs to the caller's organisation; it relies on the seam contract (ADR-0057), which makes the M19 router responsible. Requirement on the real router: a patient of another organisation must answer `unavailable` / `no_route_configured` and never a roster. Until a router is bound the deny-stub discloses nothing. If M19 will not guarantee it, add an org-scoped patient lookup in M36 (uniform 404 on a miss) before binding.
+- **Truncated backup tiers (review finding, LOW).** The list stops at 4 tiers or at the first unavailable tier without saying so; add a `more_tiers` flag when that matters.
 - **Shift end** from M19 (decision 5).
 - **Availability status** ("on a visit", "not paged yet") in the spec mockup has no source and is not shown.
 - **Clinical lead:** the role list, who may read the directory, the wording.
