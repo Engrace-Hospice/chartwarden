@@ -4,6 +4,7 @@
 // is UNKNOWN (never an empty list), a router failure propagates (never turned into a gap), the zone is the roster's, and a shift end is
 // shown only if the roster supplied a valid one. Ids never leave the server; only display names do.
 import {
+  type EscalationResolved,
   type EscalationRouteAnswer,
   type EscalationRouter,
   NotFoundError,
@@ -38,16 +39,23 @@ export function validShiftEnd(value: string | undefined, asOf: Date): string | n
 }
 
 /**
- * The router's order IS the rank (EscalationRouter contract, ADR-0057 item 12): first = primary, the rest = backup. No sort. A repeated
- * id keeps its FIRST position, so a user who is both primary and backup is the primary. Callers normalise id case first.
+ * The covering people with the router's EXPLICIT rank (`ranks[i]` pairs with `userIds[i]`; never position). Ids are lower-cased and
+ * de-duplicated; a user ranked primary anywhere is primary. A router that supplies no `ranks` makes no claim, so nobody is primary.
+ * Primaries are listed first, each group in the router's order (a stable partition, not a sort).
  */
 export function rankedIds(
-  userIds: readonly string[],
+  answer: Pick<EscalationResolved, "userIds" | "ranks">,
 ): readonly { readonly id: string; readonly rank: OnCallRank }[] {
-  return [...new Set(userIds)].map((id, index) => ({
-    id,
-    rank: index === 0 ? "primary" : "backup",
-  }));
+  const rankOf = new Map<string, OnCallRank>();
+  answer.userIds.forEach((raw, index) => {
+    const id = raw.toLowerCase();
+    if (rankOf.get(id) !== "primary") rankOf.set(id, answer.ranks?.[index] ?? "backup");
+  });
+  const people = [...rankOf].map(([id, rank]) => ({ id, rank }));
+  return [
+    ...people.filter((p) => p.rank === "primary"),
+    ...people.filter((p) => p.rank === "backup"),
+  ];
 }
 
 export function unavailableStatus(
@@ -83,12 +91,10 @@ export function createOnCallCoverageService(deps: OnCallCoverageDeps): OnCallCov
         const people =
           answer.kind === "resolved"
             ? await Promise.all(
-                rankedIds(answer.userIds.map((id) => id.toLowerCase())).map(
-                  async ({ id, rank }) => ({
-                    display_name: await deps.displayName(actor.orgId, id),
-                    rank,
-                  }),
-                ),
+                rankedIds(answer).map(async ({ id, rank }) => ({
+                  display_name: await deps.displayName(actor.orgId, id),
+                  rank,
+                })),
               )
             : [];
         tiers.push({

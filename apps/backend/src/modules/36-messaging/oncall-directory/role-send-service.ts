@@ -7,7 +7,7 @@
 //   - the tenant flag `messaging.role_send` off is the uniform 404, decided before any router call;
 //   - only tier 1 is addressed: a gap, an unconnected roster (the deny-stub) and "no ladder" are explicit refusals carrying the telephone
 //     procedure wording, NEVER a fall-back to a backup tier, another role or a guessed person;
-//   - the resolution keeps the router's order and labels it: the first id is the primary, the rest are backups (hazard H-02); sending to a
+//   - the resolution labels each person with the router's EXPLICIT rank and lists primaries first (hazard H-02); sending to a
 //     backup stays allowed (the sender confirms ONE person). A rank change alone never fails a send: the staleness check compares the
 //     PERSON set, so a chosen person who is still covering goes through whatever their rank now is;
 //   - the confirmed person must STILL cover tier 1 when the send is made (re-resolved at send time); otherwise 409 and the sender
@@ -142,9 +142,9 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
         time_zone: answer.timeZone,
       };
     }
-    // The router's order is the rank (primary first); never sorted. Lowercased ids, first occurrence wins.
+    // The router's explicit rank, primaries first (no position inference). Lowercased ids, first occurrence wins.
     const people = await Promise.all(
-      rankedIds(answer.userIds.map((id) => id.toLowerCase())).map(async ({ id, rank }) => ({
+      rankedIds(answer).map(async ({ id, rank }) => ({
         user_id: id,
         display_name: await deps.displayName(actor.orgId, id).catch(() => null),
         rank,

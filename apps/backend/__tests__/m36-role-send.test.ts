@@ -77,6 +77,7 @@ const covering = (...ids: string[]): EscalationRouter => ({
   resolveTier: async (_org, request): Promise<EscalationRouteAnswer> => ({
     kind: "resolved",
     userIds: ids as [string, ...string[]],
+    ranks: ids.map((_, i) => (i === 0 ? "primary" : "backup")),
     nextTier: null,
     timeZone: "America/Los_Angeles",
     tier: request.tier,

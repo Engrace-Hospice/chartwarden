@@ -1,5 +1,6 @@
 // M36 WP 4.12 (ADR-0080) - the read-only on-call "who is covering now" directory. It answers a question; it never addresses anyone
 // (role-based SEND is a separate, undecided change, ADR-0080). Names and roles only: no patient data, no contact details.
+import { ESCALATION_RANKS, type EscalationRank } from "./messaging-escalation";
 
 /** Tenant flag (ops flag, tenant row wins, absent = off). Off is the uniform 404. */
 export const ONCALL_DIRECTORY_FLAG_KEY = "messaging.oncall_directory";
@@ -26,12 +27,11 @@ export const ONCALL_DIRECTORY_STATUSES = [
 export type OnCallDirectoryStatus = (typeof ONCALL_DIRECTORY_STATUSES)[number];
 
 /**
- * Who within a covering tier is the PRIMARY and who the BACKUP (hazard H-02). The EscalationRouter contract has no explicit rank: its
- * `userIds` order IS the contract (ADR-0057 item 12: the primary membership first, then the backup). The first id is `primary`, every
- * later id `backup`; M36 never re-sorts the list. A text label in the UI, never colour alone.
+ * Who within a covering tier is the PRIMARY and who the BACKUP (hazard H-02). It is the router's EXPLICIT `ranks` (ADR-0057 item 12),
+ * never inferred from position; a router that supplies none labels nobody primary. A text label in the UI, never colour alone.
  */
-export const ONCALL_RANKS = ["primary", "backup"] as const;
-export type OnCallRank = (typeof ONCALL_RANKS)[number];
+export const ONCALL_RANKS = ESCALATION_RANKS;
+export type OnCallRank = EscalationRank;
 
 export type OnCallTierState = "covering" | "coverage_gap";
 
@@ -90,7 +90,7 @@ export interface RoleSendPersonDto {
   readonly user_id: string;
   /** Null when the name cannot be found (never an id in its place). */
   readonly display_name: string | null;
-  /** `primary` for the first id the router returned, `backup` for the rest, in the router's order (see `ONCALL_RANKS`). */
+  /** The router's explicit rank of this person (see `ONCALL_RANKS`); primaries are listed first. */
   readonly rank: OnCallRank;
 }
 

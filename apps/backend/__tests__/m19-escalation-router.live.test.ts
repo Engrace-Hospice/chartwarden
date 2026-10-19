@@ -217,6 +217,7 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
     expect(answer).toMatchObject({
       kind: "resolved",
       userIds: [a.users.primary, a.users.backup],
+      ranks: ["primary", "backup"],
       nextTier: null,
       timeZone: NY,
       source: "m19",
@@ -225,6 +226,22 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
     expect(await resolve(ORG_A, ORG_A, a.patient, "2026-06-01T08:00:00-04:00")).toMatchObject({
       kind: "resolved",
       userIds: [a.users.primary, a.users.backup],
+    });
+  });
+
+  it("ranks from the shift seats over the real tables: overlapping shifts keep each person's own rank, primary wins", async () => {
+    const a = seeded[ORG_A] as OrgSeed;
+    await seedShift(ORG_A, "2027-03-01T07:00:00Z", "2027-03-01T19:00:00Z", a.members.primary, {
+      backup: a.members.backup,
+    });
+    await seedShift(ORG_A, "2027-03-01T10:00:00Z", "2027-03-01T22:00:00Z", a.members.other, {
+      backup: a.members.primary,
+    });
+    // primary(s1)+backup(s1)+other(s2 primary); `primary` is also s2's backup but stays primary
+    expect(await resolve(ORG_A, ORG_A, a.patient, "2027-03-01T12:00:00Z")).toMatchObject({
+      kind: "resolved",
+      userIds: [a.users.primary, a.users.backup, a.users.other],
+      ranks: ["primary", "backup", "primary"],
     });
   });
 
@@ -300,11 +317,19 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
       backup: a.members.backup,
     });
     const at = () => resolve(ORG_A, ORG_A, a.patient, "2027-01-01T12:00:00Z");
-    expect(await at()).toMatchObject({ userIds: [a.users.primary, a.users.backup] });
+    expect(await at()).toMatchObject({
+      userIds: [a.users.primary, a.users.backup],
+      ranks: ["primary", "backup"],
+    });
     await admin.query("UPDATE membership SET status = 'suspended' WHERE id = $1", [
       a.members.primary,
     ]);
-    expect(await at()).toMatchObject({ kind: "resolved", userIds: [a.users.backup] });
+    // The primary seat no longer resolves: the backup stays a backup (nobody is promoted).
+    expect(await at()).toMatchObject({
+      kind: "resolved",
+      userIds: [a.users.backup],
+      ranks: ["backup"],
+    });
     await admin.query("UPDATE membership SET status = 'active', revoked_at = now() WHERE id = $1", [
       a.members.backup,
     ]);

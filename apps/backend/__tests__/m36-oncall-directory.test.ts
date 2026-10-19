@@ -154,6 +154,7 @@ describe("GET /messaging/oncall/coverage", () => {
       resolveTier: async (_org, request) => ({
         kind: "resolved",
         userIds: [COVERING],
+        ranks: ["primary"],
         nextTier: null,
         timeZone: "America/Los_Angeles",
         shiftEndsAt: "2026-06-02T02:00:00Z",
