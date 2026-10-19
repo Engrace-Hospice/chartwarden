@@ -5,7 +5,7 @@
  * `portal_access` consent, and one active M31 grant to the first seeded demo patient. The contact
  * fields use M31's real tenant-DEK cipher. Re-running replaces only this synthetic portal identity.
  *
- * Prereqs: backend running; db:seed, db:seed:patients, db:seed:consent-types and db:seed:org-structure completed (it gives the demo patients their provider entity); the demo
+ * Prereqs: backend running; db:seed, db:seed:patients and db:seed:consent-types completed, and at least one admission activated (db:seed:scenario-admissions; the outbox relay then sets patient.provider_entity_id, which this seed needs); the demo
  * tenant key ring and M34_TENANT_KEK must be available.
  */
 import { randomBytes } from "node:crypto";
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   if (!target.rowCount) {
     await db.end();
     throw new Error(
-      "demo org/patient/admin/key ring missing — run db:seed, db:seed:patients, db:seed:org-admin and db:seed:org-structure first",
+      "demo org/patient/admin/key ring missing — run db:seed, db:seed:patients and db:seed:org-admin first, and activate an admission (db:seed:scenario-admissions) so a patient has a provider entity",
     );
   }
   const row = firstRow(target, "seed-portal-user: target patient");
