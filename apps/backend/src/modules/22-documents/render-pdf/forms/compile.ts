@@ -13,6 +13,7 @@ import {
   RenderPayloadError,
   type SignatureRecord,
   type UndatedSignatureRecord,
+  formatMrn,
 } from "@wardenx/types";
 import type { Block, DocModel, SignatureBlock } from "../doc-model";
 import { latestInstant } from "../doc-model";
@@ -163,7 +164,9 @@ export function defineForm<P>(spec: FormSpec<P>): CompiledForm<P> {
       title: spec.title,
       createdAtIso: latestInstant([documentDate ?? undefined]),
       blocks,
-      runningHeader: patient ? `${patient.name} - MRN ${patient.mrn} - ${spec.title}` : spec.title,
+      runningHeader: patient
+        ? `${patient.name} - ${formatMrn(patient.mrn)} - ${spec.title}`
+        : spec.title,
       discloseDegradedGlyphs: true,
       ...(watermark ? { watermark } : {}),
     };

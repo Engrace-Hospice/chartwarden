@@ -1,21 +1,3 @@
-import {
-  type ApiClient,
-  CeremonyModal,
-  CodeSearchInput,
-  DetailPageLayout,
-  EmptyState,
-  type GateItem,
-  GateStepper,
-  GuardChip,
-  InlineAlert,
-  LoadingSpinner,
-  Modal,
-  PageHeader,
-  RightDetailPanel,
-  StatusPill,
-  type StatusTone,
-  useApiClient,
-} from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Detail (M6 §5.2.4 + §5.2.5 activation gate, Track B).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Detail Page."
 // Reads the admission aggregate from GET /api/v1/admissions/:id (which carries the R-AC-01 activation
@@ -35,6 +17,25 @@ import {
 // `activationGate.ready` the server enforces is true (route 14 now calls the identical
 // `computeActivationGate` before transitioning — see admission-route-service-db.ts), so the button can
 // never promise something the server would then refuse.
+import { formatMrn } from "@wardenx/types";
+import {
+  type ApiClient,
+  CeremonyModal,
+  CodeSearchInput,
+  DetailPageLayout,
+  EmptyState,
+  type GateItem,
+  GateStepper,
+  GuardChip,
+  InlineAlert,
+  LoadingSpinner,
+  Modal,
+  PageHeader,
+  RightDetailPanel,
+  StatusPill,
+  type StatusTone,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -3276,7 +3277,7 @@ function patientMeta(patient: PatientSummary | null): string | null {
   if (!patient) return null;
   return [
     patient.dob ? `DOB ${fmtDate(patient.dob)}` : null,
-    patient.mrn ? `MRN ${patient.mrn}` : null,
+    patient.mrn ? formatMrn(patient.mrn) : null,
     patient.status ? stateLabel(patient.status) : null,
   ]
     .filter(Boolean)

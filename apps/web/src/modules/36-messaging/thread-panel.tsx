@@ -178,6 +178,15 @@ export function ThreadPanel({
   useEffect(() => {
     if (status === "ready" && document.activeElement === document.body) panelRef.current?.focus();
   }, [status]);
+  // Open on the latest reply, not the parent: once, when the thread first becomes ready (a later reply never yanks the scroll).
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const scrolledToLatest = useRef(false);
+  useEffect(() => {
+    if (status !== "ready" || scrolledToLatest.current) return;
+    scrolledToLatest.current = true;
+    const body = bodyRef.current;
+    if (body) body.scrollTop = body.scrollHeight;
+  }, [status]);
 
   function handlePanelKey(event: KeyboardEvent<HTMLElement>): void {
     if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -231,7 +240,7 @@ export function ThreadPanel({
         <span key={announcement.n}>{announcement.text}</span>
       </output>
 
-      <div className="wx-thread-panel-body">
+      <div ref={bodyRef} className="wx-thread-panel-body">
         {status === "loading" ? (
           <output className="wx-message-state">
             <LoadingSpinner label="Loading thread" />

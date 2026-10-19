@@ -7,7 +7,7 @@
 ## Pending architecture ratification — mobile renderer (2026-10-16)
 
 The fixed product direction is a separately versioned React Native/Expo application in the
-`wardenx-mobile` repository. [ADR-0069](../adr/ADR-0069-separate-react-native-expo-mobile-app.md)
+`wardenx-mobile` repository. [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md)
 proposes formal supersession of ADR-0035. Current architecture sections below are aligned to that
 target so backend contracts do not extend the obsolete Capacitor design; historical changelog rows
 remain historical. The ADR status does not claim that owner ratification or native device controls
@@ -292,7 +292,7 @@ Organization (tenant — the WardenX customer)
 > | `apps/web` | **`apps/web`** |
 > | `apps/backend` | **`apps/backend`** |
 > | `packages/saas` | **`packages/saas-tenant-platform`** |
-> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0069 proposes the formal supersession of ADR-0035. |
+> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 proposes the formal supersession of ADR-0035. |
 > | `packages/rules-engine` | **Does not exist.** |
 > | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
 >
@@ -375,12 +375,12 @@ wardenx/
 - Recharts for clinical and financial dashboards
 - Better Auth React client
 
-### Mobile (clinical and field roles — separate React Native/Expo application; ADR-0069)
+### Mobile (clinical and field roles — separate React Native/Expo application; ADR-0072)
 
 - `wardenx-mobile` is a separately versioned repository and application; this monorepo does not contain an `apps/mobile` workspace.
 - The web and native applications are two renderers. Native code does not import DOM components or the web capability adapters. It consumes the versioned OpenAPI artifact and may reuse only renderer-free contracts, types, documented permissions, design tokens, and pure utilities.
 - Both renderers use the single Better Auth service at `/api/auth/*`. Native REST calls present the Better Auth cookie plus WardenX's exact double-submit CSRF token; no parallel bearer/JWT session model exists.
-- Native geolocation, camera, biometric lock, encrypted offline storage, push, device integrity, screenshot policy, certificate pinning, and MDM controls remain separate implementation obligations. ADR-0069 records their evidence status; this architecture does not claim that the Expo app has implemented them.
+- Native geolocation, camera, biometric lock, encrypted offline storage, push, device integrity, screenshot policy, certificate pinning, and MDM controls remain separate implementation obligations. ADR-0072 records their evidence status; this architecture does not claim that the Expo app has implemented them.
 - Offline clinical workflows and background sync require dedicated contracts and threat-model review before enablement.
 
 ### Backend
@@ -2716,7 +2716,7 @@ These remain genuinely open and need decision before specific modules are spec�
 > records in [`docs/adr/`](../adr/README.md) (`ADR-0001`…): a bare `ADR-003` means row 3 of this
 > table (telehealth vendor — still open), *not* the four-digit `ADR-0003` (room-and-board revenue
 > codes) in `docs/adr/`. When an item here gets decided, it is closed by a four-digit ADR — as already happened
-> for ADR-008 (mobile → **ADR-0035**, with **ADR-0069** proposed as its supersession). Four-digit citations are gate-checked
+> for ADR-008 (mobile → **ADR-0035**, with **ADR-0072** proposed as its supersession). Four-digit citations are gate-checked
 > (`arch:architecture-docs`); short-register references are not, deliberately.
 
 |ADR    |Title                                                                                                                         |Needed before      |
@@ -2728,7 +2728,7 @@ These remain genuinely open and need decision before specific modules are spec�
 |ADR-005|CAHPS Hospice Survey vendor partnership default                                                                               |Module 30 spec     |
 |ADR-006|EPCS enablement timeline (architecture present, certification kickoff date)                                                   |Module 12 spec     |
 |ADR-007|Map / routing provider (Mapbox vs. OSRM self-hosted)                                                                          |Module 17 spec     |
-|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0069 proposes a separate React Native/Expo app and requires formal ratification**|Ratification pending|
+|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 proposes a separate React Native/Expo app and requires formal ratification**|Ratification pending|
 
 -----
 

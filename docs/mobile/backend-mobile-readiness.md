@@ -6,7 +6,7 @@ Le backend est largement réutilisable pour les données, permissions et transit
 native ne doit pas copier le comportement navigateur au moyen d’un cookie bricolé dans Axios.
 
 PR B a ajouté l’intégration serveur officielle Better Auth Expo à l’adaptateur unique, séparé les
-origines web/WebAuthn des schemes natifs et défini l’amorçage CSRF authentifié. ADR-0069 porte la
+origines web/WebAuthn des schemes natifs et défini l’amorçage CSRF authentifié. ADR-0072 porte la
 supersession d’ADR-0035 et attend la ratification formelle. PR C doit encore démontrer sur appareils le
 transport SecureStore, le login username, TOTP/backup codes, cookie/session, CSRF, sign-out, révocation
 et Socket.IO. Le passkey natif reste non démontré.
@@ -19,7 +19,7 @@ en double.
 
 | Domaine | Classement | Existant vérifié | Exigence mobile / écart |
 |---|---|---|---|
-| Gouvernance stack | condition humaine | ADR-0069 propose le remplacement du wrap Capacitor par le repo Expo séparé ; corpus autoritaire aligné | ratifier ADR-0069 sans réécrire ADR-0035 |
+| Gouvernance stack | condition humaine | ADR-0072 propose le remplacement du wrap Capacitor par le repo Expo séparé ; corpus autoritaire aligné | ratifier ADR-0072 sans réécrire ADR-0035 |
 | Better Auth | prêt côté serveur | instance unique avec plugin Expo, username, TOTP, passkey navigateur, magic link, cookies/session dans `packages/auth/src/identity/auth.ts` | pinner la version client compatible et prouver le transport SecureStore sur appareils ; aucun token maison |
 | Session/CSRF | contrat backend prêt | CSRF navigateur inchangé ; bootstrap authentifié `GET /api/v1/auth/csrf` et double-submit exact | appliquer le protocole du contrat PR C et tester iOS/Android réel |
 | Auth context | réutilisable tel quel | `/api/v1/auth/context` retourne identité, org, membership, roles, locations, scope, permissions | ajouter une politique de refresh foreground/403 ; aucune permission calculée côté client |

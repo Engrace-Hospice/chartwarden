@@ -12,6 +12,7 @@ import {
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
+import { createPortal } from "react-dom";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
 import "./polls.css";
@@ -92,12 +93,16 @@ export function PollCreateDialog({
     }
   }
 
-  return (
+  // Portalled to <body>: the composer's own <form> contains this component, and a form nested in a form is invalid
+  // HTML (the browser can submit the outer one, reloading the page). The submit also stops here so React's tree-wide
+  // bubbling never reaches the composer's send handler.
+  return createPortal(
     <Modal open onClose={submitting ? undefined : onClose} ariaLabel="Create a poll" width="30rem">
       <form
         className="wx-poll-dialog"
         onSubmit={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           void submit();
         }}
       >
@@ -177,6 +182,7 @@ export function PollCreateDialog({
           </Button>
         </footer>
       </form>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }

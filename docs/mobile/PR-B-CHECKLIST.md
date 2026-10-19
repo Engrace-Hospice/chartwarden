@@ -3,13 +3,13 @@
 Date : 2026-10-16  
 Conclusion : **GO sous conditions pour PR C**
 
-Le backend et le contrat permettent de commencer l’intégration mobile. La ratification d’ADR-0069,
+Le backend et le contrat permettent de commencer l’intégration mobile. La ratification d’ADR-0072,
 le choix des schemes/app links et les preuves sur appareils restent des conditions avant diffusion.
 
 ## Objectifs livrés
 
 - [x] Baseline des fichiers, versions et protections réellement présents.
-- [x] ADR-0069 proposé comme supersession explicite d’ADR-0035, historique conservé.
+- [x] ADR-0072 proposé comme supersession explicite d’ADR-0035, historique conservé.
 - [x] Corpus Architecture, System Design, Security Hardening, Integrations et design mobile aligné.
 - [x] Aucun `apps/mobile`, code React Native ou changement dans `wardenx-mobile`.
 - [x] `@better-auth/expo` `1.6.25` ajouté dans `packages/auth`, sur l’unique instance Better Auth.
@@ -56,7 +56,7 @@ reste couverte par sa lane existante, pas par cette exécution PR B.
 
 ## Risques bloquants avant diffusion mobile
 
-- **Ratification :** ADR-0069 est proposé ; le Frontend/Architecture Owner doit enregistrer son accord.
+- **Ratification :** ADR-0072 est proposé ; le Frontend/Architecture Owner doit enregistrer son accord.
 - **Identité applicative :** scheme production, bundle/application IDs, Universal/App Links et fichiers
   d’association doivent être choisis et vérifiés avec les builds signés.
 - **Transport device :** PR C doit prouver Better Auth Expo/SecureStore, CSRF Axios et Socket.IO sur un

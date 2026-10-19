@@ -274,3 +274,58 @@ describe("WP 2.10 poll composer action", () => {
     ).toBe(true);
   });
 });
+
+describe("poll create does not trigger a native form submit", () => {
+  it("portals the dialog out of the composer form, prevents default, and POSTs once", async () => {
+    const created = {
+      messageId: "m9",
+      channelId: "dm-1",
+      createdAt: "2026-10-10T09:00:00Z",
+      poll: poll(),
+    };
+    const api = mount({
+      messages: [],
+      post: (path) =>
+        path === CREATE ? { data: created, error: undefined, response: { status: 201 } } : ok({}),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Poll" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.closest("form.wx-message-composer")).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText("Question"), { target: { value: "Lunch?" } });
+    fireEvent.change(within(dialog).getByPlaceholderText("Option 1"), { target: { value: "A" } });
+    fireEvent.change(within(dialog).getByPlaceholderText("Option 2"), { target: { value: "B" } });
+    const submits: SubmitEvent[] = [];
+    document.addEventListener("submit", (e) => submits.push(e as SubmitEvent), true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create poll" }));
+    await waitFor(() => expect(api.POST.mock.calls.filter((c) => c[0] === CREATE)).toHaveLength(1));
+    expect(submits.length).toBeGreaterThan(0);
+    expect(submits.every((e) => e.defaultPrevented)).toBe(true);
+  });
+});
+
+describe("composer send when the server has no message-encryption key", () => {
+  it("shows a useful message for MESSAGING_ENCRYPTION_UNAVAILABLE and keeps the draft", async () => {
+    mount({
+      messages: [],
+      post: (path) =>
+        path === "/api/v1/messaging/channels/{id}/messages"
+          ? {
+              data: undefined,
+              error: {
+                error: {
+                  code: "MESSAGING_ENCRYPTION_UNAVAILABLE",
+                  message: "MESSAGING_ENCRYPTION_KEY is required",
+                },
+              },
+              response: { status: 503 },
+            }
+          : ok({}),
+    });
+    const box = (await screen.findAllByRole("textbox"))[0]!;
+    fireEvent.change(box, { target: { value: "hello" } });
+    fireEvent.submit(box.closest("form") as HTMLFormElement);
+    const alert = await screen.findByText(/message encryption is not configured/i);
+    expect(alert.textContent).not.toMatch(/unexpected error|MESSAGING_ENCRYPTION_KEY/);
+    expect((box as HTMLTextAreaElement).value).toBe("hello");
+  });
+});

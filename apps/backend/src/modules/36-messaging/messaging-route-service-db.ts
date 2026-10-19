@@ -70,6 +70,7 @@ import {
   NotFoundError,
   ValidationError,
   WardenXError,
+  formatMrn,
   richBodySbar,
 } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -791,7 +792,7 @@ export function createDbMessagingRouteService(
               kind: "patient" as const,
               entityId: patient.id,
               displayName,
-              detail: `MRN ${patient.mrn}`,
+              detail: formatMrn(patient.mrn),
             });
           }
         }

@@ -7,7 +7,7 @@
 // step-up routes are M2-T05; the auditor-invite route is M3-owned per D4 — see §4.1):
 //
 //   GET    /api/v1/auth/memberships           list own memberships (pre-org)          §7.2
-//   GET    /api/v1/auth/csrf                  bootstrap native double-submit nonce     ADR-0069
+//   GET    /api/v1/auth/csrf                  bootstrap native double-submit nonce     ADR-0072
 //   POST   /api/v1/auth/select-organization   bind the session to one org (one-time)  §7.2
 //   POST   /api/v1/orgs/:id/invitations       invite a user to an org                 §7.1
 //   POST   /api/v1/invitations/accept         consume an invite token → membership    §7.1
