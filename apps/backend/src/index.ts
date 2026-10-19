@@ -1688,6 +1688,8 @@ export function wireModuleSeams(
     caseloadShiftCacheRedis?: Redis | null;
     /** WP 3.7 - the ONE message-body cipher the messaging provider and the chart-promotion snapshot reader share. */
     messageBodyCipher?: ReturnType<typeof createMessageBodyCipher>;
+    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootWardenX` can stay quiet about the deny-stub. */
+    onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
   } = {},
@@ -2052,6 +2054,7 @@ export function wireModuleSeams(
       warn: (message) => console.warn(message),
     }).size;
   }
+  deps.onEscalationRouterBound?.(m19RouterBoundOrgCount);
   // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
   // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
   // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
@@ -3249,6 +3252,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // boots the same composition root (seams, tenancy, key ring) but, like `api`, constructs NO BullMQ workers / crons / outbox
   // dispatcher — it only binds the feed listeners and serves /health on `LISTENER_HEALTH_PORT`.
   const listenerProcess = requestedRole === "listener";
+  // Set by wireModuleSeams (via buildServer's registerModuleSeams) and read by the M36 EscalationRouter boot probe below.
+  let m19RouterBoundOrgCount = 0;
   const role: Exclude<ProcessRole, "listener"> = listenerProcess ? "api" : requestedRole;
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
@@ -6014,6 +6019,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       : undefined,
     registerModuleSeams: () =>
       wireModuleSeams({
+        onEscalationRouterBound: (count) => {
+          m19RouterBoundOrgCount = count;
+        },
         sessionContextStore: dbHandle
           ? createDbSessionContextStore(
               dbHandle.db,
