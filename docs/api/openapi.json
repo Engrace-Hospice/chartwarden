@@ -31891,6 +31891,435 @@
         }
       }
     },
+    "/api/v1/adrs/{id}/submission": {
+      "get": {
+        "operationId": "getApiV1AdrsByIdSubmission",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Submission attempts of this ADR response: status, proof missing, guided checklist and adapter availability",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "subjectKind",
+                    "subjectId",
+                    "patientId",
+                    "attempts",
+                    "proofMissing",
+                    "noAttemptRecord",
+                    "adapters",
+                    "checklist"
+                  ],
+                  "properties": {
+                    "subjectKind": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "purpose",
+                          "attemptNo",
+                          "channel",
+                          "adapter",
+                          "status",
+                          "needsManualReason",
+                          "confirmationRef",
+                          "receiptAt",
+                          "receiptDocumentId",
+                          "receiptSource",
+                          "amendments",
+                          "approvedAt",
+                          "createdAt",
+                          "version",
+                          "proofMissing"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "purpose": {
+                            "type": "string"
+                          },
+                          "attemptNo": {
+                            "type": "integer"
+                          },
+                          "channel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adapter": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "needsManualReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "confirmationRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptSource": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "amendments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "recordedAt",
+                                "confirmationRef",
+                                "receiptAt",
+                                "receiptDocumentId"
+                              ],
+                              "properties": {
+                                "recordedAt": {
+                                  "type": "string"
+                                },
+                                "confirmationRef": {
+                                  "type": "string"
+                                },
+                                "receiptAt": {
+                                  "type": "string"
+                                },
+                                "receiptDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "approvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "proofMissing": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "proofMissing": {
+                      "type": "boolean"
+                    },
+                    "noAttemptRecord": {
+                      "type": "boolean"
+                    },
+                    "adapters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "mode",
+                          "bound",
+                          "reason"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "bound": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "checklist": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "text"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/submission-cancel": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdSubmissioncancel",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "reason"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/submission-receipt": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdSubmissionreceipt",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "amended"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "amended": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "confirmationRef",
+                  "receiptAt"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "confirmationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "receiptAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "receiptDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/adrs/{id}/submit": {
       "post": {
         "operationId": "postApiV1AdrsByIdSubmit",
@@ -39211,6 +39640,435 @@
                   },
                   "requestedAt": {
                     "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/submission": {
+      "get": {
+        "operationId": "getApiV1AppealsByIdSubmission",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Submission attempts of this appeal or QIC request: status, proof missing, guided checklist and adapter availability",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "subjectKind",
+                    "subjectId",
+                    "patientId",
+                    "attempts",
+                    "proofMissing",
+                    "noAttemptRecord",
+                    "adapters",
+                    "checklist"
+                  ],
+                  "properties": {
+                    "subjectKind": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "purpose",
+                          "attemptNo",
+                          "channel",
+                          "adapter",
+                          "status",
+                          "needsManualReason",
+                          "confirmationRef",
+                          "receiptAt",
+                          "receiptDocumentId",
+                          "receiptSource",
+                          "amendments",
+                          "approvedAt",
+                          "createdAt",
+                          "version",
+                          "proofMissing"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "purpose": {
+                            "type": "string"
+                          },
+                          "attemptNo": {
+                            "type": "integer"
+                          },
+                          "channel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adapter": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "needsManualReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "confirmationRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptSource": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "amendments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "recordedAt",
+                                "confirmationRef",
+                                "receiptAt",
+                                "receiptDocumentId"
+                              ],
+                              "properties": {
+                                "recordedAt": {
+                                  "type": "string"
+                                },
+                                "confirmationRef": {
+                                  "type": "string"
+                                },
+                                "receiptAt": {
+                                  "type": "string"
+                                },
+                                "receiptDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "approvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "proofMissing": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "proofMissing": {
+                      "type": "boolean"
+                    },
+                    "noAttemptRecord": {
+                      "type": "boolean"
+                    },
+                    "adapters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "mode",
+                          "bound",
+                          "reason"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "bound": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "checklist": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "text"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/submission-cancel": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdSubmissioncancel",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "reason"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/submission-receipt": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdSubmissionreceipt",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "amended"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "amended": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "confirmationRef",
+                  "receiptAt"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "confirmationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "receiptAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "receiptDocumentId": {
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -235021,6 +235879,435 @@
                         "type": "null"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reopenings/{id}/submission": {
+      "get": {
+        "operationId": "getApiV1ReopeningsByIdSubmission",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Submission attempts of this reopening request: status, proof missing, guided checklist and adapter availability",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "subjectKind",
+                    "subjectId",
+                    "patientId",
+                    "attempts",
+                    "proofMissing",
+                    "noAttemptRecord",
+                    "adapters",
+                    "checklist"
+                  ],
+                  "properties": {
+                    "subjectKind": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "purpose",
+                          "attemptNo",
+                          "channel",
+                          "adapter",
+                          "status",
+                          "needsManualReason",
+                          "confirmationRef",
+                          "receiptAt",
+                          "receiptDocumentId",
+                          "receiptSource",
+                          "amendments",
+                          "approvedAt",
+                          "createdAt",
+                          "version",
+                          "proofMissing"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "purpose": {
+                            "type": "string"
+                          },
+                          "attemptNo": {
+                            "type": "integer"
+                          },
+                          "channel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adapter": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "needsManualReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "confirmationRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptSource": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "amendments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "recordedAt",
+                                "confirmationRef",
+                                "receiptAt",
+                                "receiptDocumentId"
+                              ],
+                              "properties": {
+                                "recordedAt": {
+                                  "type": "string"
+                                },
+                                "confirmationRef": {
+                                  "type": "string"
+                                },
+                                "receiptAt": {
+                                  "type": "string"
+                                },
+                                "receiptDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "approvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "proofMissing": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "proofMissing": {
+                      "type": "boolean"
+                    },
+                    "noAttemptRecord": {
+                      "type": "boolean"
+                    },
+                    "adapters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "mode",
+                          "bound",
+                          "reason"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "bound": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "checklist": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "text"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reopenings/{id}/submission-cancel": {
+      "post": {
+        "operationId": "postApiV1ReopeningsByIdSubmissioncancel",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "reason"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reopenings/{id}/submission-receipt": {
+      "post": {
+        "operationId": "postApiV1ReopeningsByIdSubmissionreceipt",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "amended"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "amended": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attemptId",
+                  "confirmationRef",
+                  "receiptAt"
+                ],
+                "properties": {
+                  "attemptId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "confirmationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "receiptAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "receiptDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

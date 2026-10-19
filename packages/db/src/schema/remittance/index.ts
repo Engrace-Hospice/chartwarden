@@ -29,3 +29,4 @@ export * from "./patient-responsibility"; // patient_responsibility_ledger
 export * from "./adr"; // adr_case, adr_case_event, mac_rule (milestone 2a)
 export * from "./reopening"; // denial_route_rule, reopening_case, reopening_case_event (milestone 3)
 export * from "./tpe"; // tpe_mac_rule, tpe_program, tpe_round, tpe_round_claim (milestone 5)
+export * from "./submission"; // submission_attempt (milestone 6a)

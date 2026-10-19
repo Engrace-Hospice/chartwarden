@@ -4,6 +4,7 @@
 // importable without bullmq (the unit tests exercise them directly).
 export * from "./m25-jobs";
 export * from "./qic-overdue";
+export * from "./submission-proof-watch";
 export * from "./queues";
 export {
   type M25WorkerDeps,

@@ -17,6 +17,7 @@ import {
   type QicClock,
   type QicEvidenceItem,
   type QicExtension,
+  type SubmissionChannel,
   canRequestEscalation,
   canTransitionAppeal,
   checkEscalationFiling,
@@ -36,6 +37,7 @@ import {
   QIC_EXTENSION_MESSAGES,
 } from "./qic-messages";
 import { providerEntityScopeCondition } from "./scope";
+import { recordFilingAttempt } from "./submission-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type AppealRow = typeof schema.appealCase.$inferSelect;
@@ -527,7 +529,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
         const late = fileWith(clock?.decisionDueAt);
         if (late) throw new WardenXError(late, QIC_ESCALATION_FILING_MESSAGES[late], 422);
         // The state stays `under_review`: the QIC may still decide until it forwards the case.
-        return update(
+        const result = await update(
           tx,
           actor,
           cur,
@@ -539,6 +541,18 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           },
           { kind: "escalation_requested", payload: { channel: input.channel } },
         );
+        // Milestone 6a: the request's attempt record (already acknowledged: the case carried channel, reference, time).
+        await recordFilingAttempt(tx, {
+          organizationId: actor.organizationId,
+          providerEntityId: cur.providerEntityId,
+          purpose: "qic_escalation_request",
+          subjectId: id,
+          channel: input.channel as SubmissionChannel,
+          confirmationRef: input.confirmationRef.trim(),
+          receiptAt: requestedAt,
+          actorMembershipId: actor.membershipId,
+        });
+        return result;
       });
     },
 

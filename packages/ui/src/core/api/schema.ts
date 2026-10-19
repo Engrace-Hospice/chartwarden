@@ -2645,6 +2645,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/adrs/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this ADR response: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1AdrsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1AdrsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AdrsByIdSubmissionreceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/adrs/{id}/submit": {
         parameters: {
             query?: never;
@@ -3428,6 +3479,57 @@ export interface paths {
         put?: never;
         /** Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match) */
         post: operations["postApiV1AppealsByIdRequestescalation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this appeal or QIC request: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1AppealsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1AppealsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AppealsByIdSubmissionreceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20461,6 +20563,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reopenings/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this reopening request: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1ReopeningsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1ReopeningsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1ReopeningsByIdSubmissionreceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reopenings/{id}/submit": {
         parameters: {
             query?: never;
@@ -32461,6 +32614,144 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AdrsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdrsByIdSubmit: {
         parameters: {
             query?: never;
@@ -34514,6 +34805,144 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AppealsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
                     };
                 };
             };
@@ -84322,6 +84751,144 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReopeningsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
                     };
                 };
             };

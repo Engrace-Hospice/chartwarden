@@ -81,6 +81,8 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("adr.deadline_approaching", "warn", BILLING_MANAGERS),
   // Milestone 4: a QIC reconsideration past its recorded decision date; escalation to OMHA is now available.
   rule("appeal.qic_decision_overdue", "warn", BILLING_MANAGERS),
+  // Milestone 6a: a filing made outside WardenX whose receipt (confirmation reference) was never recorded.
+  rule("submission.proof_missing", "warn", BILLING_MANAGERS),
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [

@@ -28,6 +28,7 @@ import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-
 import { VersionConflictError } from "./concurrency";
 import { resolveDenialRoute } from "./denial-route-service";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
+import { recordAppealFilingAttempt } from "./submission-service";
 import type {
   AppealCreateInput,
   AppealDecideInput,
@@ -526,6 +527,7 @@ export function buildDrizzleM25WriteService(
             aggregateId: id,
             payload: { appealCaseId: id, tier: cur.tier, payload: packet },
           });
+          await recordAppealFilingAttempt(tx, actor, id, cur.providerEntityId);
         },
       );
     },
@@ -575,6 +577,7 @@ export function buildDrizzleM25WriteService(
             aggregateId: id,
             payload: { appealCaseId: id, tier: cur.tier, payload: packet },
           });
+          await recordAppealFilingAttempt(tx, actor, id, cur.providerEntityId);
         },
         (cur) => {
           // CMS permits a good-cause late filing only at the first two tiers (42 CFR §405.942(b)).

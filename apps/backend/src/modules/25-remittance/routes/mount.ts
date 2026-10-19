@@ -16,6 +16,7 @@ import { registerInternalRoutes } from "./internal.routes";
 import { registerQicRoutes } from "./qic.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerReopeningRoutes } from "./reopening.routes";
+import { registerSubmissionRoutes } from "./submission.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
 import { registerTpeRoutes } from "./tpe.routes";
 
@@ -28,6 +29,7 @@ export { registerDenialRoutes, type DenialRouteDeps } from "./denials.routes";
 export { registerAppealRoutes, type AppealRouteDeps } from "./appeals.routes";
 export { registerTaxonomyRoutes, type TaxonomyRouteDeps } from "./taxonomy.routes";
 export { registerInternalRoutes, type InternalRouteDeps } from "./internal.routes";
+export { registerSubmissionRoutes, type SubmissionRouteDeps } from "./submission.routes";
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
@@ -44,4 +46,7 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   }
   if (tpeService) registerTpeRoutes(app, { tpeService });
   if (qicService) registerQicRoutes(app, { qicService });
+  if (services.submissionService) {
+    registerSubmissionRoutes(app, { submissionService: services.submissionService });
+  }
 }
