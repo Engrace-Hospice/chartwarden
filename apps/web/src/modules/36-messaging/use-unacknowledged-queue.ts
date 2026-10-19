@@ -44,6 +44,8 @@ export type QueueView =
 const DENIED = new Set([401, 403, 404]);
 /** Most pages a refresh chains to rebuild a long span (10 x 100 rows); beyond it the list restarts from the top and says "Show more". */
 export const MAX_SPAN_PAGES = 10;
+/** A "show more" that has not answered by now is given up on (the client sets no timeout of its own): the button comes back with an alert. */
+export const SHOW_MORE_TIMEOUT_MS = 30_000;
 
 const queryOf = (filter: QueueFilter, limit: number, cursor?: string) => ({
   limit,
@@ -59,6 +61,8 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   const generation = useRef(0);
   const seq = useRef(0);
   const moreBusy = useRef(false);
+  const moreToken = useRef(0);
+  const retryPending = useRef(false);
   const deniedRef = useRef(false);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -109,16 +113,23 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
         }
         if (!last) return undefined;
         const final = last;
-        setView({
+        setView((prev) => ({
           status: "ready",
           items,
           counts: final.counts,
           filtered: final.filtered,
           nextCursor: final.next_cursor,
           stale: false,
-          spanCapped: items.length < target && final.next_cursor !== null,
-          moreFailed: false,
-        });
+          // Still capped while the list sits at the cap and more remain: a restart from the top must not make the note vanish.
+          spanCapped:
+            final.next_cursor !== null &&
+            (items.length < target ||
+              (prev.status === "ready" &&
+                prev.spanCapped &&
+                items.length >= MAX_SPAN_PAGES * ACK_QUEUE_LIMIT_MAX)),
+          // a refresh does not wipe the "show more" alert: only asking again (or a new filter) does
+          moreFailed: prev.status === "ready" && prev.moreFailed,
+        }));
         return true;
       } catch {
         if (!current()) return undefined;
@@ -135,6 +146,8 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   useEffect(() => {
     generation.current += 1;
     moreBusy.current = false;
+    moreToken.current += 1;
+    retryPending.current = false;
     deniedRef.current = false;
     setBusyMore(false);
     setView({ status: "loading" });
@@ -156,6 +169,11 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   useLatestPolling(refresh, false);
 
   const retry = useCallback(() => {
+    // A "show more" is in flight and would discard this read: queue one refresh for when it settles instead of swallowing the click.
+    if (moreBusy.current) {
+      retryPending.current = true;
+      return;
+    }
     setView((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
     void read(loadedCount());
   }, [read, loadedCount]);
@@ -164,13 +182,19 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
     const current = viewRef.current;
     if (!client || current.status !== "ready" || !current.nextCursor || moreBusy.current) return;
     const gen = generation.current;
+    const token = ++moreToken.current;
     const asked = current.nextCursor;
     moreBusy.current = true;
     seq.current += 1; // supersede any read already in flight: it must not overwrite the page about to be appended
     setBusyMore(true);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { data } = await get(asked, ACK_QUEUE_LIMIT_DEFAULT);
-      if (gen !== generation.current) return; // another filter owns the screen now
+      const timeout = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), SHOW_MORE_TIMEOUT_MS);
+      });
+      const answer = await Promise.race([get(asked, ACK_QUEUE_LIMIT_DEFAULT), timeout]);
+      if (gen !== generation.current || token !== moreToken.current) return; // another filter owns the screen / given up on
+      const data = answer?.data;
       setView((prev) => {
         if (prev.status !== "ready") return prev;
         // The list moved on (a refresh replaced it): the page no longer extends it. Say so instead of dropping it silently.
@@ -181,20 +205,27 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
           items: [...prev.items, ...page.items],
           counts: page.counts,
           nextCursor: page.next_cursor,
+          spanCapped: false,
           moreFailed: false,
         };
       });
     } catch {
-      if (gen === generation.current) {
+      if (gen === generation.current && token === moreToken.current) {
         setView((prev) => (prev.status === "ready" ? { ...prev, moreFailed: true } : prev));
       }
     } finally {
-      if (gen === generation.current) {
+      clearTimeout(timer);
+      if (gen === generation.current && token === moreToken.current) {
         moreBusy.current = false;
         setBusyMore(false);
+        if (retryPending.current) {
+          retryPending.current = false;
+          // after the render that shows the appended rows, so the refresh asks for the span the person now has
+          setTimeout(() => void read(loadedCount()), 0);
+        }
       }
     }
-  }, [client, get]);
+  }, [client, get, read, loadedCount]);
 
   return { view, retry, showMore, busyMore };
 }

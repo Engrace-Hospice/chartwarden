@@ -78,6 +78,8 @@ const UNMEASURED = -1;
 
 /** One read is shared by every gauge and by scrapes closer together than this (each read enumerates the active organisations). */
 export const SAMPLE_TTL_MS = 30_000;
+/** A sample unsettled for this long (three cache lifetimes) is presumed lost; a new one may start. */
+export const LOST_SAMPLE_MS = 3 * SAMPLE_TTL_MS;
 
 export function registerAckQueueMetrics(
   registry: Registry,
@@ -86,19 +88,22 @@ export function registerAckQueueMetrics(
 ): void {
   let cached: { readonly at: number; readonly read: Promise<AckQueueSample | null> } | null = null;
   // The sampler itself (not the timed-out race) is unsettled: never start another, so a hung database cannot pile up connections.
-  let running = false;
+  let runningSince: number | null = null;
   const sample = (): Promise<AckQueueSample | null> => {
     const expired = !cached || now() - cached.at >= SAMPLE_TTL_MS;
-    if (cached && (!expired || running)) return cached.read;
+    // ...unless it has been unsettled for 3 timeouts: then it is presumed lost and a fresh sample may start.
+    const lost = runningSince !== null && now() - runningSince >= LOST_SAMPLE_MS;
+    if (cached && (!expired || (runningSince !== null && !lost))) return cached.read;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), SAMPLE_TIMEOUT_MS);
     });
-    running = true;
+    const started = now();
+    runningSince = started;
     const underlying = sampler()
       .catch(() => null)
       .finally(() => {
-        running = false;
+        if (runningSince === started) runningSince = null;
       });
     cached = {
       at: now(),

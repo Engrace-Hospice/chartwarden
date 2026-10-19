@@ -12,6 +12,8 @@ const R = schema.messageAckRequests;
 /** Acknowledgments counted for the latency gauges: those made in the trailing window. */
 export const ACK_LATENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+export const STATS_STATEMENT_TIMEOUT_MS = 5_000;
+
 export interface AckQueueStats {
   /** Waiting requests (pending, escalated, failed_unreachable) past their deadline. */
   readonly overdue: number;
@@ -29,6 +31,10 @@ export type AckQueueStatsReader = (orgId: string, now: Date) => Promise<AckQueue
 export function createDbAckQueueStatsReader(db: DbClient): AckQueueStatsReader {
   return (orgId, now) =>
     withOrgContext(db, systemOrgContext(orgId), async (tx) => {
+      // A hung query must end on its own: the gauges' in-flight guard waits for it (and gives up after 3 timeouts).
+      await tx.execute(
+        sql`SELECT set_config('statement_timeout', ${String(STATS_STATEMENT_TIMEOUT_MS)}, true)`,
+      );
       const nowIso = now.toISOString();
       const [waiting] = await tx
         .select({

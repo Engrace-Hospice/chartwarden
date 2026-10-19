@@ -22,7 +22,7 @@ import {
   QUEUE_STALE,
   QUEUE_UNREACHABLE_TEXT,
 } from "./unacknowledged-wording";
-import { MAX_SPAN_PAGES } from "./use-unacknowledged-queue";
+import { MAX_SPAN_PAGES, SHOW_MORE_TIMEOUT_MS } from "./use-unacknowledged-queue";
 
 const PATH = "/api/v1/messaging/escalations/unacknowledged";
 const CH = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
@@ -412,7 +412,7 @@ describe("UnacknowledgedQueue", () => {
       fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
       const during = GET.mock.calls.length;
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(30_000);
+        await vi.advanceTimersByTimeAsync(20_000);
       });
       expect(GET.mock.calls.length).toBe(during);
       await act(async () => more.resolve(page([SECOND])));
@@ -651,6 +651,100 @@ describe("UnacknowledgedQueue", () => {
       expect(GET.mock.calls.length - before).toBe(MAX_SPAN_PAGES);
       expect(screen.getByText(QUEUE_SPAN_CAPPED)).toBeTruthy();
       expect(screen.getAllByRole("listitem")).toHaveLength(MAX_SPAN_PAGES * 100);
+      // the list now sits at the cap with more remaining: the note stays through the next refreshes
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(screen.getByText(QUEUE_SPAN_CAPPED)).toBeTruthy();
+    });
+
+    const FAKE: Parameters<typeof vi.useFakeTimers>[0] = {
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    };
+
+    it("gives up on a Show more that never answers: the alert shows, the button returns and polling resumes", async () => {
+      vi.useFakeTimers(FAKE);
+      const { GET } = mount((query) =>
+        query.cursor === "CUR" ? new Promise(() => undefined) : withMore([FIRST]),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SHOW_MORE_TIMEOUT_MS + 1);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole("alert").textContent).toContain("Could not load more");
+      expect(
+        (screen.getByRole("button", { name: QUEUE_MORE_LABEL }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+      const before = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(GET.mock.calls.length).toBeGreaterThan(before); // the poll is back
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("queues a Retry clicked during Show more and refreshes once when it settles", async () => {
+      vi.useFakeTimers(FAKE);
+      const more = deferred<unknown>();
+      let reads = 0;
+      let mode: "ok" | "fail" = "ok";
+      let moreCalls = 0;
+      const { GET } = mount((query) => {
+        if (query.cursor === "CUR") {
+          moreCalls += 1;
+          return moreCalls === 1 ? more.promise : page([SECOND]);
+        }
+        reads += 1;
+        return mode === "fail" ? { error: {}, response: { status: 503 } } : withMore([FIRST]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      mode = "fail";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000); // a refresh fails: stale banner with Retry
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      mode = "ok";
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      const during = GET.mock.calls.length;
+      expect(reads).toBeGreaterThan(1);
+      await act(async () => more.resolve(page([SECOND])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(GET.mock.calls.length).toBe(during + 2); // one queued refresh (two chained pages for the two rows held), after Show more settled
+      expect(screen.queryByText(QUEUE_STALE)).toBeNull();
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("Show more first, then a poll tick: the tick waits and nothing appended is lost", async () => {
+      vi.useFakeTimers(FAKE);
+      const more = deferred<unknown>();
+      const { GET } = mount((query) => (query.cursor === "CUR" ? more.promise : withMore([FIRST])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      const during = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(GET.mock.calls.length).toBe(during);
+      await act(async () => more.resolve(page([SECOND])));
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("hands focus on when a mouse click did not focus the button (Safari, Firefox)", async () => {
+      mount((query) => (query.cursor === "CUR" ? page([SECOND]) : withMore([FIRST])));
+      await screen.findAllByRole("listitem");
+      (document.activeElement as HTMLElement | null)?.blur();
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL })); // focus stays on the page
+      await waitFor(() => expect(document.activeElement).toBe(screen.getAllByRole("listitem")[1]));
     });
   });
 });

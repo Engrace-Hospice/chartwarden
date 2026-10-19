@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type AckQueueOrgStats,
   LATENCY_NOTICE_MEAN_SECONDS,
+  LOST_SAMPLE_MS,
   NOTICE_REPEAT_MS,
   ORG_CHUNK,
   OVERDUE_NOTICE_SECONDS,
@@ -101,6 +102,8 @@ describe("sampleAckQueue bounds", () => {
   });
 });
 
+const calmSample = { orgsChecked: 1, orgsFailed: 0, ...calm };
+
 describe("registerAckQueueMetrics", () => {
   it("does not start a second sample while the previous one is still unsettled", async () => {
     vi.useFakeTimers();
@@ -119,12 +122,40 @@ describe("registerAckQueueMetrics", () => {
       const first = registry.getMetricsAsJSON();
       await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
       await first;
-      clock = SAMPLE_TTL_MS * 3;
+      clock = SAMPLE_TTL_MS * 2;
       const second = registry.getMetricsAsJSON();
       await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
       const values = (await second).flatMap((m) => m.values.map((v) => v.value));
       expect(starts).toBe(1);
       expect(values.every((v) => v === -1)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a fresh sample start once a never-settling one is presumed lost", async () => {
+    vi.useFakeTimers();
+    try {
+      let starts = 0;
+      let clock = 0;
+      const registry = new Registry();
+      registerAckQueueMetrics(
+        registry,
+        () => {
+          starts += 1;
+          return starts === 1 ? new Promise(() => undefined) : Promise.resolve(calmSample);
+        },
+        () => clock,
+      );
+      const first = registry.getMetricsAsJSON();
+      await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
+      await first;
+      clock = LOST_SAMPLE_MS + 1;
+      const values = (await registry.getMetricsAsJSON()).flatMap((m) =>
+        m.values.map((v) => v.value),
+      );
+      expect(starts).toBe(2);
+      expect(values.some((v) => v !== -1)).toBe(true);
     } finally {
       vi.useRealTimers();
     }

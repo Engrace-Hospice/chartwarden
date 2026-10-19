@@ -111,6 +111,15 @@ function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.El
   );
 }
 
+/**
+ * Focus is handed on after a click unless the person has already moved to another control. A mouse click does not focus a button in
+ * Safari and Firefox, so "focus is on nothing (the page)" counts as still here, as does focus on the clicked control itself.
+ */
+const personStillHere = (control: HTMLElement): boolean => {
+  const active = document.activeElement;
+  return active === control || active === null || active === document.body;
+};
+
 export function UnacknowledgedQueue(): JSX.Element {
   const [filter, setFilter] = useState<QueueFilter>(ALL);
   const { view, retry, showMore, busyMore } = useUnacknowledgedQueue(filter);
@@ -141,11 +150,11 @@ export function UnacknowledgedQueue(): JSX.Element {
   }, [view, rowCount, busyMore]);
   // Focus is only handed on when it is still on the control that was clicked (the person has not moved on).
   const retryWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
-    focusAfter.current = document.activeElement === event.currentTarget ? "section" : null;
+    focusAfter.current = personStillHere(event.currentTarget) ? "section" : null;
     retry();
   };
   const moreWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
-    focusAfter.current = document.activeElement === event.currentTarget ? { row: rowCount } : null;
+    focusAfter.current = personStillHere(event.currentTarget) ? { row: rowCount } : null;
     void showMore();
   };
   // Minute-grained "due in" text re-renders itself; the data poll is the hook's.
