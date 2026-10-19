@@ -3,6 +3,7 @@
 // seconds per org. The router is the M1 seam behind the org-checking guard (a test source or a malformed answer is refused).
 import type { DbClient } from "@wardenx/db";
 import { ONCALL_DIRECTORY_FLAG_KEY } from "@wardenx/types";
+import { getSeam } from "../../../bootstrap/index";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { cacheFlagRead } from "../presence/binding";
@@ -16,8 +17,12 @@ export interface OnCallDirectoryInput {
 
 export function buildOnCallDirectoryDeps(input: OnCallDirectoryInput): {
   readonly service: OnCallCoverageService;
+  readonly patientExists: (organizationId: string, patientId: string) => Promise<boolean>;
 } {
   return {
+    // M5's PatientReader seam (org-scoped). An unbound deny-stub throws, which is a 500, never "exists".
+    patientExists: async (organizationId, id) =>
+      (await getSeam("PatientReader").findById({ organizationId, id })) !== null,
     service: createOnCallCoverageService({
       isEnabled: cacheFlagRead(async (organizationId) =>
         input.flags

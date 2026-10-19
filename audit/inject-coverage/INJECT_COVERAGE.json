@@ -138,6 +138,7 @@
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
+        "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",

@@ -17,6 +17,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import { createOnCallCoverageService } from "../src/modules/36-messaging/oncall-directory/oncall-coverage-service";
 import { registerOnCallRoutes } from "../src/modules/36-messaging/routes/oncall-routes";
 
@@ -27,7 +28,12 @@ const PATIENT = "99999999-9999-4999-8999-000000000001";
 const COVERING = "dddddddd-dddd-4ddd-8ddd-000000000001";
 const URL = "/api/v1/messaging/oncall/coverage";
 
-const OTHER_PATIENT = "88888888-8888-4888-8888-000000000002";
+// Not in the caller's caseload but in the org (the scope gate denies a caseload-only caller).
+const UNASSIGNED_PATIENT = "88888888-8888-4888-8888-000000000002";
+// Not in the org at all (another tenant's patient) and one that exists nowhere: patientExists says no to both.
+const FOREIGN_PATIENT = "77777777-7777-4777-8777-000000000003";
+const GHOST_PATIENT = "66666666-6666-4666-8666-000000000004";
+const PATIENTS_IN_ORG = new Set([PATIENT, UNASSIGNED_PATIENT]);
 const inserted: unknown[] = [];
 const fakeTx = {
   execute: async () => undefined,
@@ -62,7 +68,8 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   request.context.organizationId = ORG;
-  request.context.roles = [];
+  // "supervisor" holds an org-wide scope role: the REAL caseload_or_scope predicate says yes for any well-formed patient id.
+  request.context.roles = user === "supervisor" ? ["medical_director"] : [];
   request.context.locationIds = [];
 }
 
@@ -88,23 +95,33 @@ function makeServer() {
         userId: "no-chart",
         grants: grants(["messaging.read", "messaging.oncall.read"]),
       },
+      {
+        orgId: ORG,
+        userId: "supervisor",
+        grants: grants(["messaging.read", "messaging.oncall.read", "patient.read"]),
+      },
       { orgId: ORG, userId: "reader", grants: grants(["messaging.read"]) },
       { orgId: ORG, userId: "oncall-only", grants: grants(["messaging.oncall.read"]) },
     ]).store,
   );
   const registry = createPredicateRegistry();
-  // the chart gate: the nurse sees PATIENT only; "scopeless" is out of scope for everyone; OTHER_PATIENT is not in the org
-  registry.register(
-    "caseload_or_scope",
-    async (ctx, target) => ctx.userId !== "scopeless" && target.patientId === PATIENT,
-  );
+  // The REAL M7 caseload_or_scope predicate over a caseload of one: nurse is on PATIENT only.
+  const predicates = buildCarePlanAbacPredicates({
+    resolver: { loadPlan: async () => null } as never,
+    isInCaseload: async (q) => q.userId === "nurse" && q.patientId === PATIENT,
+  });
+  registry.register("caseload_or_scope", predicates.caseload_or_scope as never);
   registerAbacRegistry(registry);
   const app = buildServer({
     db: fakeDb,
     authenticate: headerAuth,
     security: { rateLimitEnabled: false },
   });
-  registerOnCallRoutes(app, { service }, { read: requirePermission("messaging.read") as Handler });
+  registerOnCallRoutes(
+    app,
+    { service, patientExists: async (_org, id) => PATIENTS_IN_ORG.has(id) },
+    { read: requirePermission("messaging.read") as Handler },
+  );
   return app;
 }
 
@@ -183,15 +200,29 @@ describe("GET /messaging/oncall/coverage", () => {
     }
   });
 
-  it("is the uniform 404, with no router call, for a patient the caller cannot see or one outside the org", async () => {
+  it("answers the identical 404, with no router call and no audit row, for an invisible, other-org and nonexistent patient", async () => {
     const app = makeServer();
-    const outside = await get(app, "nurse", `?role=rn&patient_id=${OTHER_PATIENT}`);
-    const scopeless = await get(app, "scopeless", QS);
-    expect(outside.statusCode).toBe(404);
-    expect(scopeless.statusCode).toBe(404);
-    expect(scopeless.json().error?.code).toBe(outside.json().error?.code);
+    const refused = [
+      await get(app, "scopeless", QS), // no caseload on a real patient
+      await get(app, "nurse", `?role=rn&patient_id=${UNASSIGNED_PATIENT}`), // real patient, not on the nurse's caseload
+      // an org-wide scope role: the real predicate is true for ANY well-formed id, so only the existence check refuses these
+      await get(app, "supervisor", `?role=rn&patient_id=${FOREIGN_PATIENT}`),
+      await get(app, "supervisor", `?role=rn&patient_id=${GHOST_PATIENT}`),
+    ];
+    for (const res of refused) {
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error.code).toBe("NOT_FOUND");
+      expect(res.json().error.message).toBe(refused[0]?.json().error.message);
+    }
     expect(routerCalls).toBe(0);
     expect(inserted).toEqual([]);
+  });
+
+  it("lets an org-wide caller read a patient that exists in the org and audits it against that patient", async () => {
+    const res = await get(makeServer(), "supervisor", `?role=rn&patient_id=${UNASSIGNED_PATIENT}`);
+    expect(res.statusCode).toBe(200);
+    expect(routerCalls).toBe(1);
+    expect(JSON.stringify(inserted)).toContain(UNASSIGNED_PATIENT);
   });
 
   it("needs the chart-read permission as well", async () => {
