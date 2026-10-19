@@ -860,9 +860,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(RegisterEndpointBodySchema, request.body);
+      // WP 5.5: link the endpoint to the session that registers it, so revoking that session expires it. Server-side context only.
+      const sessionId = request.context.attributes?.sessionId;
       const result = await service.registerEndpoint(organizationId, userId, {
         channel: body.channel,
         target: body.target,
+        ...(typeof sessionId === "string" && sessionId !== "" ? { sessionId } : {}),
       });
       return reply.code(201).send(result);
     },

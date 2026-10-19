@@ -138,7 +138,9 @@ export function AckReassignDialog({
         ) : null}
         <output className="wx-reassign-sr">{availableText}</output>
         {noCandidates ? (
-          <p id={`${id}-empty`} className="wx-reassign-hint">{REASSIGN_EMPTY_TEXT}</p>
+          <p id={`${id}-empty`} className="wx-reassign-hint">
+            {REASSIGN_EMPTY_TEXT}
+          </p>
         ) : null}
         {candidates.status === "ready" && candidates.colleagues.length > 0 ? (
           <fieldset aria-busy={submitting || undefined}>

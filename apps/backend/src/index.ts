@@ -290,6 +290,7 @@ import {
   createRealtimeEmitter,
   createRealtimeTelemetry,
   realtimeClientKey,
+  sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -4911,6 +4912,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
+            // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
+            // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
+            sessionDevices: {
+              ...(realtimeEmitter
+                ? {
+                    disconnectSession: (sessionId: string) =>
+                      realtimeEmitter.disconnectRoom(sessionRoom(sessionId)),
+                  }
+                : {}),
+              warn: (event, context) => app.log.warn(context, event),
+            },
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,

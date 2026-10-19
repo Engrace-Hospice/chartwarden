@@ -6,8 +6,8 @@ import type { RichBody, SbarIssue, SbarSectionKey } from "@wardenx/types";
 import { validateSbar } from "@wardenx/types";
 import { Button, Modal } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { JSX, KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   SBAR_DEFAULT_HINTS,
   SBAR_EMERGENCY_NOTE,
