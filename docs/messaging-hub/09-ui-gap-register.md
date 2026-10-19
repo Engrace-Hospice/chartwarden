@@ -1,7 +1,7 @@
 # 09 — UI gap register (to be built)
 
 > Source: two read-only audits on 2026-10-12 (UI vs `06-ux-design.md`; Phase 0/1 backend work vs screens).
-> "Unconfirmed" = the audit did not verify it; check before scheduling. Phase 4–6 scope was not read.
+> "Unconfirmed" = the audit did not verify it; check before scheduling. Phase 4–6 scope was not read in that audit; it is specified in [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md) (see section G).
 > Add accepted rows to the WP tables in `03-phases-0-to-3.md` when a phase is planned.
 
 ## A. Staff workspace (covered by existing WPs)
@@ -70,3 +70,25 @@ Unconfirmed: whether `apps/web/src/modules/*/clinician-preferences.tsx` overlaps
 - Feasible: a local Docker stack is up (api :3000) and :5173 answers HTTP 200 (not confirmed to be the wardenx4 web app).
 - Needs a seeded test login supplied by the user; no credentials entered so far.
 - Scope: thread panel, rich message with link and mention, reactions/pins/drafts/templates/announcements after Tranche B merges.
+
+## G. Phase 4–6 screens (spec in 10)
+
+Specified 2026-10-18 in [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md): screen, route, owning app, permission, flag, endpoints,
+states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6.1–6.6, the two built-but-incomplete Phase 4.1/4.2 gaps, and proposed WPs
+(4.12, 4.13, 5.11, 6.7–6.10) from the TigerConnect comparison. Status re-verified against `origin/main` on 2026-10-19 (per-screen evidence in 10 §3); rows below say what changed.
+
+| Gap | Today | Spec / WP |
+| --- | --- | --- |
+| Reassign dialog on the ack card | **Built** (PR #488, ADR-0078): `ack-reassign-dialog.tsx` | 10 §4 G1 |
+| `important` ("Needs a response") composer control | Backend built; no composer control | 10 §4 G2 |
+| Unacknowledged-urgent queue, escalation ladder visualiser | Queue built (`unacknowledged-queue.tsx`, ADR-0076, supervisor reassign); ladder visualiser absent | 4.9 |
+| Delivery-failure / unreachable state | Card state built (ADR-0071); per-route attempts log absent | 4.5 |
+| Notification policy, quiet-hours safety floor (tenant, web) | Backend floor built (ADR-0073); admin preferences/quiet-hours exist; no web policy or preferences screen | 4.6 |
+| On-call "who is covering now" directory, role-based send | Absent; real M19 router not bound | 4.12 (proposed) |
+| Snooze, fallback card, drill log, deep-link landing | Deep-link landing (ADR-0075) and snooze/reminders (ADR-0077) built; fallback card and drill-log screens absent (runbook only) | 4.8, 4.10, 4.11 |
+| Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
+| Device/session manager, retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.5, 5.6 |
+| Export approval, break-glass review, offboarding workflow | Absent | 5.7–5.9 |
+| Recovery rehearsal report | CLI drill only | 5.10 |
+| Smart inbox, analytics, voice, language, AI panel, partner share | Absent | 6.1–6.6 |
+| Phase 4-6 accessibility evidence (measured targets, axe, SR script) | Not on record | 10 §2.2, §6 5.4 |
