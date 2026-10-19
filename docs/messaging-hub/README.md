@@ -50,6 +50,7 @@ the 2-second delivery target.
 | 7 | [`07-testing-release-governance.md`](./07-testing-release-governance.md) | Test strategy, NFR targets, fitness gates, release gates, risks, open decisions |
 | 8 | [`08-capability-register.md`](./08-capability-register.md) | All 88 capabilities → phase, owner, dependency, risk, status |
 | 9 | [`09-ui-gap-register.md`](./09-ui-gap-register.md) | UI and screen gaps still to build (audit 2026-10-12), mapped to WPs or marked unscheduled |
+| 10 | [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md) | UI specification for Phase 4–6 screens (states, a11y, PHI, acceptance) and the comparison against TigerConnect |
 
 ## 4. Phase summary
 
