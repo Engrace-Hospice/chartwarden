@@ -176136,6 +176136,163 @@
         }
       }
     },
+    "/api/v1/messaging/oncall/coverage": {
+      "get": {
+        "operationId": "getApiV1MessagingOncallCoverage",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage)",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "rn",
+                  "type": "string"
+                },
+                {
+                  "const": "physician",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patient_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "role",
+                    "as_of",
+                    "status",
+                    "tiers"
+                  ],
+                  "properties": {
+                    "role": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "physician",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "as_of": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "covered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "coverage_gap",
+                          "type": "string"
+                        },
+                        {
+                          "const": "roster_not_connected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_configured",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tier",
+                          "state",
+                          "people",
+                          "shift_ends_at",
+                          "time_zone"
+                        ],
+                        "properties": {
+                          "tier": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "covering",
+                                "type": "string"
+                              },
+                              {
+                                "const": "coverage_gap",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "people": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "shift_ends_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "time_zone": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/patients/{patientId}/care-team-channel": {
       "post": {
         "operationId": "postApiV1MessagingPatientsByPatientIdCareteamchannel",
