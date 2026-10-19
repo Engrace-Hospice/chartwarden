@@ -261,70 +261,72 @@ export function ThreadComposer({
         />
         <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
-        <ClinicalLinkPicker
-          picker={linkPicker}
-          links={draftLinks}
-          disabled={sending}
-          onAdd={(link) => {
-            linkChosenRef.current = true;
-            addDraftLink(link);
-          }}
-          onClosed={restoreComposerFocus}
-        />
-        <TemplatePicker
-          disabled={sending}
-          onInsert={onInsertSavedReply}
-          onClosed={() => textareaRef.current?.focus()}
-          toggleRef={pickerToggleRef}
-          onOpened={() => {
-            if (policyState.status === "transient") policyState.reload();
-          }}
-          {...(sbarOffered
-            ? {
-                onChooseSbar: () => {
+        <div className="wx-composer-tools">
+          <ClinicalLinkPicker
+            picker={linkPicker}
+            links={draftLinks}
+            disabled={sending}
+            onAdd={(link) => {
+              linkChosenRef.current = true;
+              addDraftLink(link);
+            }}
+            onClosed={restoreComposerFocus}
+          />
+          <TemplatePicker
+            disabled={sending}
+            onInsert={onInsertSavedReply}
+            onClosed={() => textareaRef.current?.focus()}
+            toggleRef={pickerToggleRef}
+            onOpened={() => {
+              if (policyState.status === "transient") policyState.reload();
+            }}
+            {...(sbarOffered
+              ? {
+                  onChooseSbar: () => {
+                    clearSendError();
+                    sbar.show();
+                  },
+                }
+              : {})}
+          />
+          {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
+            <span className="wx-sbar-draft-note">
+              <Glyph name="file-text" size={14} />
+              <output aria-label={sbarNote}>{sbarNote}</output>
+              <Button
+                type="button"
+                tone="secondary"
+                disabled={sending}
+                aria-label="Open SBAR draft"
+                onClick={() => {
                   clearSendError();
                   sbar.show();
-                },
-              }
-            : {})}
-        />
-        {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
-          <span className="wx-sbar-draft-note">
-            <Glyph name="file-text" size={14} />
-            <output aria-label={sbarNote}>{sbarNote}</output>
-            <Button
-              type="button"
-              tone="secondary"
-              disabled={sending}
-              aria-label="Open SBAR draft"
-              onClick={() => {
-                clearSendError();
-                sbar.show();
-              }}
-            >
-              Open
-            </Button>
-          </span>
-        ) : null}
-        <PollCreateButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onCreated={onPollCreated}
-        />
-        <MedicationQuestionButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onSent={onPollCreated}
-        />
-        <UrgentMessageButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onThreadChanged={onPollCreated}
-          statusResetKey={draft}
-        />
+                }}
+              >
+                Open
+              </Button>
+            </span>
+          ) : null}
+          <PollCreateButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onCreated={onPollCreated}
+          />
+          <MedicationQuestionButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onSent={onPollCreated}
+          />
+          <UrgentMessageButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onThreadChanged={onPollCreated}
+            statusResetKey={draft}
+          />
+        </div>
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}
           canAdd={canAddMention}
