@@ -230,6 +230,7 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         alertId,
         resolvedRecipientCount: recipientUnion.size,
         ...(occurrences === undefined ? {} : { occurrences }),
+        outOfBandPlanned: deliveries.filter((d) => d.channel !== "in_app").length,
       };
     },
   };

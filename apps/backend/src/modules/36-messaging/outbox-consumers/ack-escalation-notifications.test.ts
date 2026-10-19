@@ -15,6 +15,7 @@ const T = "2026-10-15T12:16:00.000Z";
 const row = (over: Partial<AckRow> = {}): AckRow =>
   ({
     id: "r-1",
+    ackClass: "urgent",
     status: "escalated",
     requesterUserId: REQUESTER,
     assignedUserId: TIER_USER,
@@ -46,12 +47,20 @@ function setup(
     request?: AckRow | null;
     canView?: (userId: string) => Promise<boolean>;
     qualified?: () => Promise<boolean>;
+    /** Out-of-band deliveries the (fake) emitter reports as planned for the supervisor alert. */
+    planned?: number;
   } = {},
 ) {
   const warn = vi.fn();
-  const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: 1 });
+  const emit = vi.fn().mockResolvedValue({
+    alertId: "a",
+    resolvedRecipientCount: 1,
+    outOfBandPlanned: over.planned ?? 1,
+  });
+  const opsNotice = vi.fn();
   const consumer = buildM36AckEscalationNotificationsConsumer({
     alerts: { emit } as unknown as AlertEmitter,
+    opsNotice,
     messaging: {
       canViewChannel: async (_o, userId) => (over.canView ?? (async () => true))(userId),
     },
@@ -59,7 +68,7 @@ function setup(
     stillQualified: over.qualified ?? (async () => true),
     warn,
   });
-  return { emit, warn, consumer };
+  return { emit, warn, consumer, opsNotice };
 }
 
 describe("M36 ack escalation notifications consumer", () => {
@@ -132,6 +141,13 @@ describe("M36 ack escalation notifications consumer", () => {
     await expect(consumer.handle(event("m36.ack.escalated"))).rejects.toThrow("lookup down");
   });
 
+  const alertsOf = (emit: { mock: { calls: unknown[][] } }, eventType: string) =>
+    emit.mock.calls
+      .map(
+        (c) => c[1] as { eventType: string; correlationId: string; payload: Record<string, any> },
+      )
+      .filter((a) => a.eventType === eventType);
+
   it("tells the sender and the current assignee when no tier could be reached, one alert per recorded event", async () => {
     const { emit, consumer } = setup({
       request: row({ status: "pending", assignedUserId: "u-2", version: 0 }),
@@ -139,7 +155,7 @@ describe("M36 ack escalation notifications consumer", () => {
 
     await consumer.handle(event("m36.ack.route_unavailable", { requestVersion: 0 }));
 
-    const [, alert] = emit.mock.calls[0] as [string, Record<string, unknown>];
+    const [alert] = alertsOf(emit, "m36.ack.route_unavailable");
     expect(alert).toMatchObject({
       eventType: "m36.ack.route_unavailable",
       correlationId: `ack-unrouted:r-1:0:m36.ack.route_unavailable:${T}`,
@@ -150,7 +166,7 @@ describe("M36 ack escalation notifications consumer", () => {
     });
   });
 
-  it("says there is no further tier on ladder_exhausted and still alerts when the supervisors are the only audience", async () => {
+  it("says there is no further tier on ladder_exhausted to the parties, and still tells the supervisors when no party can see the channel", async () => {
     const { emit, consumer } = setup({
       request: row({ status: "pending", version: 0 }),
       canView: async () => false,
@@ -158,22 +174,22 @@ describe("M36 ack escalation notifications consumer", () => {
 
     await consumer.handle(event("m36.ack.ladder_exhausted", { requestVersion: 0 }));
 
-    const [, alert] = emit.mock.calls[0] as [string, Record<string, unknown>];
-    expect(alert.payload).toMatchObject({
-      recipientUserIds: [],
-      message: ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted,
-    });
+    expect(alertsOf(emit, "m36.ack.ladder_exhausted")).toHaveLength(0); // nobody to tell among the parties
+    expect(alertsOf(emit, "m36.ack.supervisor_attention")).toHaveLength(1);
   });
 
   it("does not alert about a request that closed since the unrouted event", async () => {
-    const { emit, consumer } = setup({ request: row({ status: "acknowledged", version: 0 }) });
+    const { emit, opsNotice, consumer } = setup({
+      request: row({ status: "acknowledged", version: 0 }),
+    });
 
     await consumer.handle(event("m36.ack.route_unavailable", { requestVersion: 0 }));
 
     expect(emit).not.toHaveBeenCalled();
+    expect(opsNotice).not.toHaveBeenCalled();
   });
 
-  it("tells the supervisor audience of an exhausted ladder on the first record only; later records go to the parties under the not-routed rule", async () => {
+  it("raises the supervisor attention alert and an ops notice on the first record of EACH type only; later records go to the parties alone", async () => {
     const first = setup({ request: row({ status: "pending", version: 0 }) });
     await first.consumer.handle(
       event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 1, typeOccurrence: 1 }),
@@ -183,27 +199,57 @@ describe("M36 ack escalation notifications consumer", () => {
       event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 3, typeOccurrence: 2 }),
     );
 
-    expect((first.emit.mock.calls[0] as [string, { eventType: string }])[1].eventType).toBe(
-      "m36.ack.ladder_exhausted",
+    expect(alertsOf(first.emit, "m36.ack.supervisor_attention")[0]).toMatchObject({
+      correlationId: `ack-attn:r-1:0:ladder_exhausted:${T}`,
+      payload: { reason: "ladder_exhausted", ackClass: "urgent" },
+    });
+    expect(first.opsNotice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "m36.ack.ladder_exhausted",
+        details: { organizationId: ORG, requestId: "r-1", ackClass: "urgent" },
+      }),
     );
-    const [, again] = later.emit.mock.calls[0] as [
-      string,
-      { eventType: string; payload: { message: string } },
-    ];
-    expect(again.eventType).toBe("m36.ack.route_unavailable");
-    expect(again.payload.message).toBe(ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted);
+    expect(alertsOf(later.emit, "m36.ack.supervisor_attention")).toHaveLength(0);
+    expect(later.opsNotice).not.toHaveBeenCalled();
+    // The parties' reminder keeps its own type and text (the supervisors are no longer on that rule).
+    const [again] = alertsOf(later.emit, "m36.ack.ladder_exhausted");
+    expect(again?.payload.message).toBe(ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted);
   });
 
-  it("a route_unavailable record first does not cost the supervisors their alert: the first ladder_exhausted (per-type occurrence 1) still reaches them", async () => {
+  it("route_unavailable now reaches the supervisors too (G-3), and the first ladder_exhausted after it still does (per-type occurrence)", async () => {
     const { emit, consumer } = setup({ request: row({ status: "pending", version: 0 }) });
 
+    await consumer.handle(
+      event("m36.ack.route_unavailable", { requestVersion: 0, occurrence: 1, typeOccurrence: 1 }),
+    );
     // The request's 3rd record overall, but the first ladder_exhausted.
     await consumer.handle(
       event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 3, typeOccurrence: 1 }),
     );
 
-    expect((emit.mock.calls[0] as [string, { eventType: string }])[1].eventType).toBe(
-      "m36.ack.ladder_exhausted",
-    );
+    expect(alertsOf(emit, "m36.ack.supervisor_attention").map((a) => a.payload.reason)).toEqual([
+      "route_unavailable",
+      "ladder_exhausted",
+    ]);
+  });
+
+  it("degrades visibly: an unpaged supervisor alert raises the unpaged ops notice with ids and codes only", async () => {
+    const { opsNotice, consumer } = setup({
+      request: row({ status: "pending", version: 0 }),
+      planned: 0,
+    });
+
+    await consumer.handle(event("m36.ack.ladder_exhausted", { requestVersion: 0 }));
+
+    const unpaged = opsNotice.mock.calls
+      .map((c) => c[0] as { kind: string; details: Record<string, unknown> })
+      .find((n) => n.kind === "m36.ack.supervisor_unpaged");
+    expect(unpaged?.details).toEqual({
+      organizationId: ORG,
+      requestId: "r-1",
+      ackClass: "urgent",
+      reason: "ladder_exhausted",
+      supervisors: 1,
+    });
   });
 });

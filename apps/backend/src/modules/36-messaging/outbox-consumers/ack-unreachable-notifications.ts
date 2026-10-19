@@ -8,11 +8,18 @@
 // lose it); a retry after a failed alert would repeat it, so it is de-duplicated in-process by correlation id (a restart may repeat it once;
 // the webhook sink cannot dedupe). The channel and message come from the stored request, not the payload. A lookup ERROR is rethrown so
 // the outbox retries and dead-letters.
+// ADR-0079: the supervisor audience is told by the shared supervisor attention alert (in-app, plus a page to a verified endpoint when the
+// notification policy is on), not by this rule, and a supervisor alert that reached no out-of-band route raises its own ops notice.
 import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
+import {
+  type SupervisorAttentionDeps,
+  type SupervisorOpsNotice,
+  raiseSupervisorAttention,
+} from "../ack-escalation/supervisor-attention";
 import { M36_ACK_FAILED_UNREACHABLE } from "../ack-requests/ack-events";
 import type { AckRow } from "../ack-requests/ack-types";
 
@@ -24,13 +31,8 @@ export const ACK_UNREACHABLE_NOTIFICATION_TEXT =
 
 export const ACK_UNREACHABLE_OPS_KIND = "m36.ack.failed_unreachable" as const;
 
-/** Shape of `buildPlatformOpsNoticeSink`'s notice, restated so this module does not import bootstrap internals. */
-export interface UnreachableOpsNotice {
-  readonly kind: typeof ACK_UNREACHABLE_OPS_KIND;
-  readonly summary: string;
-  readonly details: Readonly<Record<string, string>>;
-  readonly correlationId: string;
-}
+/** The notice this consumer raises itself; the sink also receives the supervisor module's. */
+export type UnreachableOpsNotice = SupervisorOpsNotice;
 
 function requireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
@@ -46,7 +48,7 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
   readonly readRequest: (orgId: string, requestId: string) => Promise<AckRow | null>;
-  readonly opsNotice: (notice: UnreachableOpsNotice) => void;
+  readonly opsNotice: SupervisorAttentionDeps["opsNotice"];
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
   const noticed = new Set<string>();
@@ -88,7 +90,7 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
           recipients.push(userId);
         }
       }
-      // The supervisor audience comes from the seeded role rule, so an empty party list still alerts them.
+      // The parties' alert only; an empty party list still emits (nothing resolves, nothing is sent) and the supervisors follow below.
       await deps.alerts.emit(event.organizationId, {
         eventType: event.eventType,
         severity: "warn",
@@ -102,6 +104,13 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
           deepLink: `/messaging?channelId=${encodeURIComponent(row.channelId)}&messageId=${encodeURIComponent(row.messageId)}`,
         },
       });
+      await raiseSupervisorAttention(
+        { alerts: deps.alerts, opsNotice: deps.opsNotice },
+        event.organizationId,
+        row,
+        "failed_unreachable",
+        `ack-attn:${requestId}:${version}:failed_unreachable`,
+      );
     },
   };
 }

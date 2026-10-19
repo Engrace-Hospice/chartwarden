@@ -150,6 +150,17 @@ export function createMemoryAckStore(): MemoryAckStore {
         .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);
     },
+    async listUnreachableOverdue(asOf, limit) {
+      return [...requests.values()]
+        .filter(
+          (r) =>
+            r.organizationId === orgId &&
+            r.status === "failed_unreachable" &&
+            r.deadlineAt.getTime() <= asOf.getTime(),
+        )
+        .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
     async listEvents(requestId) {
       return events
         .filter((e) => e.requestId === requestId && e.organizationId === orgId)

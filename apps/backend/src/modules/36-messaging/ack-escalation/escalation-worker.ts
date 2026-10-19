@@ -47,6 +47,11 @@ export interface M36AckEscalationWorkerDeps
    * request while the action is off is exactly when ops should hear of it). A failure is reported through `onError`; it never fails the tick.
    */
   readonly observeOrg?: (organizationId: string) => Promise<void>;
+  /**
+   * ADR-0079 (G-5): once per organisation per sweep tick, AFTER the sweep, keeps `failed_unreachable` requests in front of supervisors
+   * (the deadline timer does not watch them). A failure is reported through `onError`; it never fails the tick.
+   */
+  readonly watchUnreachable?: (organizationId: string) => Promise<unknown>;
   readonly now?: () => Date;
 }
 
@@ -65,7 +70,10 @@ export async function timerJobTick(
 
 /** One sweep tick over every active org; an org-level failure fails the tick (visible in the failed set and the DLQ). */
 export async function sweepTick(
-  deps: Pick<M36AckEscalationWorkerDeps, "activeOrgs" | "onError" | "service" | "observeOrg">,
+  deps: Pick<
+    M36AckEscalationWorkerDeps,
+    "activeOrgs" | "onError" | "service" | "observeOrg" | "watchUnreachable"
+  >,
 ): Promise<SweepSummary> {
   const totals = { escalated: 0, notRouted: 0, skipped: 0, failed: 0 };
   await fanOutOrgs(deps, "ack_escalation_sweep", async (organizationId) => {
@@ -79,6 +87,9 @@ export async function sweepTick(
       if (summary.failed > 0)
         throw new Error(`ack escalation sweep: ${summary.failed} request(s) failed`);
     } finally {
+      await deps
+        .watchUnreachable?.(organizationId)
+        .catch((error) => deps.onError?.({ organizationId, job: "ack_unreachable_watch" }, error));
       await deps
         .observeOrg?.(organizationId)
         .catch((error) => deps.onError?.({ organizationId, job: "ack_queue_observe" }, error));

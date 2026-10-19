@@ -143,6 +143,11 @@ export interface AckTx {
    * ones whose unroutable backoff has not elapsed (decided in the query, so backed-off rows never consume the batch).
    */
   listDue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
+  /**
+   * ADR-0079 (G-5): `failed_unreachable` requests whose deadline is at or before `asOf`, oldest deadline first. The deadline timer does
+   * not watch these (nothing can escalate them), so the unreachable watch reads them to keep them in front of supervisors.
+   */
+  listUnreachableOverdue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
   /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */
   listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;

@@ -1,7 +1,8 @@
 // WP 4.5 (ADR-0071): consumes `m36.notification.delivery_failed` and, when EVERY out-of-band route of an acknowledgment-request alert to
 // the request's assignee has terminally failed, asks the delivery-failure service to try the next tier now or, failing that, to mark the
 // request `failed_unreachable`. Only the alert types that tell an ASSIGNEE about a request count (a reminder to the sender, or the
-// supervisor's own alert, failing is not a failed route to the person who owes the response). The in-app floor is an inbox entry, not a
+// supervisor's own alert, failing is not a failed route to the person who owes the response; a failed supervisor PAGE is only reported to
+// the ops sink, ADR-0079). The in-app floor is an inbox entry, not a
 // proof anyone was reached, so it never counts as a live route; a route that is still pending, sent, delivered, held for quiet hours
 // or forwarded keeps the request waiting (a later failure event, or the deadline timer, re-evaluates).
 // The tenant is the envelope's. A lookup or router ERROR is rethrown so the outbox retries and dead-letters; nothing is dropped on a blip.
@@ -12,6 +13,11 @@ import type {
 import type { DeliveryFailureService } from "../ack-delivery-failure/delivery-failure-service";
 import type { DeliveryRouteReader } from "../ack-delivery-failure/delivery-route-reader-db";
 import { ACK_ASSIGNEE_ALERT_EVENT_TYPES } from "../ack-delivery-failure/route-rules";
+import {
+  ACK_SUPERVISOR_ATTENTION_EVENT,
+  SUPERVISOR_PAGE_FAILED_OPS_KIND,
+  type SupervisorAttentionDeps,
+} from "../ack-escalation/supervisor-attention";
 
 export const M36_ACK_DELIVERY_FAILURE_CONSUMER = "m36.ack-delivery-failure" as const;
 export const M36_DELIVERY_FAILED_EVENT = "m36.notification.delivery_failed" as const;
@@ -26,8 +32,16 @@ const BENIGN = new Set([
   "not_waiting",
 ]);
 
+export const SUPERVISOR_PAGE_FAILED_NOTICE_SUMMARY =
+  "A page to a supervisor about an acknowledgment request failed on an out-of-band route; the in-app alert stands";
+
 export function buildM36AckDeliveryFailureConsumer(deps: {
   readonly readRoutes: DeliveryRouteReader;
+  /**
+   * ADR-0079: the ops sink for a failed SUPERVISOR page (the supervisor attention alert's out-of-band row). It never touches the request:
+   * the supervisor is not the person who owes the response, so this is not a failed route to the assignee. Ids and the channel only.
+   */
+  readonly opsNotice?: SupervisorAttentionDeps["opsNotice"];
   readonly service: Pick<DeliveryFailureService, "onAllRoutesFailed">;
   readonly warn?: (message: string, context: Record<string, string>) => void;
   readonly info?: (message: string, context: Record<string, string>) => void;
@@ -50,6 +64,17 @@ export function buildM36AckDeliveryFailureConsumer(deps: {
         );
       const state = await deps.readRoutes(event.organizationId, deliveryId);
       if (!state) return skip("delivery_not_found");
+      if (state.alertEventType === ACK_SUPERVISOR_ATTENTION_EVENT) {
+        if (state.channel && state.channel !== IN_APP_FLOOR) {
+          deps.opsNotice?.({
+            kind: SUPERVISOR_PAGE_FAILED_OPS_KIND,
+            summary: SUPERVISOR_PAGE_FAILED_NOTICE_SUMMARY,
+            details: { organizationId: event.organizationId, deliveryId, channel: state.channel },
+            correlationId: `sup-page-failed:${deliveryId}`,
+          });
+        }
+        return skip("not_a_request_alert");
+      }
       // Other modules' alerts share this event (M19/M20/M26 own theirs); so do reminders, which are not the route to the assignee.
       if (!ACK_ASSIGNEE_ALERT_EVENT_TYPES.has(state.alertEventType)) {
         return skip("not_a_request_alert");

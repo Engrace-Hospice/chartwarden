@@ -3,7 +3,9 @@
 //   - `m36.ack.escalated`           the NEW assignee (the tier's clinician) is told it was escalated to them;
 //   - `m36.ack.route_unavailable`   the sender and the current assignee are told the deadline passed, nobody else could be
 //                                   reached and the request is still open;
-//   - `m36.ack.ladder_exhausted`    the same, plus the supervisor audience (seeded role rule), because there is no tier left.
+//   - `m36.ack.ladder_exhausted`    the same text for the sender and assignee.
+// The first record of each unroutable type also raises the SUPERVISOR attention alert (in-app, plus a page to a verified endpoint when the
+// notification policy is on - ADR-0079) and an ops notice, so neither type is visible only on the queue and the gauges (G-3, G-4).
 // The tenant is the envelope's. Stale-event rule (WP 4.2): at consume time the request must STILL be in the state the event
 // announced at the event's version (escalated and assigned to the recipient / still open), else nobody is alerted; a recipient
 // who can no longer see the channel (or, for the new assignee, is no longer qualified) is skipped with an id-only warn. A lookup
@@ -13,6 +15,11 @@ import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
+import {
+  type SupervisorAttentionDeps,
+  createOnceGuard,
+  raiseSupervisorAttention,
+} from "../ack-escalation/supervisor-attention";
 import {
   M36_ACK_ESCALATED,
   M36_ACK_LADDER_EXHAUSTED,
@@ -38,14 +45,22 @@ function requireString(payload: Record<string, unknown>, key: string): string {
   return value;
 }
 
+export const ACK_UNROUTED_OPS_KIND = {
+  route_unavailable: "m36.ack.route_unavailable",
+  ladder_exhausted: "m36.ack.ladder_exhausted",
+} as const;
+
 export function buildM36AckEscalationNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
+  /** ADR-0079: the ops sink (log line plus OPS_ALERT_WEBHOOK_URL) for the first unroutable record of a request and for an unpaged supervisor alert. */
+  readonly opsNotice: SupervisorAttentionDeps["opsNotice"];
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
   readonly readRequest: (orgId: string, requestId: string) => Promise<AckRow | null>;
   /** Active, keys, Part 2 gate, sees the channel. A clean false is a skip; a throw propagates. */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
+  const firstNotice = createOnceGuard();
   return {
     consumerName: M36_ACK_ESCALATION_NOTIFICATION_CONSUMER,
     consumerModule: "m36",
@@ -112,18 +127,29 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
           recipients.push(userId);
         }
       }
-      if (recipients.length === 0 && event.eventType !== M36_ACK_LADDER_EXHAUSTED) {
-        return skip("no_recipient_can_view_channel");
-      }
-      // The supervisor audience is told of an exhausted ladder on the FIRST such record only; a later record (the backoff reminders)
-      // goes to the parties alone, under the not-routed rule, with the same text.
+      // The supervisors are told on the FIRST record of each unroutable type only; the backoff reminders go to the parties alone.
       const occurrence = typeof payload.typeOccurrence === "number" ? payload.typeOccurrence : 1;
-      const alertType =
-        event.eventType === M36_ACK_LADDER_EXHAUSTED && occurrence > 1
-          ? M36_ACK_ROUTE_UNAVAILABLE
-          : event.eventType;
+      if (occurrence === 1) {
+        const reason =
+          event.eventType === M36_ACK_LADDER_EXHAUSTED ? "ladder_exhausted" : "route_unavailable";
+        const correlationId = `ack-attn:${requestId}:${version}:${reason}:${at}`;
+        // The notice before the alert: a failing alert must not lose it. De-duplicated in-process for a retried handler only.
+        if (firstNotice(correlationId)) {
+          deps.opsNotice({
+            kind: ACK_UNROUTED_OPS_KIND[reason],
+            summary:
+              reason === "ladder_exhausted"
+                ? "An acknowledgment request passed its deadline with no further escalation tier and needs a human"
+                : "An acknowledgment request passed its deadline and could not be escalated (no router answer) and needs a human",
+            details: { organizationId: event.organizationId, requestId, ackClass: row.ackClass },
+            correlationId,
+          });
+        }
+        await raiseSupervisorAttention(deps, event.organizationId, row, reason, correlationId);
+      }
+      if (recipients.length === 0) return skip("no_recipient_can_view_channel");
       await deps.alerts.emit(event.organizationId, {
-        eventType: alertType,
+        eventType: event.eventType,
         severity: "warn",
         // One alert per recorded event (its own instant): the hourly re-record is a deliberate reminder.
         correlationId: `ack-unrouted:${requestId}:${version}:${event.eventType}:${at}`,
