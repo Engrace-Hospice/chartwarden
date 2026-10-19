@@ -148,6 +148,21 @@ Two small personal tools. **Snooze** pauses the phone / text / email copies of o
 - **Reminders:** at most **25** waiting per person; a time between 1 minute and **30 days** ahead; one per message; not on an urgent or response-required message. The reminder says only "You asked to be reminded about a message in a conversation" with a link; it never repeats the message, the patient or the sender. A reminder more than 7 days late is dropped silently. Confirm the numbers and the wording.
 - **Unread digest (P2, not built):** a once-a-day or once-a-shift email of unread **counts** (no content) needs a new schedule per person and a decision on cadence and channel, and there is no place in the platform to hang it today. Deferred. When it is built: how often (per shift, daily, weekly), which channel (email only?), and whether a person with only urgent items unread should get one at all.
 
+## 13. Fallback runbook and drills (WP 4.11) - provisional readings to approve (all OPEN)
+
+`docs/runbooks/messaging-escalation-fallback.md` says what a supervisor and operations do when a response request is still waiting and the system has not reached anyone, and how the agency rehearses it. It is a template; none of the numbers below is signed off.
+
+- **Drill cadence:** provisional every quarter, one tabletop and one live drill in the same quarter. Right frequency? Should a new organisation drill before going live?
+- **Telephone-tree order:** provisional sender, assignee, next on-call tier, clinical supervisor, director of nursing, clinical lead / medical director, operations on call. Confirm the order and the roles.
+- **Wait per step:** provisional 5 minutes for urgent and critical, 10 for important, before calling the next step.
+- **Response-time targets (drills):** provisional 10 minutes to notice, 10 more to reach a person, and acknowledgment within the request's deadline plus 15 minutes.
+- **Out of hours:** who watches the unacknowledged queue and the operations numbers at night and at weekends? Today nothing pages a supervisor's phone.
+- **Evidence:** who owns the drill record (provisional: the clinical lead), where it is kept (provisional: the agency's compliance evidence store, never this repository) and for how long (agency policy period; six years is the usual documentation period).
+- **Who may stand down:** provisional the supervisor on duty for the clinical side and operations for the technical cause, both recorded.
+- **Product gap G-1 (needs a decision):** there is no way to record that a clinician took responsibility by phone. Only the assigned clinician, signed in, can; a supervisor cannot do it for them, by design (ADR-0069, ADR-0056). Do you want an audited supervisor "acknowledged by phone on behalf of" action (it weakens the explicit-action rule), or is "reassign to someone who can sign in, and keep the incident log" enough?
+- **Product gaps for later:** a supervisor reassign from the queue and a way into a conversation they are not in (G-2); a phone page to supervisors and an operations notice for "no one further" alone (G-3).
+- **Not yet done:** no tabletop or live drill has been run, so the acceptance evidence does not exist.
+
 ## What happens with the answers
 
 ADR-0056 is updated with the signed numbers and role map, then accepted by the product owner. Numbers live as platform

@@ -52,6 +52,7 @@ Checked in the code, not assumed:
 - A supervisor who is not a member of a patient's channel sees that the request exists, how late it is and whom to call, but cannot open it. Giving them a way in is a separate decision.
 - The first page costs two index-range reads (counts and rows) plus one visibility check per distinct channel and one name lookup per distinct assignee (both bounded by the page size, at most 100).
 - A new organisation-wide number appears on `/metrics`; it is a count, never a list.
+- The operator procedure that uses this queue when delivery fails, and its quarterly drill, is [`docs/runbooks/messaging-escalation-fallback.md`](../runbooks/messaging-escalation-fallback.md) (WP 4.11).
 
 ## Known ceilings
 
