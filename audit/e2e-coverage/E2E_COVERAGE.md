@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 181 statically-routable `web` screen(s) — 19/181 E2E-reached, 172/181 axe-reached.
+**Coverage:** 182 statically-routable `web` screen(s) — 19/182 E2E-reached, 173/182 axe-reached.
 
 ## Zero E2E coverage
 
@@ -101,6 +101,7 @@
 | `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
 | `messaging.staff` | 36-messaging | `/messaging` | messaging.read |
+| `messaging.preferences` | 36-messaging | `/messaging/preferences` | messaging.read |
 | `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |
 | `messaging.global-search-settings` | 36-messaging | `/messaging/search-settings` | messaging.global_search.manage |
 | `messaging.unacknowledged` | 36-messaging | `/messaging/unacknowledged` | messaging.review |

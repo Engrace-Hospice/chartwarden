@@ -1,0 +1,152 @@
+/* M36 WP 4.6 - "My notifications": flat cards on the shared kit's tokens (no old-style inline UI). */
+.wx-prefs {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-prefs-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+  max-width: 48rem;
+}
+
+.wx-prefs-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-prefs-card h2,
+.wx-prefs-locked-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.wx-prefs-locked-title {
+  font-size: 0.875rem;
+}
+
+.wx-prefs-stack,
+.wx-prefs-range {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-prefs-range {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+}
+
+.wx-prefs-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wx-prefs-switch {
+  min-width: 4rem;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-highest);
+  color: var(--color-on-surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-prefs-switch[aria-checked="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.wx-prefs-days,
+.wx-prefs-times,
+.wx-prefs-severity,
+.wx-prefs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+}
+
+.wx-prefs-severity {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: none;
+  align-items: center;
+}
+
+.wx-prefs-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.75rem;
+}
+
+.wx-prefs-check input {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.wx-prefs-category {
+  border-top: 1px solid var(--color-card-border);
+  padding: 0.5rem 0;
+}
+
+.wx-prefs-category summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.wx-prefs-locked {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-prefs-locked li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-highest);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-prefs-lock-tag {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-on-surface-variant);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wx-prefs-note {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-prefs-error {
+  margin: 0;
+  color: var(--color-error-pill-fg);
+  font-size: 0.875rem;
+}

@@ -17,6 +17,9 @@ const StaffMessaging = lazy(() =>
 const UnacknowledgedQueue = lazy(() =>
   import("./unacknowledged-queue").then((m) => ({ default: m.UnacknowledgedQueue })),
 );
+const NotificationPreferences = lazy(() =>
+  import("./notification-preferences").then((m) => ({ default: m.NotificationPreferences })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -41,6 +44,16 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.review",
       screen: UnacknowledgedQueue,
+    },
+    {
+      // WP 4.6 (ADR-0073): the caller's own routing, quiet hours and vacation forwarding. The screen says "not turned on" while the tenant flag
+      // `messaging.notification_policy` is off (the API gives the nav no flag signal, so the screen itself fails closed).
+      id: "messaging.preferences",
+      path: "/messaging/preferences",
+      title: "My notifications",
+      navGroup: "General",
+      requiredPermission: "messaging.read",
+      screen: NotificationPreferences,
     },
     {
       id: "messaging.saved-replies",
