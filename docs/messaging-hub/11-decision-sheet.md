@@ -67,6 +67,7 @@ the M19 role-level lookup) are still OPEN there.
 | E2 | Who may be addressed by role ("on-call RN") and who may address a role | CL | not decided | 4.12; changes who is paged. Needs a new ADR | UI spec §9 | |
 | E3 | Accept the new-ADR route for role recipients (drafted after E1 and E2) | PO | yes | The ADR is written after the answers | UI spec §9 | |
 | E4 | Fallback recipient when the on-call lookup fails | M19 + CL | none; supervisors are alerted, which is not an assignment | Needs the M19 owner | brief §7 | |
+| E5 | An escalated assignee who is not on the care team or in the channel: may they open that one thread? | CL + COMP + SEC | not decided; today they are paged and can take responsibility but cannot open the thread (the deep link says "not available") | Changes who sees PHI. Options: audited, time-limited read access to that thread for the escalated assignee; or accept the limit and rely on the telephone procedure. Requiring membership would skip the after-hours on-call. Related to E2 and to break-glass (5.8) | ADR-0070 limit (i); ADR-0068 decision 6 | |
 
 ## F. Later phases (not blocking anything now)
 
