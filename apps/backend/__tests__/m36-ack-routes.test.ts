@@ -58,6 +58,7 @@ const dto = (status = "pending") => ({
   channel_id: CH,
   patient_id: PAT,
   ack_class: "important",
+  addressed_role: "rn",
   status,
   requester_user_id: "nurse",
   assigned_user_id: NURSE2,
@@ -447,7 +448,10 @@ describe("GET /escalations/:id and /channels/:id/escalations", () => {
     const res = await get(app, "nurse", `${BASE}/${REQ}`);
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ request: { id: REQ }, events: [] });
+    expect(res.json()).toMatchObject({
+      request: { id: REQ, addressed_role: "rn" },
+      events: [],
+    });
     await app.close();
   });
 

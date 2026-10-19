@@ -1,7 +1,15 @@
 // M36 WP 4.2 - the acknowledgment-request card and its loader: text+icon status, buttons only from viewer_actions, one POST per
 // click, indeterminate/definitive failure wording, a late answer for a left channel ignored, a transient load error with retry,
 // and no request at all from opening, reading or focusing.
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { AckRequestDto } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
@@ -30,6 +38,7 @@ import {
   ACK_TOO_MANY_TEXT,
   ACK_UNREACHABLE_NOTICE,
   ACK_UNREACHABLE_TEXT,
+  ADDRESSED_ROLE_TEXT,
 } from "./ack-wording";
 import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
 
@@ -55,6 +64,7 @@ const request = (over: Partial<AckRequestDto> = {}): AckRequestDto => ({
   channel_id: "c-1",
   patient_id: "p-1",
   ack_class: "important",
+  addressed_role: null,
   status: "pending",
   requester_user_id: "u-1",
   assigned_user_id: "u-2",
@@ -122,6 +132,16 @@ describe("ack request card", () => {
     expect(take.getAttribute("aria-describedby")).toBe(notice.id);
     const results = await axe.run(document.body);
     expect(results.violations).toEqual([]);
+  });
+
+  it("names the addressed role in words, and shows nothing for a request to a named person", async () => {
+    mount({ get: () => ok([request({ addressed_role: "physician" })]) });
+    await takeButton();
+    expect(screen.getByText(ADDRESSED_ROLE_TEXT.physician)).toBeTruthy();
+    cleanup();
+    mount({});
+    await takeButton();
+    expect(screen.queryByText(/on-call/)).toBeNull();
   });
 
   it.each([

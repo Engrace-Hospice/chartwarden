@@ -65593,6 +65593,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -67740,6 +67741,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -67801,6 +67803,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -67879,6 +67882,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -67945,6 +67949,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -68039,6 +68044,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -68173,6 +68179,7 @@ export interface operations {
                             message_id: string | null;
                             patient_id: string | null;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "escalated" | "failed_unreachable";
                             assigned_user_id: string | null;
                             assigned_display_name: string | null;

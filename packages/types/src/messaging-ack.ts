@@ -128,12 +128,23 @@ export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 export const ACK_ESCALATION_NOTES = ["route_unavailable", "ladder_exhausted"] as const;
 export type AckEscalationNote = (typeof ACK_ESCALATION_NOTES)[number];
 
+/**
+ * ADR-0081 (migration 1129): the ROLE a role-based send addressed, a closed set (same as the on-call directory roles); null when a person
+ * was named. Fixed once set. A value outside the set (cannot happen: CHECK) reads as null.
+ */
+export const ACK_ADDRESSED_ROLES = ["rn", "physician"] as const;
+export type AckAddressedRole = (typeof ACK_ADDRESSED_ROLES)[number];
+export const toAckAddressedRole = (v: string | null | undefined): AckAddressedRole | null =>
+  ACK_ADDRESSED_ROLES.find((r) => r === v) ?? null;
+
 export interface AckRequestDto {
   readonly id: string;
   readonly message_id: string;
   readonly channel_id: string;
   readonly patient_id: string;
   readonly ack_class: AckClass;
+  /** ADR-0081: the role the sender addressed, null when a person was named. */
+  readonly addressed_role: AckAddressedRole | null;
   readonly status: AckStatus;
   readonly requester_user_id: string;
   readonly assigned_user_id: string;
@@ -224,6 +235,8 @@ export interface AckQueueItemDto {
   /** Id only, for the read-audit accounting; the screen never shows it. Null on a restricted row. */
   readonly patient_id: string | null;
   readonly ack_class: AckClass;
+  /** ADR-0081: the role the sender addressed, null when a person was named. Kept on a restricted row like `ack_class` (non-patient, OPEN for compliance). */
+  readonly addressed_role: AckAddressedRole | null;
   readonly status: AckQueueStatus;
   /** Null on a restricted row; the display name stays so the supervisor can chase the assignee. */
   readonly assigned_user_id: string | null;

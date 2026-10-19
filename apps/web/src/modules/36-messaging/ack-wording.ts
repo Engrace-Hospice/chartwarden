@@ -2,7 +2,7 @@
 // sign-off is recorded; see docs/messaging-hub/brief-clinical-lead-signoff.md): change the text here, never the codes.
 // Taking responsibility is an explicit action; opening or reading a message never does it, nothing here pages anyone, and
 // messaging is not the emergency path. No tenant can remove the notice.
-import type { AckEscalationNote, AckStatus } from "@wardenx/types";
+import type { AckAddressedRole, AckEscalationNote, AckStatus } from "@wardenx/types";
 
 export const ACK_NOTICE =
   "Taking responsibility is an explicit action: opening or reading this message does not do it. This does not page anyone and is not the emergency path; for critical symptoms follow the agency telephone/emergency procedure.";
@@ -60,6 +60,12 @@ export const takeName = (author: string | undefined, sent: string): string =>
   `${ACK_TAKE_LABEL} for the message${author ? ` from ${author}` : ""} sent ${sent}`;
 export const closeName = (author: string | undefined, sent: string): string =>
   `${ACK_CLOSE_LABEL} for the message${author ? ` from ${author}` : ""} sent ${sent}`;
+
+/** ADR-0081: shown when a request was sent to an on-call ROLE (not a named person). A closed map; the server sends only the code. */
+export const ADDRESSED_ROLE_TEXT: Readonly<Record<AckAddressedRole, string>> = {
+  rn: "Sent to the on-call RN",
+  physician: "Sent to the on-call physician",
+};
 
 export const waitingFor = (forViewer: boolean): string =>
   forViewer ? "Waiting for you" : "Waiting for the person it was sent to";

@@ -33,6 +33,7 @@ import {
   ACK_UNREACHABLE_TEXT,
   ACK_WAIT_LOAD_TEXT,
   ACK_WORKING_TEXT,
+  ADDRESSED_ROLE_TEXT,
   closeName,
   escalatedWaitingFor,
   takeName,
@@ -128,6 +129,9 @@ export function AckRequestCard({
         <Glyph name={unreachable ? "alert" : icon} size={14} />
         <span>{ACK_STATUS_TEXT[request.status]}</span>
       </p>
+      {request.addressed_role ? (
+        <p className="wx-ack-detail">{ADDRESSED_ROLE_TEXT[request.addressed_role]}</p>
+      ) : null}
       {waiting ? (
         <p className="wx-ack-detail">
           {(request.status === "escalated" ? escalatedWaitingFor : waitingFor)(

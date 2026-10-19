@@ -3,6 +3,7 @@
 // from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
+  ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
   ACK_ESCALATION_NOTES,
   ACK_EVENT_TYPES,
@@ -41,6 +42,7 @@ const AckRequest = Type.Object({
   channel_id: UuidOut,
   patient_id: UuidOut,
   ack_class: oneOf(ACK_CLASSES),
+  addressed_role: nullable(oneOf(ACK_ADDRESSED_ROLES)),
   status: oneOf(ACK_STATUSES),
   requester_user_id: UuidOut,
   assigned_user_id: UuidOut,

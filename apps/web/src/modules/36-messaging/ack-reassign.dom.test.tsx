@@ -42,6 +42,7 @@ const request = (over: Partial<AckRequestDto> = {}): AckRequestDto => ({
   channel_id: "c-1",
   patient_id: "p-1",
   ack_class: "important",
+  addressed_role: null,
   status: "pending",
   requester_user_id: "u-1",
   assigned_user_id: "u-2",

@@ -19,6 +19,7 @@ import type { JSX, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import { AckReassignDialog } from "./ack-reassign-dialog";
 import { localTime } from "./ack-request-card";
+import { ADDRESSED_ROLE_TEXT } from "./ack-wording";
 import {
   OVERDUE_FILTER_LABEL,
   QUEUE_BREADCRUMB,
@@ -105,6 +106,9 @@ function QueueRow({
           <span className="wx-queue-tag">{`Tier ${item.current_tier + 1}`}</span>
         ) : null}
       </div>
+      {item.addressed_role ? (
+        <p className="wx-queue-line">{`${ADDRESSED_ROLE_TEXT[item.addressed_role]}.`}</p>
+      ) : null}
       <p className="wx-queue-line">{`Assigned to ${who}.`}</p>
       <p className="wx-queue-line">{queueSenderText(item.requester_display_name)}</p>
       {item.delivery_failed ? <p className="wx-queue-line">{QUEUE_UNREACHABLE_TEXT}</p> : null}

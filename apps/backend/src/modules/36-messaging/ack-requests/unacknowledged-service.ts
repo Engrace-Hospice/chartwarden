@@ -8,7 +8,7 @@
 // assignee's, OPEN for compliance review) and `request_ref`, the request's own id as the handle the supervisor reassign acts on (it opens
 // nothing: every route that reads a request, thread or patient still answers 404 to a viewer who cannot see the channel). A visibility check that throws withholds the ids (fail closed); it does not drop the item. No message text is ever read.
 import type { AckQueueItemDto, AckQueueResponse, AckQueueStatus } from "@wardenx/types";
-import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX } from "@wardenx/types";
+import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX, toAckAddressedRole } from "@wardenx/types";
 import type { QueueRow, UnacknowledgedReader } from "./unacknowledged-reader-db";
 
 export interface UnacknowledgedActor {
@@ -107,6 +107,7 @@ export function createUnacknowledgedService(
             message_id: null,
             patient_id: null,
             ack_class: row.ackClass,
+            addressed_role: toAckAddressedRole(row.addressedRole),
             assigned_user_id: null,
             assigned_display_name: names.get(row.assignedUserId) ?? null,
             current_tier: row.currentTier,
@@ -121,6 +122,7 @@ export function createUnacknowledgedService(
           message_id: row.messageId,
           patient_id: row.patientId,
           ack_class: row.ackClass,
+          addressed_role: toAckAddressedRole(row.addressedRole),
           assigned_user_id: row.assignedUserId,
           assigned_display_name: names.get(row.assignedUserId) ?? null,
           current_tier: row.currentTier,

@@ -162644,6 +162644,7 @@
                           "channel_id",
                           "patient_id",
                           "ack_class",
+                          "addressed_role",
                           "status",
                           "requester_user_id",
                           "assigned_user_id",
@@ -162688,6 +162689,25 @@
                               {
                                 "const": "critical_symptom",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "addressed_role": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "rn",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "physician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -170768,6 +170788,7 @@
                         "channel_id",
                         "patient_id",
                         "ack_class",
+                        "addressed_role",
                         "status",
                         "requester_user_id",
                         "assigned_user_id",
@@ -170812,6 +170833,25 @@
                             {
                               "const": "critical_symptom",
                               "type": "string"
+                            }
+                          ]
+                        },
+                        "addressed_role": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "rn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -171035,6 +171075,7 @@
                         "channel_id",
                         "patient_id",
                         "ack_class",
+                        "addressed_role",
                         "status",
                         "requester_user_id",
                         "assigned_user_id",
@@ -171079,6 +171120,25 @@
                             {
                               "const": "critical_symptom",
                               "type": "string"
+                            }
+                          ]
+                        },
+                        "addressed_role": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "rn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -171505,6 +171565,7 @@
                         "channel_id",
                         "patient_id",
                         "ack_class",
+                        "addressed_role",
                         "status",
                         "requester_user_id",
                         "assigned_user_id",
@@ -171549,6 +171610,25 @@
                             {
                               "const": "critical_symptom",
                               "type": "string"
+                            }
+                          ]
+                        },
+                        "addressed_role": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "rn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -171756,6 +171836,7 @@
                         "channel_id",
                         "patient_id",
                         "ack_class",
+                        "addressed_role",
                         "status",
                         "requester_user_id",
                         "assigned_user_id",
@@ -171800,6 +171881,25 @@
                             {
                               "const": "critical_symptom",
                               "type": "string"
+                            }
+                          ]
+                        },
+                        "addressed_role": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "rn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -172083,6 +172183,7 @@
                         "channel_id",
                         "patient_id",
                         "ack_class",
+                        "addressed_role",
                         "status",
                         "requester_user_id",
                         "assigned_user_id",
@@ -172127,6 +172228,25 @@
                             {
                               "const": "critical_symptom",
                               "type": "string"
+                            }
+                          ]
+                        },
+                        "addressed_role": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "rn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -172573,6 +172693,7 @@
                           "message_id",
                           "patient_id",
                           "ack_class",
+                          "addressed_role",
                           "status",
                           "assigned_user_id",
                           "assigned_display_name",
@@ -172647,6 +172768,25 @@
                               {
                                 "const": "critical_symptom",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "addressed_role": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "rn",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "physician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
