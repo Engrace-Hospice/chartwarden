@@ -97,6 +97,8 @@ const ERRORS: Readonly<Record<string, string>> = {
   [ROLE_SEND_ERROR_CODES.noCoverage]: NO_COVERAGE_TEXT,
   [ROLE_SEND_ERROR_CODES.resolutionChanged]: CHANGED_TEXT,
   [ROLE_SEND_ERROR_CODES.unavailable]: UNTRACKED_TEXT,
+  [ROLE_SEND_ERROR_CODES.clientIdReused]:
+    "That message id was already used for a different message. Nothing was sent. Close this and start a new message.",
 };
 
 const hasTypedText = (code: string | undefined): code is string =>

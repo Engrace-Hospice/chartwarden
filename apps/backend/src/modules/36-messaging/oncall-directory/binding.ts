@@ -11,7 +11,7 @@ import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { cacheFlagRead } from "../presence/binding";
 import { getEscalationRouter } from "../seams";
-import { createDbReplayLookup } from "../urgent/deps";
+import { createDbRoleReplayLookup } from "../urgent/deps";
 import { type OnCallCoverageService, createOnCallCoverageService } from "./oncall-coverage-service";
 import type { RoleSendPorts } from "./role-send-service";
 
@@ -52,7 +52,7 @@ export function buildOnCallDirectoryDeps(input: OnCallDirectoryInput): {
         const facts = await channelFacts(orgId, channelId);
         return facts?.kind === "care_team" ? derivePatient(facts.kind, facts.subjectId) : null;
       },
-      findReplayRecipient: createDbReplayLookup(input.db),
+      findReplay: createDbRoleReplayLookup(input.db),
     },
   };
 }

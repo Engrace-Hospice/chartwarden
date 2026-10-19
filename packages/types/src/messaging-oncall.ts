@@ -68,6 +68,7 @@ export const ROLE_SEND_ERROR_CODES = {
   noCoverage: "ROLE_SEND_NO_COVERAGE",
   resolutionChanged: "ROLE_SEND_RESOLUTION_CHANGED",
   unavailable: "ROLE_SEND_UNAVAILABLE",
+  clientIdReused: "ROLE_SEND_CLIENT_ID_REUSED",
 } as const;
 
 export interface RoleSendPersonDto {

@@ -39,7 +39,7 @@ import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index"
 import { createDbChannelFactsLookup } from "../src/modules/36-messaging/medication-questions/deps";
 import { createMentionActorNameResolver } from "../src/modules/36-messaging/mention-non-member-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
-import { buildUrgentDeps, createDbReplayLookup } from "../src/modules/36-messaging/urgent/deps";
+import { buildUrgentDeps, createDbRoleReplayLookup } from "../src/modules/36-messaging/urgent/deps";
 import {
   type LiveKit,
   STAFF_KEYS,
@@ -170,7 +170,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
             const facts = await channelFacts(org, ch);
             return facts?.kind === "care_team" ? facts.subjectId : null;
           },
-          findReplayRecipient: createDbReplayLookup(kit.handle.db),
+          findReplay: createDbRoleReplayLookup(kit.handle.db),
         },
       },
     });
@@ -311,6 +311,49 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
       expect(again.statusCode, again.body).toBe(200);
       expect(again.json()).toMatchObject({ created: false, message_id: first.json().message_id });
       expect(await totals()).toEqual(before);
+    });
+
+    it("a replay returns the ORIGINAL result even after response tracking was turned off", async () => {
+      router = covering(rn);
+      const clientId = randomUUID();
+      const first = await send(app, nurse, { client_message_id: clientId });
+      expect(first.statusCode, first.body).toBe(201);
+      const before = await totals();
+      const again = await send(untrackedApp, nurse, { client_message_id: clientId });
+      expect(again.statusCode, again.body).toBe(200);
+      expect(again.json()).toMatchObject({
+        created: false,
+        role: "rn",
+        message_id: first.json().message_id,
+        recipient_user_id: rn,
+      });
+      expect(await totals()).toEqual(before);
+    });
+
+    it("a client id already used for a person-send or another role is a typed 409, never echoed as this role", async () => {
+      router = covering(rn);
+      const personClientId = randomUUID();
+      const named = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channel}/urgent-messages`,
+        headers: as(nurse, ORG_A, randomUUID()),
+        payload: { body_doc: sbarDoc(), recipient_user_id: rn, client_message_id: personClientId },
+      });
+      expect(named.statusCode, named.body).toBe(201);
+      const before = await totals();
+      const reused = await send(app, nurse, { client_message_id: personClientId });
+      expect(reused.statusCode, reused.body).toBe(409);
+      expect(errorCode(reused)).toBe("ROLE_SEND_CLIENT_ID_REUSED");
+      // A role send under id R, then the same id with ANOTHER role: also refused.
+      const roleClientId = randomUUID();
+      expect((await send(app, nurse, { client_message_id: roleClientId })).statusCode).toBe(201);
+      const otherRole = await send(app, nurse, {
+        client_message_id: roleClientId,
+        role: "physician",
+      });
+      expect(otherRole.statusCode, otherRole.body).toBe(409);
+      expect(errorCode(otherRole)).toBe("ROLE_SEND_CLIENT_ID_REUSED");
+      expect((await totals())[0]).toBe((before[0] ?? 0) + 1);
     });
   });
 

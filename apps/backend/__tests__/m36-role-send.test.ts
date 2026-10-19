@@ -332,6 +332,21 @@ describe("POST /messaging/channels/:id/role-send", () => {
     expect(sends).toEqual([]);
   });
 
+  it("the idempotency middleware caches a REFUSAL: the same key replays it after coverage returns, a fresh key re-resolves (so the web rotates the key)", async () => {
+    const app = makeServer();
+    const body = { client_message_id: "aaaaaaaa-aaaa-4aaa-8aaa-0000000000f1" };
+    router = escalationRouterDenyStub;
+    expect((await post(app, "nurse", body, { key: "k-refused" })).statusCode).toBe(422);
+    router = covering(COVERING);
+    const replayed = await post(app, "nurse", body, { key: "k-refused" });
+    expect(replayed.statusCode).toBe(422);
+    expect(replayed.json().error.code).toBe("ROLE_SEND_NO_COVERAGE");
+    expect(sends).toEqual([]);
+    const fresh = await post(app, "nurse", body, { key: "k-fresh" });
+    expect(fresh.statusCode).toBe(201);
+    expect(sends).toHaveLength(1);
+  });
+
   it("requires an Idempotency-Key", async () => {
     const res = await post(makeServer(), "nurse", {}, { key: null });
     expect(res.statusCode).toBe(400);

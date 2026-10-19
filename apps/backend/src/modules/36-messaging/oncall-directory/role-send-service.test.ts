@@ -24,6 +24,8 @@ type Over = {
   router?: EscalationRouter;
   channelPatient?: string | null;
   replay?: string | null;
+  /** The role stored on the replayed message: "rn" by default, null for a person-send. */
+  replayRole?: string | null;
   tier1?: () => EscalationRouteAnswer;
 };
 
@@ -56,7 +58,10 @@ function build(over: Over = {}) {
     router: guardEscalationRouter(raw),
     displayName: async (_o, id) => (id === U1 ? "Dana K." : null),
     channelPatient: async () => (over.channelPatient === undefined ? PATIENT : over.channelPatient),
-    findReplayRecipient: async () => over.replay ?? null,
+    findReplay: async () =>
+      over.replay
+        ? { recipient: over.replay, role: over.replayRole === undefined ? "rn" : over.replayRole }
+        : null,
     urgent,
     log: (_m, ctx) => logs.push(ctx),
     now: () => NOW,
@@ -220,6 +225,33 @@ describe("RoleSendService.send", () => {
     const { service, sends } = build({ replay: U2, tier1: covered(U2) });
     await expect(send(service, U1)).rejects.toMatchObject({ statusCode: 409 });
     expect(sends).toEqual([]);
+  });
+
+  it("refuses with a typed 409 a client id already used for a person-send or another role, and never echoes the new role", async () => {
+    for (const replayRole of [null, "physician"]) {
+      const { service, sends, calls } = build({ replay: U1, replayRole, tier1: covered(U1) });
+      await expect(send(service, U1)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "ROLE_SEND_CLIENT_ID_REUSED",
+      });
+      expect([sends, calls]).toEqual([[], []]);
+    }
+  });
+
+  it("propagates a replay lookup failure instead of sending afresh", async () => {
+    const { service, sends } = build({ tier1: covered(U1) });
+    const failing = createRoleSendService({
+      isEnabled: async () => true,
+      router: { resolveTier: async () => Promise.reject(new Error("unused")) },
+      displayName: async () => null,
+      channelPatient: async () => PATIENT,
+      findReplay: async () => Promise.reject(new Error("lookup down")),
+      urgent: { send: async () => Promise.reject(new Error("must not send")) },
+      log: () => undefined,
+    });
+    await expect(send(failing, U1)).rejects.toThrow("lookup down");
+    expect(sends).toEqual([]);
+    expect(service).toBeTruthy();
   });
 
   it("logs the role and a status word only: no patient id, no name, no recipient", async () => {

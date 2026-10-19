@@ -166,7 +166,12 @@ export function RoleSendDialog({
       if (data) return onSent({ created: data.created, role, name: chosen.name });
       const status = response?.status;
       const code = (failure as { error?: { code?: string } } | undefined)?.error?.code;
-      if (status === 409 && code === undefined) draft.rotateKey();
+      // The idempotency middleware caches EVERY response, refusals included: retrying a refused send under the same key would replay the
+      // refusal even after coverage changed. A clean refusal therefore gets a fresh key; only a failure that may have stored the message
+      // keeps its key (the retry must be the same request), except an untyped 409 (an unfinished attempt: only a new key can succeed).
+      if (!isIndeterminateSend(status, code) || (status === 409 && code === undefined)) {
+        draft.rotateKey();
+      }
       setError(sendErrorText(status, code));
       // A changed resolution or a refused coverage is a clean refusal: read the roster again and make the sender confirm again.
       if (

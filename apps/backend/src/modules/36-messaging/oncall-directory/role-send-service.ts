@@ -33,13 +33,16 @@ export interface RoleSendDeps {
   readonly displayName: (orgId: string, userId: string) => Promise<string | null>;
   /** The patient of a care-team channel, null for any other channel (or a missing one). */
   readonly channelPatient: (orgId: string, channelId: string) => Promise<string | null>;
-  /** The recipient of the urgent message this sender already stored under this client id in this channel, or null (a throw = null). */
-  readonly findReplayRecipient?: (
+  /**
+   * The recipient and the ROLE of the message this sender already stored under this client id in this channel (role null for a
+   * person-send), or null when there is none.
+   */
+  readonly findReplay?: (
     orgId: string,
     authorUserId: string,
     channelId: string,
     clientMessageId: string,
-  ) => Promise<string | null>;
+  ) => Promise<{ readonly recipient: string | null; readonly role: string | null } | null>;
   readonly urgent: Pick<UrgentService, "send">;
   readonly log?: (message: string, context: Record<string, string>) => void;
   readonly now?: () => Date;
@@ -77,6 +80,13 @@ const noCoverage = (status: string): WardenXError =>
   new WardenXError(ROLE_SEND_ERROR_CODES.noCoverage, ROLE_SEND_TELEPHONE_PROCEDURE, 422, [
     { field: "status", code: status, message: status },
   ]);
+
+const clientIdReused = (): WardenXError =>
+  new WardenXError(
+    ROLE_SEND_ERROR_CODES.clientIdReused,
+    "That message id was already used for a different message. Nothing was sent.",
+    409,
+  );
 
 const resolutionChanged = (): WardenXError =>
   new WardenXError(
@@ -163,13 +173,17 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
 
     async send(actor, input, validateLinks) {
       await guardTarget(actor, input);
-      const replayRecipient = deps.findReplayRecipient
-        ? await deps
-            .findReplayRecipient(actor.orgId, actor.userId, input.channelId, input.clientMessageId)
-            .catch(() => null)
+      // A lookup failure propagates: an unknown replay state must never become a fresh send.
+      const replay = deps.findReplay
+        ? await deps.findReplay(actor.orgId, actor.userId, input.channelId, input.clientMessageId)
         : null;
+      // A client id already stored for a person-send or for ANOTHER role is never a replay of this role send, and its role is never echoed.
+      if (replay && replay.role !== input.role) {
+        refuse(actor, input.role, "client_id_reused");
+        throw clientIdReused();
+      }
       // A retry of a send that already committed to the SAME person is the original's answer: do not re-resolve (a shift may have changed).
-      if (!replayRecipient || !same(replayRecipient, input.recipientUserId)) {
+      if (!replay?.recipient || !same(replay.recipient, input.recipientUserId)) {
         const current = await tierOne(actor, input);
         if (current.status !== "covered") {
           refuse(actor, input.role, current.status);
@@ -193,6 +207,7 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
         },
         validateLinks,
       );
+      // On a replay the role is the STORED one (the check above made it equal to the requested one).
       return { ...sent, role: input.role };
     },
   };

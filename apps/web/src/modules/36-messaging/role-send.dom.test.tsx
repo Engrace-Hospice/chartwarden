@@ -335,6 +335,34 @@ describe("role send: the dialog", () => {
     expect(screen.queryByText(INDETERMINATE_TEXT)).toBeNull();
   });
 
+  it.each([
+    [
+      "a changed resolution (the server cached the refusal under the old key)",
+      refusal(409, "ROLE_SEND_RESOLUTION_CHANGED"),
+      false,
+    ],
+    ["a refused coverage", refusal(422, "ROLE_SEND_NO_COVERAGE"), false],
+    [
+      "a failure that may have stored the message (a retry must be the same request)",
+      refusal(502),
+      true,
+    ],
+  ])("after %s, the next send uses %s Idempotency-Key", async (_why, failure, sameKey) => {
+    const post = vi.fn().mockResolvedValue(failure);
+    mount({ post });
+    await open();
+    await review();
+    await userEvent.click(await sendButton());
+    await waitFor(() => expect(sendCalls(post)).toHaveLength(1));
+    // The roster is read again; the same person is on call, so the same Send is offered.
+    await userEvent.click(await sendButton());
+    await waitFor(() => expect(sendCalls(post)).toHaveLength(2));
+    const keyOf = (i: number) =>
+      (sendCalls(post)[i] as [string, { params: { header: Record<string, string> } }])[1].params
+        .header["Idempotency-Key"];
+    expect(keyOf(0) === keyOf(1)).toBe(sameKey);
+  });
+
   it("a refused coverage at send time shows the telephone procedure and re-reads the roster", async () => {
     let calls = 0;
     const post = vi.fn().mockResolvedValue(refusal(422, "ROLE_SEND_NO_COVERAGE"));

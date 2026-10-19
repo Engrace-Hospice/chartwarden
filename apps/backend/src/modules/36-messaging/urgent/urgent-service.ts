@@ -177,7 +177,8 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
             null,
           )
         : null;
-      if (replayRecipient?.toLowerCase() !== input.recipientUserId.toLowerCase()) {
+      const isReplay = replayRecipient?.toLowerCase() === input.recipientUserId.toLowerCase();
+      if (!isReplay) {
         // One uniform answer for: the author, a non-member, off the care team, not qualified (H-02).
         const careTeam = await orElse(() => deps.careTeamMembers(actor.orgId, patientId), []);
         const qualified =
@@ -198,7 +199,8 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       const tracker = deps.responseTracker;
       // A flag lookup ERROR propagates: an urgent message must never silently lose its request on a blip.
       const track = tracker ? await tracker.enabled(actor.orgId) : false;
-      if (input.roleAddressed && !track) throw roleSendUntracked();
+      // A replay of a send that already committed answers with the original even if tracking was turned off since (the core replays).
+      if (input.roleAddressed && !track && !isReplay) throw roleSendUntracked();
       const outcome = { hookRan: false };
       const sent = await deps.messaging.sendMessage(actor.orgId, {
         channelId: input.channelId,
