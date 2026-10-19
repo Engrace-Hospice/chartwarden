@@ -8,7 +8,7 @@ parité fonctionnelle progressive avec `apps/web` pour les professionnels hospic
 l’écosystème, pas des fonctionnalités déclarées hors cible.
 
 Le mobile est une application React Native/Expo autonome dans le repository `wardenx-mobile` ; aucun
-`apps/mobile` n’est créé ici. [ADR-0069](../adr/ADR-0069-separate-react-native-expo-mobile-app.md)
+`apps/mobile` n’est créé ici. [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md)
 porte la supersession formelle d’ADR-0035 et reste à ratifier par les propriétaires d’architecture.
 PR B prépare uniquement le backend, les contrats et la gouvernance nécessaires à l’authentification
 native. L’EVV offline, les notifications natives et les écrans métier restent hors de ce lot.
@@ -84,7 +84,7 @@ Repères précis dans la révision auditée :
 | endpoints de notification | `apps/backend/src/modules/36-messaging/routes/messaging-routes.ts:781` |
 | ports de capacités | `packages/ui/src/core/capabilities/ports.ts:77` |
 | token bleu clinique | `apps/web/src/index.css:44` |
-| décision historique remplacée à ratifier | `docs/adr/ADR-0069-separate-react-native-expo-mobile-app.md` |
+| décision historique remplacée à ratifier | `docs/adr/ADR-0072-separate-react-native-expo-mobile-app.md` |
 
 La détection des dépendances API dans le CSV est statique et limitée au composant directement lié par
 `screens.ts`. `À vérifier` signifie qu’aucun endpoint littéral n’a été démontré à cet endroit ; ce n’est
@@ -102,7 +102,7 @@ pas une preuve d’absence d’API. Les appels indirects, clients Better Auth et
   patient `apps/portal` ne sont pas incluses.
 - Le mode offline est borné aux brouillons explicitement conçus pour cela. Il n’existe pas de promesse
   de dossier patient complet hors ligne.
-- ADR-0069 est proposé à ratification. L’historique d’ADR-0035 est conservé et n’est pas réécrit.
+- ADR-0072 est proposé à ratification. L’historique d’ADR-0035 est conservé et n’est pas réécrit.
 
 ## Glossaire
 
