@@ -236,7 +236,7 @@ const ROUTES: Record<string, Verdict> = {
   "DELETE /api/v1/messaging/messages/:id/reminder": { kind: "idor" },
   // WP 4.12 on-call directory / ADR-0081 role-based send: the guessable ids are a PATIENT's (query or body) and, for the send, a
   // channel's. A chart-read gate (patient.read + caseload_or_scope) then an ORG-SCOPED existence check give an org-B caller, and a
-  // missing patient, the one `resource` 404; the channel routes also stop an in-org non-member at channel visibility. Every refusal is the
+  // missing patient, the one `resource` 404; the two channel routes also stop an in-org non-member at channel visibility (the coverage route takes no channel: its in-org scope is the real caseload_or_scope predicate, stubbed permissive here and proved in m36-oncall-directory.live). patientExists/channelPatient are test-local org-filtered stand-ins for the PatientReader seam. Every refusal is the
   // answer a random id gets and nothing is written (also attacked in m36-oncall-directory.live / m36-role-send.live).
   "GET /api/v1/messaging/oncall/coverage": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/role-send/resolution": { kind: "idor" },
