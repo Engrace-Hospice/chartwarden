@@ -410,8 +410,15 @@ export function createDbMessagingProvider(
           const toRemove = activeMembers.filter(
             (m) => m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
           );
+          // The portal caregiver row takes the same category refusal as the roster (F6): skipped, never added.
+          const portalExcluded = portalUserId
+            ? await excludedMemberUserIds(tx, orgId, [portalUserId])
+            : new Set<string>();
           const addPortalCaregiver =
-            !channelArchived && Boolean(portalUserId) && !activeUserIds.has(portalUserId!);
+            !channelArchived &&
+            Boolean(portalUserId) &&
+            !activeUserIds.has(portalUserId!) &&
+            !portalExcluded.has(portalUserId!);
 
           if (toAdd.length > 0) {
             await tx.insert(CM).values(
