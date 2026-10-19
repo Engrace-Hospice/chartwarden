@@ -23,9 +23,11 @@ const NOTIFICATION = sanitizeForOutOfBand({
 const vapid = (() => {
   const k = createECDH("prime256v1");
   k.generateKeys();
+  const d = k.getPrivateKey();
   return {
     VAPID_PUBLIC_KEY: k.getPublicKey().toString("base64url"),
-    VAPID_PRIVATE_KEY: k.getPrivateKey().toString("base64url"),
+    // pad: getPrivateKey() drops leading zero bytes (about 1 key in 256)
+    VAPID_PRIVATE_KEY: Buffer.concat([Buffer.alloc(32 - d.length), d]).toString("base64url"),
     VAPID_SUBJECT: "mailto:ops@example.test",
   };
 })();

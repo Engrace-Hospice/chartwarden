@@ -116,7 +116,10 @@ export function encryptWebPushPayload(
 
 function vapidKey(publicKey: string, privateKey: string) {
   const pub = fromB64u(publicKey);
-  const d = fromB64u(privateKey);
+  const raw = fromB64u(privateKey);
+  // A P-256 scalar printed without its leading zero bytes (Node's ECDH does this) is still the same key.
+  const d =
+    raw.length > 0 && raw.length < 32 ? Buffer.concat([Buffer.alloc(32 - raw.length), raw]) : raw;
   if (pub.length !== P256_PUBLIC_KEY_BYTES || pub[0] !== 0x04 || d.length !== 32) {
     throw new Error("web push: VAPID key pair is malformed");
   }

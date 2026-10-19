@@ -258,7 +258,13 @@ describe("Web Push transport", () => {
   function vapidPair() {
     const k = createECDH("prime256v1");
     k.generateKeys();
-    return { pub: b64u(k.getPublicKey()), priv: b64u(k.getPrivateKey()), ecdh: k };
+    const d = k.getPrivateKey();
+    // getPrivateKey() drops leading zero bytes (about 1 key in 256), so pad to the full 32-byte scalar.
+    return {
+      pub: b64u(k.getPublicKey()),
+      priv: b64u(Buffer.concat([Buffer.alloc(32 - d.length), d])),
+      ecdh: k,
+    };
   }
 
   it("delivers an encrypted sanitized payload with a verifiable VAPID signature and settles on acceptance", async () => {
