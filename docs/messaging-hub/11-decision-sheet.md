@@ -1,0 +1,79 @@
+# M36 messaging hub: decision sheet (open sign-offs)
+
+**Status:** draft, 2026-10-19. **Nothing here is decided.** Every "Default" below is an engineering placeholder that the built code
+or the runbook already uses; it is not a clinical, compliance or legal position. Fill the last column, then the answers are written
+into the ADRs and the brief as decided (the brief keeps the full wording of each question: section numbers in the Source column).
+
+**How to use:** one row per decision. Write the answer in *Decision* (accept the default, edit it, or reject it), add your name,
+role and date. A blank row stays OPEN and the default stays provisional. Rows in section A block turning the messaging flags
+on for any real tenant. Rows in section E gate work that has not started.
+
+Owners: **CL** clinical lead / medical director, **COMP** compliance or Part 2 review, **OPS** operations, **M19** the (not yet named)
+owner of on-call and the `EscalationRouter` seam, **SEC** security architect, **PO** product owner.
+
+## A. Before any tenant turns the flags on (go-live)
+
+| # | Decision | Owner | Default (provisional) | What the default means | Source | Decision |
+|---|---|---|---|---|---|---|
+| A1 | Who watches the unacknowledged queue and the operations numbers at night and at weekends | CL + OPS | none named | Nothing pages a phone today. Until a named watcher exists, no tenant should enable `messaging.ack_requests`, `messaging.urgent_clinical` or `messaging.escalation_timers`, or use the important, urgent and critical-symptom classes in production | brief §13; runbook top | |
+| A2 | A real sending service (SMS / push vendor) for supervisor pages and out-of-band alerts | OPS + PO | none exists in any environment | The platform side is built (ADR-0079). A planned page fails with `transport_not_configured`. An operations notice is not a watcher | ADR-0079; brief §13 | |
+| A3 | Who can set the messaging flags per tenant (the tenant, or the platform owner) | OPS | unconfirmed | Needed before the drill and before go-live | brief §13 | |
+| A4 | Is "no watcher, no flags" the right go-live condition | CL | yes | See A1 | brief §13 | |
+
+## B. Escalation and paging (built; values need signing)
+
+| # | Decision | Owner | Default | What the default means | Source | Decision |
+|---|---|---|---|---|---|---|
+| B1 | Who is paged about a request nobody can reach | CL | roles `clinical_supervisor` and `don` | In-app alert now; push (and SMS for critical) to their verified endpoints once a transport exists. A tenant can re-aim the rule; the "unpaged" notice does not detect re-aiming | ADR-0079; brief §13 | |
+| B2 | Reminder schedule for an undeliverable request nobody reassigns | CL | 8 reminders: at the deadline, then +1, +3, +7, +15, +31, +55, +79 h; then only the queue shows it | About 103 hours of reminders, then silence except the queue and gauges | ADR-0079 | |
+| B3 | May an undeliverable request ever escalate by itself | CL | never | The database guard forbids `failed_unreachable` to `escalated`; a person must reassign | ADR-0079 | |
+| B4 | Stalled-worker threshold for the operations notice | OPS | 5 minutes past deadline | Notice to operations only; clinicians are not alerted | ADR-0079 | |
+| B5 | Supervisor reassign: audience, reason codes, cap | CL | `messaging.review` holders; six fixed non-clinical reason codes; 5 reassigns per request per rolling 24 h (409 after) | A supervisor can move a waiting request without reading the conversation. One supervisor can use the cap, so the 409 names the clinical lead | ADR-0078; brief §13 | |
+| B6 | Reassign limits, supervisor override and take-over | CL | no supervisor acknowledge, resolve or cancel | Only the assigned person takes responsibility | brief §3, §13 | |
+| B7 | G-1: an audited "acknowledged by phone on behalf of" action | CL | **rejected** | Would weaken the explicit-acknowledgment rule (ADR-0056, ADR-0069 decision 6). The supported path is B5 | brief §13 | |
+| B8 | Safety-floor list and locked quiet-hours rows | CL | per ADR-0073 platform floor | What can never be silenced | brief §8; UI spec §9 | |
+
+## C. What a restricted row may show (compliance)
+
+| # | Decision | Owner | Default | What the default means | Source | Decision |
+|---|---|---|---|---|---|---|
+| C1 | On rows a supervisor cannot open (not on the care team, or 42 CFR Part 2 and not released): requester name, request reference, assignee name and class | COMP | shown | People, not patients; nothing opens. Alternative: collapse to "restricted, overdue by N" | ADR-0076, ADR-0078; brief §11, §13 | |
+| C2 | Candidate names in the reassign pickers for Part 2 or restricted patients | COMP | a walled-off supervisor gets an empty list and a uniform refusal; others see names | Names colleagues, not patients | ADR-0078 | |
+| C3 | Existence disclosure: a supervisor without channel access still gets "a clinical message needs a supervisor" with a request id and class | COMP | accepted | No patient, channel or message data; the queue link enforces access | ADR-0079 | |
+
+## D. Fallback runbook and drills
+
+| # | Decision | Owner | Default | What the default means | Source | Decision |
+|---|---|---|---|---|---|---|
+| D1 | Telephone-tree order and wait per step | CL | assignee, sender, next on-call tier, supervisor, director of nursing, clinical lead, operations; 5 min for urgent and critical, 10 for important | Used by the runbook and drills only | brief §13 | |
+| D2 | Drill cadence; must a new organisation drill before going live | CL | quarterly, one tabletop and one live; yes before go-live | No drill has been run, so acceptance evidence does not exist | brief §13 | |
+| D3 | Drill targets | CL | 10 min to notice, 10 more to reach a person, acknowledged within the deadline plus 15 min | | brief §13 | |
+| D4 | Evidence owner, store and retention | CL + COMP | clinical lead; the agency's compliance store (never this repository); six years | | brief §13 | |
+| D5 | Who may stand down an incident; cancelled-request rule | CL + OPS | supervisor on duty (clinical) and operations (technical), both recorded; a cancellation needs the clinical lead's recorded decision first | | brief §13 | |
+| D6 | Follow-up limit before handing an unanswered request up | CL | to be set (important and urgent separately) | | brief §13 | |
+| D7 | A verbal "I've got it" and verbal handoff of content | CL | does not close a request; no content on the call | | brief §13 | |
+| D8 | Who owns the 911 decision while a critical-symptom request is unanswered | CL | clinical supervisor on duty | `critical_symptom` has no writer today | brief §13 | |
+| D9 | Live drill hygiene: test org supervisor audience holds only participants | OPS | required | The test org lives in production; gauges and the ops webhook are shared | brief §13 | |
+
+## E. Gates work that has not started
+
+| # | Decision | Owner | Default | What it unblocks | Source | Decision |
+|---|---|---|---|---|---|---|
+| E1 | Name the M19 owner and a date | PO | none named | 4.12 (on-call directory and role-based send) and 4.13 (after-hours triage routing); also a real router, so `ladder_exhausted` and role routing work at all | `brief-m19-owner.md`; UI spec §5 4.12 | |
+| E2 | Who may be addressed by role ("on-call RN") and who may address a role | CL | not decided | 4.12; changes who is paged. Needs a new ADR | UI spec §9 | |
+| E3 | Accept the new-ADR route for role recipients (drafted after E1 and E2) | PO | yes | The ADR is written after the answers | UI spec §9 | |
+| E4 | Fallback recipient when the on-call lookup fails | M19 + CL | none; supervisors are alerted, which is not an assignment | Needs the M19 owner | brief §7 | |
+
+## F. Later phases (not blocking anything now)
+
+Listed for completeness, with owners from the UI spec §9: retention classes and legal hold (5.6, compliance, new ADR), export format and
+approval roles (5.7), break-glass eligibility and review SLA (5.8), app-lock and device policy (5.5, SEC), dictation PHI boundary (6.3),
+machine translation of clinical content (6.4, off by default), AI summaries (6.5, hazard H-08), external partner share (6.6, BAA),
+family messaging without an app (6.7, privacy officer), individual-level analytics (6.2, forbidden by default), the self-destruct
+question (UI spec §8; recommended to decline for clinical content), and reconciling native push with ADR-0072 (5.11).
+
+## What happens with the answers
+
+Accepted defaults and edits are written into the owning ADRs (0056, 0069, 0071, 0073, 0076, 0078, 0079) and the brief as decided,
+with the decider's role and date, and the runbook placeholders are replaced. A rejected default becomes a work item. E1 to E3 start
+the 4.12 and 4.13 planning.
