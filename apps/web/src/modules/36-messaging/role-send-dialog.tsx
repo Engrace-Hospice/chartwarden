@@ -118,7 +118,8 @@ export function RoleSendDialog({
       keepRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     } else if (wasConfirming.current) {
       const opener = openerRef.current;
-      const target = opener?.isConnected ? opener : (confirmRef.current ?? roleRef.current);
+      const usable = opener && opener !== document.body && opener.isConnected;
+      const target = usable ? opener : (confirmRef.current ?? roleRef.current);
       target?.focus();
     }
     wasConfirming.current = confirmingDiscard;

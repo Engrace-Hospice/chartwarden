@@ -41,3 +41,9 @@
 .wx-urgent-form fieldset input[type="radio"]:checked::before {
   transform: scale(1);
 }
+
+@media (forced-colors: active) {
+  .wx-urgent-form fieldset input[type="radio"]::before {
+    background: CanvasText;
+  }
+}
