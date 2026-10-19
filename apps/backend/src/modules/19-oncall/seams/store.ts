@@ -104,7 +104,7 @@ export interface OncallSeamStore {
   ): Promise<readonly OnCallShiftDto[]>;
   /** Every `active` shift covering `asOfIso` across the org — M36's channel re-sync read. */
   activeShiftsAt(asOfIso: IsoInstant): Promise<readonly OnCallShiftDto[]>;
-  /** The user id behind a membership, for the `OnCallActor` membership arm. Missing ⇒ absent from the map. */
+  /** The user id behind an ACTIVE, non-revoked membership, for the `OnCallActor` membership arm. Missing, suspended or revoked ⇒ absent from the map. */
   userIdsForMemberships(membershipIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 
   // ── TriageCallReader ───────────────────────────────────────────────────────────────────────────────
@@ -149,6 +149,8 @@ export interface OncallSeamSeed {
   readonly shifts?: readonly OnCallShiftDto[];
   /** membershipId → userId, for the `OnCallActor` membership arm. */
   readonly membershipUserIds?: Readonly<Record<string, string>>;
+  /** Membership ids that are suspended, revoked or pending: they resolve to no user (a departed person is not on call). */
+  readonly inactiveMembershipIds?: readonly string[];
   /** Keyed by patient id. */
   readonly featuresByPatient?: Readonly<Record<string, readonly TriageCallFeatureDto[]>>;
   readonly digestsByPatient?: Readonly<Record<string, readonly TriageCallDigest[]>>;
@@ -187,6 +189,7 @@ const withinShift = (shift: OnCallShiftDto, asOfIso: IsoInstant): boolean =>
 export function createInMemoryOncallSeamStore(seed: OncallSeamSeed = {}): InMemoryOncallSeamStore {
   const shifts = seed.shifts ?? [];
   const membershipUserIds = new Map(Object.entries(seed.membershipUserIds ?? {}));
+  const inactiveMemberships = new Set(seed.inactiveMembershipIds ?? []);
   const packets = new Map((seed.packets ?? []).map((p) => [p.triageCallId, p]));
   const verbalOrderContexts = new Map(Object.entries(seed.verbalOrderContexts ?? {}));
 
@@ -203,7 +206,7 @@ export function createInMemoryOncallSeamStore(seed: OncallSeamSeed = {}): InMemo
       const out = new Map<string, string>();
       for (const id of membershipIds) {
         const userId = membershipUserIds.get(id);
-        if (userId !== undefined) out.set(id, userId);
+        if (userId !== undefined && !inactiveMemberships.has(id)) out.set(id, userId);
       }
       return out;
     },

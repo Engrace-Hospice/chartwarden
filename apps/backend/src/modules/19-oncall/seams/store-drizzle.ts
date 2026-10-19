@@ -48,7 +48,7 @@ import type {
   TriageMetricsWindow,
   TriageProtocolAnswerType,
 } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import type {
   ChiefComplaintTally,
   EscalationTierTally,
@@ -177,7 +177,14 @@ export function buildDrizzleOncallSeamStore(db: DbClient): OncallSeamStore {
         const rows = await tx
           .select({ id: t.memberships.id, userId: t.memberships.userId })
           .from(t.memberships)
-          .where(inArray(t.memberships.id, [...membershipIds]));
+          .where(
+            and(
+              inArray(t.memberships.id, [...membershipIds]),
+              // A departed person must not be paged: only active, non-revoked memberships resolve to a user.
+              eq(t.memberships.status, "active"),
+              isNull(t.memberships.revokedAt),
+            ),
+          );
         return new Map(rows.map((r) => [r.id, r.userId]));
       });
     },

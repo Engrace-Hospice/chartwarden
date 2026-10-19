@@ -370,6 +370,8 @@ jobs:
           # open. Live because the D10 redelivery guard is a partial unique index, the coalesce grain is a
           # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
+          # ADR-0057 item 12 - the real tier-1 EscalationRouter as wardenx_app: real shift read, patient/policy/zone reads, two-org isolation, the 2026-11-01 New York repeated hour on absolute instants, back-to-back shifts, pure read.
+          - { name: "M19 Escalation router", scripts: "test:m19:escalation-router:live" }
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
           # F-155 (#248): the m19 `handlers-unbound` group's own finding, now built — §4.5 path 1 / §4.8
           # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
