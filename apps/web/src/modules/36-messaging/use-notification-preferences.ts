@@ -39,10 +39,14 @@ interface Answer {
   readonly error?: { readonly error?: { readonly message?: unknown } };
   readonly response?: { readonly status: number };
 }
+/** The real PUT answers only the row's id and timestamp, never the preferences. */
+interface PutAnswer extends Omit<Answer, "data"> {
+  readonly data?: { readonly id: string; readonly updatedAt: string };
+}
 /** Typed loosely: the generated path union makes the full client type too deep to instantiate here. */
 interface PrefsClient {
   GET(path: string): Promise<Answer>;
-  PUT(path: string, init: { body: Preferences }): Promise<Answer>;
+  PUT(path: string, init: { body: Preferences }): Promise<PutAnswer>;
 }
 
 const FLAG_PROBE = "/api/v1/messaging/reminders";
@@ -92,7 +96,8 @@ export function useNotificationPreferences() {
       if (!client) return { ok: false, message: null };
       try {
         const res = await client.PUT(PREFS, { body: draft });
-        if (res.data && !res.error) return { ok: true, prefs: res.data };
+        // The PUT answers only { id, updatedAt }, not the preferences: what was sent is what is now stored.
+        if (res.data && !res.error) return { ok: true, prefs: draft };
         const message = res.error?.error?.message;
         return { ok: false, message: typeof message === "string" && message ? message : null };
       } catch {
