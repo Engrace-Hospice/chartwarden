@@ -74,6 +74,12 @@ describe("migration 1132 thread access grant", () => {
     expect(sql).toContain("OWNER TO wardenx_audit_writer");
   });
 
+  it("cascades from the message and the request like the sibling ack tables, so the eraser's message delete works", () => {
+    expect(sql).not.toContain("ON DELETE RESTRICT,\n");
+    expect(sql.match(/ON DELETE CASCADE/g)).toHaveLength(2);
+    expect(schema.match(/onDelete\("cascade"\)/g)).toHaveLength(2);
+  });
+
   it("is owned by M36 in both manifests", () => {
     for (const f of ["architecture/module-manifest.ts", "architecture/module-manifest.cjs"]) {
       expect(read(f)).toContain('"message_thread_access_grant"');

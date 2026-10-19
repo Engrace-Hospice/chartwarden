@@ -41,12 +41,12 @@ export const messageThreadAccessGrants = pgTable(
       name: "message_thread_grant_root_fk",
       columns: [t.organizationId, t.channelId, t.rootMessageId],
       foreignColumns: [messages.organizationId, messages.channelId, messages.id],
-    }).onDelete("restrict"),
+    }).onDelete("cascade"),
     requestFk: foreignKey({
       name: "message_thread_grant_request_fk",
       columns: [t.organizationId, t.requestId],
       foreignColumns: [messageAckRequests.organizationId, messageAckRequests.id],
-    }).onDelete("restrict"),
+    }).onDelete("cascade"),
     oneLive: uniqueIndex("message_thread_grant_one_live")
       .on(t.organizationId, t.requestId, t.granteeUserId)
       .where(sql`${t.revokedAt} IS NULL`),

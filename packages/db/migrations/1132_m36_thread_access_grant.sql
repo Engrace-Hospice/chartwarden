@@ -6,6 +6,7 @@
 --     now() in SQL (never an application clock). expires_at > granted_at is a CHECK.
 --   * Insert / revoke-only: the one permitted update moves revoked_at from NULL to a value, once; the app role holds no DELETE and an
 --     UPDATE grant on revoked_at alone (the trigger is the backstop for any other role). One LIVE grant per (request, grantee).
+--     Both FKs CASCADE like the sibling ack tables (1107): the tenant eraser deletes `message` rows and the grants go with them.
 --     Deletion is by privilege: the app role has no DELETE grant; only wardenx_destruction deletes.
 --   * Binding: the insert guard requires channel_id to be the REQUEST's channel and root_message_id to be the ROOT of the request's message
 --     (the message itself when parent_message_id IS NULL, else its parent chain followed to the top, at most 10 hops). G2 derives channel
@@ -29,10 +30,10 @@ CREATE TABLE "message_thread_access_grant" (
   CONSTRAINT "message_thread_grant_max_window" CHECK ("expires_at" <= "granted_at" + interval '7 days'),
   CONSTRAINT "message_thread_grant_root_fk"
     FOREIGN KEY ("organization_id", "channel_id", "root_message_id")
-    REFERENCES "message"("organization_id", "channel_id", "id") ON DELETE RESTRICT,
+    REFERENCES "message"("organization_id", "channel_id", "id") ON DELETE CASCADE,
   CONSTRAINT "message_thread_grant_request_fk"
     FOREIGN KEY ("organization_id", "request_id")
-    REFERENCES "message_acknowledgment_request"("organization_id", "id") ON DELETE RESTRICT
+    REFERENCES "message_acknowledgment_request"("organization_id", "id") ON DELETE CASCADE
 );--> statement-breakpoint
 CREATE UNIQUE INDEX "message_thread_grant_one_live"
   ON "message_thread_access_grant" ("organization_id", "request_id", "grantee_user_id") WHERE "revoked_at" IS NULL;--> statement-breakpoint

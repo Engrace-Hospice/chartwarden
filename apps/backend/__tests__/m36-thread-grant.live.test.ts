@@ -265,6 +265,47 @@ describe.skipIf(!DB_URL)("M36 ADR-0083 G1 thread access grant - LIVE Postgres", 
     await drop(id);
   });
 
+  it("deleting the message (as the tenant eraser does) succeeds with a grant present, removes it, and audits the delete", async () => {
+    const msg = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256)
+         VALUES ($1,$2,$3,'user', '\\x01'::bytea, $4) RETURNING id`,
+        [ORG_A, channel, author, "d".repeat(64)],
+      )
+    )[0].id;
+    const req = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO message_acknowledgment_request
+         (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+         VALUES ($1,$2,$3,$4,'important',$5,$6, now(), now(), now() + interval '60 minutes') RETURNING id`,
+        [ORG_A, msg, channel, PATIENT, author, assignee],
+      )
+    )[0].id;
+    const [g] = await kit.one<{ id: string }>(INSERT, [
+      ORG_A,
+      channel,
+      msg,
+      req,
+      assignee,
+      "escalated",
+      "1 hour",
+    ]);
+    await kit.one("DELETE FROM message WHERE id=$1", [msg]);
+    expect(
+      await kit.count("SELECT count(*)::int AS n FROM message_thread_access_grant WHERE id=$1", [
+        g.id,
+      ]),
+    ).toBe(0);
+    const events = await kit.one<{ event_type: string }>(
+      "SELECT event_type FROM audit_event WHERE resource_kind='message_thread_access_grant' AND resource_id=$1 ORDER BY event_type",
+      [g.id],
+    );
+    expect(events.map((e) => e.event_type)).toEqual([
+      "message_thread_access_grant.delete",
+      "message_thread_access_grant.insert",
+    ]);
+  });
+
   it("lands an audit row for the grant and for its revoke", async () => {
     const id = await seedGrant(assignee);
     await kit.one("UPDATE message_thread_access_grant SET revoked_at = now() WHERE id=$1", [id]);
