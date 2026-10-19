@@ -249,7 +249,13 @@ export type {
 } from "./seams";
 
 // ── M36-T06 PHI sanitization wrapper (§4.7) — the only path to out-of-band channels ───────
-export { sanitizeForOutOfBand, sanitizeForEmergencyContactCall } from "./notification";
+export {
+  sanitizeForOutOfBand,
+  sanitizeForEmergencyContactCall,
+  renderOutOfBand,
+  OUT_OF_BAND_CHANNELS,
+  type RenderedOutOfBand,
+} from "./notification";
 export type {
   Alert,
   Message,

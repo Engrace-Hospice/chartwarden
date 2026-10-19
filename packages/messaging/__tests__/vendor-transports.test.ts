@@ -9,15 +9,25 @@ import {
   createTwilioVoiceTransport,
   createWebPushTransport,
   encryptWebPushPayload,
+  sanitizeForEmergencyContactCall,
+  sanitizeForOutOfBand,
   sendPostmarkEmail,
   sendTwilioSms,
 } from "../src/index";
 
-const NOTIFICATION = {
-  notificationDeliveryId: "d-1",
-  short: "Field safety alert",
-  deepLink: "https://app.example.test/n/d-1",
-};
+// Issued by the real sanitizer: the renderer (WP 4.7) trusts only notifications it minted.
+const NOTIFICATION = sanitizeForOutOfBand({
+  alertOrMessage: {
+    kind: "alert",
+    alertId: "a-1",
+    notificationDeliveryId: "d-1",
+    category: "field_safety",
+    payload: {},
+  },
+  channel: "push",
+  recipientUserId: "u-1",
+  baseUrl: "https://app.example.test",
+});
 
 interface Captured {
   url: string;
@@ -138,7 +148,11 @@ describe("Twilio voice transport (Tier-1 SOS)", () => {
       fetch: f.fetch,
     });
     const out = await t.send({
-      notification: { ...NOTIFICATION, short: 'Alert <&> "now"' },
+      notification: sanitizeForEmergencyContactCall({
+        idempotencyKey: "k-1",
+        agencyName: "Harbor & Sons",
+        subjectDisplayName: "Sam",
+      }),
       destination: "+15553334444",
     });
     expect(out).toEqual({ vendorMessageId: "CA555", settlesOnAcceptance: false });
@@ -149,8 +163,8 @@ describe("Twilio voice transport (Tier-1 SOS)", () => {
       "https://api.example.test/webhooks/twilio/voice-status",
     );
     const twiml = form.get("Twiml") ?? "";
-    expect(twiml).toContain("Alert &lt;&amp;&gt; &quot;now&quot;");
-    expect(twiml).not.toContain("<&>");
+    expect(twiml).toContain("Harbor &amp; Sons");
+    expect(twiml).not.toContain("Harbor & Sons");
     expect(twiml).not.toContain(NOTIFICATION.deepLink);
   });
 });
@@ -277,6 +291,7 @@ describe("Web Push transport", () => {
     expect(headers["Content-Encoding"]).toBe("aes128gcm");
     expect(JSON.parse(decryptAes128gcm(Buffer.from(call.init.body as Uint8Array), rx))).toEqual({
       id: "d-1",
+      title: "WardenX",
       short: NOTIFICATION.short,
       deepLink: NOTIFICATION.deepLink,
     });

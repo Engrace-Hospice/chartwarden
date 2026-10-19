@@ -18,6 +18,7 @@ import {
   randomBytes,
   sign,
 } from "node:crypto";
+import { renderOutOfBand } from "../notification/sanitize";
 import { TransportError } from "./transports";
 import type { OutOfBandTransport } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
@@ -158,11 +159,13 @@ export function createWebPushTransport(opts: WebPushOptions): OutOfBandTransport
   return {
     async send({ notification, destination }) {
       const subscription = parseSubscription(destination);
+      const rendered = renderOutOfBand(notification, "push");
       const payload = Buffer.from(
         JSON.stringify({
-          id: notification.notificationDeliveryId,
-          short: notification.short,
-          deepLink: notification.deepLink,
+          id: rendered.id,
+          title: rendered.title,
+          short: rendered.body,
+          deepLink: rendered.link,
         }),
       );
       const res = await postToVendor({
@@ -184,8 +187,7 @@ export function createWebPushTransport(opts: WebPushOptions): OutOfBandTransport
         ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
       });
       return {
-        vendorMessageId:
-          res.headers.get("location") ?? `webpush:${notification.notificationDeliveryId}`,
+        vendorMessageId: res.headers.get("location") ?? `webpush:${rendered.id}`,
         settlesOnAcceptance: true,
       };
     },

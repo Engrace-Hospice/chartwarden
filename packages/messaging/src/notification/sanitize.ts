@@ -54,6 +54,22 @@ export interface SanitizedNotification {
  *  spoken script here is a fixed string that never speaks a name or a location. */
 export type OutOfBandChannel = "sms" | "email" | "push" | "voice";
 
+/** Every out-of-band channel, for exhaustive tests and the render table. */
+export const OUT_OF_BAND_CHANNELS: readonly OutOfBandChannel[] = ["sms", "email", "push", "voice"];
+
+/**
+ * WP 4.7 provenance: only the two sanitizers below mint a notification, and they register it here. The
+ * renderer ({@link renderOutOfBand}) trusts a notification only if it is in this set, so a hand-built object,
+ * or a spread copy with a swapped `short`, can never put its own text on a lock screen. Module-private.
+ */
+const issuedNotifications = new WeakSet<object>();
+
+function issue(n: SanitizedNotification): SanitizedNotification {
+  const frozen = Object.freeze(n);
+  issuedNotifications.add(frozen);
+  return frozen;
+}
+
 /** SMS hard cap (§4.7) — the `short` is truncated to fit one segment with the signed deep link. */
 const SMS_MAX_CHARS = 160;
 
@@ -92,7 +108,7 @@ export function sanitizeForEmergencyContactCall(input: {
 }): SanitizedNotification {
   const agency = cleanSpokenName(input.agencyName, CONTACT_CALL_AGENCY_FALLBACK);
   const subject = cleanSpokenName(input.subjectDisplayName, CONTACT_CALL_SUBJECT_FALLBACK);
-  return {
+  return issue({
     notificationDeliveryId: input.idempotencyKey,
     short: [
       `This is an automated safety call from ${agency}. ${subject} listed you as an emergency contact,`,
@@ -101,33 +117,57 @@ export function sanitizeForEmergencyContactCall(input: {
       "This call does not involve any patient.",
     ].join(" "),
     deepLink: "",
-  };
+  });
 }
 
-/** Generic, PHI-free `short` per alert category (§4.7: "no category specifics beyond the
- *  generic short"). Deliberately content-free — the recipient learns only that something needs
- *  attention and follows the deep link into the authenticated app for any detail. */
-const CATEGORY_SHORT: { readonly [C in AlertCategory]: string } = {
-  clinical_urgent: "You have an urgent clinical alert",
-  clinical_routine: "You have a new clinical alert",
-  operational: "You have a new alert",
-  field_safety: "Field safety alert",
-  administrative: "You have a new alert",
-  system: "You have a new alert",
-};
+/** The one generic line (WP 4.7). Names no patient, no clinical content and no sender; the link, when
+ *  present, is appended by the renderer and opens only inside an authenticated session. */
+const GENERIC_SHORT = "You have a new notification in WardenX. Sign in to view.";
+const URGENT_SHORT = "You have a new urgent request in WardenX. Sign in to view.";
+const SAFETY_SHORT = "WardenX safety alert. Sign in to view.";
+const MESSAGE_SHORT = "You have a new message in WardenX. Sign in to view.";
 
-/** The generic `short` for an out-of-band message notification (§4.7). */
-const MESSAGE_SHORT = "You have a new message";
+/** Generic, PHI-free `short` per alert category (§4.7: "no category specifics beyond the generic short").
+ *  Urgency level is the only thing a category may add; it identifies no one. */
+const CATEGORY_SHORT: { readonly [C in AlertCategory]: string } = {
+  clinical_urgent: URGENT_SHORT,
+  clinical_routine: GENERIC_SHORT,
+  operational: GENERIC_SHORT,
+  field_safety: SAFETY_SHORT,
+  administrative: GENERIC_SHORT,
+  system: GENERIC_SHORT,
+};
 
 /** Truncate to the SMS segment limit without splitting awkwardly past the cap. */
 function clampForSms(short: string): string {
   return short.length <= SMS_MAX_CHARS ? short : `${short.slice(0, SMS_MAX_CHARS - 1)}…`;
 }
 
-/** Content-free deep link: a single opaque `notification_delivery` id under the app's authed
- *  notification route. Carries NO patient/channel/message identifier (§4.7). */
+/** An opaque delivery id: letters, digits, `-` and `_` only. Anything else (a name, a path, a query) is refused. */
+const OPAQUE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Content-free deep link: a single opaque `notification_delivery` id under the app's authed notification
+ * route. Carries NO patient/channel/message identifier and no token (§4.7). Returns "" - never a partial or
+ * rewritten link - when the base is not a plain http(s) origin (no credentials, query or fragment) or the id is
+ * not opaque; the wording ("Sign in to view.") stands on its own without it.
+ */
 function deepLinkFor(baseUrl: string, notificationDeliveryId: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/n/${notificationDeliveryId}`;
+  if (!OPAQUE_ID.test(notificationDeliveryId)) return "";
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return "";
+  }
+  const plain =
+    (url.protocol === "https:" || url.protocol === "http:") &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === "";
+  if (!plain) return "";
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}/n/${notificationDeliveryId}`;
 }
 
 /**
@@ -153,9 +193,63 @@ export function sanitizeForOutOfBand(input: {
   const short =
     channel === "voice" ? VOICE_SCRIPT : channel === "sms" ? clampForSms(baseShort) : baseShort;
 
-  return {
+  return issue({
     notificationDeliveryId,
     short,
     deepLink: deepLinkFor(baseUrl, notificationDeliveryId),
+  });
+}
+
+/** What a vendor transport puts on the wire, per channel. Every field is generic or opaque. */
+export interface RenderedOutOfBand {
+  /** Push title (a constant). */
+  readonly title: string;
+  /** Email subject (a constant). */
+  readonly subject: string;
+  /** SMS body, email text, push body or spoken line. */
+  readonly body: string;
+  /** The deep link, or "" when none is safe. Already included in `body` where the channel shows one. */
+  readonly link: string;
+  /** The delivery id for vendor correlation, or "" when it is not opaque. */
+  readonly id: string;
+}
+
+const PUSH_TITLE = "WardenX";
+const EMAIL_SUBJECT = "WardenX notification";
+
+/**
+ * WP 4.7 render-time guard: the ONLY place out-of-band subject / title / body text is composed. A notification
+ * that did not come out of a sanitizer above (hand-built, or a modified copy) is replaced by the generic wording
+ * and no link, so a future caller, template or payload field cannot leak. Never throws and never drops the send:
+ * the fallback is still a deliverable alert.
+ */
+export function renderOutOfBand(
+  notification: SanitizedNotification,
+  channel: OutOfBandChannel,
+): RenderedOutOfBand {
+  const proven = issuedNotifications.has(notification);
+  const short = proven ? notification.short : channel === "voice" ? VOICE_SCRIPT : GENERIC_SHORT;
+  const link = proven ? notification.deepLink : "";
+  const id =
+    proven && OPAQUE_ID.test(notification.notificationDeliveryId)
+      ? notification.notificationDeliveryId
+      : "";
+  const withLink = link === "" ? short : `${short} ${link}`;
+  const body =
+    channel === "sms"
+      ? withLink.length <= SMS_MAX_CHARS
+        ? withLink
+        : clampForSms(short)
+      : channel === "email"
+        ? link === ""
+          ? short
+          : `${short}\n\n${link}`
+        : short;
+  return {
+    title: PUSH_TITLE,
+    subject: EMAIL_SUBJECT,
+    body,
+    link: channel === "sms" && body === short ? "" : link,
+    id,
   };
 }

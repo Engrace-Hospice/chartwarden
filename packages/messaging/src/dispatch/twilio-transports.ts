@@ -1,5 +1,3 @@
-import type { OutOfBandTransport } from "./transports";
-import { TransportError } from "./transports";
 // @wardenx/messaging — Twilio SMS + Voice transports (M36 GAP-062, spec §4.4 / §4.7).
 //
 // SMS  -> `POST /2010-04-01/Accounts/{sid}/Messages.json`   (vendorMessageId = the message SID)
@@ -12,6 +10,9 @@ import { TransportError } from "./transports";
 //
 // Credentials arrive as constructor arguments (the composition root reads env); they are used only to build the
 // Basic auth header and never appear in a thrown reason.
+import { renderOutOfBand } from "../notification/sanitize";
+import type { OutOfBandTransport } from "./transports";
+import { TransportError } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
 
 export const TWILIO_DEFAULT_BASE_URL = "https://api.twilio.com";
@@ -102,7 +103,7 @@ export function createTwilioSmsTransport(opts: TwilioSmsOptions): OutOfBandTrans
     async send({ notification, destination }) {
       const vendorMessageId = await sendTwilioSms(opts, {
         to: destination,
-        text: `${notification.short} ${notification.deepLink}`,
+        text: renderOutOfBand(notification, "sms").body,
       });
       return { vendorMessageId, settlesOnAcceptance: false };
     },
@@ -117,7 +118,7 @@ export function createTwilioVoiceTransport(opts: TwilioVoiceOptions): OutOfBandT
       form.set("From", opts.from);
       // The sanitized `short` for the voice channel IS the fixed script (§4.7) — spoken twice so a clipped
       // pickup still hears it. No name, location or patient detail exists on the notification to speak.
-      const line = xmlEscape(notification.short);
+      const line = xmlEscape(renderOutOfBand(notification, "voice").body);
       form.set(
         "Twiml",
         `<Response><Say>${line}</Say><Pause length="1"/><Say>${line}</Say></Response>`,
