@@ -14365,6 +14365,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/deliveries/{id}/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve the opaque id of an out-of-band link (`{origin}/n/{id}`) to its in-app target (WP 4.8, ADR-0075; messaging.read). The id is not an access grant: the delivery must be the CALLER's own, in the caller's organisation, the message must still exist in that channel and the caller must still be able to see the channel. A missing, malformed, someone else's, other-tenant, no-longer-visible or deleted target is one identical 404 (the id is never echoed). Returns three ids only (channel, message, and the open acknowledgment request on it, if any), no patient and no text. Read-only: opening a link never acknowledges anything. Read-audited against the delivery */
+        get: operations["getApiV1MessagingDeliveriesByIdTarget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/department-channels": {
         parameters: {
             query?: never;
@@ -67197,6 +67214,36 @@ export interface operations {
                     } | {
                         /** @constant */
                         state: "unavailable";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeliveriesByIdTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        message_id: string;
+                        ack_request_id: string | null;
                     };
                 };
             };

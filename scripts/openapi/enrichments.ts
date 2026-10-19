@@ -1329,6 +1329,8 @@ import {
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
+// M36 WP 4.8 deep-link resolver.
+import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
   DraftQuerySchema as M36DraftQuerySchema,
   DraftResponseSchema as M36DraftResponseSchema,
@@ -9732,6 +9734,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
     response: M36UrgentMessageOptionsResponseSchema,
+  },
+  "GET /api/v1/messaging/deliveries/:id/target": {
+    summary:
+      "Resolve the opaque id of an out-of-band link (`{origin}/n/{id}`) to its in-app target (WP 4.8, ADR-0075; messaging.read). The id is not an access grant: the delivery must be the CALLER's own, in the caller's organisation, the message must still exist in that channel and the caller must still be able to see the channel. A missing, malformed, someone else's, other-tenant, no-longer-visible or deleted target is one identical 404 (the id is never echoed). Returns three ids only (channel, message, and the open acknowledgment request on it, if any), no patient and no text. Read-only: opening a link never acknowledges anything. Read-audited against the delivery",
+    response: M36DeliveryTargetResponseSchema,
   },
   "POST /api/v1/messaging/escalations": {
     summary:

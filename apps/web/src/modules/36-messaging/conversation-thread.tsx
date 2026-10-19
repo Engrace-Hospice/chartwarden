@@ -60,6 +60,10 @@ export interface ConversationThreadProps {
   onMessageSent: () => void;
   onAccessRevoked: (channelId: string) => void;
   anchorMessageId?: string | null;
+  /** WP 4.8: set only by a notification link (never a search hit): that message's acknowledgment card takes focus once. */
+  landOnMessageId?: string | null;
+  /** Called once the linked request card has taken focus, so the parent stops asking for it (a remount must not land again). */
+  onLanded?: () => void;
   /** Changes when a realtime hint (or a socket reconnect) says this channel has news: read the latest now. */
   liveToken?: number;
   /** While the socket is up, polling is only a safety net and runs slowly. */
@@ -99,6 +103,8 @@ function ConversationThreadView({
   onMessageSent,
   onAccessRevoked,
   anchorMessageId = null,
+  landOnMessageId = null,
+  onLanded,
   liveToken = 0,
   realtimeConnected = false,
   liveHint = null,
@@ -631,6 +637,8 @@ function ConversationThreadView({
           channelId={channel.channelId}
           enabled={channel.kind === "care_team" && Boolean(channel.subjectId)}
           refreshKey={messages ? (messages.at(-1)?.messageId ?? "") : null}
+          landOnMessageId={landOnMessageId}
+          onLanded={onLanded}
         >
           <MessageTimeline
             timelineRef={timelineRef}

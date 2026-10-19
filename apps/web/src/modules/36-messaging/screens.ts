@@ -14,6 +14,9 @@ const GlobalSearchSettings = lazy(() =>
 const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
+const NotificationLanding = lazy(() =>
+  import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
+);
 
 export const messagingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 36,
@@ -42,6 +45,13 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.global_search.manage",
       screen: GlobalSearchSettings,
+    },
+    {
+      // WP 4.8: the landing of an out-of-band link (`/n/<opaque delivery id>`); omitted from nav (param path).
+      id: "messaging.notification-landing",
+      path: "/n/:id",
+      title: "Notification",
+      screen: NotificationLanding,
     },
     {
       id: "messaging.notifications",

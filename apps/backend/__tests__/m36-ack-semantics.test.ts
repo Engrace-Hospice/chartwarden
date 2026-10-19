@@ -78,6 +78,14 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/messaging/src/jobs/queues.ts":
     "WP 4.4 names the two escalation queues of the acknowledgment-request aggregate (ack_escalation_timer / _sweep)",
   "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",
+  "apps/backend/src/modules/36-messaging/delivery-target/delivery-target-service.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/delivery-target-routes.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/delivery-target-typebox.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/notification-landing.tsx":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };

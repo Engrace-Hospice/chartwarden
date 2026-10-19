@@ -53,12 +53,16 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import { createDbAckStore } from "../src/modules/36-messaging/ack-requests/ack-store-db";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
+import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
 import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
+import { createDbDeliveryTargetReader } from "../src/modules/36-messaging/delivery-target/delivery-target-reader-db";
+import { createDeliveryTargetService } from "../src/modules/36-messaging/delivery-target/delivery-target-service";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
@@ -208,6 +212,8 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels/:id/urgent-messages/options": { kind: "idor" },
   // WP 4.2 acknowledgment requests: the id is a request's (or a channel's / a body message id); every refusal (org B, a non-member,
   // a random id) is the 404 a random id gets and nothing is written (also attacked in m36-ack-requests.live).
+  // WP 4.8 deep link: the id is a delivery's; another user's, another org's and a random id answer identically (also attacked in m36-delivery-target.live).
+  "GET /api/v1/messaging/deliveries/:id/target": { kind: "idor" },
   "POST /api/v1/messaging/escalations": { kind: "idor" },
   "GET /api/v1/messaging/escalations/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/escalations": { kind: "idor" },
@@ -322,6 +328,8 @@ const REGISTRAR_FILES = [
   "medication-question-routes.ts", // WP 3.10 medication questions, mounted by registerMessagingRoutes
   "medication-question-typebox.ts", // schemas only
   "urgent-routes.ts", // WP 4.1 urgent clinical message, mounted by registerMessagingRoutes
+  "delivery-target-routes.ts", // WP 4.8 deep-link resolver, mounted by registerMessagingRoutes
+  "delivery-target-typebox.ts", // schemas only
   "ack-routes.ts", // WP 4.2 acknowledgment requests, mounted by registerMessagingRoutes
   "ack-typebox.ts", // schemas only
   "urgent-typebox.ts", // schemas only
@@ -786,6 +794,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
         careTeamMembers: async () => [],
       }),
+      deliveryTarget: {
+        service: createDeliveryTargetService({
+          read: createDbDeliveryTargetReader(handle.db),
+          messaging: service,
+          openRequestId: createOpenRequestLookup(createDbAckStore(handle.db)),
+        }),
+      },
       ackRequests: {
         service: buildAckDeps({
           db: handle.db,
@@ -2059,6 +2074,43 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       // the assignee, by contrast, really can act: the refusals above were tenancy, not shape.
       const ack = await call("POST /api/v1/messaging/escalations/:id/acknowledge", u2, { id });
       expect(ack.statusCode, ack.body).toBe(200);
+    });
+    it("WP 4.8: org B and an in-org non-member get a random id's answer for A's notification link", async () => {
+      const route = "GET /api/v1/messaging/deliveries/:id/target";
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: "please look at this",
+      });
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m36.ack.requested','warn',$2,$3,'pending') RETURNING id`,
+          [
+            orgA,
+            JSON.stringify({ channelId: careTeamA, messageId: sent.messageId }),
+            `wp48-${randomUUID()}`,
+          ],
+        )
+      ).rows[0].id as string;
+      const id = (
+        await admin.query(
+          `INSERT INTO notification_delivery (alert_id, recipient_user_id, alert_category, alert_severity, channel, status)
+           VALUES ($1,$2,'clinical_urgent','warn','push','pending') RETURNING id`,
+          [alert, u2.userId],
+        )
+      ).rows[0].id as string;
+      for (const attacker of [bUser, adminB, outsider, u1]) {
+        await expectNoOracle(route, attacker, { id });
+      }
+      // the recipient, by contrast, really can resolve it: the refusals above were ownership, not shape.
+      const ok = await call(route, u2, { id });
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json()).toEqual({
+        channel_id: careTeamA,
+        message_id: sent.messageId,
+        ack_request_id: null,
+      });
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

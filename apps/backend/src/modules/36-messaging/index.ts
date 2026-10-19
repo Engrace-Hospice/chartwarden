@@ -142,10 +142,14 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
+import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
+import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from "./delivery-target/delivery-target-reader-db";
+import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
 import {
@@ -250,6 +254,13 @@ export function mountMessagingRoutes(
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
+    deliveryTarget: {
+      service: _createDeliveryTargetService({
+        read: _createDbDeliveryTargetReader(db),
+        messaging: service,
+        openRequestId: _createOpenRequestLookup(_createDbAckStore(db)),
+      }),
+    },
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8

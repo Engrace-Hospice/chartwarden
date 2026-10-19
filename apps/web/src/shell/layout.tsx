@@ -22,12 +22,14 @@ import {
 // holding the top bar and the routed workspace — the mockups' shell.
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
 import { clearAllDrafts } from "./ceremony-drafts";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
+import { clearPendingNotificationLink } from "./pending-deep-link";
 import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
+import { RedirectRememberingLink } from "./redirect-remembering-link";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
@@ -112,7 +114,8 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
   // chromeless (outside this layout), so it is never guarded — no redirect loop.
   if (needsOrgSelection(session)) {
-    return <Navigate to="/login/organization" replace />;
+    // WP 4.8: a notification link finishes after the organisation is chosen
+    return <RedirectRememberingLink to="/login/organization" pathname={pathname} />;
   }
   // A click on a nav link closes the drawer; a click on an entry's own disclosure toggle (not an
   // <a>) should not, or the entry would expand AND the drawer close in the same tap.
@@ -339,6 +342,7 @@ export function ActorMenu({ session }: { session: Session | null }): JSX.Element
     try {
       await authClient.signOut();
       clearAllDrafts();
+      clearPendingNotificationLink();
     } catch {
       // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session
       // on a shared workstation while the user believes they have left.

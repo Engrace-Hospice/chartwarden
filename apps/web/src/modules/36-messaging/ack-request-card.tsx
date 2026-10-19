@@ -9,11 +9,13 @@ import {
   type JSX,
   type ReactNode,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import {
   ACK_CLOSE_LABEL,
@@ -60,7 +62,7 @@ interface CardProps {
   readonly authorName?: string;
   readonly sentAt?: string;
   readonly focusRequested?: boolean;
-  readonly onFocused?: () => void;
+  readonly onFocused?: (requestId: string) => void;
   readonly onAct: (requestId: string, action: AckAction) => void;
 }
 
@@ -86,8 +88,8 @@ export function AckRequestCard({
     if (!active || active === document.body || cardRef.current?.contains(active)) {
       statusRef.current?.focus();
     }
-    onFocused?.();
-  }, [focusRequested, onFocused]);
+    onFocused?.(request.id);
+  }, [focusRequested, onFocused, request.id]);
 
   const actions = request.viewer_actions;
   const waiting = request.status === "pending" || request.status === "escalated";
@@ -175,7 +177,7 @@ interface Slot {
   readonly busyId: string | null;
   readonly noticeId: string;
   readonly focusRequestId: string | null;
-  readonly clearFocus: () => void;
+  readonly clearFocus: (requestId: string) => void;
   readonly act: (requestId: string, action: AckAction) => Promise<void>;
 }
 const SlotContext = createContext<Slot | null>(null);
@@ -194,25 +196,47 @@ export function AckRequestsProvider({
   channelId,
   enabled,
   refreshKey,
+  landOnMessageId = null,
+  onLanded,
   children,
 }: {
   channelId: string;
   enabled: boolean;
   refreshKey?: string | null;
+  /** WP 4.8: the message a notification link opened. Its request card takes focus ONCE when it loads (reading only, nothing is sent). */
+  landOnMessageId?: string | null;
+  /** Called once, when the landing card (and no other) has taken focus, so a remount of this provider need not land again. */
+  onLanded?: () => void;
   children: ReactNode;
 }): JSX.Element {
   const state = useAckRequests(channelId, enabled, refreshKey);
   const noticeId = useId();
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const landingId = landOnMessageId
+    ? (state.requests.find((r) => r.message_id === landOnMessageId)?.id ?? null)
+    : null;
+  const focusRequestId = state.focusRequestId ?? (landingId !== landedId ? landingId : null);
+  const clearFocus = useCallback(
+    (clearedId: string) => {
+      // Only the landing card's own focus counts as "landed"; another card's (an action's) focus must not use it up.
+      if (clearedId === landingId) {
+        setLandedId(clearedId);
+        onLanded?.();
+      }
+      state.clearFocus();
+    },
+    [landingId, onLanded, state.clearFocus],
+  );
   const slot = useMemo<Slot>(
     () => ({
       byMessage: new Map(state.requests.map((r) => [r.message_id, r])),
       busyId: state.busyId,
       noticeId,
-      focusRequestId: state.focusRequestId,
-      clearFocus: state.clearFocus,
+      focusRequestId,
+      clearFocus,
       act: state.act,
     }),
-    [state.requests, state.busyId, state.focusRequestId, state.clearFocus, state.act, noticeId],
+    [state.requests, state.busyId, focusRequestId, clearFocus, state.act, noticeId],
   );
   const hasActions = state.requests.some(
     (r) => r.viewer_actions.can_acknowledge || r.viewer_actions.can_resolve,

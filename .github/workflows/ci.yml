@@ -807,6 +807,7 @@ jobs:
           - { name: "M36 ack escalation timers", scripts: "test:m36:ack-escalation:live" }
           # WP 4.5 (ADR-0071) - delivery-failure handling: a simulated push+SMS outage through the real delivery settlement and event -> one failed_unreachable (history, audit, id-only event, supervisor alert, ops notice) before the deadline; a bound router escalates now; replay + 8-way concurrency write once; ack vs failure in both orders; flag off, non-assignee, reminder alerts and pre-reassign alerts do nothing; tenant isolation as wardenx_app; the DB refuses a person writing failed_unreachable.
           - { name: "M36 ack delivery failure", scripts: "test:m36:ack-delivery-failure:live" }
+          - { name: "M36 delivery target (deep link)", scripts: "test:m36:delivery-target:live" }
           # WP 4.6 (ADR-0073) - notification policy: both flags per tenant, routine push skipped in quiet hours while the designated urgent push is planned (trail says bypassed), verified endpoints only, class floor (critical = push + sms), tenant isolation of the endpoint reader as wardenx_app.
           - { name: "M36 notification policy", scripts: "test:m36:notification-policy:live" }
           # WP 3.5 - handoff lifecycle: the expiry tick with the real dispatcher + AlertEmitter (supervisor role rule, needs_attention fallback), flag-off tenants, lowered policy, offboarding both directions, sockets dropped when resolution fails.

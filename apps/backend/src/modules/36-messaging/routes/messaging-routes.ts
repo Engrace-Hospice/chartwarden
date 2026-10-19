@@ -44,6 +44,11 @@ import {
   registerClinicalLinkRoutes,
   validateRichBodyLinks,
 } from "./clinical-link-routes";
+import {
+  DISABLED_DELIVERY_TARGET,
+  type DeliveryTargetRouteDeps,
+  registerDeliveryTargetRoutes,
+} from "./delivery-target-routes";
 import { DISABLED_HANDOFFS, type HandoffRouteDeps, registerHandoffRoutes } from "./handoff-routes";
 import {
   DISABLED_IDG_DISCUSSIONS,
@@ -136,6 +141,8 @@ export interface MessagingRouteDeps {
   urgent?: UrgentRouteDeps;
   /** WP 4.2: the acknowledgment-request aggregate (service + limiter). Omitted => every route is the uniform 404. */
   ackRequests?: AckRouteDeps;
+  /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
+  deliveryTarget?: DeliveryTargetRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
   idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
@@ -435,6 +442,11 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     viewChannel: VIEW_CHANNEL,
     send: SEND,
     requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+  });
+
+  // --- WP 4.8: the deep-link landing (an opaque delivery id -> channel + message + ack request, for the signed-in recipient only) ---
+  registerDeliveryTargetRoutes(app, deps.deliveryTarget ?? DISABLED_DELIVERY_TARGET, {
+    read: READ,
   });
 
   // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---
