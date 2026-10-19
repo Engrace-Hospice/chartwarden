@@ -45,7 +45,7 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 1rem 0.75rem;
-  max-height: min(24rem, 50vh);
+  max-height: min(24rem, 30vh);
   overflow-y: auto;
   font-size: 0.8125rem;
   color: var(--color-on-surface);

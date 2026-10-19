@@ -20,7 +20,10 @@
 .wx-message-composer {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* The text column keeps a usable floor: the action columns (attach, poll, medication, urgent, schedule, send) shrink
+     and wrap instead, so at ~800 px the textarea and the hint no longer collapse to a sliver. */
+  grid-template-columns: minmax(0, auto) minmax(14rem, 1fr) minmax(0, auto);
+  min-width: 0;
   gap: 0.4rem 0.65rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--color-card-border);
@@ -147,4 +150,15 @@ a.wx-message-reference:hover {
   background: color-mix(in srgb, var(--color-error) 8%, var(--color-surface-lowest));
   color: var(--color-error-pill-fg);
   font-size: 0.8125rem;
+}
+
+.wx-message-composer > .wx-button,
+.wx-message-composer > div .wx-button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.wx-message-composer > small,
+.wx-send-hint {
+  overflow-wrap: break-word;
 }
