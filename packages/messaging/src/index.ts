@@ -379,6 +379,8 @@ export {
   planFanOutDetailed,
   // WP 4.6 notification policy (ADR-0073)
   DESIGNATED_EVENT_TYPES,
+  SNOOZABLE_EVENT_TYPES,
+  isSnoozableEvent,
   PLATFORM_CHANNEL_FLOOR,
   decideChannels,
   designatedClassOf,

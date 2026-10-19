@@ -43,6 +43,8 @@ export {
 export {
   DESIGNATED_EVENT_TYPES,
   PLATFORM_CHANNEL_FLOOR,
+  SNOOZABLE_EVENT_TYPES,
+  isSnoozableEvent,
   decideChannels,
   designatedClassOf,
   type ChannelDecision,

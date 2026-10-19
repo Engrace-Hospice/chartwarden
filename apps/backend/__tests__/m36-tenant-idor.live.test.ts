@@ -94,6 +94,8 @@ import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/templ
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
+import { createSnoozeReminderService } from "../src/modules/36-messaging/snooze-reminders/snooze-reminder-service";
+import { createDbSnoozeReminderStore } from "../src/modules/36-messaging/snooze-reminders/snooze-reminder-store-db";
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
@@ -216,6 +218,14 @@ const ROUTES: Record<string, Verdict> = {
   // a random id) is the 404 a random id gets and nothing is written (also attacked in m36-ack-requests.live).
   // WP 4.8 deep link: the id is a delivery's; another user's, another org's and a random id answer identically (also attacked in m36-delivery-target.live).
   "GET /api/v1/messaging/deliveries/:id/target": { kind: "idor" },
+  // WP 4.10 snooze / reminders: the id is a channel's or a message's; the caller's OWN row is the only thing ever touched, and every
+  // refusal (org B, a non-member, a random id, flag off) is the 404 a random id gets (also attacked in m36-snooze-reminder.live).
+  "GET /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "GET /api/v1/messaging/reminders": { kind: "scoped" },
+  "PUT /api/v1/messaging/messages/:id/reminder": { kind: "idor" },
+  "DELETE /api/v1/messaging/messages/:id/reminder": { kind: "idor" },
   // WP 4.9 supervisor queue: no id to guess - the caller's organisation is the only scope (proved below and in m36-unacknowledged.live).
   "GET /api/v1/messaging/escalations/unacknowledged": { kind: "scoped" },
   "POST /api/v1/messaging/escalations": { kind: "idor" },
@@ -335,6 +345,8 @@ const REGISTRAR_FILES = [
   "delivery-target-routes.ts", // WP 4.8 deep-link resolver, mounted by registerMessagingRoutes
   "delivery-target-typebox.ts", // schemas only
   "unacknowledged-routes.ts", // WP 4.9 supervisor unacknowledged queue, mounted by registerMessagingRoutes
+  "snooze-reminder-routes.ts", // WP 4.10 snooze and reminders, mounted by registerMessagingRoutes
+  "snooze-reminder-typebox.ts", // schemas only
   "unacknowledged-typebox.ts", // schemas only
   "ack-routes.ts", // WP 4.2 acknowledgment requests, mounted by registerMessagingRoutes
   "ack-typebox.ts", // schemas only
@@ -512,7 +524,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       route === "POST /api/v1/messaging/announce" ||
       route === "POST /api/v1/messaging/channels/:id/medication-questions" ||
       route === "POST /api/v1/messaging/channels/:id/urgent-messages" ||
-      route === "POST /api/v1/messaging/escalations";
+      route === "POST /api/v1/messaging/escalations" ||
+      route === "PUT /api/v1/messaging/channels/:id/snooze" ||
+      route === "PUT /api/v1/messaging/messages/:id/reminder";
     const res = await app.inject({
       method: method as "GET",
       url: url + query,
@@ -805,6 +819,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           read: createDbUnacknowledgedReader(handle.db),
           canViewChannel: service.canViewChannel,
           displayName: async () => null,
+        }),
+      },
+      snoozeReminders: {
+        service: createSnoozeReminderService({
+          isEnabled: async () => true,
+          store: createDbSnoozeReminderStore(handle.db),
+          canViewChannel: service.canViewChannel,
         }),
       },
       deliveryTarget: {
@@ -1980,6 +2001,63 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const sent = await call(askRoute, u1, { id: careTeamA }, { ...body, allow_unrouted: true });
       expect(sent.statusCode, sent.body).toBe(201);
       expect((await messages()).rows[0].n).toBe(before + 1);
+    });
+    it("WP 4.10: snooze and reminder routes touch only the caller's own row; org B and an in-org non-member get a random id's answer and write nothing", async () => {
+      const SNOOZE = "/api/v1/messaging/channels/:id/snooze";
+      const REMINDER = "/api/v1/messaging/messages/:id/reminder";
+      const remindAt = () => new Date(Date.now() + 3_600_000).toISOString();
+      const rows = () =>
+        admin.query(
+          "SELECT (SELECT count(*)::int FROM message_snooze) AS s, (SELECT count(*)::int FROM message_reminder) AS r",
+        );
+      const before = (await rows()).rows[0];
+      for (const attacker of [bUser, adminB, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(`GET ${SNOOZE}`, attacker, { id });
+          await expectNoOracle(`PUT ${SNOOZE}`, attacker, { id }, { duration_minutes: 60 });
+        }
+        await expectNoOracle(
+          `PUT ${REMINDER}`,
+          attacker,
+          { id: msgLocA },
+          { remind_at: remindAt() },
+        );
+        // Withdrawing is a no-op for a stranger: the same answer for a real and a random id, and nothing leaks.
+        for (const [route, real] of [
+          [`DELETE ${SNOOZE}`, locA],
+          [`DELETE ${REMINDER}`, msgLocA],
+        ] as const) {
+          const got = await call(route, attacker, { id: real });
+          const ctl = await call(route, attacker, { id: randomUUID() });
+          expect(got.statusCode, `${attacker.name} ${route}`).toBe(ctl.statusCode);
+          expect(shape(got), `${attacker.name} ${route}`).toBe(shape(ctl));
+          expectNoLeak(got.body, attacker, `${attacker.name} ${route}`);
+        }
+      }
+      expect((await rows()).rows[0]).toEqual(before);
+      // The member's own rows work, and an attacker's list never shows them.
+      expect(
+        (await call(`PUT ${SNOOZE}`, u1, { id: locA }, { duration_minutes: 60 })).statusCode,
+      ).toBe(200);
+      expect(
+        (await call(`PUT ${REMINDER}`, u1, { id: msgLocA }, { remind_at: remindAt() })).statusCode,
+      ).toBe(200);
+      const mine = await call("GET /api/v1/messaging/reminders", u1);
+      expect(mine.json().reminders).toHaveLength(1);
+      for (const attacker of [u2, bUser, outsider]) {
+        const theirs = await call("GET /api/v1/messaging/reminders", attacker);
+        expect(theirs.json().reminders, attacker.name).toEqual([]);
+        expectNoLeak(theirs.body, attacker, `${attacker.name} reminders`);
+      }
+      // A fellow member cannot end or cancel it.
+      expect((await call(`DELETE ${SNOOZE}`, u2, { id: locA })).json()).toEqual({ cleared: false });
+      expect((await call(`DELETE ${REMINDER}`, u2, { id: msgLocA })).json()).toEqual({
+        cleared: false,
+      });
+      expect((await call(`DELETE ${SNOOZE}`, u1, { id: locA })).json()).toEqual({ cleared: true });
+      expect((await call(`DELETE ${REMINDER}`, u1, { id: msgLocA })).json()).toEqual({
+        cleared: true,
+      });
     });
     it("WP 4.1: org B and an in-org non-member get a random channel's answer for A's care-team urgent message and options, and nothing is written", async () => {
       const sendRoute = "POST /api/v1/messaging/channels/:id/urgent-messages";

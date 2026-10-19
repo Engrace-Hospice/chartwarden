@@ -58,6 +58,7 @@ import {
   createPolicyEnabledPort,
   createVerifiedChannelsPort,
 } from "./notification-policy-ports";
+import { createSnoozedUsersPort } from "./snooze-reminders/snoozed-users-port";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -383,6 +384,8 @@ export function createDrizzleAlertEmitterPorts(
 
     policyEnabledFor: createPolicyEnabledPort(options.flags),
     verifiedChannelsFor: createVerifiedChannelsPort(db),
+    // WP 4.10 (ADR-0077): who has quieted this conversation's non-urgent out-of-band notices (empty while the flag is off).
+    snoozedUsersFor: createSnoozedUsersPort(db, options.flags),
     now: () => new Date(),
     ...(options.extendResolvers ? { extendResolvers: options.extendResolvers } : {}),
   };

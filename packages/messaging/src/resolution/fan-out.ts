@@ -19,6 +19,7 @@ import {
   type PolicyReason,
   type ShiftState,
   decideChannels,
+  isSnoozableEvent,
 } from "./notification-policy";
 import {
   FLOOR_CHANNEL,
@@ -83,6 +84,12 @@ export interface FanOutInput {
   /** Evaluation time (quiet-hours / vacation are time-relative). Explicit for determinism. */
   readonly at: Date;
   readonly policy?: FanOutPolicy;
+  /**
+   * WP 4.10 (ADR-0077): recipients with an ACTIVE conversation snooze for this alert's conversation. It quiets only the
+   * out-of-band rows of an allowlisted non-urgent alert (`isSnoozableEvent`); the in-app row is always planned, and a designated
+   * route ignores it by construction.
+   */
+  readonly snoozedUserIds?: ReadonlySet<string>;
 }
 
 /** The voice channel is SOS-only (§2.5): permitted solely for a critical field-safety alert. */
@@ -144,6 +151,7 @@ export function planFanOutDetailed(input: FanOutInput): FanOutResult {
   const d = denorm(input.alert);
   const policy = input.policy;
   const designated = policy !== undefined && policy.ackClass !== null;
+  const snoozeApplies = !designated && isSnoozableEvent(input.alert.eventType);
 
   for (const userId of input.recipientUserIds) {
     // 1. The in-app floor — unconditional, to the original recipient.
@@ -170,6 +178,9 @@ export function planFanOutDetailed(input: FanOutInput): FanOutResult {
       at: input.at,
     });
     const onVacation = !designated && prefs !== undefined && isVacationActive(prefs, input.at);
+    // A snoozed recipient's out-of-band rows are skipped (the in-app floor above is untouched). Vacation forwarding wins: the
+    // backup is a different person with their own snooze state, which this recipient's snooze does not speak for.
+    const snoozed = snoozeApplies && !onVacation && input.snoozedUserIds?.has(userId) === true;
 
     for (const { channel, decision, reasons } of decisions) {
       if (designated) {
@@ -195,6 +206,17 @@ export function planFanOutDetailed(input: FanOutInput): FanOutResult {
           ...d,
         });
         plan.push(planBackupDelivery(input, prefs, userId, channel, d));
+        continue;
+      }
+      if (snoozed) {
+        plan.push({
+          recipientUserId: userId,
+          forwardedFromUserId: null,
+          channel,
+          status: "skipped_quiet_hours",
+          reason: "snoozed",
+          ...d,
+        });
         continue;
       }
       plan.push({

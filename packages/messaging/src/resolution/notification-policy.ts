@@ -39,6 +39,7 @@ export type PolicyReason =
   | "no_verified_endpoint"
   | "quiet_hours"
   | "off_shift"
+  | "snoozed"
   | "class_unreadable_defaulted";
 
 /**
@@ -173,4 +174,17 @@ export function decideChannels(input: PolicyInput): ChannelDecision[] {
     seen.add(d.channel);
     return true;
   });
+}
+
+/**
+ * WP 4.10 (ADR-0077): the ONLY alerts a conversation snooze can quiet - an allowlist, so a new alert type is never snoozable by
+ * default. Each carries `channelId` on its payload. Everything urgent or acknowledgment-bound (the designated events, the sender's and
+ * supervisors' request alerts, delivery-failure alerts) is deliberately absent, and so are alerts about assigned work (tasks, handoffs)
+ * and a due reminder (the user asked for it). Platform constant, pinned by a test: no tenant row can add to it.
+ */
+export const SNOOZABLE_EVENT_TYPES: ReadonlySet<string> = new Set(["m36.message.mentioned"]);
+
+/** True when a snooze may quiet this alert's out-of-band rows: allowlisted AND never a designated route. */
+export function isSnoozableEvent(eventType: string): boolean {
+  return SNOOZABLE_EVENT_TYPES.has(eventType) && !DESIGNATED_EVENT_TYPES.has(eventType);
 }

@@ -1,0 +1,53 @@
+/* M36 WP 4.10 - snooze control and reminder dialog. Tokens from the shared kit only; flat, no shadows. */
+.wx-snooze {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-snooze-note,
+.wx-reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-snooze-dialog {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-snooze-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.wx-snooze-dialog p {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-snooze-presets {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wx-snooze-error {
+  color: var(--color-error);
+  font-size: 0.8125rem;
+}
+
+.wx-snooze-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
