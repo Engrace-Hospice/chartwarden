@@ -20,6 +20,12 @@ import { MentionMenu, mentionOptionId } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
 import { channelLabel } from "./messaging-utils";
+import {
+  NEEDS_RESPONSE_PICKER_ID,
+  type NeedsResponse,
+  NeedsResponseControl,
+  needsRecipient,
+} from "./needs-response-control";
 import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PollCreateButton } from "./poll-create-button";
 import { SbarFormDialog } from "./sbar-form-dialog";
@@ -59,6 +65,8 @@ export interface ThreadComposerProps {
   linkCandidateSource?: ClinicalLinkCandidateSource;
   uploads: AttachmentUploads;
   sending: boolean;
+  /** G2: the "Needs a response" control's state (owned by the thread because the sender reads it). */
+  needsResponse: NeedsResponse;
   send: (event?: FormEvent) => Promise<void>;
   sendError: string | null;
   clearSendError: () => void;
@@ -99,6 +107,7 @@ export function ThreadComposer({
   linkCandidateSource,
   uploads,
   sending,
+  needsResponse,
   send,
   sendError,
   clearSendError,
@@ -327,6 +336,7 @@ export function ThreadComposer({
             statusResetKey={draft}
           />
         </div>
+        <NeedsResponseControl state={needsResponse} disabled={sending} />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}
           canAdd={canAddMention}
@@ -345,11 +355,20 @@ export function ThreadComposer({
           type="submit"
           size="lg"
           disabled={
-            sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+            sending ||
+            (!draft.trim() && uploads.sendableIds.length === 0) ||
+            uploads.blocksSend ||
+            needsRecipient(needsResponse)
           }
           loading={sending}
           aria-label="Send"
-          aria-describedby={sendHint ? "messaging-send-hint" : undefined}
+          aria-describedby={
+            needsRecipient(needsResponse)
+              ? NEEDS_RESPONSE_PICKER_ID
+              : sendHint
+                ? "messaging-send-hint"
+                : undefined
+          }
         >
           <Glyph name="send" size={16} /> <span>Send</span>
         </Button>
