@@ -51,7 +51,7 @@ export const ESCALATION_DISCIPLINE_BY_ROLE: Readonly<Record<string, OncallShiftD
 /** Models whose shifts name members; the watchdog's rule (`centralized` is vendor-covered, so an RN gap there is not a gap). */
 const MEMBER_MODELS: readonly OncallModel[] = ["direct", "hybrid"];
 const COVERING_STATUSES: readonly string[] = ["scheduled", "active"];
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What the router needs beyond the shift store. Every method is scoped to the caller's org by RLS; a failure throws. */
 export interface EscalationRouterReads {
@@ -92,7 +92,7 @@ async function providerEntityOf(
   orgId: OrgId,
   patientId: string,
 ): Promise<string | null> {
-  if (!UUID.test(patientId)) return null;
+  if (!UUID_PATTERN.test(patientId)) return null;
   const patient = await reads.patientProviderEntity(orgId, patientId);
   if (patient === null) return null;
   if (patient.providerEntityId !== null) return patient.providerEntityId;

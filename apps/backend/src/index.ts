@@ -120,6 +120,7 @@ import {
   assertProductionEnv,
   buildServer,
   createSessionAuthenticate,
+  escalationRouterDenyStub,
   getSeam,
   integrationEnabled,
   noteInMemoryBinding,
@@ -2031,19 +2032,20 @@ export function wireModuleSeams(
   // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
-  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  const oncallSeamStore = deps.db ? buildDrizzleOncallSeamStore(deps.db) : undefined;
+  if (oncallSeamStore) registerOncallSeams({ store: oncallSeamStore });
   // ADR-0057 item 12 - the real M19 EscalationRouter (tier 1 only), UNBOUND unless `ESCALATION_ROUTER_ORGS` names orgs. Other orgs keep the
   // deny-stub's exact answer; with the variable empty nothing is registered and behaviour is identical to before.
-  if (deps.db) {
+  if (deps.db && oncallSeamStore) {
     registerEscalationRouterForAllowlist({
-      store: buildDrizzleOncallSeamStore(deps.db),
+      store: oncallSeamStore,
       reads: buildDrizzleEscalationRouterReads({
         db: deps.db,
         patientReader: () => getSeam("PatientReader"),
         siteReader: buildFoundationSiteReader(),
         listProviderEntityIds: buildOrgProviderEntityLister(deps.db),
       }),
-      fallback: getEscalationRouter,
+      fallback: escalationRouterDenyStub,
       allowlistRaw: process.env.ESCALATION_ROUTER_ORGS,
       warn: (message) => console.warn(message),
     });

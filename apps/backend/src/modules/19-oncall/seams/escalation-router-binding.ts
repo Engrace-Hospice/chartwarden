@@ -10,11 +10,13 @@ import type { EscalationRouter, OncallModel, PatientReader } from "@wardenx/type
 import { eq } from "drizzle-orm";
 import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import { registerSeam } from "../../../bootstrap/index";
-import { type EscalationRouterReads, createEscalationRouter } from "./escalation-router";
+import {
+  type EscalationRouterReads,
+  UUID_PATTERN,
+  createEscalationRouter,
+} from "./escalation-router";
 import type { OncallSeamOrgResolver } from "./providers";
 import type { OncallSeamStore } from "./store";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface EscalationRouterAllowlist {
   readonly orgIds: ReadonlySet<string>;
@@ -28,7 +30,7 @@ export function parseEscalationRouterOrgs(raw: string | undefined): EscalationRo
     .split(",")
     .map((e) => e.trim())
     .filter((e) => e !== "");
-  const valid = entries.filter((e) => UUID.test(e)).map((e) => e.toLowerCase());
+  const valid = entries.filter((e) => UUID_PATTERN.test(e)).map((e) => e.toLowerCase());
   return { orgIds: new Set(valid), ignoredCount: entries.length - valid.length };
 }
 
@@ -48,8 +50,8 @@ export interface EscalationRouterBindingDeps {
   readonly store: OncallSeamStore;
   readonly reads: EscalationRouterReads;
   readonly orgOf?: OncallSeamOrgResolver;
-  /** The seam's current occupant (the deny-stub), read once at registration: `getEscalationRouter` from the composition root. */
-  readonly fallback: () => EscalationRouter;
+  /** The answer for every org not on the allowlist: pass the boot deny-stub itself, never a registry lookup (it would resolve to the wrapper). */
+  readonly fallback: EscalationRouter;
   /** `process.env.ESCALATION_ROUTER_ORGS`. */
   readonly allowlistRaw: string | undefined;
   readonly warn?: (message: string) => void;
@@ -66,11 +68,11 @@ export function registerEscalationRouterForAllowlist(
     );
   }
   if (orgIds.size === 0) return orgIds;
-  const real = createEscalationRouter(deps.store, deps.reads, deps.orgOf);
-  registerSeam(
-    "EscalationRouter",
-    createAllowlistedEscalationRouter(real, deps.fallback(), orgIds),
+  deps.warn?.(
+    `ESCALATION_ROUTER_ORGS: the M19 tier-1 EscalationRouter is bound for ${orgIds.size} org(s); every other org still gets the deny-stub`,
   );
+  const real = createEscalationRouter(deps.store, deps.reads, deps.orgOf);
+  registerSeam("EscalationRouter", createAllowlistedEscalationRouter(real, deps.fallback, orgIds));
   return orgIds;
 }
 

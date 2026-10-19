@@ -7,6 +7,7 @@ import type {
   OncallModel,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
+import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
 import {
   ESCALATION_DISCIPLINE_BY_ROLE,
   type EscalationRouterReads,
@@ -53,12 +54,14 @@ interface Setup {
   zones?: string[];
   orgPes?: string[];
   ambient?: string;
+  inactive?: string[];
 }
 
 function build(setup: Setup = {}, orgOverride?: string) {
   const { store } = createInMemoryOncallSeamStore({
     shifts: setup.shifts ?? [shift({ id: "s1", backupMembershipId: "m-backup" })],
     membershipUserIds: setup.users ?? { "m-primary": "user-primary", "m-backup": "user-backup" },
+    inactiveMembershipIds: setup.inactive,
   });
   const calls: string[] = [];
   const reads: EscalationRouterReads = {
@@ -176,6 +179,16 @@ describe("M19 EscalationRouter tier 1", () => {
     expect(await none.router.resolveTier(ORG, req())).toMatchObject({ kind: "coverage_gap" });
   });
 
+  it("drops suspended or revoked memberships: a departed user's future shift yields no recipient", async () => {
+    const some = build({ inactive: ["m-primary"] });
+    expect(await some.router.resolveTier(ORG, req())).toMatchObject({
+      kind: "resolved",
+      userIds: ["user-backup"],
+    });
+    const none = build({ inactive: ["m-primary", "m-backup"] });
+    expect(await none.router.resolveTier(ORG, req())).toMatchObject({ kind: "coverage_gap" });
+  });
+
   it("answers tier 2 and above with tier_not_configured, whatever the patient", async () => {
     const { router, calls } = build();
     for (const patientId of [PATIENT, FOREIGN_PATIENT]) {
@@ -280,17 +293,7 @@ describe("M19 EscalationRouter tier 1", () => {
 });
 
 describe("allowlist binding", () => {
-  const denyStub: EscalationRouter = {
-    async resolveTier(_o, r) {
-      return {
-        kind: "unavailable",
-        reason: "router_not_bound",
-        tier: r.tier,
-        asOf: r.asOf,
-        source: "deny_stub",
-      };
-    },
-  };
+  const denyStub: EscalationRouter = escalationRouterDenyStub;
 
   it("parses strictly: lower-cases uuids, ignores and counts garbage, empty is empty", () => {
     expect(parseEscalationRouterOrgs(undefined)).toEqual({ orgIds: new Set(), ignoredCount: 0 });
@@ -310,24 +313,19 @@ describe("allowlist binding", () => {
     expect(await empty.resolveTier(ORG, req())).toEqual(await denyStub.resolveTier(ORG, req()));
   });
 
-  it("registers nothing, reads no fallback and warns only by count when the allowlist is empty or garbage", () => {
+  it("registers nothing and warns only by count when the allowlist is empty or garbage", () => {
     const warnings: string[] = [];
-    let fallbackReads = 0;
     const { store } = createInMemoryOncallSeamStore({});
     const deps = (allowlistRaw: string | undefined) => ({
       store,
       reads: {} as EscalationRouterReads,
-      fallback: () => {
-        fallbackReads += 1;
-        return denyStub;
-      },
+      fallback: denyStub,
       allowlistRaw,
       warn: (m: string) => warnings.push(m),
     });
     expect(registerEscalationRouterForAllowlist(deps(undefined)).size).toBe(0);
     expect(registerEscalationRouterForAllowlist(deps("  ")).size).toBe(0);
     expect(registerEscalationRouterForAllowlist(deps("secret-looking-garbage")).size).toBe(0);
-    expect(fallbackReads).toBe(0);
     expect(warnings).toEqual(["ESCALATION_ROUTER_ORGS: 1 entry is not a uuid and ignored"]);
   });
 });

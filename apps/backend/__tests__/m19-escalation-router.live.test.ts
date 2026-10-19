@@ -294,6 +294,31 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
     }
   });
 
+  it("a departed (revoked or suspended) user's future shift yields no recipient", async () => {
+    const a = seeded[ORG_A] as OrgSeed;
+    await seedShift(ORG_A, "2027-01-01T07:00:00Z", "2027-01-01T19:00:00Z", a.members.primary, {
+      backup: a.members.backup,
+    });
+    const at = () => resolve(ORG_A, ORG_A, a.patient, "2027-01-01T12:00:00Z");
+    expect(await at()).toMatchObject({ userIds: [a.users.primary, a.users.backup] });
+    await admin.query("UPDATE membership SET status = 'suspended' WHERE id = $1", [
+      a.members.primary,
+    ]);
+    expect(await at()).toMatchObject({ kind: "resolved", userIds: [a.users.backup] });
+    await admin.query("UPDATE membership SET status = 'active', revoked_at = now() WHERE id = $1", [
+      a.members.backup,
+    ]);
+    await admin.query(
+      "UPDATE membership SET status = 'revoked', revoked_at = now() WHERE id = $1",
+      [a.members.primary],
+    );
+    expect(await at()).toMatchObject({ kind: "coverage_gap" });
+    await admin.query(
+      "UPDATE membership SET status = 'active', revoked_at = NULL WHERE id = ANY($1)",
+      [[a.members.primary, a.members.backup]],
+    );
+  });
+
   it("tenant isolation as wardenx_app: org B cannot reach org A's patients or shifts, and a foreign org id is refused", async () => {
     const a = seeded[ORG_A] as OrgSeed;
     const b = seeded[ORG_B] as OrgSeed;
