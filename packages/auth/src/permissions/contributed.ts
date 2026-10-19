@@ -327,6 +327,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 4.12 (ADR-0080): read the on-call "who is covering now" directory (names and roles only). Read-only; role-based SEND is a
+  //     separate, undecided change with its own key. Granted by migration 1128 to every role that already holds messaging.read. ---
+  "messaging.oncall.read": {
+    resource: "oncall_directory",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",

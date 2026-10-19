@@ -129,6 +129,8 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.5 what happens to an acknowledgment request when every route to its assignee failed: a failed delivery is never an acknowledgment, it is the opposite",
   "apps/backend/src/modules/36-messaging/snooze-reminders/":
     "WP 4.10 (ADR-0077) snooze and reminders: they READ whether an acknowledgment request is open (to refuse a snooze or a reminder) and never write one or label anything acknowledged",
+  "apps/backend/src/modules/36-messaging/oncall-directory/":
+    "WP 4.12 (ADR-0080) the read-only on-call directory: it imports the escalation router guard from the ack-escalation directory and never writes or labels an acknowledgment",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
 };

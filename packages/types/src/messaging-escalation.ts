@@ -54,6 +54,8 @@ export interface EscalationResolved extends EscalationAnswerBase {
   readonly nextTier: number | null;
   /** The IANA zone of the rotation that produced this answer (the covering rotation). Never the server's. */
   readonly timeZone: string;
+  /** OPTIONAL (WP 4.12, ADR-0080): the instant the covering shift ends, a strict ISO-8601 date-time with offset. A roster that cannot say omits it. */
+  readonly shiftEndsAt?: string;
 }
 
 /** A real answer, and ONLY this: the ladder HAS this tier and nobody covers it at `asOf`. Not "nobody needed". `timeZone` is the

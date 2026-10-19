@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1666,
-    "coveredRoutes": 1666,
-    "directRoutesReferenced": 1556
+    "routes": 1667,
+    "coveredRoutes": 1667,
+    "directRoutesReferenced": 1557
   },
   "modules": [
     {
@@ -138,6 +138,7 @@
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
+        "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
@@ -503,7 +504,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 124,
+      "routes": 125,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -541,6 +542,7 @@
         "apps/backend/__tests__/m36-message-search.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.test.ts",
+        "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m36-patient-context-routes.test.ts",
         "apps/backend/__tests__/m36-phase3-gate.live.test.ts",
         "apps/backend/__tests__/m36-poll-announce-guard.test.ts",
@@ -570,7 +572,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 124
+      "directRoutesReferenced": 125
     },
     {
       "module": "37-ipu",
