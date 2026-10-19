@@ -14,6 +14,7 @@ import {
   REASSIGN_EMPTY_TEXT,
   REASSIGN_INDETERMINATE_TEXT,
   REASSIGN_LOAD_FAILED_TEXT,
+  REASSIGN_NEEDS_COLLEAGUE_TEXT,
   REASSIGN_NOT_PERMITTED_TEXT,
   REASSIGN_SAVED_CARD_TEXT,
   REASSIGN_TOO_MANY_TEXT,
@@ -159,10 +160,16 @@ describe("ack request card - reassign (G-6)", () => {
   });
 
   it("says nobody else can take it when there are no colleagues", async () => {
-    mount({ candidates: () => candidatesOk([]) });
+    const { POST } = mount({ candidates: () => candidatesOk([]) });
     const dialog = await openDialog();
     expect(await within(dialog).findByText(REASSIGN_EMPTY_TEXT)).toBeTruthy();
     expect(within(dialog).queryByRole("radio")).toBeNull();
+    expect(within(dialog).queryByText(REASSIGN_NEEDS_COLLEAGUE_TEXT)).toBeNull();
+    const confirm = confirmButton();
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    expect(confirm.getAttribute("aria-describedby")).toBeTruthy();
+    fireEvent.click(confirm);
+    expect(POST).not.toHaveBeenCalled();
   });
 
   it("says the colleagues could not be loaded and offers Retry", async () => {

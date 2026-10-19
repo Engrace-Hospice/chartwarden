@@ -104,3 +104,18 @@ describe("edited label contrast", () => {
     expect(css).toMatch(/\.wx-message-bubble > span\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 });
+
+describe("SBAR block body text contrast", () => {
+  // The block is a surface-low card inside the bubble; without its own colour its text inherits the own bubble's on-primary.
+  const sbar = readFileSync("apps/web/src/modules/36-messaging/sbar.css", "utf8");
+  it("sets on-surface on the block", () => {
+    expect(/\.wx-sbar-block\s*\{[^}]*color:\s*var\(--color-on-surface\)/.test(sbar)).toBe(true);
+  });
+  it.each(THEMES)("is at least 4.5:1 on-surface over surface-low ($name theme)", ({ from }) => {
+    const [hi, lo] = [
+      luminance(hex(token("--color-on-surface", from))),
+      luminance(hex(token("--color-surface-low", from))),
+    ].sort((a, b) => b - a);
+    expect(((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)).toBeGreaterThanOrEqual(MIN_RATIO);
+  });
+});

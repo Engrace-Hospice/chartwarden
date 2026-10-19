@@ -102,13 +102,43 @@ describe("UrgentMessageDialog", () => {
     expect(result.violations).toEqual([]);
   });
 
-  it("will not send without a recipient, and nothing is posted", async () => {
+  it("keeps Send disabled, with the reason linked, until a recipient radio is checked", async () => {
     const { POST } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
     await open();
     await fill();
-    await userEvent.click(screen.getByRole("button", { name: "Send urgent message" }));
-    expect(await screen.findByText(/Choose who this goes to/)).toBeTruthy();
+    for (const radio of screen.getAllByRole("radio"))
+      expect((radio as HTMLInputElement).checked).toBe(false);
+    const send = screen.getByRole("button", { name: "Send urgent message" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    expect(
+      document.getElementById(send.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toMatch(/Choose who this goes to/);
+    await userEvent.click(screen.getByRole("radio", { name: RN.display_name }));
+    expect((screen.getByRole("radio", { name: RN.display_name }) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect((screen.getByRole("radio", { name: "Mo Doctor" }) as HTMLInputElement).checked).toBe(
+      false,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: `Send urgent message to ${RN.display_name}`,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("names each recipient radio by the person, never by the user id", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    for (const radio of screen.getAllByRole("radio")) {
+      const name = radio.getAttribute("aria-labelledby");
+      expect(document.getElementById(name ?? "")?.textContent).not.toMatch(/^u-/);
+    }
+    expect(screen.getByRole("radio", { name: "Rita Nurse" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Mo Doctor" })).toBeTruthy();
   });
 
   it("will not send with an SBAR section below the policy floor, and names the field", async () => {
@@ -279,18 +309,6 @@ describe("accessibility of the notices", () => {
     await choose();
     const line = screen.getByText(/This goes to Rita Nurse/);
     expect(line.getAttribute("aria-live")).toBe("polite");
-  });
-
-  it("moves focus to the recipient group and links the error when no one is chosen", async () => {
-    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
-    await open();
-    await fill();
-    await userEvent.click(screen.getByRole("button", { name: "Send urgent message" }));
-    const group = screen.getByRole("group", { name: /required/ });
-    await waitFor(() => expect(document.activeElement).toBe(group));
-    expect(
-      document.getElementById(group.getAttribute("aria-describedby") ?? "")?.textContent,
-    ).toMatch(/Choose who this goes to/);
   });
 });
 
@@ -750,5 +768,36 @@ describe("a refetch while the dialog is open", () => {
     await open();
     await waitFor(() => expect(screen.getByRole("radio", { name: "New Person" })).toBeTruthy());
     expect(screen.getAllByRole("radio")).toHaveLength(1);
+  });
+});
+
+describe("UrgentMessageButton inside the composer form", () => {
+  it("portals the dialog out of the composer form so a submit cannot reload the page", async () => {
+    const onComposerSubmit = vi.fn((event: { preventDefault: () => void }) =>
+      event.preventDefault(),
+    );
+    mountWithClient(
+      <form className="wx-message-composer" onSubmit={onComposerSubmit}>
+        <UrgentMessageButton channelId="c1" kind="care_team" />
+      </form>,
+    );
+    await open();
+    expect(screen.getByRole("dialog").closest("form.wx-message-composer")).toBeNull();
+    await fill();
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form") as HTMLFormElement);
+    expect(onComposerSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("UrgentMessageDialog recipient error", () => {
+  it("Ctrl+Enter with no recipient posts nothing, shows the error once, and clears it when one is chosen", async () => {
+    const { POST } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await fill();
+    await userEvent.type(screen.getByLabelText("Situation"), "{Control>}{Enter}{/Control}");
+    expect(POST).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Choose who this goes to first.")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("radio", { name: new RegExp(RN.display_name) }));
+    expect(screen.queryByText("Choose who this goes to first.")).toBeNull();
   });
 });

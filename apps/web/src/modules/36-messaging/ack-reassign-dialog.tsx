@@ -48,6 +48,8 @@ export function AckReassignDialog({
   const supervisor = mode === "supervisor";
   const state = useAckReassign(mode, requestId, run);
   const { candidates, submitting } = state;
+  // Nobody to pick: Confirm stays inert and only the "no one available" message shows (not "Choose a colleague").
+  const noCandidates = candidates.status === "ready" && candidates.colleagues.length === 0;
   const title = supervisor ? REASSIGN_SUPERVISOR_TITLE : REASSIGN_CARD_TITLE;
   const needs = supervisor
     ? state.reason === null && state.userId === null
@@ -135,8 +137,8 @@ export function AckReassignDialog({
           </div>
         ) : null}
         <output className="wx-reassign-sr">{availableText}</output>
-        {candidates.status === "ready" && candidates.colleagues.length === 0 ? (
-          <p className="wx-reassign-hint">{REASSIGN_EMPTY_TEXT}</p>
+        {noCandidates ? (
+          <p id={`${id}-empty`} className="wx-reassign-hint">{REASSIGN_EMPTY_TEXT}</p>
         ) : null}
         {candidates.status === "ready" && candidates.colleagues.length > 0 ? (
           <fieldset aria-busy={submitting || undefined}>
@@ -159,7 +161,7 @@ export function AckReassignDialog({
             {state.error}
           </p>
         ) : null}
-        {state.ready ? null : (
+        {state.ready || noCandidates ? null : (
           <p id={`${id}-needs`} className="wx-reassign-hint">
             {needs}
           </p>
@@ -176,7 +178,7 @@ export function AckReassignDialog({
           <Button
             type="submit"
             aria-disabled={!state.ready || submitting || undefined}
-            aria-describedby={state.ready ? undefined : `${id}-needs`}
+            aria-describedby={state.ready ? undefined : `${id}-${noCandidates ? "empty" : "needs"}`}
           >
             {submitting ? REASSIGN_SAVING_TEXT : REASSIGN_CONFIRM_LABEL}
           </Button>
