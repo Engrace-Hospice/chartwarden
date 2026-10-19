@@ -1,5 +1,6 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
+import { formatMrn } from "@wardenx/types";
 import { Glyph } from "@wardenx/ui";
 import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
@@ -50,7 +51,7 @@ export function ThreadHeader({
         <h2 ref={headingRef} tabIndex={-1}>
           {channel.kind === "care_team" && patient ? `${title} · Care Team` : title}
         </h2>
-        <span>{patient ? `MRN ${patient.mrn}` : subtitle}</span>
+        <span>{patient ? formatMrn(patient.mrn) : subtitle}</span>
       </div>
       {channel.archivedAt ? (
         <span className="wx-messaging-readonly">
@@ -129,7 +130,7 @@ export function PatientContextAside({
           <strong>
             {patient.firstName} {patient.lastName}
           </strong>
-          <span>MRN {patient.mrn}</span>
+          <span>{formatMrn(patient.mrn)}</span>
         </div>
       </div>
       <PatientContextTiles patientId={patient.id} />
