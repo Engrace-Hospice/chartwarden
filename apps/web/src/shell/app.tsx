@@ -3,7 +3,6 @@ import {
   ApiClientProvider,
   CorrelationIdProvider,
   ErrorBoundary,
-  FeatureFlagProvider,
   LoadingSpinner,
   SystemStatusProvider,
   ToastProvider,
@@ -32,6 +31,7 @@ import {
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
+import { LiveFeatureFlagProvider } from "./live-feature-flags";
 import { OfflineBanner } from "./offline-banner";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
@@ -139,7 +139,7 @@ export function AppShell({
   registry,
   client,
   session = null,
-  flags = {},
+  flags,
   systemStatus = [],
   correlationId = newCorrelationId(),
   chromeOverlay,
@@ -193,7 +193,7 @@ export function AppShell({
         <ApiClientProvider client={client}>
           {/* Self-loads the actor's role/membership context (FB-T15) unless one is injected. */}
           <ActorSessionProvider initial={session}>
-            <FeatureFlagProvider flags={flags}>
+            <LiveFeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
                 <ToastProvider>
                   <AlertInboxProvider>
@@ -201,7 +201,7 @@ export function AppShell({
                   </AlertInboxProvider>
                 </ToastProvider>
               </SystemStatusProvider>
-            </FeatureFlagProvider>
+            </LiveFeatureFlagProvider>
           </ActorSessionProvider>
         </ApiClientProvider>
       </CorrelationIdProvider>
