@@ -49,6 +49,11 @@
   font-size: 0.875rem;
 }
 
+/* The empty live region stays mounted for announcements but draws no box. */
+.wx-urgent-notice:empty {
+  display: none;
+}
+
 .wx-urgent-form fieldset {
   display: grid;
   gap: 0.25rem;

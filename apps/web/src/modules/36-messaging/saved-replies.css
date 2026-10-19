@@ -2,11 +2,9 @@
    from staff-messaging.css so parallel work on that file does not collide. */
 
 /* ── composer picker ───────────────────────────────────────────────────────────────────────────────────────── */
-.wx-message-composer > .wx-template-picker {
-  grid-column: 3;
-  grid-row: 3;
+/* Anchors the popover to the Saved replies button (the picker lives in the composer's tools row). */
+.wx-composer-tools > .wx-template-picker {
   position: relative;
-  justify-self: end;
 }
 
 .wx-template-picker-toggle {
@@ -39,7 +37,7 @@
 .wx-template-popover {
   position: absolute;
   z-index: 20;
-  right: 0;
+  left: 0;
   bottom: calc(100% + 0.25rem);
   display: flex;
   width: min(26rem, calc(100vw - 2rem));
@@ -49,7 +47,7 @@
   padding: 0.5rem;
   border: 1px solid var(--color-outline-variant);
   border-radius: 0.75rem;
-  background: var(--color-surface-container-highest);
+  background: var(--color-surface-highest);
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 16%);
 }
 
@@ -125,18 +123,6 @@
   background: transparent;
   color: var(--color-primary);
   cursor: pointer;
-}
-
-@media (max-width: 767px) {
-  .wx-message-composer > .wx-template-picker {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .wx-template-popover {
-    right: auto;
-    left: 0;
-  }
 }
 
 /* ── management screen ─────────────────────────────────────────────────────────────────────────────────────── */
