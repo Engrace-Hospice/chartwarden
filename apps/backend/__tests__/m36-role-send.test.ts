@@ -230,7 +230,7 @@ describe("GET /messaging/channels/:id/role-send/resolution", () => {
       role: "rn",
       status: "covered",
       time_zone: "America/Los_Angeles",
-      people: [{ user_id: COVERING, display_name: "Dana K." }],
+      people: [{ user_id: COVERING, display_name: "Dana K.", rank: "primary" }],
     });
   });
 

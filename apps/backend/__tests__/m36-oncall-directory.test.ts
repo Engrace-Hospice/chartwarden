@@ -167,7 +167,7 @@ describe("GET /messaging/oncall/coverage", () => {
       {
         tier: 1,
         state: "covering",
-        people: ["Dana K."],
+        people: [{ display_name: "Dana K.", rank: "primary" }],
         shift_ends_at: "2026-06-02T02:00:00.000Z",
         time_zone: "America/Los_Angeles",
       },

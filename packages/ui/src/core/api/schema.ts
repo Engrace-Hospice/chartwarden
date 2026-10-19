@@ -67016,6 +67016,7 @@ export interface operations {
                             /** Format: uuid */
                             user_id: string;
                             display_name: string | null;
+                            rank: "primary" | "backup";
                         }[];
                         shift_ends_at: string | null;
                         time_zone: string | null;
@@ -69071,7 +69072,10 @@ export interface operations {
                         tiers: {
                             tier: number;
                             state: "covering" | "coverage_gap";
-                            people: (string | null)[];
+                            people: {
+                                display_name: string | null;
+                                rank: "primary" | "backup";
+                            }[];
                             shift_ends_at: string | null;
                             time_zone: string;
                         }[];

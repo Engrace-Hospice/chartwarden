@@ -168323,7 +168323,8 @@
                         "type": "object",
                         "required": [
                           "user_id",
-                          "display_name"
+                          "display_name",
+                          "rank"
                         ],
                         "properties": {
                           "user_id": {
@@ -168337,6 +168338,18 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "anyOf": [
+                              {
+                                "const": "primary",
+                                "type": "string"
+                              },
+                              {
+                                "const": "backup",
+                                "type": "string"
                               }
                             ]
                           }
@@ -176710,14 +176723,35 @@
                           "people": {
                             "type": "array",
                             "items": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
+                              "type": "object",
+                              "required": [
+                                "display_name",
+                                "rank"
+                              ],
+                              "properties": {
+                                "display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 },
-                                {
-                                  "type": "null"
+                                "rank": {
+                                  "anyOf": [
+                                    {
+                                      "const": "primary",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "backup",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
-                              ]
+                              }
                             }
                           },
                           "shift_ends_at": {

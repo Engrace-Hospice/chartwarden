@@ -99,7 +99,7 @@ const req = (over: Partial<EscalationRouteRequest> = {}): EscalationRouteRequest
 });
 
 describe("M19 EscalationRouter tier 1", () => {
-  it("resolves primary then backup user ids, stamped source m19, with the location zone", async () => {
+  it("resolves primary FIRST then backup user ids (the order is the rank M36 reads), stamped source m19, with the location zone", async () => {
     const { router } = build();
     const answer = await router.resolveTier(ORG, req());
     expect(answer).toMatchObject({

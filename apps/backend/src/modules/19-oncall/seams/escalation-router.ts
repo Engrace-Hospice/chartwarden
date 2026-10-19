@@ -110,7 +110,11 @@ function covers(shift: OnCallShiftDto, discipline: OncallShiftDiscipline, asOfMs
   );
 }
 
-/** Primary then backup per shift (active shifts first, as the store orders them), de-duplicated; unresolved memberships dropped. */
+/**
+ * Primary then backup per shift (active shifts first, as the store orders them), de-duplicated; unresolved memberships dropped. The ORDER
+ * is the rank contract M36 reads (first = primary, rest = backup; ADR-0081). Known ceiling: an unresolved primary membership is dropped,
+ * so the backup then leads the list and is labelled primary; distinguishing that needs an explicit rank field on the seam.
+ */
 async function userIdsOf(
   store: OncallSeamStore,
   shifts: readonly OnCallShiftDto[],

@@ -11,6 +11,7 @@ import {
   type OnCallCoverageDto,
   type OnCallDirectoryRole,
   type OnCallDirectoryStatus,
+  type OnCallRank,
   type OnCallTierDto,
 } from "@wardenx/types";
 
@@ -34,6 +35,19 @@ export function validShiftEnd(value: string | undefined, asOf: Date): string | n
   if (!value) return null;
   const at = new Date(value);
   return Number.isNaN(at.getTime()) || at <= asOf ? null : at.toISOString();
+}
+
+/**
+ * The router's order IS the rank (EscalationRouter contract, ADR-0057 item 12): first = primary, the rest = backup. No sort. A repeated
+ * id keeps its FIRST position, so a user who is both primary and backup is the primary. Callers normalise id case first.
+ */
+export function rankedIds(
+  userIds: readonly string[],
+): readonly { readonly id: string; readonly rank: OnCallRank }[] {
+  return [...new Set(userIds)].map((id, index) => ({
+    id,
+    rank: index === 0 ? "primary" : "backup",
+  }));
 }
 
 export function unavailableStatus(
@@ -68,7 +82,12 @@ export function createOnCallCoverageService(deps: OnCallCoverageDeps): OnCallCov
         if (tiers.length === 0) status = answer.kind === "resolved" ? "covered" : "coverage_gap";
         const people =
           answer.kind === "resolved"
-            ? await Promise.all(answer.userIds.map((id) => deps.displayName(actor.orgId, id)))
+            ? await Promise.all(
+                rankedIds(answer.userIds).map(async ({ id, rank }) => ({
+                  display_name: await deps.displayName(actor.orgId, id),
+                  rank,
+                })),
+              )
             : [];
         tiers.push({
           tier: answer.tier,

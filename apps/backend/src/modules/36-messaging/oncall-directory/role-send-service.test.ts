@@ -107,10 +107,35 @@ describe("RoleSendService.resolve", () => {
       time_zone: "America/Los_Angeles",
       shift_ends_at: "2026-06-02T02:00:00.000Z",
       people: [
-        { user_id: U1, display_name: "Dana K." },
-        { user_id: U2, display_name: null },
+        { user_id: U2, display_name: null, rank: "primary" },
+        { user_id: U1, display_name: "Dana K.", rank: "backup" },
       ],
     });
+  });
+
+  it("keeps the router's order (no sort) and ranks the first id primary, the rest backup", async () => {
+    const { service } = build({ tier1: covered(U2, U1) });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U2, "primary"],
+      [U1, "backup"],
+    ]);
+  });
+
+  it("de-duplicates keeping the FIRST occurrence: a user who is primary and backup is the primary", async () => {
+    const { service } = build({ tier1: covered(U2, U1, U2.toUpperCase()) });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U2, "primary"],
+      [U1, "backup"],
+    ]);
+  });
+
+  it("still sends to a backup (the sender confirms one person) and to the same person if only their rank changed", async () => {
+    const asBackup = build({ tier1: covered(U2, U1) });
+    await expect(send(asBackup.service, U1)).resolves.toMatchObject({ recipient_user_id: U1 });
+    const nowPrimary = build({ tier1: covered(U1, U2) });
+    await expect(send(nowPrimary.service, U1)).resolves.toMatchObject({ recipient_user_id: U1 });
   });
 
   it("reports a coverage gap as a state with nobody to confirm (never a backup tier)", async () => {

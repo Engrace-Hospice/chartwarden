@@ -1,6 +1,6 @@
 // M36 WP 4.12 (ADR-0080) - every word the on-call directory shows, in one place. PROVISIONAL pending clinical-lead review. The screen
 // only answers "who is covering now"; it pages and sends nothing, and a gap or an unconnected roster is said in words, never an empty list.
-import type { OnCallDirectoryRole } from "@wardenx/types";
+import type { OnCallDirectoryRole, OnCallRank } from "@wardenx/types";
 
 export const ONCALL_TITLE = "On call now";
 export const ONCALL_BREADCRUMB = "General / Messaging";
@@ -29,6 +29,12 @@ export const ONCALL_GAP = "No one is rostered right now. Use the agency telephon
 export const ONCALL_NAME_UNKNOWN = "Name not available";
 export const ONCALL_SHIFT_END_UNKNOWN = "Shift end not provided";
 export const ONCALL_ZONE_UNKNOWN = "time zone unavailable";
+
+/** Closed wording for the server's rank enum (text, never colour alone). No server free text is shown. */
+export const RANK_LABELS: Readonly<Record<OnCallRank, string>> = {
+  primary: "Primary",
+  backup: "Backup",
+};
 
 export const tierLabel = (tier: number): string =>
   tier === 1 ? "On call" : `Backup, tier ${tier}`;

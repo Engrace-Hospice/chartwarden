@@ -25,13 +25,27 @@ export const ONCALL_DIRECTORY_STATUSES = [
 ] as const;
 export type OnCallDirectoryStatus = (typeof ONCALL_DIRECTORY_STATUSES)[number];
 
+/**
+ * Who within a covering tier is the PRIMARY and who the BACKUP (hazard H-02). The EscalationRouter contract has no explicit rank: its
+ * `userIds` order IS the contract (ADR-0057 item 12: the primary membership first, then the backup). The first id is `primary`, every
+ * later id `backup`; M36 never re-sorts the list. A text label in the UI, never colour alone.
+ */
+export const ONCALL_RANKS = ["primary", "backup"] as const;
+export type OnCallRank = (typeof ONCALL_RANKS)[number];
+
 export type OnCallTierState = "covering" | "coverage_gap";
+
+export interface OnCallPersonDto {
+  /** Null when the name cannot be found (never an id in its place). */
+  readonly display_name: string | null;
+  readonly rank: OnCallRank;
+}
 
 export interface OnCallTierDto {
   readonly tier: number;
   readonly state: OnCallTierState;
-  /** Display names of who covers this tier now (empty on a gap). A user the name lookup cannot find is `null`, never an id. */
-  readonly people: readonly (string | null)[];
+  /** Who covers this tier now, primary first (empty on a gap). A user the name lookup cannot find has a `null` name, never an id. */
+  readonly people: readonly OnCallPersonDto[];
   /** Strict ISO instant when the covering shift ends, only when the roster supplied one; otherwise null (never guessed). */
   readonly shift_ends_at: string | null;
   /** IANA zone the roster evaluated this tier in. Render times in THIS zone, never the viewer's or the server's. */
@@ -76,9 +90,11 @@ export interface RoleSendPersonDto {
   readonly user_id: string;
   /** Null when the name cannot be found (never an id in its place). */
   readonly display_name: string | null;
+  /** `primary` for the first id the router returned, `backup` for the rest, in the router's order (see `ONCALL_RANKS`). */
+  readonly rank: OnCallRank;
 }
 
-/** What the sender confirms: tier 1 only. `people` is non-empty only when `status` is `covered`. */
+/** What the sender confirms: tier 1 only. `people` is non-empty only when `status` is `covered` and is in router order (primary first). */
 export interface RoleSendResolutionDto {
   readonly role: OnCallDirectoryRole;
   readonly as_of: string;
