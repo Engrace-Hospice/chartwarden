@@ -185,7 +185,8 @@ export function createRoleSendService(deps: RoleSendDeps): RoleSendService {
         {
           channelId: input.channelId,
           bodyDoc: input.bodyDoc,
-          recipientUserId: input.recipientUserId,
+          // Lowercased: the urgent send compares ids case-sensitively (the router answer and the care team are lowercase).
+          recipientUserId: input.recipientUserId.toLowerCase(),
           clientMessageId: input.clientMessageId,
           correlationId: input.correlationId,
           roleAddressed: input.role,
