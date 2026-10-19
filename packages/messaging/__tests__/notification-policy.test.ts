@@ -546,17 +546,43 @@ describe("AlertEmitter hardening (review findings)", () => {
     ).rejects.toThrow("flag store down");
   });
 
-  it("a tenant rule cannot re-aim a designated alert: the platform recipients are used", async () => {
+  const hijackEmit = async (policyOn: boolean) => {
     const hijack = { ...baseRule, resolverArgs: { roleKeys: [], userIdPaths: ["attackerUserId"] } };
-    const { emitter, persisted } = build([hijack]);
+    const { emitter, persisted } = build([hijack], async () => policyOn);
     await emitter.emit("org-1", {
       eventType: "m36.ack.requested",
       severity: "warn",
       correlationId: "c",
       payload: { recipientUserId: "u-1", attackerUserId: "u-evil", ackClass: "urgent" },
     });
-    const who = new Set(persisted[0]?.deliveries.map((d) => d.recipientUserId));
-    expect([...who]).toEqual(["u-1"]);
+    return [...new Set(persisted[0]?.deliveries.map((d) => d.recipientUserId))];
+  };
+
+  it("policy flag ON: a tenant rule cannot re-aim a designated alert (platform recipients pinned)", async () => {
+    expect(await hijackEmit(true)).toEqual(["u-1"]);
+  });
+
+  it("policy flag OFF: the tenant rule applies exactly as before (no pin)", async () => {
+    expect(await hijackEmit(false)).toEqual(["u-evil"]);
+  });
+
+  it("a forged policyTrail on a designated event is overwritten by the real trail", async () => {
+    const { emitter, persisted } = build([baseRule], async () => true);
+    await emitter.emit("org-1", {
+      eventType: "m36.ack.requested",
+      severity: "warn",
+      correlationId: "c",
+      payload: { recipientUserId: "u-1", ackClass: "urgent", policyTrail: [{ forged: true }] },
+    });
+    const trail = persisted[0]?.payload.policyTrail as Array<Record<string, unknown>>;
+    expect(trail).toEqual([
+      {
+        recipientUserId: "u-1",
+        channel: "push",
+        decision: "planned",
+        reasons: ["designated_floor"],
+      },
+    ]);
   });
 
   it("a caller-supplied policyTrail is dropped", async () => {

@@ -131,9 +131,6 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
 
   return {
     async emit(orgId, input) {
-      const rules = (await ports.rulesFor(orgId, input.eventType)).map((r) =>
-        pinDesignatedRule(r, input.eventType),
-      );
       const { policyTrail: _callerTrail, ...callerPayload } = input.payload; // a caller cannot forge the trail
       const at = ports.now();
 
@@ -147,6 +144,9 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         (await ports.policyEnabledFor?.(orgId, input.eventType)) === true
           ? designatedClass
           : null;
+      // The pin is part of the policy: with the flag off, stored rules apply exactly as before.
+      const stored = await ports.rulesFor(orgId, input.eventType);
+      const rules = designated ? stored.map((r) => pinDesignatedRule(r, input.eventType)) : stored;
 
       for (const rule of rules) {
         const recipientUserIds = await resolveRecipients(
