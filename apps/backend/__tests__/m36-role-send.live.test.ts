@@ -283,6 +283,14 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
         assigned_user_id: rn,
         requester_user_id: nurse,
       });
+      // ADR-0081 follow-on: the request read exposes the role (closed enum) for the card.
+      const read = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/escalations/${request?.id}`,
+        headers: as(nurse, ORG_A),
+      });
+      expect(read.statusCode, read.body).toBe(200);
+      expect(read.json().request.addressed_role).toBe("rn");
       const first = await kit.one<{ event_type: string; assigned_user_id: string }>(
         "SELECT event_type, assigned_user_id FROM message_acknowledgment_event WHERE request_id=$1 ORDER BY created_at, id",
         [request?.id],

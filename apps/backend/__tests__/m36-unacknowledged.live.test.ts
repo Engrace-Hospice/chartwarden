@@ -113,7 +113,13 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
     name: string,
     channel: string,
     patient: string,
-    over: { requester?: string; assignee?: string; org?: string; minutes?: number } = {},
+    over: {
+      requester?: string;
+      assignee?: string;
+      org?: string;
+      minutes?: number;
+      role?: "rn" | "physician";
+    } = {},
   ): Promise<string> => {
     const org = over.org ?? ORG_A;
     const requester = over.requester ?? nurse;
@@ -121,9 +127,18 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
     const id = (
       await kit.admin.query(
         `INSERT INTO message_acknowledgment_request
-           (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
-         VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + make_interval(mins => $7)) RETURNING id`,
-        [org, messageId, channel, patient, requester, over.assignee ?? rn, over.minutes ?? 60],
+           (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at, addressed_role)
+         VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + make_interval(mins => $7), $8) RETURNING id`,
+        [
+          org,
+          messageId,
+          channel,
+          patient,
+          requester,
+          over.assignee ?? rn,
+          over.minutes ?? 60,
+          over.role ?? null,
+        ],
       )
     ).rows[0].id as string;
     ids[name] = id;
@@ -191,8 +206,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
     }
 
     // org A: seven requests. Three share one deadline (one transaction => one now()).
-    await born("pending_visible", memberChannel, PATIENT_1, { minutes: 10 });
-    await born("pending_restricted", otherChannel, PATIENT_2, { minutes: 20 });
+    await born("pending_visible", memberChannel, PATIENT_1, { minutes: 10, role: "rn" });
+    await born("pending_restricted", otherChannel, PATIENT_2, { minutes: 20, role: "physician" });
     await born("to_escalate", memberChannel, PATIENT_1, { minutes: 5 });
     await escalate(ids.to_escalate as string);
     await born("to_fail", otherChannel, PATIENT_2, { minutes: 90 });
@@ -492,9 +507,14 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
       expect(res.body).not.toMatch(/okafor|morphine|mrn/i);
       const visible = body(res).items.find((i) => !i.restricted) as AckQueueItemDto;
       expect(visible).toMatchObject({ channel_id: memberChannel, patient_id: PATIENT_1 });
+      // ADR-0081 follow-on: the addressed role is a closed enum on an open row and (a non-patient attribute) on a restricted one.
+      expect(visible.addressed_role).toBe("rn");
+      const hidden = body(res).items.find((i) => i.request_ref === ids.pending_restricted);
+      expect(hidden).toMatchObject({ restricted: true, addressed_role: "physician" });
       expect(Object.keys(visible).sort()).toEqual(
         [
           "ack_class",
+          "addressed_role",
           "assigned_display_name",
           "assigned_user_id",
           "channel_id",

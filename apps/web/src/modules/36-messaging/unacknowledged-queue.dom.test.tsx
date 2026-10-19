@@ -7,6 +7,7 @@ import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ADDRESSED_ROLE_TEXT } from "./ack-wording";
 import { UnacknowledgedQueue, threadLink } from "./unacknowledged-queue";
 import {
   QUEUE_DENIED,
@@ -35,6 +36,7 @@ const item = (over: Partial<AckQueueItemDto> = {}): AckQueueItemDto => ({
   message_id: MSG,
   patient_id: "99999999-9999-4999-8999-000000000001",
   ack_class: "urgent",
+  addressed_role: null,
   status: "pending",
   assigned_user_id: "dddddddd-dddd-4ddd-8ddd-000000000001",
   assigned_display_name: "Nina Nurse",
@@ -145,6 +147,25 @@ describe("UnacknowledgedQueue", () => {
     expect(within(row).queryByRole("link")).toBeNull();
     expect(row.textContent).not.toMatch(/99999999|aaaaaaaa|bbbbbbbb/);
     expect(threadLink(RESTRICTED)).toBeNull();
+  });
+
+  it("names the addressed role on an open row and on a restricted row, and nothing for a named person", async () => {
+    mount(() =>
+      page([
+        item({ addressed_role: "rn" }),
+        { ...RESTRICTED, addressed_role: "physician" },
+        item({
+          id: "cccccccc-cccc-4ccc-8ccc-000000000009",
+          request_ref: "cccccccc-cccc-4ccc-8ccc-000000000009",
+        }),
+      ]),
+    );
+    const rows = await screen.findAllByRole("listitem");
+    expect(within(rows[0] as HTMLElement).getByText(`${ADDRESSED_ROLE_TEXT.rn}.`)).toBeTruthy();
+    expect(
+      within(rows[1] as HTMLElement).getByText(`${ADDRESSED_ROLE_TEXT.physician}.`),
+    ).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).queryByText(/on-call/)).toBeNull();
   });
 
   it("states the total beside the list, and 'showing x of y' when a filter narrows it, with the unfiltered total unchanged", async () => {

@@ -37,6 +37,7 @@ const item = (over: Partial<AckQueueItemDto> = {}): AckQueueItemDto => ({
   message_id: "bbbbbbbb-bbbb-4bbb-8bbb-000000000001",
   patient_id: PATIENT,
   ack_class: "urgent",
+  addressed_role: null,
   status: "pending",
   assigned_user_id: "dddddddd-dddd-4ddd-8ddd-000000000001",
   assigned_display_name: "Nina Nurse",

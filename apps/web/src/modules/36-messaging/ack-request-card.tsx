@@ -33,6 +33,7 @@ import {
   ACK_UNREACHABLE_TEXT,
   ACK_WAIT_LOAD_TEXT,
   ACK_WORKING_TEXT,
+  addressedRoleText,
   closeName,
   escalatedWaitingFor,
   takeName,
@@ -98,6 +99,7 @@ export function AckRequestCard({
 
   const actions = request.viewer_actions;
   const waiting = request.status === "pending" || request.status === "escalated";
+  const roleText = addressedRoleText(request.addressed_role);
   const overdue = waiting && new Date(request.deadline_at) < new Date();
   const icon =
     request.status === "resolved" || request.status === "acknowledged" ? "check" : "clock";
@@ -128,6 +130,7 @@ export function AckRequestCard({
         <Glyph name={unreachable ? "alert" : icon} size={14} />
         <span>{ACK_STATUS_TEXT[request.status]}</span>
       </p>
+      {roleText ? <p className="wx-ack-detail">{roleText}</p> : null}
       {waiting ? (
         <p className="wx-ack-detail">
           {(request.status === "escalated" ? escalatedWaitingFor : waitingFor)(

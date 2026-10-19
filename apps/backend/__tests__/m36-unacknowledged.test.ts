@@ -132,7 +132,11 @@ beforeEach(() => {
   page = {
     rows: [
       {
-        row: row({ id: "cccccccc-cccc-4ccc-8ccc-000000000001", channelId: VISIBLE_CH }),
+        row: row({
+          id: "cccccccc-cccc-4ccc-8ccc-000000000001",
+          channelId: VISIBLE_CH,
+          addressedRole: "rn",
+        }),
         note: "route_unavailable",
       },
       {
@@ -143,6 +147,7 @@ beforeEach(() => {
           patientId: HIDDEN_PATIENT,
           assignedUserId: HIDDEN_ASSIGNEE,
           currentTier: 2,
+          addressedRole: "physician",
           status: "escalated",
         }),
         note: "ladder_exhausted",
@@ -244,6 +249,8 @@ describe("unacknowledged service - what the viewer is shown", () => {
       requester_display_name: "Someone Else",
       request_ref: HIDDEN_REQUEST,
       ack_class: "urgent",
+      // ADR-0081: the addressed role is a non-patient attribute like the class, so it stays on a restricted row.
+      addressed_role: "physician",
       current_tier: 2,
       escalation_note: "ladder_exhausted",
       status: "escalated",
@@ -273,6 +280,7 @@ describe("unacknowledged service - what the viewer is shown", () => {
     const [first, , failed] = out.items;
     expect(first).toMatchObject({
       restricted: false,
+      addressed_role: "rn",
       id: "cccccccc-cccc-4ccc-8ccc-000000000001",
       channel_id: VISIBLE_CH,
       assigned_display_name: "Nina Nurse",
@@ -283,10 +291,16 @@ describe("unacknowledged service - what the viewer is shown", () => {
       escalation_note: "route_unavailable",
       delivery_failed: false,
     });
-    expect(failed).toMatchObject({ delivery_failed: true, overdue: false, overdue_seconds: 0 });
+    expect(failed).toMatchObject({
+      addressed_role: null,
+      delivery_failed: true,
+      overdue: false,
+      overdue_seconds: 0,
+    });
     expect(Object.keys(first ?? {}).sort()).toEqual(
       [
         "ack_class",
+        "addressed_role",
         "assigned_display_name",
         "assigned_user_id",
         "channel_id",

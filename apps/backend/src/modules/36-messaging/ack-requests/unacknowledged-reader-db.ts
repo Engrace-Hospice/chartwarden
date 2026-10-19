@@ -106,6 +106,7 @@ const toRow = (r: typeof R.$inferSelect): AckRow => ({
   channelId: r.channelId,
   patientId: r.patientId,
   ackClass: r.ackClass,
+  addressedRole: r.addressedRole,
   status: r.status,
   requesterUserId: r.requesterUserId,
   assignedUserId: r.assignedUserId,

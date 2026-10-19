@@ -3,6 +3,7 @@
 // never a silently ignored filter. The response is ids, enums, counts and instants; no message text, no patient name.
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
+  ACK_ADDRESSED_ROLES,
   ACK_CLASSES,
   ACK_ESCALATION_NOTES,
   ACK_QUEUE_LIMIT_MAX,
@@ -31,6 +32,7 @@ const Item = Type.Object({
   message_id: nullable(UuidOut),
   patient_id: nullable(UuidOut),
   ack_class: oneOf(ACK_CLASSES),
+  addressed_role: nullable(oneOf(ACK_ADDRESSED_ROLES)),
   status: oneOf(ACK_QUEUE_STATUSES),
   assigned_user_id: nullable(UuidOut),
   assigned_display_name: nullable(Type.String()),
