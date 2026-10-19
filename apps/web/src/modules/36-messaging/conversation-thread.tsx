@@ -25,6 +25,7 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { useNeedsResponse } from "./needs-response-control";
 import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
@@ -244,7 +245,9 @@ function ConversationThreadView({
     if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
   }, []);
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
+  const needsResponse = useNeedsResponse(channel.channelId, channel.kind);
   const { send, sending, sendError, sbarIssues, clearSendError, resetSender } = useMessageSender({
+    needsResponse: needsResponse.forSend,
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
     draft,
@@ -753,6 +756,7 @@ function ConversationThreadView({
         removeDraftLink={draftLinks.remove}
         uploads={uploads}
         sending={sending}
+        needsResponse={needsResponse}
         send={send}
         sendError={sendError}
         clearSendError={clearSendError}

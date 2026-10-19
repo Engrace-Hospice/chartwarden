@@ -18,6 +18,7 @@ import {
   sendAttemptFor,
 } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
+import { type NeedsResponseSend, requestResponse } from "./needs-response";
 import { SBAR_SEND_ERRORS, sbarIssuesFromError } from "./sbar-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
@@ -71,6 +72,8 @@ interface UseMessageSenderInput {
   onQueued?: (queued: QueuedSend, stillOpen: boolean) => void;
   /** Channel composer only: true while an earlier message waits in the outbox, so this one queues behind it unsent. */
   hasQueuedAhead?: () => boolean;
+  /** G2: the channel composer's "Needs a response" control. Ignored for a structured (SBAR) send. */
+  needsResponse?: NeedsResponseSend;
 }
 
 /**
@@ -96,6 +99,7 @@ export function useMessageSender({
   onSettled,
   onQueued,
   hasQueuedAhead,
+  needsResponse,
 }: UseMessageSenderInput) {
   const client = useApiClient();
   const [sending, setSending] = useState(false);
@@ -131,6 +135,12 @@ export function useMessageSender({
     if (!submitted.trim() && uploads.sendableIds.length === 0 && !ready) return;
     if (sending || sendInFlightRef.current || archived) return;
     if (uploads.blocksSend && !ready) return;
+    // G2: checked with nobody chosen is refused here (Enter in the textarea reaches this too), never sent as a plain message.
+    const ask = ready || !needsResponse?.checked ? null : needsResponse;
+    if (ask && !ask.recipientId) {
+      ask.onMissingRecipient();
+      return;
+    }
     const references = mentions
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
@@ -168,7 +178,8 @@ export function useMessageSender({
     // `stillOpen` is false when the thread moved on meanwhile: the queue (which outlives the thread) still gets the
     // message, but this thread's attempt and draft now belong to another channel and are left alone.
     const queueIt = (stillOpen = true): boolean => {
-      if (!onQueued || attachmentIds.length > 0) return false;
+      // A request for a response needs the stored message id, so it is never queued offline.
+      if (!onQueued || attachmentIds.length > 0 || ask) return false;
       if (stillOpen) sendAttemptRef.current = null;
       onQueued(
         {
@@ -232,6 +243,10 @@ export function useMessageSender({
       clearTimeout(timer);
     }
     const { data, error, response } = result;
+    // G2: the message is stored, so the request is made even if the person has left the thread meanwhile (its outcome is
+    // then not shown: the thread is gone). Asked while the latch is held, so a second Send cannot duplicate the message.
+    const requested =
+      ask && data ? await requestResponse(client, data.messageId, ask.recipientId) : null;
     if (generation !== generationRef.current) return;
     sendInFlightRef.current = false;
     setSending(false);
@@ -269,6 +284,7 @@ export function useMessageSender({
       attachments: sentAttachments,
     });
     onSettled?.(true, submitted);
+    if (ask && requested) ask.onRequested(requested);
   }
 
   return { send, sending, sendError, sbarIssues, clearSendError, resetSender };
