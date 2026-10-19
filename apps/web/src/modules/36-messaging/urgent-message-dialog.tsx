@@ -8,8 +8,8 @@ import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, validateSbar } from "@wardenx/t
 import type { SbarIssue, SbarSectionKey } from "@wardenx/types";
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { JSX, KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   SBAR_DEFAULT_HINTS,
   type SbarFormValues,
@@ -239,12 +239,16 @@ export function UrgentMessageDialog({
               <label key={person.userId}>
                 <input
                   type="radio"
+                  aria-labelledby={`${id}-name-${person.userId}`}
                   name={`${id}-recipient`}
                   value={person.userId}
                   checked={draft.recipientId === person.userId}
-                  onChange={() => draft.setRecipientId(person.userId)}
+                  onChange={() => {
+                    draft.setRecipientId(person.userId);
+                    if (missingRecipient) setError(null);
+                  }}
                 />
-                {person.label}
+                <span id={`${id}-name-${person.userId}`}>{person.label}</span>
               </label>
             ))}
             {missingRecipient ? (
@@ -340,6 +344,11 @@ export function UrgentMessageDialog({
             </div>
           </div>
         ) : null}
+        {chosen || missingRecipient || choices.length === 0 ? null : (
+          <p className="wx-urgent-hint" id={`${id}-send-hint`}>
+            {CHOOSE_RECIPIENT_TEXT}
+          </p>
+        )}
         <div className="wx-urgent-actions" ref={cancelRef}>
           <Button
             type="button"
@@ -352,7 +361,10 @@ export function UrgentMessageDialog({
           <Button
             type="submit"
             loading={submitting}
-            disabled={!policy || choices.length === 0 || blocked || confirmingDiscard}
+            aria-describedby={
+              chosen ? undefined : missingRecipient ? `${id}-recipient-error` : `${id}-send-hint`
+            }
+            disabled={!policy || !chosen || blocked || confirmingDiscard}
           >
             {chosen ? sendLabel(chosen.label) : "Send urgent message"}
           </Button>

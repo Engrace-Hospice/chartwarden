@@ -185,9 +185,15 @@ describe("supervisor reassign (G-2)", () => {
   });
 
   it("says nobody can take it when there are no colleagues", async () => {
-    mount({ candidates: () => candidatesOk([]) });
-    fireEvent.click(await restrictedRowButton());
+    const { POST } = mount({ candidates: () => candidatesOk([]) });
+    const dialog = (fireEvent.click(await restrictedRowButton()), await screen.findByRole("dialog"));
     expect(await screen.findByText(REASSIGN_EMPTY_TEXT)).toBeTruthy();
+    // Even with a reason chosen, there is nobody to send it to: Confirm stays inert and no "choose a colleague" prompt shows.
+    fireEvent.click(within(dialog).getByRole("radio", { name: REASSIGN_REASON_TEXT.workload }));
+    expect(confirm().getAttribute("aria-disabled")).toBe("true");
+    expect(within(dialog).queryByText(/Choose a colleague/)).toBeNull();
+    fireEvent.click(confirm());
+    expect(POST).not.toHaveBeenCalled();
   });
 
   it("posts the reason and colleague with an Idempotency-Key, announces, re-reads the list and keeps focus on the row button", async () => {
