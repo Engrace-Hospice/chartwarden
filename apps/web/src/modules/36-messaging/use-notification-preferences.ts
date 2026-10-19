@@ -92,7 +92,8 @@ export function useNotificationPreferences() {
       if (!client) return { ok: false, message: null };
       try {
         const res = await client.PUT(PREFS, { body: draft });
-        if (res.data && !res.error) return { ok: true, prefs: res.data };
+        // The PUT answers only { id, updatedAt }, not the preferences: what was sent is what is now stored.
+        if (res.data && !res.error) return { ok: true, prefs: draft };
         const message = res.error?.error?.message;
         return { ok: false, message: typeof message === "string" && message ? message : null };
       } catch {

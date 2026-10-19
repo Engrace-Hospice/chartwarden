@@ -18,7 +18,8 @@ export const ONCALL_LOAD_FAILED = "Could not load who is on call.";
 export const ONCALL_STALE = "This may be out of date: the last refresh failed.";
 export const ONCALL_RETRY_LABEL = "Retry";
 export const ONCALL_DENIED = "You are not permitted to see who is on call.";
-export const ONCALL_UNAVAILABLE = "The on-call directory is not turned on for your organisation.";
+export const ONCALL_UNAVAILABLE =
+  "The on-call directory is not available here: it is not turned on for your organization, or you do not have access to this patient.";
 export const ONCALL_SIGN_IN = "Your session has ended. Sign in again to see who is on call.";
 export const ONCALL_NOT_CONNECTED =
   "The on-call roster is not connected, so who is covering is unknown. Use the agency telephone procedure.";
