@@ -4,7 +4,7 @@
 // opened it. It names no patient, no message text and no id.
 import { ACK_SUPERVISOR_REASON_CODES } from "@wardenx/types";
 import { Button, Modal } from "@wardenx/ui";
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { JSX } from "react";
 import {
   REASSIGN_CANCEL_LABEL,
@@ -24,6 +24,7 @@ import {
   REASSIGN_SAVING_TEXT,
   REASSIGN_SUPERVISOR_NOTICE,
   REASSIGN_SUPERVISOR_TITLE,
+  reassignAvailableText,
 } from "./ack-reassign-wording";
 import { type ReassignMode, type ReassignRun, useAckReassign } from "./use-ack-reassign";
 import "./ack-reassign.css";
@@ -56,6 +57,18 @@ export function AckReassignDialog({
         : REASSIGN_NEEDS_COLLEAGUE_TEXT
     : REASSIGN_NEEDS_COLLEAGUE_TEXT;
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  // Focus never falls to the page inside the modal: when the control that had it left (Retry while loading, a refusal), it goes to the
+  // refusal text when there is one, else to the heading.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the dialog's state settles
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body && formRef.current?.contains(active)) return;
+    (state.error ? errorRef.current : headingRef.current)?.focus();
+  }, [candidates.status, state.error, submitting]);
+
   async function confirm(): Promise<void> {
     if (!state.ready || submitting) return;
     const result = await state.submit();
@@ -71,6 +84,7 @@ export function AckReassignDialog({
       width="32rem"
     >
       <form
+        ref={formRef}
         className="wx-reassign-form"
         noValidate
         onSubmit={(event) => {
@@ -78,12 +92,14 @@ export function AckReassignDialog({
           void confirm();
         }}
       >
-        <h2>{title}</h2>
+        <h2 ref={headingRef} tabIndex={-1}>
+          {title}
+        </h2>
         <p id={`${id}-notice`} className="wx-reassign-notice">
           {supervisor ? REASSIGN_SUPERVISOR_NOTICE : REASSIGN_CARD_NOTICE}
         </p>
         {supervisor ? (
-          <fieldset disabled={submitting}>
+          <fieldset aria-busy={submitting || undefined}>
             <legend>{REASSIGN_REASON_LEGEND}</legend>
             {ACK_SUPERVISOR_REASON_CODES.map((code) => (
               <label key={code}>
@@ -110,11 +126,16 @@ export function AckReassignDialog({
             </Button>
           </div>
         ) : null}
+        {candidates.status === "ready" ? (
+          <output className="wx-reassign-sr">
+            {reassignAvailableText(candidates.colleagues.length)}
+          </output>
+        ) : null}
         {candidates.status === "ready" && candidates.colleagues.length === 0 ? (
           <p className="wx-reassign-hint">{REASSIGN_EMPTY_TEXT}</p>
         ) : null}
         {candidates.status === "ready" && candidates.colleagues.length > 0 ? (
-          <fieldset disabled={submitting}>
+          <fieldset aria-busy={submitting || undefined}>
             <legend>{REASSIGN_COLLEAGUE_LEGEND}</legend>
             {candidates.colleagues.map((person) => (
               <label key={person.userId}>
@@ -130,7 +151,7 @@ export function AckReassignDialog({
           </fieldset>
         ) : null}
         {state.error ? (
-          <p className="wx-reassign-error" role="alert">
+          <p className="wx-reassign-error" role="alert" ref={errorRef} tabIndex={-1}>
             {state.error}
           </p>
         ) : null}

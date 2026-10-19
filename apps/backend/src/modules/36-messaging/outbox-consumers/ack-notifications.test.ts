@@ -246,14 +246,17 @@ describe("ADR-0078: a supervisor's reassign also tells the previous assignee and
     );
   });
 
-  it("tells the others even when the new assignee's alert is skipped as stale", async () => {
-    const { emit, consumer } = setup({ open: async () => false });
+  it("tells nobody when the event is stale (the request moved on) or the new assignee is no longer qualified or cannot see it", async () => {
+    for (const over of [
+      { open: async () => false },
+      { qualified: async () => false },
+      { canView: async () => false },
+    ]) {
+      const { emit, consumer } = setup(over);
 
-    await consumer.handle(event("m36.ack.reassigned", supervised));
+      await consumer.handle(event("m36.ack.reassigned", supervised));
 
-    expect(emit).toHaveBeenCalledTimes(1);
-    expect((emit.mock.calls[0]?.[1] as Record<string, unknown>).eventType).toBe(
-      "m36.ack.supervisor_reassigned",
-    );
+      expect(emit).not.toHaveBeenCalled();
+    }
   });
 });

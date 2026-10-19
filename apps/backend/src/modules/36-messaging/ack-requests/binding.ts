@@ -82,6 +82,14 @@ export function buildAckBinding(input: AckBindingInput): AckBinding {
       const permissions = await input.eligibility.permissionsFor(orgId, userId);
       return permissions.has("messaging.send") && permissions.has(URGENT_SEND_PERMISSION);
     },
+    part2Admitted: async (orgId, userId, patientId) =>
+      (
+        await input.eligibility.part2Gate.allowedUserIds({
+          organizationId: orgId,
+          patientId,
+          userIds: [userId],
+        })
+      ).has(userId),
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.log ? { log: input.log } : {}),
     ...(input.now ? { now: input.now } : {}),

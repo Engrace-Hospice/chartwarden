@@ -190,7 +190,7 @@ export function registerAckRoutes(
   app.get(
     "/api/v1/messaging/escalations/:id/reassign-candidates",
     {
-      preHandler: [idParam, guards.read],
+      preHandler: [idParam, guards.read, ...limited],
       schema: { response: { 200: AckReassignCandidatesResponseSchema } },
       // It discloses colleague names for a patient's request: read-audited against the request (the response carries no patient id).
       config: { auditRead: CANDIDATES_AUDIT },
@@ -203,7 +203,7 @@ export function registerAckRoutes(
   app.get(
     "/api/v1/messaging/escalations/:id/supervisor-reassign-candidates",
     {
-      preHandler: [idParam, guards.read, review],
+      preHandler: [idParam, guards.read, review, ...limited],
       schema: { response: { 200: AckReassignCandidatesResponseSchema } },
       config: { auditRead: CANDIDATES_AUDIT },
     },

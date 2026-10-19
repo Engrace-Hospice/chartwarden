@@ -26,7 +26,13 @@ interface Kit {
   service: AckService;
   store: MemoryAckStore;
   published: Array<{ eventName: string; payload: Record<string, unknown> }>;
-  knobs: { qualified: Set<string>; viewers: Set<string>; team: string[]; teamError: boolean };
+  knobs: {
+    qualified: Set<string>;
+    viewers: Set<string>;
+    team: string[];
+    teamError: boolean;
+    walledOff: Set<string>;
+  };
   setNow: (d: Date) => void;
 }
 
@@ -47,6 +53,7 @@ function kit(): Kit {
     viewers: new Set([AUTHOR, NURSE, NURSE2, AIDE]),
     team: [AUTHOR, NURSE, NURSE2, AIDE],
     teamError: false,
+    walledOff: new Set(),
   };
   const deps: AckServiceDeps = {
     isEnabled: async () => true,
@@ -64,6 +71,7 @@ function kit(): Kit {
     isQualified: async (_o, userId) => knobs.qualified.has(userId),
     stillQualified: async (_o, userId) => knobs.qualified.has(userId),
     canRaise: async (_o, userId) => userId === AUTHOR,
+    part2Admitted: async (_o, userId) => !knobs.walledOff.has(userId),
     displayName: async (_o, userId) => NAMES[userId] ?? null,
     log: () => undefined,
     now: () => now,
@@ -310,5 +318,77 @@ describe("supervisorReassignCandidates", () => {
     await expect(
       k.service.supervisorReassignCandidates(actor(SUPERVISOR), id),
     ).rejects.toMatchObject({ code: "ACK_STATE_INVALID" });
+  });
+});
+
+describe("ADR-0078 fix round 1: Part 2, self-assignment, the per-request cap, the history", () => {
+  it("shows a Part 2 walled-off supervisor no care-team names and lets them move nothing", async () => {
+    const k = kit();
+    const id = await pending(k);
+    k.knobs.walledOff.add(SUPERVISOR);
+
+    expect(
+      (await k.service.supervisorReassignCandidates(actor(SUPERVISOR), id)).candidates,
+    ).toEqual([]);
+    await expect(
+      k.service.supervisorReassign(actor(SUPERVISOR), id, NURSE2, "workload"),
+    ).rejects.toMatchObject({ code: "ACK_ASSIGNEE_INVALID", statusCode: 422 });
+    expect(k.store.events).toEqual([]);
+    // The party picker is not affected: the assignee can see the channel.
+    expect((await k.service.reassignCandidates(actor(NURSE), id)).candidates).toHaveLength(1);
+  });
+
+  it("refuses a supervisor naming themselves with the same uniform 422, even when they are an eligible nurse", async () => {
+    const k = kit();
+    const id = await pending(k);
+    k.knobs.qualified.add(SUPERVISOR);
+    k.knobs.viewers.add(SUPERVISOR);
+    k.knobs.team.push(SUPERVISOR);
+
+    await expect(
+      k.service.supervisorReassign(actor(SUPERVISOR), id, SUPERVISOR, "workload"),
+    ).rejects.toMatchObject({ code: "ACK_ASSIGNEE_INVALID", statusCode: 422 });
+    expect(k.store.events).toEqual([]);
+  });
+
+  it("stops after 5 supervisor moves of one request in 24 hours with a generic 409, and counts only supervisor moves", async () => {
+    const k = kit();
+    const id = await pending(k);
+    // a normal party reassign does not count
+    await k.service.reassign(actor(AUTHOR), id, NURSE2);
+    const to = [NURSE, NURSE2];
+    for (let i = 0; i < 5; i += 1) {
+      await k.service.supervisorReassign(actor(SUPERVISOR), id, to[i % 2] as string, "workload");
+    }
+
+    await expect(
+      k.service.supervisorReassign(actor(SUPERVISOR), id, to[1] as string, "workload"),
+    ).rejects.toMatchObject({ code: "ACK_SUPERVISOR_REASSIGN_LIMIT", statusCode: 409 });
+    expect(k.store.events.filter((e) => e.reasonCode)).toHaveLength(5);
+
+    // a day later the window has passed
+    k.setNow(new Date(T0.getTime() + 25 * 3_600_000));
+    const again = await k.service.supervisorReassign(
+      actor(SUPERVISOR),
+      id,
+      to[1] as string,
+      "workload",
+    );
+    expect(again.changed).toBe(true);
+  });
+
+  it("puts the supervisor and the reason in the history the card reads", async () => {
+    const k = kit();
+    const id = await pending(k);
+    await k.service.supervisorReassign(actor(SUPERVISOR), id, NURSE2, "coverage_change");
+
+    const detail = await k.service.get(actor(AUTHOR), id);
+
+    expect(detail.events.at(-1)).toMatchObject({
+      event_type: "reassigned",
+      actor_user_id: SUPERVISOR,
+      reason_code: "coverage_change",
+    });
+    expect(detail.events.filter((e) => e.reason_code)).toHaveLength(1);
   });
 });

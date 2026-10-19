@@ -47,6 +47,7 @@ import {
   STATUS_FILTERS,
   dueText,
   overdueText,
+  queueReassignName,
   queueSenderText,
   summaryText,
 } from "./unacknowledged-wording";
@@ -126,7 +127,11 @@ function QueueRow({
         size="sm"
         style={{ justifySelf: "start" }}
         aria-haspopup="dialog"
-        aria-label={`${QUEUE_REASSIGN_LABEL}, assigned to ${who}`}
+        aria-label={queueReassignName(
+          who,
+          item.requester_display_name,
+          overdue ? overdueText(overdueSeconds) : dueText(item.deadline_at, now),
+        )}
         onClick={(event) => onReassign(item.request_ref, event.currentTarget)}
       >
         {QUEUE_REASSIGN_LABEL}
@@ -151,7 +156,8 @@ export function UnacknowledgedQueue(): JSX.Element {
   // not in a row, so a background refresh that re-renders the rows can never unmount it or move focus.
   const [reassignRef, setReassignRef] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ text: string; failure: boolean } | null>(null);
-  const focusLostCheck = useRef(false);
+  // The view object at the moment a dialog closed: focus is re-checked on the NEXT view change, once the refresh has actually landed.
+  const focusLostCheck = useRef<unknown>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const closedRef = useRef(false);
   const openReassign = (requestRef: string, button: HTMLElement): void => {
@@ -218,11 +224,13 @@ export function UnacknowledgedQueue(): JSX.Element {
     if (reassignRef !== null || !closedRef.current) return;
     closedRef.current = false;
     if (trigger.current?.isConnected) trigger.current.focus();
+    else sectionRef.current?.focus();
   }, [reassignRef]);
   // After a reassign closed: if the row's button left the page with the refresh, focus must not fall to the page - the list takes it.
   useEffect(() => {
-    if (!focusLostCheck.current || reassignRef !== null || view.status !== "ready") return;
-    focusLostCheck.current = false;
+    if (focusLostCheck.current === null || reassignRef !== null || view.status !== "ready") return;
+    if (focusLostCheck.current === view) return;
+    focusLostCheck.current = null;
     const active = document.activeElement;
     if (active === null || active === document.body) sectionRef.current?.focus();
   }, [view, reassignRef]);
@@ -391,7 +399,7 @@ export function UnacknowledgedQueue(): JSX.Element {
           requestId={reassignRef}
           run={runReassign}
           onClose={() => {
-            focusLostCheck.current = true;
+            focusLostCheck.current = view;
             closedRef.current = true;
             setReassignRef(null);
           }}

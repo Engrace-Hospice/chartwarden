@@ -33,6 +33,13 @@ export const queueSenderText = (name: string | null): string =>
   name?.trim() ? `Sent by ${name.trim()}.` : QUEUE_SENDER_UNKNOWN;
 /** ADR-0078 (G-2): the supervisor's Reassign button; the dialog's own words are in ack-reassign-wording.ts. */
 export const QUEUE_REASSIGN_LABEL = "Reassign";
+/** The accessible name starts with the visible text (WCAG 2.5.3) and tells the rows apart: assignee, sender and due time. */
+export const queueReassignName = (
+  assignee: string,
+  sender: string | null,
+  dueLabel: string,
+): string =>
+  `${QUEUE_REASSIGN_LABEL}, assigned to ${assignee}, ${sender?.trim() ? `sent by ${sender.trim()}` : "sender not available"}, ${dueLabel}`;
 
 export const STATUS_FILTERS: readonly { value: AckQueueStatus | "all"; label: string }[] = [
   { value: "all", label: "Everything waiting" },

@@ -80,7 +80,8 @@ describe("only an explicit transition writes an acknowledgment", () => {
   });
 
   it("the supervisor reassign (ADR-0078) can only move a waiting request back to pending: it never writes acknowledged, resolved or an acknowledgment", () => {
-    const supervisor = between("    async supervisorReassign(actor", "  };\n}");
+    const file = read(`${ACK_DIR}/ack-supervisor.ts`);
+    const supervisor = file.slice(file.indexOf("async function reassign("));
     expect(supervisor.length).toBeGreaterThan(500);
     expect(supervisor).not.toMatch(/status:\s*"(acknowledged|resolved|cancelled|escalated)"/);
     expect(supervisor).not.toMatch(

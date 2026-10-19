@@ -14527,7 +14527,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only */
+        /** Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50; rate limited like reassign. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only */
         get: operations["getApiV1MessagingEscalationsByIdReassigncandidates"];
         put?: never;
         post?: never;
@@ -14563,7 +14563,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false */
+        /** A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false */
         post: operations["postApiV1MessagingEscalationsByIdSupervisorreassign"];
         delete?: never;
         options?: never;
@@ -14578,7 +14578,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only */
+        /** The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. A supervisor the Part 2 gate walls off from the patient gets an EMPTY list (the care team is never named to them). Rate limited like reassign. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only */
         get: operations["getApiV1MessagingEscalationsByIdSupervisorreassigncandidates"];
         put?: never;
         post?: never;
@@ -67690,6 +67690,7 @@ export interface operations {
                             assigned_user_id: string | null;
                             previous_assigned_user_id: string | null;
                             tier: number;
+                            reason_code: ("assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational") | null;
                             /** Format: date-time */
                             created_at: string;
                         }[];

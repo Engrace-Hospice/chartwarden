@@ -81,6 +81,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
   let unqualified: string;
   let outsider: string;
   let part2Blocked: string;
+  let walled: string;
   let supervisor: string;
   let plain: string;
   let reviewOnly: string;
@@ -112,7 +113,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
       permissionsFor: async (_org, userId) => new Set(keysOf.get(userId) ?? []),
       part2Gate: {
         allowedUserIds: async ({ userIds }: { userIds: readonly string[] }) =>
-          new Set(userIds.filter((u) => u !== part2Blocked)),
+          new Set(userIds.filter((u) => u !== part2Blocked && u !== walled)),
       },
       careTeamMembers: async () => careTeam,
     });
@@ -258,6 +259,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
     supervisor = await seed("supervisor", ORG_A, SUPERVISOR_KEYS);
     plain = await seed("plain", ORG_A, RECEIVE_KEYS);
     reviewOnly = await seed("reviewonly", ORG_A, ["messaging.review"]);
+    walled = await seed("walled", ORG_A, SUPERVISOR_KEYS);
     supervisorB = await seed("supervisorb", ORG_B, SUPERVISOR_KEYS);
     rnB = await seed("rnb", ORG_B, RECEIVE_KEYS);
     // The supervisor is deliberately in NO channel. channel2 has only nurse and rn (a restricted row for everyone else).
@@ -459,6 +461,52 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
         (await get(app, supervisor, `/api/v1/messaging/channels/${channel}/escalations`))
           .statusCode,
       ).toBe(403);
+    });
+  });
+
+  describe("fix round 1", () => {
+    it("shows a Part 2 walled-off supervisor an empty list and lets them move nothing", async () => {
+      const id = await fresh();
+      const before = await totals();
+
+      const list = await get(app, walled, `${BASE}/${id}/supervisor-reassign-candidates`);
+
+      expect(list.statusCode, list.body).toBe(200);
+      expect(list.json()).toEqual({ candidates: [] });
+      const res = await supervise(id, rn2, "workload", walled);
+      expect(res.statusCode).toBe(422);
+      expect(errorCode(res)).toBe("ACK_ASSIGNEE_INVALID");
+      expect(await totals()).toEqual(before);
+    });
+
+    it("stops the sixth supervisor move of one request within a day with a generic 409 (a database-clock window)", async () => {
+      const id = await fresh();
+      const to = [rn2, rn3];
+      for (let i = 0; i < 5; i += 1) {
+        const res = await supervise(id, to[i % 2] as string, "workload");
+        expect(res.statusCode, res.body).toBe(200);
+      }
+
+      const sixth = await supervise(id, to[1] as string, "workload");
+
+      expect(sixth.statusCode).toBe(409);
+      expect(errorCode(sixth)).toBe("ACK_SUPERVISOR_REASSIGN_LIMIT");
+    });
+
+    it("names the supervisor and the reason in the history the thread reads, and refuses self-assignment", async () => {
+      const id = await fresh();
+      await supervise(id, rn2, "assignee_off_shift");
+
+      const detail = await get(app, nurse, `${BASE}/${id}`);
+
+      expect(detail.statusCode, detail.body).toBe(200);
+      expect(detail.json().events.at(-1)).toMatchObject({
+        event_type: "reassigned",
+        actor_user_id: supervisor,
+        reason_code: "assignee_off_shift",
+      });
+      const self = await supervise(await fresh(), supervisor, "workload");
+      expect(self.statusCode).toBe(422);
     });
   });
 

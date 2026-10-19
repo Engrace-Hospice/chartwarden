@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   REASSIGN_CANNOT_TAKE_TEXT,
+  REASSIGN_CHANGED_TEXT,
   REASSIGN_COLLEAGUE_FALLBACK,
   REASSIGN_EMPTY_TEXT,
   REASSIGN_INDETERMINATE_TEXT,
@@ -18,7 +19,7 @@ import {
   REASSIGN_TOO_MANY_TEXT,
 } from "./ack-reassign-wording";
 import { AckForMessage, AckRequestsProvider } from "./ack-request-card";
-import { ACK_CHANGED_TEXT, ACK_GONE_TEXT, ACK_STATUS_TEXT } from "./ack-wording";
+import { ACK_STATUS_TEXT } from "./ack-wording";
 
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date("2026-10-15T12:10:00.000Z"), toFake: ["Date"] });
@@ -220,8 +221,8 @@ describe("ack request card - reassign (G-6)", () => {
     [422, REASSIGN_CANNOT_TAKE_TEXT, true],
     [429, REASSIGN_TOO_MANY_TEXT, true],
     [403, REASSIGN_NOT_PERMITTED_TEXT, true],
-    [409, ACK_CHANGED_TEXT, false],
-    [404, ACK_GONE_TEXT, false],
+    [409, REASSIGN_CHANGED_TEXT, false],
+    [404, REASSIGN_CHANGED_TEXT, false],
     [500, REASSIGN_INDETERMINATE_TEXT, false],
   ])("answers %s with generic words (dialog stays open: %s)", async (status, text, stays) => {
     const post = vi
@@ -278,5 +279,93 @@ describe("ack request card - reassign (G-6)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(button);
     expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("announces how many colleagues are available, politely", async () => {
+    mount();
+    const dialog = await openDialog();
+
+    const status = await within(dialog).findByText("2 colleagues available.");
+
+    expect(status.tagName).toBe("OUTPUT");
+  });
+
+  it("does not disable the colleague list while saving (aria-busy instead) and keeps focus inside the dialog", async () => {
+    let finish: (v: unknown) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    mount({ post });
+    const dialog = await openDialog();
+    await choosePat(dialog);
+
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const fieldset = within(dialog).getByRole("radio", { name: "Pat Nurse" }).closest("fieldset");
+    expect(fieldset?.hasAttribute("disabled")).toBe(false);
+    expect(fieldset?.getAttribute("aria-busy")).toBe("true");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await act(async () => finish({ data: {}, response: { status: 200 } }));
+  });
+
+  it("keeps focus inside the dialog when Retry reloads, and after a refusal; a changed choice clears the refusal", async () => {
+    const candidates = vi
+      .fn()
+      .mockReturnValueOnce({ data: undefined, response: { status: 500 } })
+      .mockReturnValue(candidatesOk());
+    const post = vi.fn().mockResolvedValue({ error: {}, response: { status: 422 } });
+    mount({ candidates, post });
+    const dialog = await openDialog();
+    const retry = await within(dialog).findByRole("button", { name: "Retry" });
+    retry.focus();
+
+    fireEvent.click(retry);
+
+    await within(dialog).findByRole("radio", { name: "Pat Nurse" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await choosePat(dialog);
+    fireEvent.click(confirmButton());
+    const alert = await within(dialog).findByText(REASSIGN_CANNOT_TAKE_TEXT);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(alert).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("radio", { name: REASSIGN_COLLEAGUE_FALLBACK }));
+    expect(within(dialog).queryByText(REASSIGN_CANNOT_TAKE_TEXT)).toBeNull();
+  });
+
+  it("says one generic thing for 404 and 409 and closes", async () => {
+    const post = vi.fn().mockResolvedValue({ error: {}, response: { status: 409 } });
+    mount({ post });
+    const dialog = await openDialog();
+    await choosePat(dialog);
+
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((await screen.findAllByText(REASSIGN_CHANGED_TEXT)).length).toBeGreaterThan(0);
+  });
+
+  it("keeps the open dialog (and the choice) when the list is re-read in the background", async () => {
+    const { GET } = mount();
+    const dialog = await openDialog();
+    await choosePat(dialog);
+    const before = calls(GET, "/api/v1/messaging/channels/{id}/escalations").length;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() =>
+      expect(calls(GET, "/api/v1/messaging/channels/{id}/escalations").length).toBeGreaterThan(
+        before,
+      ),
+    );
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    expect(
+      (within(dialog).getByRole("radio", { name: "Pat Nurse" }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 });

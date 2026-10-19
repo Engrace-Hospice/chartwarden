@@ -1,6 +1,6 @@
 // M36 ADR-0078 (G-6, G-2) - the state behind the two reassign dialogs. Opening reads the eligible colleagues and nothing else. One
 // Idempotency-Key is minted per dialog open and sent on the POST; it is replaced after a definite refusal (a changed choice is a new
-// attempt) and kept after an indeterminate one. A refusal never says why a person is ineligible. The caller's `run` owns the busy
+// attempt) and kept after an indeterminate one (the same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
 // state, the live announcement and the list refresh; this hook only builds the call and maps the answer to words.
 import type { AckReassignCandidate, AckSupervisorReasonCode } from "@wardenx/types";
 import { useApiClient } from "@wardenx/ui";
@@ -17,7 +17,6 @@ import {
   REASSIGN_SIGN_IN_TEXT,
   REASSIGN_TOO_MANY_TEXT,
 } from "./ack-reassign-wording";
-import { ACK_CHANGED_TEXT, ACK_GONE_TEXT } from "./ack-wording";
 
 export type ReassignMode = "party" | "supervisor";
 
@@ -75,17 +74,12 @@ export function colleagueChoices(candidates: readonly AckReassignCandidate[]): C
 }
 
 /** The words for a refusal and whether the dialog closes (the request moved on, or the outcome is unknown) or stays open. */
-export function reassignFailure(mode: ReassignMode, status: number | undefined): ReassignResult {
+export function reassignFailure(status: number | undefined): ReassignResult {
   if (status === undefined || status === 408 || status >= 500) {
     return { kind: "done", text: REASSIGN_INDETERMINATE_TEXT, failure: true };
   }
   if (status === 404 || status === 409) {
-    const cardText = status === 404 ? ACK_GONE_TEXT : ACK_CHANGED_TEXT;
-    return {
-      kind: "done",
-      text: mode === "supervisor" ? REASSIGN_CHANGED_TEXT : cardText,
-      failure: true,
-    };
+    return { kind: "done", text: REASSIGN_CHANGED_TEXT, failure: true };
   }
   if (status === 422) return { kind: "stay", text: REASSIGN_CANNOT_TAKE_TEXT };
   if (status === 429) return { kind: "stay", text: REASSIGN_TOO_MANY_TEXT };
@@ -102,13 +96,24 @@ export type CandidatesState =
 export function useAckReassign(mode: ReassignMode, requestId: string, run: ReassignRun) {
   const client = useApiClient() as unknown as ReassignClient;
   const [candidates, setCandidates] = useState<CandidatesState>({ status: "loading" });
-  const [userId, setUserId] = useState<string | null>(null);
-  const [reason, setReason] = useState<AckSupervisorReasonCode | null>(null);
+  const [userId, setUserIdRaw] = useState<string | null>(null);
+  const [reason, setReasonRaw] = useState<AckSupervisorReasonCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const key = useRef<string>(crypto.randomUUID());
   const inFlight = useRef(false);
   const token = useRef(0);
+  // A changed choice clears the last refusal; a choice made while a call is in flight is ignored (the call keeps the one it was sent with).
+  const setUserId = useCallback((value: string | null): void => {
+    if (inFlight.current) return;
+    setError(null);
+    setUserIdRaw(value);
+  }, []);
+  const setReason = useCallback((value: AckSupervisorReasonCode | null): void => {
+    if (inFlight.current) return;
+    setError(null);
+    setReasonRaw(value);
+  }, []);
 
   const load = useCallback(async (): Promise<void> => {
     token.current += 1;
@@ -122,7 +127,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
       const list = data?.candidates;
       if (!list || (response?.status ?? 200) >= 400) return setCandidates({ status: "error" });
       setCandidates({ status: "ready", colleagues: colleagueChoices(list) });
-      setUserId((prev) => (list.some((c) => c.user_id === prev) ? prev : null));
+      setUserIdRaw((prev) => (list.some((c) => c.user_id === prev) ? prev : null));
     } catch {
       if (mine === token.current) setCandidates({ status: "error" });
     }
@@ -157,7 +162,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
         });
         const status = result?.response?.status;
         if (result?.error || status === undefined || status >= 400) {
-          const failure = reassignFailure(mode, status);
+          const failure = reassignFailure(status);
           const unknown = status === undefined || status === 408 || status >= 500;
           if (!unknown) key.current = crypto.randomUUID();
           return failure;
@@ -168,7 +173,7 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
           failure: false,
         };
       } catch {
-        return reassignFailure(mode, undefined);
+        return reassignFailure(undefined);
       }
     };
     try {

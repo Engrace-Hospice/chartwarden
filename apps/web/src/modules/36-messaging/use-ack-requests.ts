@@ -8,7 +8,7 @@
 import type { AckRequestDto } from "@wardenx/types";
 import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { REASSIGN_FAILED_TEXT } from "./ack-reassign-wording";
+import { REASSIGN_BUSY_TEXT } from "./ack-reassign-wording";
 import {
   ACK_CHANGED_TEXT,
   ACK_CLOSE_NOT_QUALIFIED_TEXT,
@@ -322,7 +322,7 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   const runReassign = useCallback(
     async (requestId: string, perform: () => Promise<ReassignResult>): Promise<ReassignResult> => {
       if (busyRef.current?.channelId === channelRef.current) {
-        return { kind: "stay", text: REASSIGN_FAILED_TEXT };
+        return { kind: "stay", text: REASSIGN_BUSY_TEXT };
       }
       const mine: Busy = { channelId: channelRef.current, requestId };
       busyRef.current = mine;

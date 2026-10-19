@@ -71,6 +71,7 @@ const AckEvent = Type.Object({
   assigned_user_id: nullable(UuidOut),
   previous_assigned_user_id: nullable(UuidOut),
   tier: Type.Integer(),
+  reason_code: nullable(oneOf(ACK_SUPERVISOR_REASON_CODES)),
   created_at: Type.String({ format: "date-time" }),
 });
 

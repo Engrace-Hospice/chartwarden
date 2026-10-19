@@ -630,6 +630,24 @@ describe("ADR-0078 reassign candidates and the supervisor reassign", () => {
     await app.close();
   });
 
+  it("rate limits both candidate reads after authorisation and before the service", async () => {
+    let limited = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        limited += 1;
+        throw new RateLimitedError();
+      },
+    });
+
+    expect((await get(app, "nurse", `${BASE}/${REQ}/reassign-candidates`)).statusCode).toBe(429);
+    expect((await get(app, "supervisor", `${SUP}-candidates`)).statusCode).toBe(429);
+    expect((await get(app, "reader", `${SUP}-candidates`)).statusCode).toBe(403);
+    expect(limited).toBe(2);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
   it("is the uniform 404 for the unbound default", async () => {
     const app = makeServer(DISABLED_ACK as never);
 

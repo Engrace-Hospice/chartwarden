@@ -110,7 +110,7 @@ const calls = (fn: ReturnType<typeof vi.fn>, path: string) =>
 const rowButton = async (name: RegExp) =>
   (await screen.findAllByRole("button", { name }))[0] as HTMLElement;
 const restrictedRowButton = () =>
-  screen.findByRole("button", { name: "Reassign, assigned to Rae Responder" });
+  screen.findByRole("button", { name: /^Reassign, assigned to Rae Responder, / });
 const confirm = () =>
   within(screen.getByRole("dialog")).getByRole("button", { name: /^Reassign request|^Saving/ });
 

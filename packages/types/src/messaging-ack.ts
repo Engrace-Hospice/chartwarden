@@ -116,6 +116,7 @@ export const ACK_ERROR_CODES = [
   "ACK_MESSAGE_NOT_EDITABLE",
   "ACK_MESSAGE_HAS_OPEN_REQUEST",
   "ACK_UNAVAILABLE",
+  "ACK_SUPERVISOR_REASSIGN_LIMIT",
 ] as const;
 export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 
@@ -170,6 +171,8 @@ export interface AckEventDto {
   readonly assigned_user_id: string | null;
   readonly previous_assigned_user_id: string | null;
   readonly tier: number;
+  /** ADR-0078: why a SUPERVISOR moved the request (a fixed non-clinical code); null for every other event. */
+  readonly reason_code: AckSupervisorReasonCode | null;
   readonly created_at: string;
 }
 

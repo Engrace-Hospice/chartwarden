@@ -21,7 +21,6 @@
 .wx-reassign-notice {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-card-border);
-  border-left-width: 4px;
   border-radius: var(--radius-lg);
   background: var(--color-surface-low, var(--color-surface-lowest));
   color: var(--color-on-surface);
@@ -59,4 +58,14 @@
 .wx-reassign-actions [aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+/* Read by a screen reader (the colleague count); nothing to see. */
+.wx-reassign-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

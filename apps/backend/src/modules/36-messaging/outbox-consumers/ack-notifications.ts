@@ -4,7 +4,7 @@
 //     m36.message.urgent_sent; this consumer stays silent for it);
 //   - `m36.ack.reassigned` alerts the NEW assignee, whatever the class;
 //   - ADR-0078: when a SUPERVISOR made the reassign (`supervisorReassign`), the previous assignee and the sender are also told, in-app,
-//     with generic text (a separate, non-designated alert type: never out-of-band, never counted as a route to the assignee).
+//     with generic text, only once the event passed the same stale checks as the new assignee's alert (a separate, non-designated alert type: never out-of-band, never counted as a route to the assignee).
 // The tenant comes from the envelope, never the payload. At consume time the request must STILL be waiting (pending), STILL assigned to the
 // recipient and STILL at the event's version (a stale event alerts nobody), the recipient must still see the channel and still be qualified. A clean "no" is a quiet,
 // id-only warn-level skip; a lookup ERROR is rethrown so the outbox retries and dead-letters (an alert is never dropped on a blip).
@@ -104,9 +104,6 @@ export function buildM36AckNotificationsConsumer(deps: {
       }
       // The urgent class was told by the WP 4.1 alert; a second one would be a duplicate for the same request.
       if (event.eventType === M36_ACK_REQUESTED && ackClass !== "important") return;
-      if (event.eventType === M36_ACK_REASSIGNED && payload.supervisorReassign === true) {
-        await tellOthers(event, payload, { requestId, channelId, messageId, version });
-      }
       const skip = (reason: string): void =>
         deps.warn?.("acknowledgment-request notification not delivered", {
           reason,
@@ -125,6 +122,9 @@ export function buildM36AckNotificationsConsumer(deps: {
       }
       if (!(await deps.stillQualified(event.organizationId, assignedUserId, channelId))) {
         return skip("recipient_not_qualified");
+      }
+      if (event.eventType === M36_ACK_REASSIGNED && payload.supervisorReassign === true) {
+        await tellOthers(event, payload, { requestId, channelId, messageId, version });
       }
       await deps.alerts.emit(event.organizationId, {
         eventType: event.eventType,

@@ -46,6 +46,9 @@ export const REASSIGN_SIGN_IN_TEXT = "Your session has ended. Sign in again, the
 export const REASSIGN_NOT_PERMITTED_TEXT = "You are not permitted to do that.";
 export const REASSIGN_CHANGED_TEXT = "This request changed. The list has been refreshed.";
 export const REASSIGN_CANNOT_TAKE_TEXT = "That person cannot take it. Choose someone else.";
+export const REASSIGN_BUSY_TEXT = "Another action is saving. Wait a moment, then try again.";
+export const reassignAvailableText = (n: number): string =>
+  n === 1 ? "1 colleague available." : `${n} colleagues available.`;
 export const REASSIGN_FAILED_TEXT = "That could not be done. Showing the current state.";
 
 export const reassignName = (author: string | undefined, sent: string): string =>
