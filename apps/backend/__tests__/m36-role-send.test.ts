@@ -77,6 +77,7 @@ const covering = (...ids: string[]): EscalationRouter => ({
   resolveTier: async (_org, request): Promise<EscalationRouteAnswer> => ({
     kind: "resolved",
     userIds: ids as [string, ...string[]],
+    ranks: ids.map((_, i) => (i === 0 ? "primary" : "backup")),
     nextTier: null,
     timeZone: "America/Los_Angeles",
     tier: request.tier,
@@ -230,7 +231,7 @@ describe("GET /messaging/channels/:id/role-send/resolution", () => {
       role: "rn",
       status: "covered",
       time_zone: "America/Los_Angeles",
-      people: [{ user_id: COVERING, display_name: "Dana K." }],
+      people: [{ user_id: COVERING, display_name: "Dana K.", rank: "primary" }],
     });
   });
 

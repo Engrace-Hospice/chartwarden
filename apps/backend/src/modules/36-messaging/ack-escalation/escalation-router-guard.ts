@@ -5,6 +5,7 @@
 // the owner's: M19 still enforces the org and patient checks on its side; this is M36 not trusting what comes back.
 import {
   ESCALATION_MAX_TIER,
+  ESCALATION_RANKS,
   type EscalationRouteRequest,
   type EscalationRouter,
 } from "@wardenx/types";
@@ -58,6 +59,18 @@ export function guardEscalationRouter(
         const ids = answer.userIds as readonly unknown[];
         if (ids.length === 0 || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
           throw new EscalationRouterAnswerError("recipients must be a non-empty list of ids");
+        }
+        // Ranks are optional, but a present list must pair one closed word with each recipient: a skewed list would mislabel a person.
+        const ranks = answer.ranks as readonly unknown[] | undefined;
+        if (
+          ranks !== undefined &&
+          (!Array.isArray(ranks) ||
+            ranks.length !== ids.length ||
+            !ranks.every((r) => (ESCALATION_RANKS as readonly unknown[]).includes(r)))
+        ) {
+          // A cosmetic field must never stop an escalation: drop the skewed list (no rank claim, nobody is labelled primary).
+          const { ranks: _skewed, ...withoutRanks } = answer;
+          return withoutRanks;
         }
       }
       if (answer.kind !== "unavailable" && !validNextTier(answer.nextTier, request.tier)) {

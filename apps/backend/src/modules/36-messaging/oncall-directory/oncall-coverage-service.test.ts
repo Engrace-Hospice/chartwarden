@@ -61,6 +61,7 @@ describe("OnCallCoverageService", () => {
         1: {
           kind: "resolved",
           userIds: [U1, U2],
+          ranks: ["primary", "backup"],
           nextTier: 2,
           timeZone: "America/Los_Angeles",
           shiftEndsAt: "2026-06-02T02:00:00Z",
@@ -70,6 +71,7 @@ describe("OnCallCoverageService", () => {
         2: {
           kind: "resolved",
           userIds: [U1],
+          ranks: ["primary"],
           nextTier: null,
           timeZone: "America/Los_Angeles",
           shiftEndsAt: "tomorrow-ish",
@@ -85,12 +87,48 @@ describe("OnCallCoverageService", () => {
     expect(out.tiers[0]).toEqual({
       tier: 1,
       state: "covering",
-      people: ["Dana K.", null],
+      people: [
+        { display_name: "Dana K.", rank: "primary" },
+        { display_name: null, rank: "backup" },
+      ],
       shift_ends_at: "2026-06-02T02:00:00.000Z",
       time_zone: "America/Los_Angeles",
     });
     expect(out.tiers[1]?.shift_ends_at).toBeNull();
     expect(JSON.stringify(out)).not.toContain(U1);
+  });
+
+  it("uses the explicit ranks, lists primaries first and keeps the first of a repeated id", async () => {
+    const out = await service({
+      1: {
+        kind: "resolved",
+        userIds: [U2, U1, U2],
+        ranks: ["backup", "backup", "primary"],
+        nextTier: null,
+        timeZone: "America/Los_Angeles",
+        tier: 1,
+        ...base,
+      },
+    }).get({ orgId: ORG }, input);
+    // Explicit ranks, primaries first; a user ranked primary anywhere is primary (U2 is backup first, then primary).
+    expect(out.tiers[0]?.people).toEqual([
+      { display_name: null, rank: "primary" },
+      { display_name: "Dana K.", rank: "backup" },
+    ]);
+  });
+
+  it("labels nobody primary when the router supplies no ranks (no position inference)", async () => {
+    const out = await service({
+      1: {
+        kind: "resolved",
+        userIds: [U1, U2],
+        nextTier: null,
+        timeZone: "America/Los_Angeles",
+        tier: 1,
+        ...base,
+      },
+    }).get({ orgId: ORG }, input);
+    expect(out.tiers[0]?.people.map((p) => p.rank)).toEqual(["backup", "backup"]);
   });
 
   it("reports an explicit coverage gap for tier 1 and still shows the backup", async () => {

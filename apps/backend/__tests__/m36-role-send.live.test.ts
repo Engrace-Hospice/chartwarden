@@ -104,6 +104,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
     resolveTier: async (_org, request): Promise<EscalationRouteAnswer> => ({
       kind: "resolved",
       userIds: ids as [string, ...string[]],
+      ranks: ids.map((_, i) => (i === 0 ? "primary" : "backup")),
       nextTier: null,
       timeZone: "America/Los_Angeles",
       tier: request.tier,
@@ -272,7 +273,10 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
       router = covering(rn);
       const seen = await resolve(app, nurse);
       expect(seen.statusCode, seen.body).toBe(200);
-      expect(seen.json()).toMatchObject({ status: "covered", people: [{ user_id: rn }] });
+      expect(seen.json()).toMatchObject({
+        status: "covered",
+        people: [{ user_id: rn, rank: "primary" }],
+      });
       const res = await send(app, nurse);
       expect(res.statusCode, res.body).toBe(201);
       const body = res.json();

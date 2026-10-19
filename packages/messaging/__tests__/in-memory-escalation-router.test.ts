@@ -42,6 +42,7 @@ describe("in-memory EscalationRouter", () => {
       kind: "resolved",
       tier: 1,
       userIds: ["u-day"],
+      ranks: ["primary"],
       nextTier: 2,
       timeZone: NY,
       asOf: "2026-06-01T16:00:00Z",
@@ -64,6 +65,7 @@ describe("in-memory EscalationRouter", () => {
     expect(answer).toMatchObject({
       kind: "resolved",
       userIds: ["u-sup"],
+      ranks: ["primary"],
       nextTier: null,
       timeZone: "Asia/Tokyo",
     });
@@ -209,6 +211,52 @@ describe("in-memory EscalationRouter", () => {
     expect(await ask(r, 1, "2026-06-01T11:30:00Z")).toMatchObject({
       kind: "coverage_gap",
       timeZone: NY,
+    });
+  });
+
+  it("ranks explicitly: a rotation's backupUserIds are backups, primary on any covering rotation wins, order unchanged", async () => {
+    const r = createInMemoryEscalationRouter({
+      orgId: ORG_A,
+      ladders: [
+        {
+          role: RN,
+          tiers: [
+            {
+              tier: 1,
+              rotations: [
+                { timeZone: NY, windows: [day], userIds: ["p", "b"], backupUserIds: ["b"] },
+                { timeZone: NY, windows: [day], userIds: ["q", "b"] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const a = await ask(r, 1, "2026-06-01T16:00:00Z");
+    expect(a).toMatchObject({
+      kind: "resolved",
+      userIds: ["p", "b", "q"],
+      ranks: ["primary", "primary", "primary"],
+    });
+    const only = createInMemoryEscalationRouter({
+      orgId: ORG_A,
+      ladders: [
+        {
+          role: RN,
+          tiers: [
+            {
+              tier: 1,
+              rotations: [
+                { timeZone: NY, windows: [day], userIds: ["x", "y"], backupUserIds: ["y"] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(await ask(only, 1, "2026-06-01T16:00:00Z")).toMatchObject({
+      userIds: ["x", "y"],
+      ranks: ["primary", "backup"],
     });
   });
 

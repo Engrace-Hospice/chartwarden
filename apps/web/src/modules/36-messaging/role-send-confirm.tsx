@@ -2,7 +2,12 @@
 // role right now?" in words. Covered: the person (name, role, shift end and zone in the ROSTER's zone) is chosen and restated in a polite
 // live region. Everything else (gap, roster not connected, no schedule, names unavailable, lookup failed, not available) is an explicit
 // message with the telephone procedure and NO way to send: there is never a guessed person or a fall-back to a backup. Presentational.
-import type { OnCallDirectoryRole, RoleSendPersonDto, RoleSendResolutionDto } from "@wardenx/types";
+import type {
+  OnCallDirectoryRole,
+  OnCallRank,
+  RoleSendPersonDto,
+  RoleSendResolutionDto,
+} from "@wardenx/types";
 import { Button } from "@wardenx/ui";
 import type { JSX, RefObject } from "react";
 import {
@@ -22,6 +27,7 @@ import type { RoleResolutionView } from "./use-role-resolution";
 export interface NamedPerson {
   readonly userId: string;
   readonly name: string;
+  readonly rank: OnCallRank;
 }
 
 /** Only people whose name can be shown are offered (the sender must be able to say who they are messaging). */
@@ -31,7 +37,7 @@ export function namedPeople(resolution: RoleSendResolutionDto): {
 } {
   const named = resolution.people
     .filter((p: RoleSendPersonDto) => (p.display_name ?? "").trim() !== "")
-    .map((p) => ({ userId: p.user_id, name: (p.display_name as string).trim() }));
+    .map((p) => ({ userId: p.user_id, name: (p.display_name as string).trim(), rank: p.rank }));
   return { named, hidden: resolution.people.length - named.length };
 }
 
@@ -123,7 +129,9 @@ export function RoleSendConfirm({
                   onChange={() => onChoose(person.userId)}
                 />
                 <span>
-                  <span id={`${id}-p-${person.userId}`}>{personLine(role, person.name)}</span>
+                  <span id={`${id}-p-${person.userId}`}>
+                    {personLine(role, person.name, person.rank)}
+                  </span>
                   <span className="wx-urgent-hint" id={`${id}-s-${person.userId}`}>
                     {" "}
                     {shiftLine(resolution.as_of, resolution.shift_ends_at, resolution.time_zone)}
@@ -134,7 +142,7 @@ export function RoleSendConfirm({
           </fieldset>
           {hidden > 0 ? <p className="wx-urgent-hint">{NAMES_UNAVAILABLE_TEXT}</p> : null}
           <p className="wx-urgent-notice" aria-live="polite">
-            {chosen ? confirmLine(role, chosen.name) : ""}
+            {chosen ? confirmLine(role, chosen.name, chosen.rank) : ""}
           </p>
         </>
       );

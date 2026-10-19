@@ -30,6 +30,7 @@ import {
   ONCALL_STALE,
   ONCALL_TITLE,
   ONCALL_UNAVAILABLE,
+  RANK_LABELS,
   asOfText,
   tierLabel,
   untilText,
@@ -55,7 +56,14 @@ function Tiers({ coverage }: { readonly coverage: OnCallCoverageDto }): JSX.Elem
           ) : (
             <>
               <span className="wx-oncall-names">
-                {tier.people.map((name) => name?.trim() || ONCALL_NAME_UNKNOWN).join(", ")}
+                {tier.people
+                  .map(
+                    (p) =>
+                      `${p.display_name?.trim() || ONCALL_NAME_UNKNOWN}${
+                        tier.tier === 1 ? ` (${RANK_LABELS[p.rank]})` : ""
+                      }`,
+                  )
+                  .join(", ")}
               </span>
               <span className="wx-oncall-line">
                 {tier.shift_ends_at

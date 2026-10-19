@@ -32,11 +32,20 @@ const coverage = (over: Partial<OnCallCoverageDto> = {}): OnCallCoverageDto => (
     {
       tier: 1,
       state: "covering",
-      people: ["Dana K."],
+      people: [
+        { display_name: "Dana K.", rank: "primary" },
+        { display_name: "Pat Q.", rank: "backup" },
+      ],
       shift_ends_at: "2026-06-02T02:00:00.000Z",
       time_zone: ZONE,
     },
-    { tier: 2, state: "covering", people: [null], shift_ends_at: null, time_zone: ZONE },
+    {
+      tier: 2,
+      state: "covering",
+      people: [{ display_name: null, rank: "primary" }],
+      shift_ends_at: null,
+      time_zone: ZONE,
+    },
   ],
   ...over,
 });
@@ -88,7 +97,9 @@ describe("OnCallDirectory", () => {
     expect(screen.getByLabelText("Loading")).toBeTruthy();
     const rows = await screen.findAllByRole("listitem");
     expect(rows).toHaveLength(2);
-    expect(within(rows[0] as HTMLElement).getByText("Dana K.")).toBeTruthy();
+    expect(
+      within(rows[0] as HTMLElement).getByText("Dana K. (Primary), Pat Q. (Backup)"),
+    ).toBeTruthy();
     // 02:00Z on 2 June is 7:00 PM on 1 June in Los Angeles, the same day as 21:07Z (2:07 PM): no date shown
     expect(within(rows[0] as HTMLElement).getByText("until 7:00 PM PDT")).toBeTruthy();
     expect(screen.getByText(/as of 2:07 PM PDT \(America\/Los_Angeles\)/)).toBeTruthy();
