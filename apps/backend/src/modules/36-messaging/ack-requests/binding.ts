@@ -28,6 +28,8 @@ export interface AckBindingInput {
     channelId: string,
   ) => Promise<{ readonly kind: string; readonly subjectId: string | null } | null>;
   readonly eligibility: EligibilityPorts;
+  /** ADR-0078: names for the reassign pickers (ids and display names are all they show). */
+  readonly displayName?: ((orgId: string, userId: string) => Promise<string | null>) | undefined;
   /** Defaults to the CareTeamProvider seam. */
   readonly careTeamMembers?: (orgId: string, patientId: string) => Promise<readonly string[]>;
   readonly log?: (message: string, context: Record<string, string>) => void;
@@ -80,6 +82,7 @@ export function buildAckBinding(input: AckBindingInput): AckBinding {
       const permissions = await input.eligibility.permissionsFor(orgId, userId);
       return permissions.has("messaging.send") && permissions.has(URGENT_SEND_PERMISSION);
     },
+    ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.log ? { log: input.log } : {}),
     ...(input.now ? { now: input.now } : {}),
   });

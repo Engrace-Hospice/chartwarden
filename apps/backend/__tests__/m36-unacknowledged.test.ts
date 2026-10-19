@@ -240,16 +240,24 @@ describe("unacknowledged service - what the viewer is shown", () => {
       patient_id: null,
       assigned_user_id: null,
       assigned_display_name: "Someone Else",
+      // ADR-0078 (G-7 / G-2): the sender's name and the supervisor handle stay on a restricted row; nothing else about the request does.
+      requester_display_name: "Someone Else",
+      request_ref: HIDDEN_REQUEST,
       ack_class: "urgent",
       current_tier: 2,
       escalation_note: "ladder_exhausted",
       status: "escalated",
       overdue: true,
     });
-    const wire = JSON.stringify(out);
-    for (const secret of [HIDDEN_CH, HIDDEN_MSG, HIDDEN_PATIENT, HIDDEN_ASSIGNEE, HIDDEN_REQUEST]) {
+    const wire = JSON.stringify(out.items[1]);
+    for (const secret of [HIDDEN_CH, HIDDEN_MSG, HIDDEN_PATIENT, HIDDEN_ASSIGNEE]) {
       expect(wire).not.toContain(secret);
     }
+    // The request id appears exactly once on a restricted row: as the opaque `request_ref` (ADR-0078), never as `id`.
+    expect(wire.split(HIDDEN_REQUEST)).toHaveLength(2);
+    expect(JSON.stringify(out)).not.toContain(`"id":"${HIDDEN_REQUEST}"`);
+    // No requester id is ever returned, restricted or not.
+    expect(JSON.stringify(out)).not.toContain("requester_user_id");
   });
 
   it("withholds (restricted) rather than drops an item whose visibility check throws", async () => {
@@ -268,6 +276,8 @@ describe("unacknowledged service - what the viewer is shown", () => {
       id: "cccccccc-cccc-4ccc-8ccc-000000000001",
       channel_id: VISIBLE_CH,
       assigned_display_name: "Nina Nurse",
+      requester_display_name: "Someone Else",
+      request_ref: "cccccccc-cccc-4ccc-8ccc-000000000001",
       overdue: true,
       overdue_seconds: 15 * 60,
       escalation_note: "route_unavailable",
@@ -289,7 +299,9 @@ describe("unacknowledged service - what the viewer is shown", () => {
         "overdue",
         "overdue_seconds",
         "patient_id",
+        "request_ref",
         "requested_at",
+        "requester_display_name",
         "restricted",
         "status",
       ].sort(),

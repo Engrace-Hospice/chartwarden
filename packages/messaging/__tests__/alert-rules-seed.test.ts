@@ -30,6 +30,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.message.urgent_sent",
       "m36.ack.requested",
       "m36.ack.reassigned",
+      "m36.ack.supervisor_reassigned",
       "m36.ack.escalated",
       "m36.ack.route_unavailable",
       "m36.ack.ladder_exhausted",

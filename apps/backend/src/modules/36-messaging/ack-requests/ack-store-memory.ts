@@ -88,6 +88,7 @@ export function createMemoryAckStore(): MemoryAckStore {
       requests.set(id, next);
       return next;
     },
+    async allowSupervisorReassign() {},
     async insertEvent(e) {
       events.push({ ...e, id: nextId() });
     },
@@ -164,6 +165,7 @@ export function createMemoryAckStore(): MemoryAckStore {
             previousAssignedUserId: e.previousAssignedUserId,
             tier: e.tier,
             createdAt: e.at,
+            reasonCode: e.reasonCode ?? null,
           }),
         );
     },

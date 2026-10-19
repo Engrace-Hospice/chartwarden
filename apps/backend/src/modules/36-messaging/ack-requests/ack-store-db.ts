@@ -62,6 +62,7 @@ const toEvent = (e: EventRow): AckEventRow => ({
   previousAssignedUserId: e.previousAssignedUserId,
   tier: e.tier,
   createdAt: e.createdAt,
+  reasonCode: e.reasonCode,
 });
 
 /** One transaction's view of the aggregate for `orgId`. */
@@ -136,8 +137,13 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
         assignedUserId: e.assignedUserId,
         previousAssignedUserId: e.previousAssignedUserId,
         tier: e.tier,
+        reasonCode: e.reasonCode ?? null,
         createdAt: e.at,
       });
+    },
+
+    async allowSupervisorReassign() {
+      await tx.execute(sql`SELECT set_config('app.ack_supervisor_reassign', 'on', true)`);
     },
 
     // WP 4.4: the window starts and ends on the DATABASE clock, because the update guard demands a window that starts now; the

@@ -236,6 +236,16 @@ export interface AckQueueItemDto {
   readonly escalation_note: AckEscalationNote | null;
   /** WP 4.5: every route failed (`failed_unreachable`). */
   readonly delivery_failed: boolean;
+  /**
+   * ADR-0078 (G-7): the sender's display name, kept on a restricted row exactly like the assignee's (the same disclosure class, OPEN for
+   * compliance review). Null when it cannot be resolved. No requester id is ever returned.
+   */
+  readonly requester_display_name: string | null;
+  /**
+   * ADR-0078 (G-2): the opaque handle the supervisor reassign acts on - the request's own id, also on a RESTRICTED row (whose `id` stays
+   * null). It opens nothing: every route that reads a request, a thread or a patient still answers 404 to a viewer who cannot see the channel.
+   */
+  readonly request_ref: string;
 }
 
 export interface AckQueueCounts {
@@ -257,4 +267,42 @@ export interface AckQueueResponse {
   /** True when a status or overdue filter was applied. */
   readonly filtered: boolean;
   readonly counts: AckQueueCounts;
+}
+
+// ---- ADR-0078: reassign from the card (G-6) and the supervisor reassign (G-2) -------------------------------------------------------
+// A colleague picker returns ONLY eligible people (a care-team member who can see the channel, holds `messaging.urgent.receive`, passes the
+// Part 2 gate, is not the sender and not the current assignee): ids and display names, nothing else. The supervisor reassign moves a
+// waiting request to such a colleague with a REQUIRED reason from a fixed, non-clinical set (no free text); it never reads the conversation,
+// never acknowledges and never touches an acknowledged, resolved or cancelled request.
+
+export const ACK_SUPERVISOR_REASON_CODES = [
+  "assignee_unreachable",
+  "assignee_unable_to_sign_in",
+  "assignee_off_shift",
+  "coverage_change",
+  "workload",
+  "other_operational",
+] as const;
+export type AckSupervisorReasonCode = (typeof ACK_SUPERVISOR_REASON_CODES)[number];
+
+/** The most colleagues a picker lists (the care team is bounded long before this). */
+export const ACK_REASSIGN_CANDIDATE_CAP = 50;
+
+export interface AckReassignCandidate {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
+
+export interface AckReassignCandidatesResponse {
+  readonly candidates: readonly AckReassignCandidate[];
+}
+
+/** Deliberately carries no channel, message or patient id: the supervisor may not be entitled to any of them. */
+export interface AckSupervisorReassignResponse {
+  readonly request_ref: string;
+  readonly status: "pending";
+  readonly assigned_user_id: string;
+  readonly deadline_at: string;
+  /** False when the call was an idempotent repeat of the supervisor's own reassign: nothing was written. */
+  readonly changed: boolean;
 }

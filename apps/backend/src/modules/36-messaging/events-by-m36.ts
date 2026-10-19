@@ -117,9 +117,13 @@ const ACK_EVENT_ENTRIES = [
   ),
   ackEntry(
     "m36.ack.reassigned",
-    "A request moved to a new assignee; the window restarted, the original request time was kept (WP 4.2). M36 tells the new assignee in-app.",
+    "A request moved to a new assignee; the window restarted, the original request time was kept (WP 4.2). M36 tells the new assignee in-app. When `supervisorReassign` is true a supervisor with `messaging.review` moved it (ADR-0078): M36 also tells the previous assignee and the sender in-app, generically; `actorUserId` is the supervisor.",
     ["m36"],
-    { previousAssignedUserId: id },
+    {
+      previousAssignedUserId: id,
+      supervisorReassign: Type.Optional(Type.Literal(true)),
+      requesterUserId: Type.Optional(id),
+    },
   ),
   ackEntry(
     "m36.ack.resolved",

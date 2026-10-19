@@ -128,18 +128,18 @@ describe("ack request card", () => {
     [
       "pending",
       { can_acknowledge: false, can_reassign: true, can_resolve: false },
-      [],
+      ["Reassign"],
       /person it was sent to/,
     ],
     [
       "pending",
       { can_acknowledge: true, can_reassign: true, can_resolve: false },
-      [ACK_TAKE_LABEL],
+      [ACK_TAKE_LABEL, "Reassign"],
       /Waiting for you/,
     ],
     [
       "acknowledged",
-      { can_acknowledge: false, can_reassign: true, can_resolve: true },
+      { can_acknowledge: false, can_reassign: false, can_resolve: true },
       [ACK_CLOSE_LABEL],
       null,
     ],
@@ -1128,7 +1128,13 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
   it("a requester viewing the escalated request sees no buttons and no response notice", async () => {
     mount({
       get: () =>
-        ok([request({ status: "escalated", current_tier: 1, viewer_actions: NO_ACTIONS })]),
+        ok([
+          request({
+            status: "escalated",
+            current_tier: 1,
+            viewer_actions: { ...NO_ACTIONS, can_reassign: false },
+          }),
+        ]),
     });
 
     expect(await screen.findByText(/Nobody has taken responsibility yet/)).toBeTruthy();

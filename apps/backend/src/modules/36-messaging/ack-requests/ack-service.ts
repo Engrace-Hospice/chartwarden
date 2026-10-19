@@ -23,9 +23,14 @@ import {
 } from "@wardenx/messaging";
 import {
   ACK_CHANNEL_LIST_CAP,
+  ACK_REASSIGN_CANDIDATE_CAP,
   type AckChannelListResponse,
+  type AckReassignCandidate,
+  type AckReassignCandidatesResponse,
   type AckRequestDetailResponse,
   type AckRequestResponse,
+  type AckSupervisorReasonCode,
+  type AckSupervisorReassignResponse,
   ForbiddenError,
   NotFoundError,
   WardenXError,
@@ -68,6 +73,8 @@ export interface AckServiceDeps {
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   /** Does the user hold the keys to raise a request (`messaging.send` + `messaging.urgent.send`) right now? A throw propagates. */
   readonly canRaise: (orgId: string, userId: string) => Promise<boolean>;
+  /** The display name of a colleague for the reassign pickers; absent or a throw reads as "no name" (the id still identifies them). */
+  readonly displayName?: (orgId: string, userId: string) => Promise<string | null>;
   /** Warn-level, ids and a constraint name only (never a name, patient or text). Defaults to console.warn. */
   readonly log?: (message: string, context: Record<string, string>) => void;
   readonly now?: () => Date;
@@ -105,6 +112,23 @@ export interface AckService {
     newAssigneeUserId: string,
   ): Promise<AckRequestResponse>;
   resolve(actor: AckActorRef, requestId: string): Promise<AckRequestResponse>;
+  /** ADR-0078 (G-6): who the sender or assignee may hand THIS request to (same visibility and party rules as `reassign`). */
+  reassignCandidates(actor: AckActorRef, requestId: string): Promise<AckReassignCandidatesResponse>;
+  /** ADR-0078 (G-2): the same for a supervisor (the route demands `messaging.review`); works on a request they cannot open. */
+  supervisorReassignCandidates(
+    actor: AckActorRef,
+    requestId: string,
+  ): Promise<AckReassignCandidatesResponse>;
+  /**
+   * ADR-0078 (G-2): a supervisor moves a WAITING request to an eligible colleague with a required fixed reason. It reads no conversation,
+   * acknowledges nothing and touches no acknowledged, resolved or cancelled request; the new assignee passes the normal reassign checks.
+   */
+  supervisorReassign(
+    actor: AckActorRef,
+    requestId: string,
+    newAssigneeUserId: string,
+    reasonCode: AckSupervisorReasonCode,
+  ): Promise<AckSupervisorReassignResponse>;
 }
 
 const requestNotFound = (): NotFoundError => new NotFoundError("escalation");
@@ -211,6 +235,53 @@ export function createAckService(deps: AckServiceDeps): AckService {
         (await deps.isQualified(orgId, userId, patientId)),
       false,
     );
+  }
+
+  /** A colleague who could take this request: care-team member (the caller checks), sees the channel, qualified, Part 2 admitted. */
+  const qualifiedColleague =
+    (orgId: string, channelId: string, patientId: string) =>
+    (userId: string): Promise<boolean> =>
+      orElse(
+        async () =>
+          (await deps.canViewChannel(orgId, userId, channelId)) &&
+          (await deps.isQualified(orgId, userId, patientId)),
+        false,
+      );
+
+  /** The picker: bounded BEFORE the per-person checks, never the sender or the current assignee, ids and names only. */
+  async function candidatesFor(row: AckRow): Promise<AckReassignCandidatesResponse> {
+    const qualified = qualifiedColleague(row.organizationId, row.channelId, row.patientId);
+    const ids = [
+      ...(await orElse(() => deps.careTeamMembers(row.organizationId, row.patientId), [])),
+    ]
+      .filter(
+        (id, i, all) =>
+          id !== row.requesterUserId && id !== row.assignedUserId && all.indexOf(id) === i,
+      )
+      .sort()
+      .slice(0, ACK_REASSIGN_CANDIDATE_CAP * 2);
+    const candidates: AckReassignCandidate[] = [];
+    for (const id of ids) {
+      if (candidates.length >= ACK_REASSIGN_CANDIDATE_CAP) break;
+      if (!(await qualified(id))) continue;
+      const name = deps.displayName
+        ? await orElse(() => deps.displayName!(row.organizationId, id), null)
+        : null;
+      candidates.push({ user_id: id, display_name: name });
+    }
+    candidates.sort(
+      (x, y) =>
+        (x.display_name ?? "").localeCompare(y.display_name ?? "") ||
+        x.user_id.localeCompare(y.user_id),
+    );
+    return { candidates };
+  }
+
+  /** A request read by a supervisor: no channel-visibility check (the route demanded `messaging.review`); RLS still scopes the tenant. */
+  async function supervisedRequest(actor: AckActorRef, requestId: string): Promise<AckRow> {
+    const row = await store.run(actor, (tx) => tx.findById(requestId, false));
+    if (!row) throw requestNotFound();
+    return row;
   }
 
   async function patientOf(orgId: string, channelId: string): Promise<string> {
@@ -628,6 +699,98 @@ export function createAckService(deps: AckServiceDeps): AckService {
               previousAssignedUserId: row.assignedUserId,
             });
             return { request: toAckRequestDto(next, actor.userId), changed: true };
+          }),
+        { organizationId: actor.orgId, requestId },
+      );
+    },
+
+    async reassignCandidates(actor, requestId) {
+      const seen = await visibleRequest(actor, requestId);
+      const denied = reassignDenied(actor.userId, seen);
+      if (denied) throw denied;
+      if (!isOpen(seen.status)) throw ackStateInvalid();
+      return candidatesFor(seen);
+    },
+
+    async supervisorReassignCandidates(actor, requestId) {
+      const seen = await supervisedRequest(actor, requestId);
+      if (!isWaiting(seen.status)) throw ackStateInvalid();
+      return candidatesFor(seen);
+    },
+
+    async supervisorReassign(actor, requestId, newAssigneeUserId, reasonCode) {
+      const seen = await supervisedRequest(actor, requestId);
+      const response = (row: AckRow, changed: boolean): AckSupervisorReassignResponse => ({
+        request_ref: row.id,
+        status: "pending",
+        assigned_user_id: row.assignedUserId,
+        deadline_at: row.deadlineAt.toISOString(),
+        changed,
+      });
+      if (seen.assignedUserId === newAssigneeUserId) {
+        // A repeat of the reassign this very supervisor just made (same reason) is a success; anything else names nobody new.
+        const last = await store.run(actor, async (tx) => {
+          const events = await tx.listEvents(seen.id);
+          return events[events.length - 1];
+        });
+        if (
+          seen.status === "pending" &&
+          last?.eventType === "reassigned" &&
+          last.actorUserId === actor.userId &&
+          last.reasonCode === reasonCode
+        ) {
+          return response(seen, false);
+        }
+        throw isWaiting(seen.status) ? assigneeInvalid() : ackStateInvalid();
+      }
+      if (!isWaiting(seen.status)) throw ackStateInvalid();
+      if (
+        newAssigneeUserId === seen.requesterUserId ||
+        !(await assignable(actor.orgId, seen.channelId, seen.patientId, newAssigneeUserId))
+      ) {
+        throw assigneeInvalid();
+      }
+      return guarded(
+        () =>
+          store.run(actor, async (tx, rawTx) => {
+            const row = await tx.findById(requestId, true);
+            if (!row) throw requestNotFound();
+            // Re-decided on the locked row: acknowledged, closed or already moved since the first read is a conflict.
+            if (!isWaiting(row.status) || row.assignedUserId === newAssigneeUserId) {
+              throw ackStateInvalid();
+            }
+            const at = new Date(Math.max(clock().getTime(), row.windowStartedAt.getTime()));
+            await tx.allowSupervisorReassign();
+            const next = await tx.update(row.id, row.version, {
+              status: "pending",
+              assignedUserId: newAssigneeUserId,
+              windowStartedAt: at,
+              deadlineAt: defaultDeadline(row.ackClass, at),
+              currentTier: 0,
+              acknowledgedAt: null,
+              acknowledgedByUserId: null,
+              updatedAt: at,
+            });
+            await tx.insertEvent({
+              organizationId: next.organizationId,
+              requestId: next.id,
+              eventType: "reassigned",
+              actorUserId: actor.userId,
+              fromStatus: row.status,
+              toStatus: "pending",
+              assignedUserId: next.assignedUserId,
+              previousAssignedUserId: row.assignedUserId,
+              tier: 0,
+              at,
+              reasonCode,
+            });
+            await publishAckEvent(deps.outbox, rawTx, M36_ACK_REASSIGNED, {
+              ...factsOf(next, actor.userId, at),
+              previousAssignedUserId: row.assignedUserId,
+              supervisorReassign: true,
+              requesterUserId: next.requesterUserId,
+            });
+            return response(next, true);
           }),
         { organizationId: actor.orgId, requestId },
       );

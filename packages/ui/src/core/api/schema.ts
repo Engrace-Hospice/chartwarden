@@ -14520,6 +14520,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/escalations/{id}/reassign-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only */
+        get: operations["getApiV1MessagingEscalationsByIdReassigncandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/escalations/{id}/resolve": {
         parameters: {
             query?: never;
@@ -14537,6 +14554,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/escalations/{id}/supervisor-reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false */
+        post: operations["postApiV1MessagingEscalationsByIdSupervisorreassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/escalations/{id}/supervisor-reassign-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only */
+        get: operations["getApiV1MessagingEscalationsByIdSupervisorreassigncandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/escalations/unacknowledged": {
         parameters: {
             query?: never;
@@ -14544,7 +14595,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
+        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
         get: operations["getApiV1MessagingEscalationsUnacknowledged"];
         put?: never;
         post?: never;
@@ -67779,6 +67830,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingEscalationsByIdReassigncandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        candidates: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingEscalationsByIdResolve: {
         parameters: {
             query?: never;
@@ -67843,6 +67924,80 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingEscalationsByIdSupervisorreassign: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assigned_user_id: string;
+                    reason_code: "assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        request_ref: string;
+                        /** @constant */
+                        status: "pending";
+                        /** Format: uuid */
+                        assigned_user_id: string;
+                        /** Format: date-time */
+                        deadline_at: string;
+                        changed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEscalationsByIdSupervisorreassigncandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        candidates: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingEscalationsUnacknowledged: {
         parameters: {
             query?: {
@@ -67883,6 +68038,9 @@ export interface operations {
                             current_tier: number;
                             escalation_note: ("route_unavailable" | "ladder_exhausted") | null;
                             delivery_failed: boolean;
+                            requester_display_name: string | null;
+                            /** Format: uuid */
+                            request_ref: string;
                         }[];
                         next_cursor: string | null;
                         audit_request_id: string | null;

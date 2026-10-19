@@ -65,16 +65,31 @@ describe("only an explicit transition writes an acknowledgment", () => {
     expect(readers).not.toMatch(/insertEvent|\.update\(|\.insert\(|publishAckEvent/);
   });
 
-  it("the GET routes call only the two read methods", () => {
+  it("the GET routes call only the read methods (the two lists and the two ADR-0078 candidate reads)", () => {
     const routes = read("apps/backend/src/modules/36-messaging/routes/ack-routes.ts");
     const getBlocks = routes
       .split("app.get(")
       .slice(1)
       .map((b) => b.split("app.post(")[0] ?? "");
-    expect(getBlocks.length).toBe(2);
+    expect(getBlocks.length).toBe(4);
     for (const block of getBlocks) {
-      expect(block).not.toMatch(/service\.(create|acknowledge|reassign|resolve)\(/);
+      expect(block).not.toMatch(
+        /service\.(create|acknowledge|reassign|resolve|supervisorReassign)\(/,
+      );
     }
+  });
+
+  it("the supervisor reassign (ADR-0078) can only move a waiting request back to pending: it never writes acknowledged, resolved or an acknowledgment", () => {
+    const supervisor = between("    async supervisorReassign(actor", "  };\n}");
+    expect(supervisor.length).toBeGreaterThan(500);
+    expect(supervisor).not.toMatch(/status:\s*"(acknowledged|resolved|cancelled|escalated)"/);
+    expect(supervisor).not.toMatch(
+      /acknowledgedAt:\s*at|acknowledgedByUserId:\s*actor|resolvedAt|M36_ACK_(ACKNOWLEDGED|RESOLVED)/,
+    );
+    expect(supervisor).toContain('status: "pending"');
+    expect(supervisor).toContain("isWaiting(");
+    // It never asks whether the supervisor can see the channel: that is the point, and it must not start reading the thread either.
+    expect(supervisor).not.toMatch(/channelFacts|messageFacts|listForChannel/);
   });
 
   it("the acknowledged status is written in exactly one place: the acknowledge transition", () => {

@@ -429,10 +429,17 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
           assigned_user_id: null,
         });
         expect(r.assigned_display_name).toEqual(expect.any(String)); // chase-able
+        // ADR-0078: the sender's name and the supervisor handle stay on a restricted row.
+        expect(r.requester_display_name).toEqual(expect.any(String));
+        expect([ids.pending_restricted, ids.to_fail]).toContain(r.request_ref);
       }
       const wire = JSON.stringify(out);
-      for (const secret of [otherChannel, PATIENT_2, ids.pending_restricted, ids.to_fail, SECRET]) {
+      for (const secret of [otherChannel, PATIENT_2, SECRET]) {
         expect(wire).not.toContain(secret as string);
+      }
+      // The request id appears only as the opaque `request_ref`, never as `id`.
+      for (const id of [ids.pending_restricted, ids.to_fail]) {
+        expect(wire).not.toContain(`"id":"${id}"`);
       }
     });
 
@@ -500,7 +507,9 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
           "overdue",
           "overdue_seconds",
           "patient_id",
+          "request_ref",
           "requested_at",
+          "requester_display_name",
           "restricted",
           "status",
         ].sort(),

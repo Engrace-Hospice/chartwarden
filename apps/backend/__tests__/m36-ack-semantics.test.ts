@@ -45,6 +45,12 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.2 wraps the timeline in the acknowledgment-request loader for a patient care-team conversation (one import and one element)",
   "apps/web/src/modules/36-messaging/ack-request-card.tsx":
     "WP 4.2 web: the acknowledgment-request card (taking responsibility is an explicit button; opening or reading sends nothing)",
+  "apps/web/src/modules/36-messaging/ack-reassign-wording.ts":
+    "ADR-0078 web: the reassign dialogs' words; they say a supervisor reassign acknowledges nothing and that only the new person takes responsibility",
+  "apps/web/src/modules/36-messaging/ack-reassign-dialog.tsx":
+    "ADR-0078 web: the reassign dialog of the acknowledgment-request card and the supervisor queue (it acknowledges nothing)",
+  "apps/web/src/modules/36-messaging/use-ack-reassign.ts":
+    "ADR-0078 web: the candidate read and the reassign call of the acknowledgment-request card and the supervisor queue (acknowledges nothing)",
   "apps/web/src/modules/36-messaging/ack-wording.ts":
     "WP 4.2 web: every word the acknowledgment-request card shows (provisional, pending clinical-lead review)",
   "apps/web/src/modules/36-messaging/use-ack-requests.ts":

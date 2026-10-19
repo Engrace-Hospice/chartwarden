@@ -532,6 +532,7 @@
     "test:m36:ack-requests:live": "vitest run apps/backend/__tests__/m36-ack-requests.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
     "test:m36:delivery-target:live": "vitest run apps/backend/__tests__/m36-delivery-target.live.test.ts",
+    "test:m36:ack-supervisor-reassign:live": "vitest run apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",
     "test:m36:unacknowledged:live": "vitest run apps/backend/__tests__/m36-unacknowledged.live.test.ts",
     "test:m36:ack-delivery-failure:live": "vitest run apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",
     "test:m36:notification-policy:live": "vitest run apps/backend/__tests__/m36-notification-policy.live.test.ts",
