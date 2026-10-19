@@ -15,6 +15,7 @@ import {
   type ReopeningFilingRefusal,
   type ReopeningOutcome,
   type ReopeningState,
+  type SubmissionChannel,
   canTransitionAdr,
   canTransitionReopening,
   checkReopeningFiling,
@@ -23,6 +24,7 @@ import type { M25ReadActor, M25WriteActor } from "./actor";
 import { VersionConflictError } from "./concurrency";
 import { isUniqueViolation, resolveDenialRoute } from "./denial-route-service";
 import { providerEntityScopeCondition } from "./scope";
+import { recordFilingAttempt } from "./submission-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -412,12 +414,24 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
       if (refusal) throw new WardenXError(refusal, FILING_MESSAGES[refusal], 422);
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
-        return advance(tx, actor, cur, "submitted", ifMatch, {
+        const result = await advance(tx, actor, cur, "submitted", ifMatch, {
           formName: input.formName.trim(),
           filingChannel: input.channel,
           filingConfirmationRef: input.confirmationRef.trim(),
           filedAt,
         });
+        // Milestone 6a: the filing's attempt record (already acknowledged: the case carried channel, reference, time).
+        await recordFilingAttempt(tx, {
+          organizationId: actor.organizationId,
+          providerEntityId: cur.providerEntityId,
+          purpose: "reopening_request",
+          subjectId: id,
+          channel: input.channel as SubmissionChannel,
+          confirmationRef: input.confirmationRef.trim(),
+          receiptAt: filedAt,
+          actorMembershipId: actor.membershipId,
+        });
+        return result;
       });
     },
 

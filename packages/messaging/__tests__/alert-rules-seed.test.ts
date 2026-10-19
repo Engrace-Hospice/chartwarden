@@ -129,6 +129,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "appeal.deadline_approaching",
       "adr.deadline_approaching",
       "appeal.qic_decision_overdue",
+      "submission.proof_missing",
       "m26.cap.agency_watch_90",
       "m26.cap.agency_warn_95",
       "m26.cap.agency_breach_100",

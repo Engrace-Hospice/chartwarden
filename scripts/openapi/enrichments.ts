@@ -594,6 +594,13 @@ import {
   RouteRuleRequestSchema as M25RouteRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
 import {
+  SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
+  SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
+  SubmissionReceiptResultSchema as M25SubmissionReceiptResultSchema,
+  SubmissionVersionedResultSchema as M25SubmissionVersionedResultSchema,
+  SubmissionViewSchema as M25SubmissionViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/submission.routes";
+import {
   TpeClaimRequestSchema as M25TpeClaimRequestSchema,
   TpeEducationRequestSchema as M25TpeEducationRequestSchema,
   TpeOutcomeRequestSchema as M25TpeOutcomeRequestSchema,
@@ -8268,6 +8275,57 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/reopenings/:id/close": {
     summary: "Close a decided reopening (If-Match)",
     response: M25ReopeningVersionedResultSchema,
+  },
+  "GET /api/v1/adrs/:id/submission": {
+    summary:
+      "Submission attempts of this ADR response: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/adrs/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/adrs/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
+  },
+  "GET /api/v1/appeals/:id/submission": {
+    summary:
+      "Submission attempts of this appeal or QIC request: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/appeals/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/appeals/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
+  },
+  "GET /api/v1/reopenings/:id/submission": {
+    summary:
+      "Submission attempts of this reopening request: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/reopenings/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
   },
   "GET /api/v1/denials/:id/route": {
     summary:

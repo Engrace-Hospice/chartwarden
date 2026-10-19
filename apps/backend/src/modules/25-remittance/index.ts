@@ -47,6 +47,7 @@ export {
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
   buildDrizzleQicService,
+  buildDrizzleSubmissionService,
   buildDrizzleReopeningService,
   buildDrizzleTpeService,
   buildDrizzleM25ReadService,

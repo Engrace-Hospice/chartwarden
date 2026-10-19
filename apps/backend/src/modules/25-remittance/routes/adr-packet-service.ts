@@ -24,6 +24,7 @@ import {
   type AdrChecklistState,
   type AdrFilingRefusal,
   type AdrSignOffRefusal,
+  type SubmissionChannel,
   checkFiling,
   checkSignOff,
   isChecklistKey,
@@ -36,6 +37,7 @@ import {
 } from "./appeal-packet-sources";
 import { VersionConflictError } from "./concurrency";
 import { providerEntityScopeCondition } from "./scope";
+import { recordFilingAttempt } from "./submission-service";
 import type { WriteOutboxPort } from "./write-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -443,6 +445,19 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
           packetManifest: manifest,
         });
         await event(tx, actor, id, "submitted", { channel: input.channel, filedLate });
+        // Milestone 6a: the filing's attempt record (already acknowledged: the case carried channel, reference, time).
+        await recordFilingAttempt(tx, {
+          organizationId: actor.organizationId,
+          providerEntityId: cur.providerEntityId,
+          purpose: "adr_response",
+          subjectId: id,
+          channel: input.channel as SubmissionChannel,
+          confirmationRef: input.confirmationRef.trim(),
+          receiptAt: filedAt,
+          receiptDocumentId: input.receiptDocumentId ?? null,
+          packetManifest: manifest,
+          actorMembershipId: actor.membershipId,
+        });
         await outbox.publish(tx, {
           eventName: "m25.adr_packet.render_requested",
           organizationId: actor.organizationId,

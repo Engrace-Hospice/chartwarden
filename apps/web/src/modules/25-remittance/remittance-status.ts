@@ -76,6 +76,18 @@ export const REOPENING_STATE_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** submission_attempt status → tone (milestone 6a). needs_manual is "proof missing": it must read as needing attention. */
+export const SUBMISSION_STATUS_TONE: Record<string, StatusTone> = {
+  prepared: "progress",
+  queued: "progress",
+  sending: "progress",
+  sent: "progress",
+  acknowledged: "success",
+  needs_manual: "warning",
+  failed: "error",
+  cancelled: "neutral",
+};
+
 /** tpe_program state → tone (milestone 5). Referred is the bad outcome; compliant is relief. */
 export const TPE_PROGRAM_STATE_TONE: Record<string, StatusTone> = {
   active: "progress",

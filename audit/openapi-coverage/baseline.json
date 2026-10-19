@@ -117,7 +117,7 @@
       "mutatingNoBody": 0
     },
     "25-remittance": {
-      "routes": 73,
+      "routes": 82,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 113,
+      "routes": 114,
       "deficit": 0,
       "mutatingNoBody": 0
     },

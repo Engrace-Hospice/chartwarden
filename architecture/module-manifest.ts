@@ -946,6 +946,7 @@ export const MODULES: ModuleDef[] = [
       "tpe_program",
       "tpe_round",
       "tpe_round_claim",
+      "submission_attempt",
       "denial_case",
       "denial_case_assignment",
       "denial_taxonomy_overlay",
