@@ -68,6 +68,16 @@ export interface DeferredConsumerGroup {
 }
 
 export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
+  // ADR-0082 (PROPOSED) slice S1 - the catalog entry lands first, flag-off and unpublished (no producer: slice S3 publishes it).
+  // The M19 D10 consumer that opens the triage call is slice S2 and needs the M19 owner. Ends on S2's commit, which binds the
+  // consumer and deletes this group in the same change.
+  {
+    module: "m19",
+    kind: "no-consumer-surface",
+    reason:
+      "ADR-0082 slice S1 declares m36.afterhours_triage.requested for m19, but the M19 consumer (consumers/m36-afterhours-triage-requested.ts) is slice S2 and does not exist yet. Nothing publishes the event until slice S3 behind the flag messaging.afterhours_triage (absent = off), so no row is deferred in the meantime. S2 binds the consumer and removes this entry.",
+    events: ["m36.afterhours_triage.requested"],
+  },
   // F-205 (#248) — the m30 `handlers-unbound` group is GONE, not merely emptied. `m18.evv.visit_verified`
   // was bound earlier by F-194 (M18's check-out write path never called the `recordEvent` decider that
   // declared this event's effect; fixed by emitting it inline, then binding M30's pre-existing

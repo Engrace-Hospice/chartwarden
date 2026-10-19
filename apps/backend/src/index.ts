@@ -11848,6 +11848,8 @@ function bindCallerModule(
       readonly organizationId: string | null;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      /** Optional caller-chosen `outbox_event.id` (see {@link OutboxPublishInput.eventId}). */
+      readonly eventId?: string;
     },
   ): Promise<void>;
 } {

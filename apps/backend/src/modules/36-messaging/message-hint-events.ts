@@ -13,6 +13,7 @@ export interface HintOutboxPort {
       readonly organizationId: string;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      readonly eventId?: string;
     },
   ): Promise<void>;
 }

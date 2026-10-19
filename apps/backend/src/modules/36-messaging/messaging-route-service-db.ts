@@ -145,6 +145,8 @@ export interface MessagingOutboxPort {
       readonly organizationId: string;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      /** ADR-0082: the caller may choose the outbox event id so it can store it (the port returns void). */
+      readonly eventId?: string;
     },
   ): Promise<void>;
 }

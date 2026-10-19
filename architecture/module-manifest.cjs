@@ -254,6 +254,7 @@ exports.MODULES = [
       "message_revision",
       "message_draft",
       "scheduled_message",
+      "message_afterhours_triage_link",
       "message_snooze",
       "message_reminder",
       "message_attachment",
