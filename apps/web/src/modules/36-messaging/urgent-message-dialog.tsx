@@ -8,6 +8,7 @@ import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, validateSbar } from "@wardenx/t
 import type { SbarIssue, SbarSectionKey } from "@wardenx/types";
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { JSX, KeyboardEvent } from "react";
 import {
   SBAR_DEFAULT_HINTS,
@@ -191,7 +192,10 @@ export function UrgentMessageDialog({
   const issueFor = (key: SbarSectionKey) => issues.find((i) => i.field === `sbar.${key}`);
   const missingRecipient = error === CHOOSE_RECIPIENT_TEXT;
 
-  return (
+  // Portalled to <body>: the composer's own <form> contains this component, and a form nested in a form is invalid
+  // HTML (the browser can submit the outer one, reloading the page). The submit also stops here so React's tree-wide
+  // bubbling never reaches the composer's send handler.
+  return createPortal(
     <Modal
       open
       onClose={submitting ? undefined : requestClose}
@@ -204,6 +208,7 @@ export function UrgentMessageDialog({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           void submit();
         }}
         onKeyDown={onKeyDown}
@@ -353,6 +358,7 @@ export function UrgentMessageDialog({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }
