@@ -63,6 +63,9 @@ export interface RoleSendDialogProps {
   readonly channelId: string;
   readonly patientId: string;
   readonly draft: UrgentDraft;
+  /** The chosen role is held by the button with the draft, so a kept draft reopens with its role. */
+  readonly role: OnCallDirectoryRole | null;
+  readonly onRoleChange: (role: OnCallDirectoryRole | null) => void;
   readonly onClose: () => void;
   readonly onSent: (sent: RoleSent) => void;
   /** A failure that does not prove the message was not stored: the thread should be re-read. */
@@ -75,6 +78,8 @@ export function RoleSendDialog({
   channelId,
   patientId,
   draft,
+  role,
+  onRoleChange,
   onClose,
   onSent,
   onIndeterminate,
@@ -83,7 +88,6 @@ export function RoleSendDialog({
   const id = useId();
   const policyState = useSbarPolicy(true);
   const policy = policyState.status === "ready" ? policyState.policy : null;
-  const [role, setRole] = useState<OnCallDirectoryRole | null>(null);
   const [stage, setStage] = useState<Stage>("compose");
   const [issues, setIssues] = useState<readonly SbarIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +98,7 @@ export function RoleSendDialog({
   const roleRef = useRef<HTMLFieldSetElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
   const keepRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const { view, reload } = useRoleResolution(channelId, patientId, role, stage === "confirm");
   const values: SbarFormValues = { sections: draft.sections, urgency: "urgent" };
 
@@ -106,13 +111,29 @@ export function RoleSendDialog({
   useEffect(() => {
     if (stage === "confirm") confirmRef.current?.focus();
   }, [stage]);
+  // The keep/discard prompt takes focus; dismissing it hands focus back to what opened it (or the stable region if that is gone).
+  const wasConfirming = useRef(false);
   useEffect(() => {
-    if (confirmingDiscard) keepRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    if (confirmingDiscard) {
+      keepRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    } else if (wasConfirming.current) {
+      const opener = openerRef.current;
+      const target = opener?.isConnected ? opener : (confirmRef.current ?? roleRef.current);
+      target?.focus();
+    }
+    wasConfirming.current = confirmingDiscard;
   }, [confirmingDiscard]);
+
+  // Reading the roster again swaps the focused "Try again" for a loading line: park focus on the region, which stays mounted.
+  function retry(): void {
+    confirmRef.current?.focus();
+    reload();
+  }
 
   function requestClose(): void {
     if (submitting) return;
     if (confirmingDiscard || draft.dirty) {
+      if (!confirmingDiscard) openerRef.current = document.activeElement as HTMLElement | null;
       // Escape (or a scrim click) inside the prompt means "keep editing", never "close".
       setConfirmingDiscard(!confirmingDiscard);
       return;
@@ -235,7 +256,7 @@ export function RoleSendDialog({
                     value={value}
                     checked={role === value}
                     onChange={() => {
-                      setRole(value);
+                      onRoleChange(value);
                       if (missingRole) setError(null);
                     }}
                   />
@@ -310,7 +331,7 @@ export function RoleSendDialog({
               draft.setRecipientId(userId);
               setError(null);
             }}
-            onRetry={reload}
+            onRetry={retry}
           />
         ) : null}
         {error && !missingRole ? (
@@ -338,6 +359,7 @@ export function RoleSendDialog({
                 tone="secondary"
                 onClick={() => {
                   draft.reset();
+                  onRoleChange(null);
                   onClose();
                 }}
               >

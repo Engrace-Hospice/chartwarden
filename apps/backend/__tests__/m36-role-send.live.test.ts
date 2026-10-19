@@ -402,6 +402,9 @@ describe.skipIf(!DB_URL)("M36 ADR-0081 role-based send - LIVE Postgres", () => {
       const before = await totals();
       expect((await send(offApp, nurse)).statusCode).toBe(404);
       expect((await resolve(offApp, nurse)).statusCode).toBe(404);
+      // Flag off is 404 for everyone: before the permission 403 and the validation 422.
+      expect((await send(offApp, noKey)).statusCode).toBe(404);
+      expect((await send(offApp, nurse, { role: "admin" })).statusCode).toBe(404);
       const untracked = await send(untrackedApp, nurse);
       expect(untracked.statusCode, untracked.body).toBe(503);
       expect(errorCode(untracked)).toBe("ROLE_SEND_UNAVAILABLE");

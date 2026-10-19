@@ -4,6 +4,7 @@
 // Urgent clinical options route (shared: it supplies the patient and says the urgent mode is on) allows it. The server stays the
 // authority on every one of them. The draft and the send attempt live here, keyed by channel, so a close/reopen keeps them; the outcome
 // stays on screen in a focusable status that clears after a while or when the composer text changes.
+import type { OnCallDirectoryRole } from "@chartwarden/types";
 import {
   ROLE_SEND_FLAG_KEY,
   ROLE_SEND_PERMISSION,
@@ -65,6 +66,7 @@ function RoleSendControl({
   const gate = useOfflineGate();
   const { online } = gate;
   const [open, setOpen] = useState(false);
+  const [role, setRole] = useState<OnCallDirectoryRole | null>(null);
   const [status, setStatus] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
@@ -116,10 +118,13 @@ function RoleSendControl({
           channelId={channelId}
           patientId={patientId}
           draft={draft}
+          role={role}
+          onRoleChange={setRole}
           onClose={() => setOpen(false)}
           onSent={(sent) => {
             if (!mounted.current) return;
             draft.reset();
+            setRole(null);
             setStatus(sentLine(sent));
             setOpen(false);
             onThreadChanged?.();

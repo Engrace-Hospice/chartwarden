@@ -8,7 +8,8 @@
 // The patient gate is the SAME one the on-call directory uses (`buildPatientGate`: patient.read + caseload_or_scope, no break-glass, then
 // the org-scoped existence check, one identical 404). The send is the ordinary urgent send; the service re-resolves tier 1 at send time
 // and refuses (409) when the confirmed person no longer covers, and refuses (422) a gap or an unconnected roster with the telephone
-// procedure wording. The tenant flag `messaging.role_send` off is the uniform 404 (decided in the service, before any router call). The
+// procedure wording. The tenant flag `messaging.role_send` off is the uniform 404 for EVERYONE: it is the first preHandler on both routes (so a
+// caller without a key or with a malformed body learns nothing) and is checked again in the service, before any router call. The
 // resolution is never cached. Org and actor are always the request context.
 import { requirePermission } from "@chartwarden/auth";
 import {
@@ -37,6 +38,8 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 export interface RoleSendRouteDeps {
   readonly service: RoleSendService;
   readonly patientExists: OnCallRouteDeps["patientExists"];
+  /** The flag `messaging.role_send` (the same read the service uses). A throw propagates (a 5xx); a clean false is the uniform 404. */
+  readonly isEnabled: (orgId: string) => Promise<boolean>;
   /** The urgent route's limiter (per user, per org, per sender-recipient pair; fail closed), reused so the budgets are shared. */
   readonly rateLimit?: PreHandler;
 }
@@ -57,6 +60,7 @@ export interface RoleSendRouteGuards {
 /** Used when the boot supplies none: the uniform 404. */
 export const DISABLED_ROLE_SEND: RoleSendRouteDeps = {
   patientExists: async () => false,
+  isEnabled: async () => false,
   service: {
     resolve: async () => {
       throw new NotFoundError("channel");
@@ -80,6 +84,12 @@ export function registerRoleSendRoutes(
 ): void {
   const urgentSend = requirePermission(URGENT_SEND_PERMISSION) as PreHandler;
   const roleSend = requirePermission(ROLE_SEND_PERMISSION) as PreHandler;
+  // FIRST preHandler: flag off is the same 404 as the service's, ahead of params, permissions and validation.
+  const flagOn: PreHandler = async (request) => {
+    const orgId = request.context?.organizationId;
+    if (!orgId) throw new UnauthorizedError(); // no session: 401 whatever the flag says (nothing to leak)
+    if (!(await deps.isEnabled(orgId))) throw new NotFoundError("channel");
+  };
   const limited = deps.rateLimit ? [deps.rateLimit] : [];
 
   // A malformed query/body is a 422 BEFORE the patient gate sees it (the predicate must never get a non-uuid).
@@ -102,6 +112,7 @@ export function registerRoleSendRoutes(
     "/api/v1/messaging/channels/:id/role-send/resolution",
     {
       preHandler: [
+        flagOn,
         requireUuidParams("id"),
         guards.read,
         urgentSend,
@@ -138,6 +149,7 @@ export function registerRoleSendRoutes(
     "/api/v1/messaging/channels/:id/role-send",
     {
       preHandler: [
+        flagOn,
         requireUuidParams("id"),
         guards.send,
         urgentSend,
