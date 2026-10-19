@@ -1,7 +1,7 @@
 import { PatientWorkspaceLayout } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { PatientConversationLink } from "./open-patient-conversation";
+import { PatientConversationLink, useOpenPatientConversation } from "./open-patient-conversation";
 // apps/web/src/shell — the patient-chart tab strip, shared by every patient-scoped workspace screen
 // (Care Plan, Orders, Assessments, …) so it is defined once. 2026-09-25 redesign: the mockups replace
 // the vertical module rail with a horizontal tab bar under the patient banner (Overview · Clinical ·
@@ -123,6 +123,7 @@ export function ChartModuleRail({
   current: ChartSection;
 }): JSX.Element {
   const active = SECTION_TAB[current];
+  const conversation = useOpenPatientConversation(patientId);
   return (
     <nav className="wx-chart-tabs wx-no-scrollbar" aria-label="Patient chart">
       <ul>
@@ -133,6 +134,7 @@ export function ChartModuleRail({
               {tab.key === "communication" ? (
                 <PatientConversationLink
                   patientId={patientId}
+                  conversation={conversation}
                   className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
                   aria-current={isActive ? "page" : undefined}
                 >

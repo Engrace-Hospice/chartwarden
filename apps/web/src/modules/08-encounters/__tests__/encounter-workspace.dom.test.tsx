@@ -36,29 +36,27 @@ function renderEncounter(client: {
 }) {
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/encounters/enc-1"]}>
-      <ApiClientProvider client={client as never}>
-        <ToastProvider>
-          <SessionProvider
-            session={{
-              userId: "user-1",
-              organizationId: "org-1",
-              permissions: [
-                "encounter.author",
-                "encounter.finalize",
-                "encounter.sign",
-                "vitals.author",
-              ],
-            }}
-          >
-            <Routes>
-              <Route
-                path="/patients/:patientId/encounters/:encounterId"
-                element={<EncounterRead />}
-              />
-            </Routes>
-          </SessionProvider>
-        </ToastProvider>
-      </ApiClientProvider>
+      <ApiClientProvider client={client as never}><ToastProvider>
+        <SessionProvider
+          session={{
+            userId: "user-1",
+            organizationId: "org-1",
+            permissions: [
+              "encounter.author",
+              "encounter.finalize",
+              "encounter.sign",
+              "vitals.author",
+            ],
+          }}
+        >
+          <Routes>
+            <Route
+              path="/patients/:patientId/encounters/:encounterId"
+              element={<EncounterRead />}
+            />
+          </Routes>
+        </SessionProvider>
+      </ToastProvider></ApiClientProvider>
     </MemoryRouter>,
   );
 }
@@ -69,25 +67,23 @@ function renderPatientEncounters(client: {
 }) {
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/encounters"]}>
-      <ApiClientProvider client={client as never}>
-        <ToastProvider>
-          <SessionProvider
-            session={{
-              userId: "user-1",
-              organizationId: "org-1",
-              permissions: ["encounter.author", "encounter.read"],
-            }}
-          >
-            <Routes>
-              <Route path="/patients/:patientId/encounters" element={<PatientEncounters />} />
-              <Route
-                path="/patients/:patientId/encounters/:encounterId"
-                element={<output aria-label="location">created</output>}
-              />
-            </Routes>
-          </SessionProvider>
-        </ToastProvider>
-      </ApiClientProvider>
+      <ApiClientProvider client={client as never}><ToastProvider>
+        <SessionProvider
+          session={{
+            userId: "user-1",
+            organizationId: "org-1",
+            permissions: ["encounter.author", "encounter.read"],
+          }}
+        >
+          <Routes>
+            <Route path="/patients/:patientId/encounters" element={<PatientEncounters />} />
+            <Route
+              path="/patients/:patientId/encounters/:encounterId"
+              element={<output aria-label="location">created</output>}
+            />
+          </Routes>
+        </SessionProvider>
+      </ToastProvider></ApiClientProvider>
     </MemoryRouter>,
   );
 }

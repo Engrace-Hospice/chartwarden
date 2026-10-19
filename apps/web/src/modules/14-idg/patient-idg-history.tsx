@@ -269,12 +269,9 @@ export function PatientIdgHistory(): JSX.Element {
         const locs = await client.GET("/api/v1/locations", { params: { query: {} } });
         if (locs.error) throw new Error("locations read failed");
         const activeLocations = (locs.data?.items ?? []).filter((l) => l.status !== "inactive");
-        const items = (
-          session?.orgWidePatientScope
-            ? activeLocations
-            : activeLocations.filter((location) =>
-                (session?.locationIds ?? []).includes(location.id),
-              )
+        const items = (session?.orgWidePatientScope
+          ? activeLocations
+          : activeLocations.filter((location) => (session?.locationIds ?? []).includes(location.id))
         ).slice(0, 5);
         if (!active) return;
         setLocations(new Map(items.map((l) => [l.id, l.name])));

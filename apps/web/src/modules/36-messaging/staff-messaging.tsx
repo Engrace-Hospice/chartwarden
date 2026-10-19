@@ -209,6 +209,9 @@ function OrganizationStaffMessaging({
             ) {
               return requestedChannelId;
             }
+            // A requested conversation that is not in the list (revoked, archived) must not fall back to
+            // list[0]: that is another patient's thread.
+            if (requestedChannelId) return null;
             return narrow ? null : (list[0]?.channelId ?? null);
           });
           return true;

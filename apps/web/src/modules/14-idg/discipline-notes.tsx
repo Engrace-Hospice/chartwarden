@@ -486,124 +486,124 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                   {mode === "addendum" ? "Add late addendum" : "Add a note"} for {heading} ·{" "}
                   {tab?.label ?? ""}
                 </label>
-                {mode === "addendum" ? (
-                  <p className="wx-idg-alert" data-tone="info">
-                    <span>
-                      Recorded after adjournment. The frozen minutes are not changed; your addendum
-                      is appended with a timestamp and reason.
-                      {windowEnd ? ` Addenda open until ${dayStamp(windowEnd)}.` : ""}
-                    </span>
-                  </p>
-                ) : null}
-                {mode === "closed" ? (
-                  <p className="wx-idg-alert" data-tone="warning">
-                    <span>
-                      Addendum window closed{windowEnd ? ` ${dayStamp(windowEnd)}` : ""}. The notes
-                      on this adjourned meeting stay readable and can no longer be added to.
-                    </span>
-                  </p>
-                ) : null}
-                {superseded ? (
-                  <output className="wx-idg-alert" data-tone="warning">
-                    <span>{SUPERSEDED_MESSAGE}</span>
-                  </output>
-                ) : null}
-                {mode === "off" ? (
-                  <p className="wx-idg-alert" data-tone="warning">
-                    <span>
-                      This meeting is {statusLabel.toLowerCase()}, not live — notes can be added or
-                      edited only while it is live. Existing notes stay readable.
-                    </span>
-                  </p>
-                ) : null}
-                {mode === "addendum" ? (
-                  <>
-                    <label className="wx-idg-note-label" htmlFor="idg-addendum-reason">
-                      Reason for the late addendum
-                    </label>
-                    <textarea
-                      id="idg-addendum-reason"
-                      rows={2}
-                      maxLength={ADDENDUM_REASON_MAX}
-                      placeholder="Why is this being recorded after the meeting?"
-                      value={reason}
-                      disabled={composerBusy || tab === null || superseded}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setSaved(null);
-                        setReasons((r) => ({ ...r, [draftKey]: v }));
-                      }}
-                    />
-                    <div className="wx-idg-note-actions">
-                      <span
-                        className="wx-row-sub wx-nums"
-                        data-over={reason.length >= ADDENDUM_REASON_MAX}
-                      >
-                        {reason.length} / {ADDENDUM_REASON_MAX}
-                      </span>
-                    </div>
-                  </>
-                ) : null}
-                {mode === "note" ? (
-                  <>
-                    <label className="wx-idg-note-label" htmlFor="idg-note-reason">
-                      Context / reason (optional)
-                    </label>
-                    <input
-                      id="idg-note-reason"
-                      type="text"
-                      maxLength={ADDENDUM_REASON_MAX}
-                      placeholder="Why this note, or what it relates to"
-                      value={reason}
-                      disabled={composerBusy || tab === null}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setSaved(null);
-                        setReasons((r) => ({ ...r, [draftKey]: v }));
-                      }}
-                    />
-                    <div className="wx-idg-note-actions">
-                      <span
-                        className="wx-row-sub wx-nums"
-                        data-over={reason.length >= ADDENDUM_REASON_MAX}
-                      >
-                        {reason.length} / {ADDENDUM_REASON_MAX}
-                      </span>
-                    </div>
-                  </>
-                ) : null}
-                <textarea
-                  id="idg-note-composer"
-                  rows={3}
-                  maxLength={NOTE_MAX}
-                  placeholder={
-                    mode === "note"
-                      ? "Type this discipline's notes…"
-                      : mode === "addendum"
-                        ? "Type the addendum…"
-                        : "Notes are closed."
-                  }
-                  value={draft}
-                  disabled={!composerOpen || composerBusy || tab === null || superseded}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setSaved(null);
-                    setDrafts((d) => ({ ...d, [draftKey]: v }));
-                  }}
-                />
-                {composerError ? (
-                  <p className="wx-idg-alert" data-tone="warning" role="alert">
-                    <span>{composerError}</span>
-                  </p>
-                ) : null}
-                <div className="wx-idg-note-actions">
-                  <span className="wx-row-sub wx-nums" data-over={draft.length >= NOTE_MAX}>
-                    {draft.length} / {NOTE_MAX}
+              {mode === "addendum" ? (
+                <p className="wx-idg-alert" data-tone="info">
+                  <span>
+                    Recorded after adjournment. The frozen minutes are not changed; your addendum is
+                    appended with a timestamp and reason.
+                    {windowEnd ? ` Addenda open until ${dayStamp(windowEnd)}.` : ""}
                   </span>
-                  <Button disabled={!canSave} onClick={() => void saveNew()}>
-                    {composerBusy ? "Saving…" : mode === "addendum" ? "Save addendum" : "Save note"}
-                  </Button>
-                </div>
+                </p>
+              ) : null}
+              {mode === "closed" ? (
+                <p className="wx-idg-alert" data-tone="warning">
+                  <span>
+                    Addendum window closed{windowEnd ? ` ${dayStamp(windowEnd)}` : ""}. The notes on
+                    this adjourned meeting stay readable and can no longer be added to.
+                  </span>
+                </p>
+              ) : null}
+              {superseded ? (
+                <output className="wx-idg-alert" data-tone="warning">
+                  <span>{SUPERSEDED_MESSAGE}</span>
+                </output>
+              ) : null}
+              {mode === "off" ? (
+                <p className="wx-idg-alert" data-tone="warning">
+                  <span>
+                    This meeting is {statusLabel.toLowerCase()}, not live — notes can be added or
+                    edited only while it is live. Existing notes stay readable.
+                  </span>
+                </p>
+              ) : null}
+              {mode === "addendum" ? (
+                <>
+                  <label className="wx-idg-note-label" htmlFor="idg-addendum-reason">
+                    Reason for the late addendum
+                  </label>
+                  <textarea
+                    id="idg-addendum-reason"
+                    rows={2}
+                    maxLength={ADDENDUM_REASON_MAX}
+                    placeholder="Why is this being recorded after the meeting?"
+                    value={reason}
+                    disabled={composerBusy || tab === null || superseded}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSaved(null);
+                      setReasons((r) => ({ ...r, [draftKey]: v }));
+                    }}
+                  />
+                  <div className="wx-idg-note-actions">
+                    <span
+                      className="wx-row-sub wx-nums"
+                      data-over={reason.length >= ADDENDUM_REASON_MAX}
+                    >
+                      {reason.length} / {ADDENDUM_REASON_MAX}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              {mode === "note" ? (
+                <>
+                  <label className="wx-idg-note-label" htmlFor="idg-note-reason">
+                    Context / reason (optional)
+                  </label>
+                  <input
+                    id="idg-note-reason"
+                    type="text"
+                    maxLength={ADDENDUM_REASON_MAX}
+                    placeholder="Why this note, or what it relates to"
+                    value={reason}
+                    disabled={composerBusy || tab === null}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSaved(null);
+                      setReasons((r) => ({ ...r, [draftKey]: v }));
+                    }}
+                  />
+                  <div className="wx-idg-note-actions">
+                    <span
+                      className="wx-row-sub wx-nums"
+                      data-over={reason.length >= ADDENDUM_REASON_MAX}
+                    >
+                      {reason.length} / {ADDENDUM_REASON_MAX}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              <textarea
+                id="idg-note-composer"
+                rows={3}
+                maxLength={NOTE_MAX}
+                placeholder={
+                  mode === "note"
+                    ? "Type this discipline's notes…"
+                    : mode === "addendum"
+                      ? "Type the addendum…"
+                      : "Notes are closed."
+                }
+                value={draft}
+                disabled={!composerOpen || composerBusy || tab === null || superseded}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSaved(null);
+                  setDrafts((d) => ({ ...d, [draftKey]: v }));
+                }}
+              />
+              {composerError ? (
+                <p className="wx-idg-alert" data-tone="warning" role="alert">
+                  <span>{composerError}</span>
+                </p>
+              ) : null}
+              <div className="wx-idg-note-actions">
+                <span className="wx-row-sub wx-nums" data-over={draft.length >= NOTE_MAX}>
+                  {draft.length} / {NOTE_MAX}
+                </span>
+                <Button disabled={!canSave} onClick={() => void saveNew()}>
+                  {composerBusy ? "Saving…" : mode === "addendum" ? "Save addendum" : "Save note"}
+                </Button>
+              </div>
               </div>
             ) : null}
           </div>

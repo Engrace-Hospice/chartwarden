@@ -1268,3 +1268,34 @@ describe("M36 clinical messenger workspace", () => {
     expect(second.body.clientMessageId).toBe(first.body.clientMessageId);
   });
 });
+
+describe("M36 requested conversation that is not in the list", () => {
+  it("does not fall back to another conversation's thread", async () => {
+    const get = vi.fn((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/messaging/channels"
+          ? { data: { channels: [channel("dm-1", "Other Patient Team")] }, error: undefined }
+          : { data: { messages: [] }, error: undefined },
+      ),
+    );
+    const api = { GET: get, POST: vi.fn() } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: "/messaging", state: { messagingChannelId: "gone" } }]}
+      >
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText("Other Patient Team");
+    await act(async () => {});
+    expect(
+      get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels/{id}/messages"),
+    ).toHaveLength(0);
+  });
+});

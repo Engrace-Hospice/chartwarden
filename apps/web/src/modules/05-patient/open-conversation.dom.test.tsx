@@ -5,6 +5,11 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
+import {
+  PatientConversationLink,
+  useOpenPatientConversation,
+} from "../../shell/open-patient-conversation";
+import { useState } from "react";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { PatientChartHeader, OverviewRail, OverviewTab } from "./patient-overview";
 
@@ -21,7 +26,7 @@ const patient = {
 };
 
 let calls: string[] = [];
-let mode: "ok" | "denied" | "hang" = "ok";
+let mode: "ok" | "denied" | "hang" | "throw" | "other-patient" = "ok";
 let release: (() => void) | null = null;
 
 const json = (body: unknown, status = 200) =>
@@ -32,9 +37,18 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const url = new URL(req.url, "http://localhost");
   calls.push(`${req.method} ${url.pathname}`);
   if (url.pathname.endsWith("/care-team-channel")) {
+    if (mode === "throw") throw new TypeError("network down");
+    if (mode === "other-patient") {
+      return json({ channelId: CHANNEL, kind: "care_team", patientId: "other", archived: false });
+    }
     if (mode === "denied") return json({ error: { code: "FORBIDDEN", message: "no" } }, 403);
     if (mode === "hang") await new Promise<void>((r) => (release = r));
-    return json({ channelId: CHANNEL, kind: "care_team", patientId: PATIENT, archived: false });
+    return json({
+      channelId: CHANNEL,
+      kind: "care_team",
+      patientId: url.pathname.split("/")[5],
+      archived: false,
+    });
   }
   return json({}, 404);
 }
@@ -44,9 +58,11 @@ function Destination() {
   return <div>Messaging destination {state?.messagingChannelId ?? "none"}</div>;
 }
 
+const client = createApiClient({ baseUrl: "http://localhost", fetch: stubFetch });
+
 function mount(ui: ReactElement) {
   return render(
-    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
+    <ApiClientProvider client={client}>
       <ToastProvider>
         <MemoryRouter initialEntries={["/chart"]}>
           <Routes>
@@ -71,7 +87,7 @@ const entryPoints: [string, () => ReactElement, () => Promise<HTMLElement> | HTM
   [
     "Communication tab",
     () => <ChartModuleRail patientId={PATIENT} current="summary" />,
-    () => screen.getByRole("link", { name: "Communication" }),
+    () => screen.getByRole("link", { name: /Communication/ }),
   ],
   [
     "Send Message quick link",
@@ -142,25 +158,166 @@ describe.each(entryPoints)("%s", (_name, ui, getLink) => {
   });
 });
 
+const UNAVAILABLE = "The care team conversation is unavailable or your access has changed.";
+const rail = () => screen.getByRole("link", { name: /Communication/ });
+
+function LinkHarness({ patientId, current }: { patientId: string; current?: "page" }) {
+  const conversation = useOpenPatientConversation(patientId);
+  return (
+    <PatientConversationLink
+      patientId={patientId}
+      conversation={conversation}
+      aria-current={current}
+    >
+      Chat
+    </PatientConversationLink>
+  );
+}
+
+function Toggle({ children }: { children: ReactElement }) {
+  const [shown, setShown] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setShown(false)}>
+        hide
+      </button>
+      {shown ? children : null}
+    </>
+  );
+}
+
 describe("Communication tab semantics", () => {
-  it("stays a link to /messaging, marks nothing current off-section, and lets modified clicks through", async () => {
+  it("is a link whose href never points at /messaging", () => {
     mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
-    const link = screen.getByRole("link", { name: "Communication" });
-    expect(link.getAttribute("href")).toBe("/messaging");
-    expect(link.getAttribute("aria-current")).toBeNull();
-    // jsdom cannot follow a real navigation; the router lets the modified click through unprevented.
-    link.addEventListener("click", (e) => e.preventDefault());
-    fireEvent.click(link, { ctrlKey: true });
-    expect(channelPosts()).toBe(0);
+    expect(rail().getAttribute("href")).toBe(`/patients/${PATIENT}`);
+    expect(rail().getAttribute("aria-current")).toBeNull();
   });
 
-  it("ignores a response that lands after unmount", async () => {
+  it("keeps aria-current when active", () => {
+    mount(<LinkHarness patientId={PATIENT} current="page" />);
+    expect(screen.getByRole("link", { name: "Chat" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it.each([
+    ["plain", {}],
+    ["ctrl", { ctrlKey: true }],
+    ["meta", { metaKey: true }],
+    ["shift", { shiftKey: true }],
+    ["alt", { altKey: true }],
+  ])("%s click is intercepted and opens the conversation in this tab", async (_n, init) => {
     mode = "hang";
-    const view = mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
-    fireEvent.click(screen.getByRole("link", { name: "Communication" }));
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    const notPrevented = fireEvent.click(rail(), init);
+    expect(notPrevented).toBe(false);
     await waitFor(() => expect(channelPosts()).toBe(1));
-    view.unmount();
+    await act(async () => release?.());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("intercepts a middle click too", async () => {
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    const notPrevented = fireEvent(
+      rail(),
+      new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }),
+    );
+    expect(notPrevented).toBe(false);
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("exposes the busy state and ignores a second click while pending", async () => {
+    mode = "hang";
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    fireEvent.click(rail());
+    await waitFor(() => expect(rail().getAttribute("aria-busy")).toBe("true"));
+    expect(rail().getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("status").textContent).toBe("Opening care team conversation…");
+    fireEvent.click(rail());
+    expect(channelPosts()).toBe(1);
+    await act(async () => release?.());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("toasts when the request throws, then a retry succeeds", async () => {
+    mode = "throw";
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    fireEvent.click(rail());
+    await screen.findByText("The care team conversation could not be opened. Try again.");
+    await waitFor(() => expect(rail().getAttribute("aria-busy")).toBeNull());
+    mode = "ok";
+    fireEvent.click(rail());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("recovers from a denied response with a successful retry", async () => {
+    mode = "denied";
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    fireEvent.click(rail());
+    await screen.findByText(UNAVAILABLE);
+    await waitFor(() => expect(rail().getAttribute("aria-busy")).toBeNull());
+    mode = "ok";
+    fireEvent.click(rail());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+    expect(channelPosts()).toBe(2);
+  });
+
+  it("refuses a channel that belongs to another patient", async () => {
+    mode = "other-patient";
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    fireEvent.click(rail());
+    await screen.findByText(UNAVAILABLE);
+    expect(screen.queryByText(/Messaging destination/)).toBeNull();
+  });
+
+  it("ignores a response that lands after the link unmounts (router stays mounted)", async () => {
+    mode = "hang";
+    mount(
+      <Toggle>
+        <ChartModuleRail patientId={PATIENT} current="summary" />
+      </Toggle>,
+    );
+    fireEvent.click(rail());
+    await waitFor(() => expect(channelPosts()).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "hide" }));
     await act(async () => release?.());
     expect(screen.queryByText(/Messaging destination/)).toBeNull();
+    expect(screen.getByRole("button", { name: "hide" })).toBeTruthy();
+  });
+
+  it("ignores a stale response after the patient changes and frees the next click", async () => {
+    mode = "hang";
+    const tree = (id: string) => (
+      <ApiClientProvider client={client}>
+        <ToastProvider>
+          <MemoryRouter initialEntries={["/chart"]}>
+            <Routes>
+              <Route path="/chart" element={<LinkHarness patientId={id} />} />
+              <Route path="/messaging" element={<Destination />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </ApiClientProvider>
+    );
+    const view = render(tree(PATIENT));
+    fireEvent.click(screen.getByRole("link", { name: "Chat" }));
+    await waitFor(() => expect(channelPosts()).toBe(1));
+    view.rerender(tree("22222222-2222-4222-8222-222222222222"));
+    expect(screen.getByRole("link", { name: "Chat" }).getAttribute("aria-busy")).toBeNull();
+    await act(async () => release?.());
+    expect(screen.queryByText(/Messaging destination/)).toBeNull();
+    mode = "ok";
+    fireEvent.click(screen.getByRole("link", { name: "Chat" }));
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("keeps the Actions menu request alive when the menu is closed mid-flight", async () => {
+    mode = "hang";
+    mount(<PatientChartHeader patient={patient} data={{}} />);
+    const actions = screen.getByRole("button", { name: /Actions/ });
+    fireEvent.click(actions);
+    fireEvent.click(screen.getByRole("link", { name: "Message care team" }));
+    await waitFor(() => expect(channelPosts()).toBe(1));
+    fireEvent.click(actions);
+    await act(async () => release?.());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
   });
 });

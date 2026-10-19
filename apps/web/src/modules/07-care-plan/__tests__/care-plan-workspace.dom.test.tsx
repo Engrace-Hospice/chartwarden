@@ -259,15 +259,13 @@ function clientFor(
 function renderWorkspace(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/care-plan"]}>
-      <ApiClientProvider client={client}>
-        <ToastProvider>
-          <SessionProvider session={session}>
-            <Routes>
-              <Route path="/patients/:patientId/care-plan" element={<CarePlanView />} />
-            </Routes>
-          </SessionProvider>
-        </ToastProvider>
-      </ApiClientProvider>
+      <ApiClientProvider client={client}><ToastProvider>
+        <SessionProvider session={session}>
+          <Routes>
+            <Route path="/patients/:patientId/care-plan" element={<CarePlanView />} />
+          </Routes>
+        </SessionProvider>
+      </ToastProvider></ApiClientProvider>
     </MemoryRouter>,
   );
 }
@@ -493,18 +491,16 @@ describe("M7 Care Plan version history", () => {
     const client = clientFor({ versions: [signedInitial, legacy], version: legacy });
     render(
       <MemoryRouter initialEntries={["/care-plans/plan-1/versions/legacy-version"]}>
-        <ApiClientProvider client={client}>
-          <ToastProvider>
-            <SessionProvider session={session}>
-              <Routes>
-                <Route
-                  path="/care-plans/:planId/versions/:versionId"
-                  element={<CarePlanVersionHistory />}
-                />
-              </Routes>
-            </SessionProvider>
-          </ToastProvider>
-        </ApiClientProvider>
+        <ApiClientProvider client={client}><ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route
+                path="/care-plans/:planId/versions/:versionId"
+                element={<CarePlanVersionHistory />}
+              />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider></ApiClientProvider>
       </MemoryRouter>,
     );
 

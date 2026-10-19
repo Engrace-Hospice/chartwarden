@@ -90,11 +90,7 @@ export function MyActionItems(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const {
-      data,
-      error: err,
-      response,
-    } = await client.GET("/api/v1/idg/action-items", {
+    const { data, error: err, response } = await client.GET("/api/v1/idg/action-items", {
       params: { query: { assignee: "me" } },
     });
     if (err) {
@@ -217,9 +213,7 @@ export function MyActionItems(): JSX.Element {
         <IdgSubtabs current="actions" />
 
         {notice ? (
-          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-            {notice}
-          </output>
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
         ) : null}
 
         <div className="wx-stat-grid" aria-label="Action item summary">
@@ -317,9 +311,7 @@ export function MyActionItems(): JSX.Element {
         {error ? (
           <div className="wx-list-state">
             <ErrorState
-              title={
-                error.kind === "forbidden" ? "Work queue unavailable" : "Action items unavailable"
-              }
+              title={error.kind === "forbidden" ? "Work queue unavailable" : "Action items unavailable"}
               description={error.message}
               onRetry={() => void load()}
               action={<Link to="/idg/schedule">Back to IDG schedule</Link>}

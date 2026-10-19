@@ -35,7 +35,10 @@ import {
   sexLabel,
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
-import { PatientConversationLink } from "../../shell/open-patient-conversation";
+import {
+  PatientConversationLink,
+  useOpenPatientConversation,
+} from "../../shell/open-patient-conversation";
 import { useSession } from "../../shell/session";
 import { WristbandAction } from "./wristband-action";
 
@@ -667,6 +670,9 @@ function ChartActions({
 }): JSX.Element {
   const [open, setOpen] = useState(false);
 
+  // Hoisted above the menu so closing it never cancels a pending request.
+  const conversation = useOpenPatientConversation(patientId);
+
   const ref = useRef<HTMLDivElement>(null);
 
   // The kit Button does not forward a ref, so Escape finds the trigger inside the container to hand focus back to it.
@@ -779,10 +785,11 @@ function ChartActions({
                   {it.label} — {it.hint}
                 </span>
               ) : it.conversation ? (
-                // Stays mounted (menu open) while the request runs: closing it would unmount the hook and drop the response.
+                // The menu stays open until the page navigates, so a failure keeps its focus and the toast is visible.
                 <PatientConversationLink
                   key={it.to}
                   patientId={patientId}
+                  conversation={conversation}
                   className="wx-actor-menu-item"
                 >
                   {it.label}
@@ -1089,6 +1096,8 @@ function CareTeamPanel({
 }): JSX.Element {
   const team = data.careTeam?.assignments;
 
+  const conversation = useOpenPatientConversation(patientId);
+
   return (
     <Panel
       title="Care Team"
@@ -1165,6 +1174,7 @@ function CareTeamPanel({
 
                   <PatientConversationLink
                     patientId={patientId}
+                    conversation={conversation}
                     aria-label={`Message ${name ?? roleLabel(a.role)}`}
                   >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
@@ -1556,6 +1566,8 @@ export function OverviewRail({
 
   data: PatientChartData;
 }): JSX.Element {
+  const conversation = useOpenPatientConversation(patientId);
+
   const windows = (data.election?.complianceWindows ?? []).filter((w) => w.status === "open");
 
   const flags = data.privacy?.flags ?? [];
@@ -1709,7 +1721,9 @@ export function OverviewRail({
                   </>
                 );
                 return l.conversation ? (
-                  <PatientConversationLink patientId={patientId}>{body}</PatientConversationLink>
+                  <PatientConversationLink patientId={patientId} conversation={conversation}>
+                    {body}
+                  </PatientConversationLink>
                 ) : (
                   <Link to={l.to}>{body}</Link>
                 );

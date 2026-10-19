@@ -1,5 +1,6 @@
 import { useApiClient, useToast } from "@wardenx/ui";
 import {
+  type CSSProperties,
   type JSX,
   type MouseEvent,
   type ReactNode,
@@ -16,11 +17,14 @@ import { Link, useNavigate } from "react-router-dom";
 
 const UNAVAILABLE = "The care team conversation is unavailable or your access has changed.";
 const FAILED = "The care team conversation could not be opened. Try again.";
+const OPENING_STATUS = "Opening care team conversation…";
 
-export function useOpenPatientConversation(patientId: string): {
+export interface PatientConversation {
   open: () => Promise<void>;
   opening: boolean;
-} {
+}
+
+export function useOpenPatientConversation(patientId: string): PatientConversation {
   const client = useApiClient();
   const toast = useToast();
   const navigate = useNavigate();
@@ -28,14 +32,16 @@ export function useOpenPatientConversation(patientId: string): {
   const request = useRef(0);
   const inFlight = useRef(false);
 
-  // A patient change or unmount invalidates any pending response.
+  // A patient/client change or unmount invalidates any pending response and frees the guard.
   useEffect(
     () => () => {
+      void client;
       void patientId;
       request.current += 1;
       inFlight.current = false;
+      setOpening(false);
     },
-    [patientId],
+    [client, patientId],
   );
 
   const open = useCallback(async (): Promise<void> => {
@@ -48,11 +54,13 @@ export function useOpenPatientConversation(patientId: string): {
         params: { path: { patientId } },
       });
       if (mine !== request.current) return;
-      if (result.error || !result.data?.channelId) {
+      const data = result.data;
+      // A response for another patient must never be followed.
+      if (result.error || !data?.channelId || (data.patientId && data.patientId !== patientId)) {
         toast.show(UNAVAILABLE, { tone: "error" });
         return;
       }
-      navigate("/messaging", { state: { messagingChannelId: result.data.channelId } });
+      navigate("/messaging", { state: { messagingChannelId: data.channelId } });
     } catch {
       if (mine !== request.current) return;
       toast.show(FAILED, { tone: "error" });
@@ -67,32 +75,51 @@ export function useOpenPatientConversation(patientId: string): {
   return { open, opening };
 }
 
-/** A real link to /messaging (keyboard, middle-click, aria-current) whose plain click opens the patient's conversation. */
+/**
+ * Link-looking entry point for a patient's care-team conversation. Every primary or modified click
+ * (and middle click) runs `open` in the same tab. The href is the patient's chart, never /messaging:
+ * a browser-menu "open in new tab" cannot be intercepted and /messaging would select another
+ * patient's thread. The caller owns the hook so it outlives menus that unmount on close.
+ */
 export function PatientConversationLink({
   patientId,
+  conversation,
   children,
   onClick,
   ...rest
 }: {
   patientId: string;
+  conversation: PatientConversation;
   children: ReactNode;
   onClick?: () => void;
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   "aria-label"?: string;
   "aria-current"?: "page";
 }): JSX.Element {
-  const { open } = useOpenPatientConversation(patientId);
-  const handle = (event: MouseEvent<HTMLAnchorElement>): void => {
-    onClick?.();
-    const modified = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
-    if (event.button !== 0 || modified) return;
+  const { open, opening } = conversation;
+  const run = (event: MouseEvent<HTMLAnchorElement>): void => {
     event.preventDefault();
-    void open();
+    onClick?.();
+    if (!opening) void open();
   };
   return (
-    <Link to="/messaging" onClick={handle} {...rest}>
+    <Link
+      to={`/patients/${patientId}`}
+      onClick={(event) => {
+        if (event.button === 0) run(event);
+      }}
+      onAuxClick={(event) => {
+        if (event.button === 1) run(event);
+      }}
+      aria-busy={opening || undefined}
+      aria-disabled={opening || undefined}
+      {...rest}
+    >
       {children}
+      <span className="wx-sr-only" role="status">
+        {opening ? OPENING_STATUS : ""}
+      </span>
     </Link>
   );
 }

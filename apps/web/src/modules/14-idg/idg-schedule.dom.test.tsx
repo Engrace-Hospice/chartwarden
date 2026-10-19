@@ -53,13 +53,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   if (path === "/api/v1/locations") {
     if (locationsFailure) return json({ error: { code: "UNAVAILABLE" } }, 503);
-    return json({
-      items: [
-        { id: LOC, name: "Main Campus", status: "active" },
-        { id: LOC_OUT, name: "Restricted Campus", status: "active" },
-      ],
-      nextCursor: null,
-    });
+    return json({ items: [
+      { id: LOC, name: "Main Campus", status: "active" },
+      { id: LOC_OUT, name: "Restricted Campus", status: "active" },
+    ], nextCursor: null });
   }
   if (path === "/api/v1/orgs/org-1/members")
     return json({
@@ -202,10 +199,12 @@ describe("IDG schedule — Schedule Meeting", () => {
   });
 
   it("offers only server-session locations and hides scheduling controls without idg.schedule", async () => {
-    mount(`/idg/schedule?location=${LOC}`, <IdgSchedule />, "/idg/schedule", {
-      ...SESSION,
-      permissions: ["idg.read"],
-    });
+    mount(
+      `/idg/schedule?location=${LOC}`,
+      <IdgSchedule />,
+      "/idg/schedule",
+      { ...SESSION, permissions: ["idg.read"] },
+    );
     const picker = await screen.findByLabelText("Location");
     expect(picker.textContent).toContain("Main Campus");
     expect(picker.textContent).not.toContain("Restricted Campus");
