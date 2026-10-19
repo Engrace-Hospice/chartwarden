@@ -3,12 +3,15 @@
 // and the deny-stub answers "roster not connected" rather than an empty list.
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
   registerEffectivePermissionResolver,
   requirePermission,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import type { DbClient } from "@wardenx/db";
 import type { EscalationRouter } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,12 +27,32 @@ const PATIENT = "99999999-9999-4999-8999-000000000001";
 const COVERING = "dddddddd-dddd-4ddd-8ddd-000000000001";
 const URL = "/api/v1/messaging/oncall/coverage";
 
+const OTHER_PATIENT = "88888888-8888-4888-8888-000000000002";
+const inserted: unknown[] = [];
+const fakeTx = {
+  execute: async () => undefined,
+  insert: () => ({
+    values: async (row: unknown) => {
+      inserted.push(row);
+    },
+  }),
+};
+const fakeDb = {
+  transaction: async (fn: (tx: typeof fakeTx) => Promise<unknown>) => fn(fakeTx),
+} as unknown as DbClient;
+
 let enabled = true;
+let routerCalls = 0;
 let router: EscalationRouter = escalationRouterDenyStub;
 
 const service = createOnCallCoverageService({
   isEnabled: async () => enabled,
-  router: { resolveTier: (org, request) => router.resolveTier(org, request) },
+  router: {
+    resolveTier: (org, request) => {
+      routerCalls += 1;
+      return router.resolveTier(org, request);
+    },
+  },
   displayName: async () => "Dana K.",
   now: () => new Date("2026-06-01T21:07:00.000Z"),
 });
@@ -50,12 +73,37 @@ const grants = (permissionKeys: string[]) => [
 function makeServer() {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
-      { orgId: ORG, userId: "nurse", grants: grants(["messaging.read", "messaging.oncall.read"]) },
+      {
+        orgId: ORG,
+        userId: "nurse",
+        grants: grants(["messaging.read", "messaging.oncall.read", "patient.read"]),
+      },
+      {
+        orgId: ORG,
+        userId: "scopeless",
+        grants: grants(["messaging.read", "messaging.oncall.read", "patient.read"]),
+      },
+      {
+        orgId: ORG,
+        userId: "no-chart",
+        grants: grants(["messaging.read", "messaging.oncall.read"]),
+      },
       { orgId: ORG, userId: "reader", grants: grants(["messaging.read"]) },
       { orgId: ORG, userId: "oncall-only", grants: grants(["messaging.oncall.read"]) },
     ]).store,
   );
-  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const registry = createPredicateRegistry();
+  // the chart gate: the nurse sees PATIENT only; "scopeless" is out of scope for everyone; OTHER_PATIENT is not in the org
+  registry.register(
+    "caseload_or_scope",
+    async (ctx, target) => ctx.userId !== "scopeless" && target.patientId === PATIENT,
+  );
+  registerAbacRegistry(registry);
+  const app = buildServer({
+    db: fakeDb,
+    authenticate: headerAuth,
+    security: { rateLimitEnabled: false },
+  });
   registerOnCallRoutes(app, { service }, { read: requirePermission("messaging.read") as Handler });
   return app;
 }
@@ -66,6 +114,8 @@ const QS = `?role=rn&patient_id=${PATIENT}`;
 
 beforeEach(() => {
   enabled = true;
+  routerCalls = 0;
+  inserted.length = 0;
   router = escalationRouterDenyStub;
 });
 afterEach(() => {
@@ -131,5 +181,29 @@ describe("GET /messaging/oncall/coverage", () => {
     ]) {
       expect((await get(app, "nurse", qs)).statusCode).toBe(422);
     }
+  });
+
+  it("is the uniform 404, with no router call, for a patient the caller cannot see or one outside the org", async () => {
+    const app = makeServer();
+    const outside = await get(app, "nurse", `?role=rn&patient_id=${OTHER_PATIENT}`);
+    const scopeless = await get(app, "scopeless", QS);
+    expect(outside.statusCode).toBe(404);
+    expect(scopeless.statusCode).toBe(404);
+    expect(scopeless.json().error?.code).toBe(outside.json().error?.code);
+    expect(routerCalls).toBe(0);
+    expect(inserted).toEqual([]);
+  });
+
+  it("needs the chart-read permission as well", async () => {
+    expect((await get(makeServer(), "no-chart", QS)).statusCode).toBe(403);
+    expect(routerCalls).toBe(0);
+  });
+
+  it("asks the router for a visible patient and audits the read against that patient", async () => {
+    const res = await get(makeServer(), "nurse", QS);
+    expect(res.statusCode).toBe(200);
+    expect(routerCalls).toBe(1);
+    expect(JSON.stringify(inserted)).toContain(PATIENT);
+    expect(JSON.stringify(inserted)).toContain("oncall_coverage");
   });
 });

@@ -2,10 +2,14 @@
 //
 //   GET /api/v1/messaging/oncall/coverage?role&patient_id   who is covering now for a role (read-only; messaging.read + messaging.oncall.read)
 //
+// `patient_id` selects a patient's care team (a patient-to-clinician association), so the caller must pass the same gate as the chart
+// care_team tile: `patient.read` + `caseload_or_scope` on that patient, no break-glass. A patient the caller cannot see, or one outside
+// the organisation, is the uniform 404 and the router is never asked. The read is audited against the patient (`patientIdQueryParam`).
+//
 // Read-only: nothing is paged, sent or written. The org and the caller come from the request context, never the query. The tenant flag
 // `messaging.oncall_directory` off is the uniform 404 (decided in the service, before any router call). Responses are never cached
 // (who is covering changes at a shift boundary).
-import { requirePermission } from "@wardenx/auth";
+import { composeGuards, requireAbac, requirePermission } from "@wardenx/auth";
 import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { OnCallCoverageService } from "../oncall-directory/oncall-coverage-service";
@@ -27,20 +31,37 @@ export const DISABLED_ONCALL: OnCallRouteDeps = {
   },
 };
 
+const PATIENT_SCOPE = composeGuards(
+  requirePermission("patient.read"),
+  requireAbac("patient.read", "caseload_or_scope", {
+    getTarget: (request) => ({
+      patientId: (request.query as { patient_id?: unknown } | undefined)?.patient_id,
+    }),
+    notFoundOnDeny: true,
+    breakGlassBypassable: false,
+  }),
+) as PreHandler;
+
 export function registerOnCallRoutes(
   app: FastifyInstance,
   deps: OnCallRouteDeps,
   guards: { readonly read: PreHandler },
 ): void {
   const ONCALL = requirePermission("messaging.oncall.read") as PreHandler;
+  // A malformed query is a 422 BEFORE the patient gate sees it (the predicate must never get a non-uuid).
+  const VALID_QUERY: PreHandler = async (request) => {
+    parse(OnCallCoverageQuerySchema, request.query);
+  };
   app.get(
     "/api/v1/messaging/oncall/coverage",
     {
-      preHandler: [guards.read, ONCALL],
+      preHandler: [guards.read, ONCALL, VALID_QUERY, PATIENT_SCOPE],
       schema: { response: { 200: OnCallCoverageResponseSchema } },
       config: {
         auditRead: {
-          none: "staff names and roles on a roster; no patient data is read or returned (the patient id only selects the team)",
+          resourceKind: "oncall_coverage",
+          patientIdQueryParam: "patient_id",
+          fields: ["role", "care_team_coverage"],
         },
       },
     },
