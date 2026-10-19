@@ -397,6 +397,37 @@ describe("SessionGovernance (security officer)", () => {
     );
   });
 
+  it("a step-up refusal leaves no failed-row alert and no Try again", async () => {
+    mount(
+      <SessionGovernance />,
+      {
+        get: () => ok([device({ id: "s-y", label: "Chrome · macOS" })]),
+        del: () => ({ error: { error: { code: "STEP_UP_REQUIRED" } }, response: { status: 403 } }),
+      },
+      `/messaging/governance/sessions?user=${USER}`,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revoke Chrome · macOS for this person" }),
+    );
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
+    expect(screen.queryAllByRole("alert")).toHaveLength(0);
+  });
+
+  it("a 403 (not step-up) on a revoke is terminal: not permitted", async () => {
+    mount(
+      <SessionGovernance />,
+      {
+        get: () => ok([device({ id: "s-y", label: "Chrome · macOS" })]),
+        del: () => ({ error: { error: { code: "FORBIDDEN" } }, response: { status: 403 } }),
+      },
+      `/messaging/governance/sessions?user=${USER}`,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revoke Chrome · macOS for this person" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain("not permitted");
+  });
+
   it("an invalid ?user= says so, and Show sessions for the same person reads again", async () => {
     const bad = mount(
       <SessionGovernance />,

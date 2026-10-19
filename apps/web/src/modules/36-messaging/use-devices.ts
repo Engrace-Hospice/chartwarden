@@ -116,6 +116,7 @@ export function useDevices(scope: DevicesScope): UseDevices {
           if (gen === generation.current) {
             clearRow();
             setAnnouncement(notFoundAnnouncement(device.label));
+            generation.current += 1;
             void read();
           }
           return { kind: "failed" };

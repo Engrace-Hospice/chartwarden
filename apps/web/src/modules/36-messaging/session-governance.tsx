@@ -91,6 +91,17 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
 export function SessionGovernance(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get("user") ?? "";
+  // Keyed on the URL value so the input and its invalid flag always start from what the URL says (Back/Forward included).
+  return <GovernanceBody key={fromUrl} fromUrl={fromUrl} setParams={setParams} />;
+}
+
+function GovernanceBody({
+  fromUrl,
+  setParams,
+}: {
+  readonly fromUrl: string;
+  readonly setParams: ReturnType<typeof useSearchParams>[1];
+}): JSX.Element {
   // The URL is the single source of truth for who is shown (Back and Forward work); `refresh` re-reads the same person.
   const showing = UUID.test(fromUrl) ? fromUrl : "";
   const [text, setText] = useState(fromUrl);
