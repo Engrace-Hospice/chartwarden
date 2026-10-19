@@ -13,7 +13,9 @@ export interface PromotionsIndex {
 }
 
 const OFF: PromotionsIndex = { enabled: false, promotions: [] };
-const INDEX_LIMIT = 200;
+// The server caps `limit` at 100 (a larger value is a 422 and the index never loads); the route has no cursor, so the
+// index is the caller's 100 most recent proposals.
+const INDEX_LIMIT = 100;
 const sharedReads = new WeakMap<ApiClient, Promise<PromotionsIndex>>();
 const listeners = new Set<() => void>();
 /** A failed read is remembered this long so a screen full of rows does not re-fire it on every mount. */
