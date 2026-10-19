@@ -101,9 +101,19 @@ Nothing here reaches a phone until a tenant's flags are on AND a push or SMS tra
 - **Channels at once, by class (provisional):** Important = push; Urgent = push; Critical = push and text message. Voice stays reserved for the field-safety SOS. Note: the first alert of an urgent message is always the Urgent class (push only); no Critical request can be raised yet, so the text message for Critical is not reachable until the Critical writer exists. Is push alone right for Urgent? The earlier table said "text message after 5 minutes unopened": that step needs a timer and is not built; say whether you want it, and after how long.
 - **Only to verified phones and numbers.** A person with no verified push or text endpoint gets the in-app alert only; the system records why ("no verified endpoint") so the gap is visible. Should a person with no endpoint be flagged to a supervisor at assignment time?
 - **No vacation forwarding for these alerts.** The named person is the only target; if they are away, the escalation timer moves the request on. Confirm.
-- **Wording unchanged:** the out-of-band text is the content-free text of the existing sanitiser ("you have a notification"), never patient or message content (WP 4.7 owns the templates).
+- **Wording unchanged:** the out-of-band text is the content-free text of the existing sanitiser ("you have a notification"), never patient or message content (WP 4.7 owns the templates; see section 9).
 - **Shift:** "off shift" will be treated like quiet hours for routine alerts only once on-shift data is available from scheduling; until then nobody is treated as off shift. Which system owns on-shift state (M17 scheduling or M19 on-call)?
 - **Not yet:** the flag `messaging.notification_policy` stays off for every tenant; the three earlier flags too.
+
+## 9. Out-of-band wording (WP 4.7, ADR-0074) - provisional wording to approve
+
+What a phone shows on the lock screen, in a text message or in an email. Nothing here includes a patient, a name, a record number, a diagnosis, the message text, the sender's words or a channel name; the same text goes to everyone.
+
+- **Urgent request:** "You have a new urgent request in WardenX. Sign in to view." Message: "You have a new message in WardenX. Sign in to view." Field safety: "WardenX safety alert. Sign in to view." Everything else: "You have a new notification in WardenX. Sign in to view." Email subject is always "WardenX notification"; the push title is always "WardenX".
+- **Does the text say "urgent"?** It does for an urgent request, because a recipient who ignores a plain "notification" is a patient-safety risk. It reveals no one's identity. Say if you would rather it never name the level. Should it also say who is asking (a role such as "a nurse")? Provisional answer: no, because any role or sender detail can identify a person or a patient.
+- **The link** opens WardenX and only works after sign-in. It contains one opaque code; no patient, message or channel reference. A text message is limited to one segment: if the link does not fit, the words are kept and the link is dropped.
+- **If the system cannot be sure the text is safe**, it sends the plain "You have a new notification in WardenX. Sign in to view." instead of anything richer, and never skips the alert.
+- **Not yet:** the link's landing page (WP 4.8) does not exist; until then a tap lands on the sign-in or not-found screen.
 
 ## What happens with the answers
 

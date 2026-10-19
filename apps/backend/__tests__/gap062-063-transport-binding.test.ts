@@ -1,24 +1,33 @@
 // GAP-062 / GAP-063 — the env-gated binding of the out-of-band vendor transports and the endpoint-verification
 // sender. Driven with a fake fetch; the real adapters' wire behaviour is covered in packages/messaging.
 import { createECDH } from "node:crypto";
-import { TRANSPORT_NOT_CONFIGURED } from "@wardenx/messaging";
+import { TRANSPORT_NOT_CONFIGURED, sanitizeForOutOfBand } from "@wardenx/messaging";
 import { WardenXError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { bindOutOfBandTransports } from "../src/modules/36-messaging/delivery/transport-binding";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 
-const NOTIFICATION = {
-  notificationDeliveryId: "d-1",
-  short: "Field safety alert",
-  deepLink: "https://app.example.test/n/d-1",
-};
+const NOTIFICATION = sanitizeForOutOfBand({
+  alertOrMessage: {
+    kind: "alert",
+    alertId: "a-1",
+    notificationDeliveryId: "d-1",
+    category: "field_safety",
+    payload: {},
+  },
+  channel: "sms",
+  recipientUserId: "u-1",
+  baseUrl: "https://app.example.test",
+});
 
 const vapid = (() => {
   const k = createECDH("prime256v1");
   k.generateKeys();
+  const d = k.getPrivateKey();
   return {
     VAPID_PUBLIC_KEY: k.getPublicKey().toString("base64url"),
-    VAPID_PRIVATE_KEY: k.getPrivateKey().toString("base64url"),
+    // pad: getPrivateKey() drops leading zero bytes (about 1 key in 256)
+    VAPID_PRIVATE_KEY: Buffer.concat([Buffer.alloc(32 - d.length), d]).toString("base64url"),
     VAPID_SUBJECT: "mailto:ops@example.test",
   };
 })();

@@ -18,6 +18,7 @@ import {
   randomBytes,
   sign,
 } from "node:crypto";
+import { renderOutOfBand } from "../notification/sanitize";
 import { TransportError } from "./transports";
 import type { OutOfBandTransport } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
@@ -115,7 +116,10 @@ export function encryptWebPushPayload(
 
 function vapidKey(publicKey: string, privateKey: string) {
   const pub = fromB64u(publicKey);
-  const d = fromB64u(privateKey);
+  const raw = fromB64u(privateKey);
+  // A P-256 scalar printed without its leading zero bytes (Node's ECDH does this) is still the same key.
+  const d =
+    raw.length > 0 && raw.length < 32 ? Buffer.concat([Buffer.alloc(32 - raw.length), raw]) : raw;
   if (pub.length !== P256_PUBLIC_KEY_BYTES || pub[0] !== 0x04 || d.length !== 32) {
     throw new Error("web push: VAPID key pair is malformed");
   }
@@ -158,11 +162,13 @@ export function createWebPushTransport(opts: WebPushOptions): OutOfBandTransport
   return {
     async send({ notification, destination }) {
       const subscription = parseSubscription(destination);
+      const rendered = renderOutOfBand(notification, "push");
       const payload = Buffer.from(
         JSON.stringify({
-          id: notification.notificationDeliveryId,
-          short: notification.short,
-          deepLink: notification.deepLink,
+          id: rendered.id,
+          title: rendered.title,
+          short: rendered.body,
+          deepLink: rendered.link,
         }),
       );
       const res = await postToVendor({
@@ -184,8 +190,7 @@ export function createWebPushTransport(opts: WebPushOptions): OutOfBandTransport
         ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
       });
       return {
-        vendorMessageId:
-          res.headers.get("location") ?? `webpush:${notification.notificationDeliveryId}`,
+        vendorMessageId: res.headers.get("location") ?? `webpush:${rendered.id}`,
         settlesOnAcceptance: true,
       };
     },
