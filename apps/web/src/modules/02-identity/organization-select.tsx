@@ -6,6 +6,7 @@ import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@w
 // Imports only leaves (@wardenx/ui) + react-router — never the backend or the shell internals.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { takePendingNotificationLink } from "../../shell/pending-deep-link";
 
 // Wire shape mirrored from the M2 route (apps/backend/.../identity-routes.ts toView), re-declared
 // here rather than imported — the UI consumes the HTTP response, not the backend package.
@@ -104,7 +105,8 @@ export function OrganizationSelect(): JSX.Element {
     // an SPA navigate) so ActorSessionProvider re-fetches /auth/context and the whole shell — nav,
     // Role Home, the pre-org guard — sees the bound org. An SPA navigate would keep the stale
     // pre-org session in memory and the shell guard would bounce straight back here.
-    window.location.assign("/");
+    // WP 4.8: finish a notification link opened before sign-in (a rebuilt `/n/<opaque id>`), else the home page.
+    window.location.assign(takePendingNotificationLink() ?? "/");
   }
 
   return (

@@ -497,6 +497,11 @@ function OrganizationStaffMessaging({
                     ? requestedMessageId
                     : null
               }
+              landOnMessageId={
+                !searchAnchor && activeChannel.channelId === requestedChannelId
+                  ? requestedMessageId
+                  : null
+              }
             />
           ) : (
             <div className="wx-messaging-no-selection">

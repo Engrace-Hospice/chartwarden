@@ -78,6 +78,7 @@ function mount(opts: {
   post?: ReturnType<typeof vi.fn>;
   channelId?: string;
   refreshKey?: string | null;
+  landOnMessageId?: string | null;
 }) {
   const GET = vi.fn((path: string, init: { params: { path: { id: string } } }) =>
     Promise.resolve(opts.get ? opts.get(path, init.params.path.id) : ok([request()])),
@@ -88,7 +89,12 @@ function mount(opts: {
     <MemoryRouter>
       <ApiClientProvider client={client}>
         <main>
-          <AckRequestsProvider channelId={channelId} enabled refreshKey={refreshKey}>
+          <AckRequestsProvider
+            channelId={channelId}
+            enabled
+            refreshKey={refreshKey}
+            landOnMessageId={opts.landOnMessageId ?? null}
+          >
             <AckForMessage messageId="m-1" />
           </AckRequestsProvider>
         </main>
@@ -1126,5 +1132,31 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
     expect(await screen.findByText(/Nobody has taken responsibility yet/)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByText(ACK_NOTICE)).toBeNull();
+  });
+});
+
+describe("ack request card - notification-link landing (WP 4.8)", () => {
+  it("focuses the card of the linked message once it loads, and sends nothing", async () => {
+    const { POST } = mount({ landOnMessageId: "m-1" });
+
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+
+    expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("does not focus again after the person moves on, and not for another message", async () => {
+    const first = mount({ landOnMessageId: "m-1" });
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+    (document.activeElement as HTMLElement).blur();
+    first.view.rerender(first.tree("c-1", "m-2"));
+    await first.view.findByText(ACK_STATUS_TEXT.pending);
+    expect(document.activeElement).toBe(document.body);
+    first.view.unmount();
+
+    mount({ landOnMessageId: "m-other" });
+    await screen.findByText(ACK_STATUS_TEXT.pending);
+    expect(document.activeElement).toBe(document.body);
   });
 });

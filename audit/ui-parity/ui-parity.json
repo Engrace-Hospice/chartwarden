@@ -2263,6 +2263,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.notification-landing",
+      "path": "/n/:id",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.notifications",
       "path": "/notifications",
       "permission": "(none)"

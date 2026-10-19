@@ -530,6 +530,7 @@
     "test:m36:urgency:live": "vitest run apps/backend/__tests__/m36-urgency.live.test.ts",
     "test:m36:ack-requests:live": "vitest run apps/backend/__tests__/m36-ack-requests.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
+    "test:m36:delivery-target:live": "vitest run apps/backend/__tests__/m36-delivery-target.live.test.ts",
     "test:m36:ack-delivery-failure:live": "vitest run apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",
     "test:m36:notification-policy:live": "vitest run apps/backend/__tests__/m36-notification-policy.live.test.ts",
     "test:m36:handoff-lifecycle:live": "vitest run apps/backend/__tests__/m36-handoff-lifecycle.live.test.ts",

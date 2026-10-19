@@ -9,11 +9,13 @@ import {
   type JSX,
   type ReactNode,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import {
   ACK_CLOSE_LABEL,
@@ -194,25 +196,37 @@ export function AckRequestsProvider({
   channelId,
   enabled,
   refreshKey,
+  landOnMessageId = null,
   children,
 }: {
   channelId: string;
   enabled: boolean;
   refreshKey?: string | null;
+  /** WP 4.8: the message a notification link opened. Its request card takes focus ONCE when it loads (reading only, nothing is sent). */
+  landOnMessageId?: string | null;
   children: ReactNode;
 }): JSX.Element {
   const state = useAckRequests(channelId, enabled, refreshKey);
   const noticeId = useId();
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const landingId = landOnMessageId
+    ? (state.requests.find((r) => r.message_id === landOnMessageId)?.id ?? null)
+    : null;
+  const focusRequestId = state.focusRequestId ?? (landingId !== landedId ? landingId : null);
+  const clearFocus = useCallback(() => {
+    setLandedId(landingId);
+    state.clearFocus();
+  }, [landingId, state.clearFocus]);
   const slot = useMemo<Slot>(
     () => ({
       byMessage: new Map(state.requests.map((r) => [r.message_id, r])),
       busyId: state.busyId,
       noticeId,
-      focusRequestId: state.focusRequestId,
-      clearFocus: state.clearFocus,
+      focusRequestId,
+      clearFocus,
       act: state.act,
     }),
-    [state.requests, state.busyId, state.focusRequestId, state.clearFocus, state.act, noticeId],
+    [state.requests, state.busyId, focusRequestId, clearFocus, state.act, noticeId],
   );
   const hasActions = state.requests.some(
     (r) => r.viewer_actions.can_acknowledge || r.viewer_actions.can_resolve,

@@ -27,6 +27,7 @@ import { canSeeScreen, needsOrgSelection } from "./actor-session";
 import { clearAllDrafts } from "./ceremony-drafts";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
+import { rememberPendingNotificationLink } from "./pending-deep-link";
 import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
@@ -112,6 +113,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
   // chromeless (outside this layout), so it is never guarded — no redirect loop.
   if (needsOrgSelection(session)) {
+    rememberPendingNotificationLink(pathname); // WP 4.8: a notification link finishes after the organisation is chosen
     return <Navigate to="/login/organization" replace />;
   }
   // A click on a nav link closes the drawer; a click on an entry's own disclosure toggle (not an
