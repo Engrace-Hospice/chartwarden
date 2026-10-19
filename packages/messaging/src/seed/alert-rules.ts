@@ -71,7 +71,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     // WP 4.1: the named recipient of an urgent clinical message is told, in-app only, with generic text (no patient, no
-    // name, no message). This is NOT a page and NOT an acknowledgment request (WP 4.2 - 4.4); per-urgency channel policy is 4.6.
+    // name, no message). This is NOT a page and NOT an acknowledgment request (WP 4.2 - 4.4). WP 4.6 (ADR-0073) adds this alert's out-of-band routes in CODE (the platform floor, behind `messaging.notification_policy`); the rule itself stays in-app only.
     resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
@@ -94,7 +94,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    // WP 4.2: the NEW assignee of a reassigned request is told, in-app only, with generic text. Out-of-band delivery is WP 4.6.
+    // WP 4.2: the NEW assignee of a reassigned request is told, in-app only, with generic text. Out-of-band routes come from the WP 4.6 policy in code (ADR-0073), not from this rule.
     resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
     channelsOverride: ["in_app"],
     systemLocked: false,

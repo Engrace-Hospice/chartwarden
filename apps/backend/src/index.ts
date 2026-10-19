@@ -1712,6 +1712,8 @@ export function wireModuleSeams(
           // GAP-057 — M34's two recipient resolvers are registered onto the emitter's registry here (M36
           // cannot import M34); without this every rule naming them would throw/never deliver.
           emitter: createDrizzleAlertEmitter(deps.db, {
+            // WP 4.6 (ADR-0073): the notification policy's flag gate (default off per tenant).
+            flags: createDrizzleFeatureFlagReader(deps.db),
             extendResolvers: m34ResolverExtension(
               createDrizzleM34AlertResolverPorts(deps.db, {
                 roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),

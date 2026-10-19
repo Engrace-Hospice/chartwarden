@@ -88,6 +88,7 @@ describe("M36 ack escalation notifications consumer", () => {
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
       [
+        "ackClass",
         "channelId",
         "deepLink",
         "message",
