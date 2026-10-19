@@ -3,6 +3,9 @@
   display: grid;
   gap: 0.5rem;
   flex-basis: 100%;
+  /* A direct child of the composer's three-column grid: span the full row, or it lands in the first auto column
+     and is squeezed to ~50px on a phone. */
+  grid-column: 1 / -1;
 }
 
 .wx-needs-response-row {

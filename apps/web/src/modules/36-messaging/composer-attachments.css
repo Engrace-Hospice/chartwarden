@@ -168,6 +168,11 @@
   grid-row: 5;
 }
 
+/* G2: the "Needs a response" control spans the row under the tools and the error line, wherever the attachment tray is. */
+.wx-message-composer > .wx-needs-response {
+  grid-row: 6;
+}
+
 /* An empty live region stays mounted but takes no flex slot. */
 .wx-attachment-tray > .wx-composer-error:empty {
   position: absolute;
