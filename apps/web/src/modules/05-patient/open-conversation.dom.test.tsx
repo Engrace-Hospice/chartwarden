@@ -4,13 +4,28 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { type ReactElement, useEffect, useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   PatientConversationLink,
   useOpenPatientConversation,
 } from "../../shell/open-patient-conversation";
 import { OverviewRail, OverviewTab, PatientChartHeader } from "./patient-overview";
+
+const spy = vi.hoisted(() => ({ navigateCalls: 0 }));
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return {
+    ...actual,
+    useNavigate: () => {
+      const navigate = actual.useNavigate();
+      return ((...args: Parameters<typeof navigate>) => {
+        spy.navigateCalls += 1;
+        return navigate(...args);
+      }) as typeof navigate;
+    },
+  };
+});
 
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const CHANNEL = "care-team-channel-1";
@@ -89,6 +104,7 @@ const channelPosts = () => calls.filter((c) => c.endsWith("/care-team-channel"))
 
 beforeEach(() => {
   navigations = 0;
+  spy.navigateCalls = 0;
   calls = [];
   mode = "ok";
   release = null;
@@ -239,6 +255,7 @@ describe("shared hook and cross-instance behaviour", () => {
     await screen.findByText(`Messaging destination ${CHANNEL}`);
     expect(channelPosts()).toBe(1);
     expect(navigations).toBe(1);
+    expect(spy.navigateCalls).toBe(1);
   });
 });
 
