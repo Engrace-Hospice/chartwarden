@@ -26,6 +26,8 @@ export interface EscalationBindingInput {
   /** The raw seam (`getEscalationRouter()`); the binding wraps it in the org-checking guard. */
   readonly router: EscalationRouter;
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /** The walk's view check (ADR-0070 limit i): `canViewChannel`, built to THROW when the consent seam cannot answer so the walk retries. */
+  readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   /** Tests only (a live suite drives the real binding with a fake router). Production never sets it. */
   readonly routerGuard?: GuardOptions;
   /** Absent when there is no queue connection: nothing is armed and the sweeper alone wakes the escalation. */
@@ -74,6 +76,7 @@ export function buildEscalationBinding(input: EscalationBindingInput): Escalatio
     isEnabled,
     router,
     stillQualified: input.stillQualified,
+    canViewChannel: input.canViewChannel,
     outbox: input.outbox,
     now,
     ...(input.onError ? { onError: input.onError } : {}),
@@ -81,7 +84,11 @@ export function buildEscalationBinding(input: EscalationBindingInput): Escalatio
   const deliveryFailure = createDeliveryFailureService({
     store: input.store,
     isEnabled,
-    decide: createTierDecider({ router, stillQualified: input.stillQualified }),
+    decide: createTierDecider({
+      router,
+      stillQualified: input.stillQualified,
+      canViewChannel: input.canViewChannel,
+    }),
     outbox: input.outbox,
     now,
   });
