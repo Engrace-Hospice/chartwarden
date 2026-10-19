@@ -579,6 +579,7 @@ calls, family notification, equipment pickup, bereavement referral, each owned a
 | Reassign limits; supervisor override and take-over (G1, 4.9) | Clinical lead | Open in brief §3 and §5 |
 | Safety-floor list and locked quiet-hours rows (4.6) | Clinical lead | Decides what can never be silenced |
 | Role-based recipients and who may address a role (4.12) | Clinical lead + ADR-0081 (PROPOSED) + M19 owner | Built flag-off and fail-closed (ADR-0081); changes who is paged; no tenant role holds `messaging.oncall.send` until the clinical lead decides |
+| After-hours triage routing into M19 `triage_call` (4.13) | M19 owner (E1) + clinical lead (E2, E4, E5) + compliance (E5) + [ADR-0082](../adr/ADR-0082-messaging-after-hours-triage-routing.md) (PROPOSED) | Nothing built; decision brief [`brief-wp-4-13-after-hours-triage.md`](./brief-wp-4-13-after-hours-triage.md); depends on 4.12 / ADR-0081 |
 | Message retention classes and legal-hold overlay (5.6) | **New ADR** (ADR-0051 pattern) + compliance | Plan 02 §8 |
 | Export format and approval roles (5.7) | Compliance + **new ADR** | |
 | Break-glass eligibility, durations, review SLA (5.8) | Compliance + clinical lead | Matrix says "conditional" |
