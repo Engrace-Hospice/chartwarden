@@ -252,4 +252,18 @@ describe("M36 ack escalation notifications consumer", () => {
       supervisors: 1,
     });
   });
+
+  it("emits the parties' alert BEFORE the supervisor alert, so a supervisor-side failure cannot delay or lose it (a retry re-emits idempotently)", async () => {
+    const { emit, consumer } = setup({ request: row({ status: "pending", version: 0 }) });
+    emit.mockImplementation(async (_org: string, a: { eventType: string }) => {
+      if (a.eventType === "m36.ack.supervisor_attention") throw new Error("supervisor side down");
+      return { alertId: "a", resolvedRecipientCount: 1, outOfBandPlanned: 1 };
+    });
+
+    await expect(
+      consumer.handle(event("m36.ack.ladder_exhausted", { requestVersion: 0 })),
+    ).rejects.toThrow("supervisor side down");
+
+    expect(alertsOf(emit, "m36.ack.ladder_exhausted")).toHaveLength(1);
+  });
 });

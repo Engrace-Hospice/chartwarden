@@ -90,7 +90,7 @@ export function registerAckQueueMetrics(
   registry: Registry,
   sampler: AckQueueSampler,
   now: () => number = Date.now,
-): void {
+): AckQueueSampler {
   let cached: { readonly at: number; readonly read: Promise<AckQueueSample | null> } | null = null;
   // The sampler itself (not the timed-out race) is unsettled: never start another, so a hung database cannot pile up connections.
   let runningSince: number | null = null;
@@ -168,6 +168,8 @@ export function registerAckQueueMetrics(
       this.set({ stat: "max" }, s ? s.ackLatencyMaxSeconds : UNMEASURED);
     },
   });
+  // The guarded sampler (30 s cache, 8 s timeout, one in flight): the ADR-0079 watchdog reads through it, so it adds no sample of its own.
+  return sample;
 }
 
 // ---- threshold notice (per organisation, evaluated by the minute sweep) ------------------------------------------------------------
@@ -183,7 +185,11 @@ export const NOTICE_REPEAT_MS = 60 * 60 * 1000;
 export type AckQueueNoticeKind = "overdue_long" | "latency_high";
 
 export interface AckQueueNotice {
-  readonly kind: "m36.ack.queue_overdue" | "m36.ack.latency_high" | "m36.ack.escalation_stalled";
+  readonly kind:
+    | "m36.ack.queue_overdue"
+    | "m36.ack.latency_high"
+    | "m36.ack.escalation_stalled"
+    | "m36.ack.escalation_stall_unmeasured";
   readonly summary: string;
   readonly details: Readonly<Record<string, string | number>>;
   readonly correlationId: string;

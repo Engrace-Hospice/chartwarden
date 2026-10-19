@@ -83,8 +83,7 @@ export function createMemoryAckStore(): MemoryAckStore {
       if (!cur || cur.organizationId !== orgId || cur.version !== expectedVersion) {
         throw new AckStaleError();
       }
-      const { updatedAt: _updatedAt, ...columns } = patch;
-      const next: AckRow = { ...cur, ...columns, version: expectedVersion + 1 };
+      const next: AckRow = { ...cur, ...patch, version: expectedVersion + 1 };
       requests.set(id, next);
       return next;
     },
@@ -150,13 +149,14 @@ export function createMemoryAckStore(): MemoryAckStore {
         .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);
     },
-    async listUnreachableOverdue(asOf, limit) {
+    async listUnreachableOverdue(asOf, limit, since) {
       return [...requests.values()]
         .filter(
           (r) =>
             r.organizationId === orgId &&
             r.status === "failed_unreachable" &&
-            r.deadlineAt.getTime() <= asOf.getTime(),
+            r.deadlineAt.getTime() <= asOf.getTime() &&
+            Math.max(r.deadlineAt.getTime(), r.updatedAt?.getTime() ?? 0) > since.getTime(),
         )
         .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);

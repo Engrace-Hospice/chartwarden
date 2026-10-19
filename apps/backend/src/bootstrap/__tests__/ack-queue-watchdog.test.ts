@@ -4,7 +4,9 @@ import type { AckQueueNotice, AckQueueSample } from "../ack-queue-metrics";
 import {
   STALLED_NOTICE_SECONDS,
   STALLED_REPEAT_MS,
-  checkEscalationStalled,
+  TICK_CLAIM_MS,
+  UNMEASURED_TICKS,
+  createWatchdogTick,
 } from "../ack-queue-watchdog";
 import { type ClaimRedis, createOpsNoticeClaims } from "../ops-notice-claims";
 
@@ -45,6 +47,37 @@ describe("ops notice claims", () => {
     expect(await a.claim("k", 1000)).toBe(true);
   });
 
+  it("a hung Valkey is cut off after the timeout, the breaker sends later claims straight to the local map for 30 s, then Valkey is tried again", async () => {
+    let now = 0;
+    let calls = 0;
+    const hung: ClaimRedis = {
+      set: () => {
+        calls += 1;
+        return new Promise(() => undefined);
+      },
+      del: async () => 1,
+    };
+    const claims = createOpsNoticeClaims(hung, { now: () => now, timeoutMs: 5, breakerMs: 30_000 });
+    expect(await claims.claim("a", 1000)).toBe(true); // timed out -> local fallback
+    expect(calls).toBe(1);
+    expect(await claims.claim("b", 1000)).toBe(true);
+    expect(await claims.claim("c", 1000)).toBe(true);
+    expect(calls).toBe(1); // breaker open: no further Valkey call, no further wait
+    now = 30_000;
+    await claims.claim("d", 1000);
+    expect(calls).toBe(2);
+  });
+
+  it("prunes expired entries from the local fallback map on claim", async () => {
+    let now = 0;
+    const claims = createOpsNoticeClaims(undefined, () => now);
+    for (let i = 0; i < 50; i += 1) await claims.claim(`k${i}`, 10);
+    now = 100;
+    await claims.claim("fresh", 10);
+    // The expired keys are claimable again (pruned or expired) and the map holds only the live entry: re-claiming an old key succeeds.
+    expect(await claims.claim("k0", 10)).toBe(true);
+  });
+
   it("falls back to per-process (fail open: notify) when Valkey errors, and honours the ttl", async () => {
     let now = 0;
     const broken: ClaimRedis = {
@@ -55,7 +88,7 @@ describe("ops notice claims", () => {
         throw new Error("down");
       },
     };
-    const claims = createOpsNoticeClaims(broken, () => now);
+    const claims = createOpsNoticeClaims(broken, { now: () => now, breakerMs: 0 });
     expect(await claims.claim("k", 1000)).toBe(true);
     expect(await claims.claim("k", 1000)).toBe(false);
     now = 1000;
@@ -64,50 +97,97 @@ describe("ops notice claims", () => {
   });
 });
 
-describe("checkEscalationStalled", () => {
-  const run = async (s: AckQueueSample | null, claims = createOpsNoticeClaims(undefined)) => {
+describe("watchdog tick", () => {
+  const build = (
+    sampleFn: () => Promise<AckQueueSample | null>,
+    claims = createOpsNoticeClaims(undefined),
+  ) => {
     const notices: AckQueueNotice[] = [];
-    await checkEscalationStalled({
-      sample: async () => s,
-      claims,
-      notify: (n) => notices.push(n),
-    });
-    return notices;
+    const tick = createWatchdogTick({ sample: sampleFn, claims, notify: (n) => notices.push(n) });
+    return { tick, notices };
   };
 
   it("notifies when the oldest unprocessed request is at the threshold, with counts only", async () => {
-    const [n, ...rest] = await run(sample({ escalationStalledSeconds: STALLED_NOTICE_SECONDS }));
-    expect(rest).toHaveLength(0);
-    expect(n?.kind).toBe("m36.ack.escalation_stalled");
-    expect(Object.keys(n?.details ?? {}).sort()).toEqual([
+    const { tick, notices } = build(async () =>
+      sample({ escalationStalledSeconds: STALLED_NOTICE_SECONDS }),
+    );
+    expect(await tick()).toBe("stalled");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.kind).toBe("m36.ack.escalation_stalled");
+    expect(Object.keys(notices[0]?.details ?? {}).sort()).toEqual([
       "oldestUnprocessedSeconds",
       "orgsChecked",
     ]);
   });
 
-  it("stays quiet below the threshold, when the sample is missing or partial", async () => {
-    expect(await run(sample({ escalationStalledSeconds: STALLED_NOTICE_SECONDS - 1 }))).toEqual([]);
-    expect(await run(null)).toEqual([]);
-    expect(await run(sample({ orgsFailed: 1, escalationStalledSeconds: 9999 }))).toEqual([]);
+  it("stays quiet below the threshold", async () => {
+    const { tick, notices } = build(async () =>
+      sample({ escalationStalledSeconds: STALLED_NOTICE_SECONDS - 1 }),
+    );
+    expect(await tick()).toBe("ok");
+    expect(notices).toEqual([]);
   });
 
-  it("notifies once per window across processes and re-arms after recovery", async () => {
+  it("one process per window samples at all (the audited enumeration does not scale with processes), notices once, and re-arms after recovery", async () => {
     const redis = fakeRedis();
-    const stalled = sample({ escalationStalledSeconds: 3600 });
-    expect(await run(stalled, createOpsNoticeClaims(redis))).toHaveLength(1);
-    expect(await run(stalled, createOpsNoticeClaims(redis))).toHaveLength(0);
-    expect(await run(sample(), createOpsNoticeClaims(redis))).toHaveLength(0);
-    expect(await run(stalled, createOpsNoticeClaims(redis))).toHaveLength(1);
+    let calls = 0;
+    const stalled = async () => {
+      calls += 1;
+      return sample({ escalationStalledSeconds: 3600 });
+    };
+    const a = build(stalled, createOpsNoticeClaims(redis));
+    const b = build(stalled, createOpsNoticeClaims(redis));
+    expect(await a.tick()).toBe("stalled");
+    expect(await b.tick()).toBe("skipped");
+    expect(calls).toBe(1);
+    expect(a.notices.length + b.notices.length).toBe(1);
     expect(STALLED_REPEAT_MS).toBeGreaterThan(0);
   });
 
+  it("never runs two samples at once in a process", async () => {
+    let release: (s: AckQueueSample) => void = () => undefined;
+    let calls = 0;
+    const { tick } = build(() => {
+      calls += 1;
+      return new Promise<AckQueueSample>((resolve) => {
+        release = resolve;
+      });
+    });
+    const first = tick();
+    await Promise.resolve();
+    expect(await tick()).toBe("skipped");
+    release(sample());
+    expect(await first).toBe("ok");
+    expect(calls).toBe(1);
+  });
+
+  it("after 3 consecutive unmeasured ticks raises a distinct unmeasured notice once; a measured tick resets", async () => {
+    let now = 0;
+    const claims = createOpsNoticeClaims(undefined, () => now);
+    let s: AckQueueSample | null = null;
+    const { tick, notices } = build(async () => s, claims);
+    for (let i = 0; i < UNMEASURED_TICKS - 1; i += 1) {
+      expect(await tick()).toBe("unmeasured");
+      now += TICK_CLAIM_MS;
+    }
+    expect(notices).toEqual([]);
+    expect(await tick()).toBe("unmeasured");
+    expect(notices.map((n) => n.kind)).toEqual(["m36.ack.escalation_stall_unmeasured"]);
+    now += TICK_CLAIM_MS;
+    s = sample({ orgsFailed: 1 }); // a partial sample is also unmeasured; the notice is claim-deduped for an hour
+    expect(await tick()).toBe("unmeasured");
+    expect(notices).toHaveLength(1);
+    now += TICK_CLAIM_MS;
+    s = sample();
+    expect(await tick()).toBe("ok");
+    now += TICK_CLAIM_MS;
+    s = null;
+    expect(await tick()).toBe("unmeasured");
+    expect(notices).toHaveLength(1); // counter restarted from zero
+  });
+
   it("never throws when the sampler does", async () => {
-    await expect(
-      checkEscalationStalled({
-        sample: vi.fn().mockRejectedValue(new Error("db")),
-        claims: createOpsNoticeClaims(undefined),
-        notify: () => undefined,
-      }),
-    ).resolves.toBeUndefined();
+    const { tick } = build(vi.fn().mockRejectedValue(new Error("db")));
+    await expect(tick()).resolves.toBe("unmeasured");
   });
 });

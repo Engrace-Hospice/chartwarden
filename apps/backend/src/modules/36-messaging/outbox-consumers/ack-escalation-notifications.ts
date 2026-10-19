@@ -127,6 +127,24 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
           recipients.push(userId);
         }
       }
+      // The parties first: a supervisor-side failure below must not delay or lose their alert (a retry re-emits idempotently).
+      if (recipients.length > 0)
+        await deps.alerts.emit(event.organizationId, {
+          eventType: event.eventType,
+          severity: "warn",
+          // One alert per recorded event (its own instant): the hourly re-record is a deliberate reminder.
+          correlationId: `ack-unrouted:${requestId}:${version}:${event.eventType}:${at}`,
+          payload: {
+            recipientUserIds: recipients,
+            channelId,
+            messageId,
+            message:
+              event.eventType === M36_ACK_LADDER_EXHAUSTED
+                ? ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted
+                : ACK_ESCALATION_NOTIFICATION_TEXT.route_unavailable,
+            deepLink,
+          },
+        });
       // The supervisors are told on the FIRST record of each unroutable type only; the backoff reminders go to the parties alone.
       const occurrence = typeof payload.typeOccurrence === "number" ? payload.typeOccurrence : 1;
       if (occurrence === 1) {
@@ -147,23 +165,7 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
         }
         await raiseSupervisorAttention(deps, event.organizationId, row, reason, correlationId);
       }
-      if (recipients.length === 0) return skip("no_recipient_can_view_channel");
-      await deps.alerts.emit(event.organizationId, {
-        eventType: event.eventType,
-        severity: "warn",
-        // One alert per recorded event (its own instant): the hourly re-record is a deliberate reminder.
-        correlationId: `ack-unrouted:${requestId}:${version}:${event.eventType}:${at}`,
-        payload: {
-          recipientUserIds: recipients,
-          channelId,
-          messageId,
-          message:
-            event.eventType === M36_ACK_LADDER_EXHAUSTED
-              ? ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted
-              : ACK_ESCALATION_NOTIFICATION_TEXT.route_unavailable,
-          deepLink,
-        },
-      });
+      if (recipients.length === 0 && occurrence > 1) return skip("no_recipient_can_view_channel");
     },
   };
 }

@@ -57,6 +57,11 @@ export async function raiseSupervisorAttention(
   request: { readonly id: string; readonly ackClass: AckClass },
   reason: SupervisorAttentionReason,
   correlationId: string,
+  /**
+   * Asked only when no out-of-band route was planned: false skips the unpaged ops notice. The unreachable watch re-emits (idempotent on
+   * `correlationId`) and gates the notice on its own claim, so a repeat emit never repeats the notice. Event-driven callers omit it.
+   */
+  unpagedGate: () => Promise<boolean> = async () => true,
 ): Promise<void> {
   const result = await deps.alerts.emit(organizationId, {
     eventType: ACK_SUPERVISOR_ATTENTION_EVENT,
@@ -71,7 +76,7 @@ export async function raiseSupervisorAttention(
       deepLink: SUPERVISOR_QUEUE_DEEP_LINK,
     },
   });
-  if ((result.outOfBandPlanned ?? 0) > 0) return;
+  if ((result.outOfBandPlanned ?? 0) > 0 || !(await unpagedGate())) return;
   deps.opsNotice({
     kind: SUPERVISOR_UNPAGED_OPS_KIND,
     summary:

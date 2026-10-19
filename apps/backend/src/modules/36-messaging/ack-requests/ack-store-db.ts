@@ -70,6 +70,7 @@ const toRow = (r: RequestRow): AckRow => ({
   resolvedByUserId: r.resolvedByUserId,
   cancelledAt: r.cancelledAt,
   version: r.version,
+  updatedAt: r.updatedAt,
 });
 
 const toEvent = (e: EventRow): AckEventRow => ({
@@ -243,7 +244,7 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       return rows.map(toRow);
     },
 
-    async listUnreachableOverdue(asOf, limit) {
+    async listUnreachableOverdue(asOf, limit, since) {
       const rows = await tx
         .select()
         .from(R)
@@ -252,6 +253,7 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
             eq(R.organizationId, orgId),
             eq(R.status, "failed_unreachable"),
             lte(R.deadlineAt, asOf),
+            sql`greatest(${R.deadlineAt}, ${R.updatedAt}) > ${since.toISOString()}::timestamptz`,
           ),
         )
         .orderBy(asc(R.deadlineAt), asc(R.id))

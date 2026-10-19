@@ -6099,7 +6099,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       statsForOrg: (organizationId) => statsForOrg(organizationId, new Date()),
     });
   };
-  registerAckQueueMetrics(metricsRegistry, ackQueueSampler);
+  const ackQueueGuardedSampler = registerAckQueueMetrics(metricsRegistry, ackQueueSampler);
   // ADR-0079 (G-4) — ops notice claims shared across workers (Valkey `SET NX PX`; per process when Valkey is absent or errors), the one
   // ops sink for M36's ack notices, and the stalled-escalation watchdog: a plain timer in every process, independent of BullMQ, because
   // the per-org notices run INSIDE the sweep and cannot report that the sweep is not running.
@@ -6120,7 +6120,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   });
   if (dbHandle && platformDbHandle) {
     const stopAckQueueWatchdog = startAckQueueWatchdog({
-      sample: ackQueueSampler,
+      sample: ackQueueGuardedSampler,
       claims: m36OpsNoticeClaims,
       notify: m36AckOpsNotice,
     });
