@@ -100,8 +100,9 @@ describe("M36 read-audit declarations", () => {
         expect(body, `${file}: empty waiver`).toMatch(/none:\s*\n?\s*"[^"]{10,}/);
         continue;
       }
+      // patientIdParam / patientIdQueryParam also resolve a resource id: a single read with no resourceIdParam is accounted against the patient (read-audit.ts).
       expect(body, `${file}: ${body.trim()}`).toMatch(
-        /\blist:\s*true|\bresourceIdParam:\s*"\w+"|\b(?:resourceId|patientId)PayloadPath:\s*"[\w.]+"/,
+        /\blist:\s*true|\bresourceIdParam:\s*"\w+"|\bpatientId(?:Query)?Param:\s*"\w+"|\b(?:resourceId|patientId)PayloadPath:\s*"[\w.]+"/,
       );
     }
   });
