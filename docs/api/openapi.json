@@ -168748,6 +168748,197 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/snooze": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingChannelsByIdSnooze",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "End the caller's snooze of a conversation (idempotent; cleared=false when none was set)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdSnooze",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own snooze of a conversation, and whether it can be snoozed now (WP 4.10, ADR-0077; messaging.read; 404 while the tenant flag `messaging.notification_policy` is off or the conversation is not visible). `snoozable` is false while the caller is the sender or the assignee of an OPEN acknowledgment request in it; a snooze such a request voids is reported as not snoozed. Read-audited against the channel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channel_id",
+                    "snoozed_until",
+                    "snoozable"
+                  ],
+                  "properties": {
+                    "channel_id": {
+                      "type": "string"
+                    },
+                    "snoozed_until": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "snoozable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdSnooze",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Snooze a conversation's NON-URGENT out-of-band notices (push / SMS / email) for 5 minutes to 24 hours (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key). It never hides anything in the app and never quiets an urgent or acknowledgment-bound alert. 409 SNOOZE_URGENT_NOT_ALLOWED while the caller is the sender or the assignee of an open acknowledgment request in the conversation; 422 SNOOZE_DURATION_INVALID outside the bounds; one 404 while the flag is off or the conversation is not visible. Re-snoozing replaces the window",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channel_id",
+                    "snoozed_until",
+                    "snoozable"
+                  ],
+                  "properties": {
+                    "channel_id": {
+                      "type": "string"
+                    },
+                    "snoozed_until": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "snoozable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "duration_minutes"
+                ],
+                "properties": {
+                  "duration_minutes": {
+                    "minimum": 5,
+                    "maximum": 1440,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/unarchive": {
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdUnarchive",
@@ -175504,6 +175695,136 @@
         }
       }
     },
+    "/api/v1/messaging/messages/{id}/reminder": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingMessagesByIdReminder",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Cancel the caller's reminder on a message (idempotent; cleared=false when none was set)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cleared"
+                  ],
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingMessagesByIdReminder",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Remind the caller of a NON-URGENT message at an instant 1 minute to 30 days ahead (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key; one reminder per message, setting again replaces the time). At most 25 pending: 409 REMINDER_LIMIT_REACHED. 409 REMINDER_URGENT_NOT_ALLOWED for an urgent message or one with an open acknowledgment request; 422 REMINDER_TIME_INVALID for a time without an offset or outside the bounds; one 404 while the flag is off or the message is missing, deleted or not visible. The reminder arrives as an alert with fixed generic text and a link, never the message",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channel_id",
+                    "message_id",
+                    "remind_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "channel_id": {
+                      "type": "string"
+                    },
+                    "message_id": {
+                      "type": "string"
+                    },
+                    "remind_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "remind_at"
+                ],
+                "properties": {
+                  "remind_at": {
+                    "minLength": 10,
+                    "maxLength": 40,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/patients/{patientId}/care-team-channel": {
       "post": {
         "operationId": "postApiV1MessagingPatientsByPatientIdCareteamchannel",
@@ -175893,6 +176214,69 @@
                           ]
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/reminders": {
+      "get": {
+        "operationId": "getApiV1MessagingReminders",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own pending message reminders, soonest first, with the per-user cap (WP 4.10, ADR-0077; messaging.read). Ids and instants only. Read-audited (a list)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reminders",
+                    "max_pending"
+                  ],
+                  "properties": {
+                    "reminders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "channel_id",
+                          "message_id",
+                          "remind_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "channel_id": {
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "type": "string"
+                          },
+                          "remind_at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "max_pending": {
+                      "type": "integer"
                     }
                   }
                 }

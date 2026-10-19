@@ -129,6 +129,10 @@ describe("one writer of the aggregate's tables", () => {
       "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
       // WP 4.9: the same label for the supervisor queue's read audit; the route reads through the aggregate's own service, never a table.
       "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts",
+      // WP 4.10 (ADR-0077): snooze and reminders READ the request table (is a request open for this caller / message?) to refuse a snooze or a
+      // reminder, and the snooze lookup excludes users who hold one. Select only: m36-snooze-reminder.test.ts pins that neither file inserts, updates or deletes it.
+      "apps/backend/src/modules/36-messaging/snooze-reminders/snooze-reminder-store-db.ts",
+      "apps/backend/src/modules/36-messaging/snooze-reminders/snoozed-users-port.ts",
       // WP 4.4: the audit resource kind of a dead timer job's `m36.dlq_job` row, again a label and not a table access.
       "apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts",
     ]);

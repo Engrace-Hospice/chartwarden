@@ -98,6 +98,12 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
   "apps/web/src/modules/36-messaging/use-unacknowledged-queue.ts":
     "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/snooze-reminder-routes.ts":
+    "WP 4.10 (ADR-0077) snooze and reminders: it names the acknowledgment request ONLY to refuse a snooze or a reminder where one is open (a read of its existence, never a receipt, never a write)",
+  "packages/messaging/src/seams/alert-emitter-impl.ts":
+    "WP 4.10 (ADR-0077) the snooze lookup port's comment: a snooze never applies where an acknowledgment request is open (a read of its existence, never a receipt)",
+  "apps/web/src/modules/36-messaging/snooze-control.tsx":
+    "WP 4.10 (ADR-0077) the header snooze control: it explains that a conversation with an acknowledgment request cannot be snoozed (words only, no receipt)",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };
@@ -115,6 +121,8 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate (and WP 4.4's timer rules)",
   "apps/backend/src/modules/36-messaging/ack-delivery-failure/":
     "WP 4.5 what happens to an acknowledgment request when every route to its assignee failed: a failed delivery is never an acknowledgment, it is the opposite",
+  "apps/backend/src/modules/36-messaging/snooze-reminders/":
+    "WP 4.10 (ADR-0077) snooze and reminders: they READ whether an acknowledgment request is open (to refuse a snooze or a reminder) and never write one or label anything acknowledged",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
 };

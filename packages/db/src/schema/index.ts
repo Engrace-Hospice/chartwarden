@@ -132,6 +132,8 @@ export * from "./messaging/chart-promotion-requests";
 export * from "./messaging/message-revisions";
 export * from "./messaging/message-drafts";
 export * from "./messaging/scheduled-messages";
+export * from "./messaging/message-snoozes";
+export * from "./messaging/message-reminders";
 export * from "./messaging/message-attachments";
 export * from "./messaging/attachment-access-events";
 export * from "./messaging/messaging-erase-blocks";

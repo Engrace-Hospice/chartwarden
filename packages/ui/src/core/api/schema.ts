@@ -14246,6 +14246,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own snooze of a conversation, and whether it can be snoozed now (WP 4.10, ADR-0077; messaging.read; 404 while the tenant flag `messaging.notification_policy` is off or the conversation is not visible). `snoozable` is false while the caller is the sender or the assignee of an OPEN acknowledgment request in it; a snooze such a request voids is reported as not snoozed. Read-audited against the channel */
+        get: operations["getApiV1MessagingChannelsByIdSnooze"];
+        /** Snooze a conversation's NON-URGENT out-of-band notices (push / SMS / email) for 5 minutes to 24 hours (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key). It never hides anything in the app and never quiets an urgent or acknowledgment-bound alert. 409 SNOOZE_URGENT_NOT_ALLOWED while the caller is the sender or the assignee of an open acknowledgment request in the conversation; 422 SNOOZE_DURATION_INVALID outside the bounds; one 404 while the flag is off or the conversation is not visible. Re-snoozing replaces the window */
+        put: operations["putApiV1MessagingChannelsByIdSnooze"];
+        post?: never;
+        /** End the caller's snooze of a conversation (idempotent; cleared=false when none was set) */
+        delete: operations["deleteApiV1MessagingChannelsByIdSnooze"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/unarchive": {
         parameters: {
             query?: never;
@@ -14725,6 +14744,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/messages/{id}/reminder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Remind the caller of a NON-URGENT message at an instant 1 minute to 30 days ahead (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key; one reminder per message, setting again replaces the time). At most 25 pending: 409 REMINDER_LIMIT_REACHED. 409 REMINDER_URGENT_NOT_ALLOWED for an urgent message or one with an open acknowledgment request; 422 REMINDER_TIME_INVALID for a time without an offset or outside the bounds; one 404 while the flag is off or the message is missing, deleted or not visible. The reminder arrives as an alert with fixed generic text and a link, never the message */
+        put: operations["putApiV1MessagingMessagesByIdReminder"];
+        post?: never;
+        /** Cancel the caller's reminder on a message (idempotent; cleared=false when none was set) */
+        delete: operations["deleteApiV1MessagingMessagesByIdReminder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/patients/{patientId}/care-team-channel": {
         parameters: {
             query?: never;
@@ -14751,6 +14788,23 @@ export interface paths {
         };
         /** Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient. */
         get: operations["getApiV1MessagingPatientsByPatientIdContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own pending message reminders, soonest first, with the per-user cap (WP 4.10, ADR-0077; messaging.read). Ids and instants only. Read-audited (a list) */
+        get: operations["getApiV1MessagingReminders"];
         put?: never;
         post?: never;
         delete?: never;
@@ -66925,6 +66979,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channel_id: string;
+                        snoozed_until: string | null;
+                        snoozable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    duration_minutes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channel_id: string;
+                        snoozed_until: string | null;
+                        snoozable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingChannelsByIdUnarchive: {
         parameters: {
             query?: never;
@@ -68524,6 +68669,70 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1MessagingMessagesByIdReminder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    remind_at: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channel_id: string;
+                        message_id: string;
+                        remind_at: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingMessagesByIdReminder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingPatientsByPatientIdCareteamchannel: {
         parameters: {
             query?: never;
@@ -68649,6 +68858,36 @@ export interface operations {
                                 link: string;
                             };
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reminders: {
+                            id: string;
+                            channel_id: string;
+                            message_id: string;
+                            remind_at: string;
+                        }[];
+                        max_pending: number;
                     };
                 };
             };

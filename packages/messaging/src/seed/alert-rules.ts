@@ -292,6 +292,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  {
+    eventType: "m36.reminder.due",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 4.10 (ADR-0077): only the person who set the reminder is told, with fixed generic text and an in-app link. No override, so the
+    // user's own routing map decides any out-of-band copy, and that copy is the sanitiser's fixed generic line with an opaque link.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── Tier-1: SOS — system_locked, voice in channels (§2.5 voice is SOS-only) ──────────────
   {
     eventType: "field_safety.sos",

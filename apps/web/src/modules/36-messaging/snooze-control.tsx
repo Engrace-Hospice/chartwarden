@@ -1,0 +1,157 @@
+// M36 WP 4.10 (ADR-0077) - the conversation header's snooze control. It pauses push / text / email notices for the NON-URGENT alerts of
+// this conversation (1 to 24 hours); it never hides anything here. When the server says the conversation cannot be snoozed (the viewer
+// is the sender or assignee of an open acknowledgment request) no control is offered: a short note and a full sentence say why. Nothing
+// renders while loading or when the tenant has the feature off. Results are announced in a persistent polite live region.
+import { Button, Glyph, Modal } from "@wardenx/ui";
+import { type JSX, useEffect, useRef, useState } from "react";
+import {
+  SNOOZE_ENDED_TEXT,
+  SNOOZE_END_LABEL,
+  SNOOZE_EXPLANATION,
+  SNOOZE_PRESETS,
+  SNOOZE_STARTED_TEXT,
+  SNOOZE_TITLE,
+  SNOOZE_TRIGGER_LABEL,
+  SNOOZE_UNSNOOZABLE_SHORT,
+  SNOOZE_UNSNOOZABLE_TEXT,
+  snoozeErrorText,
+} from "./snooze-reminder-wording";
+import { useChannelSnooze } from "./use-channel-snooze";
+import "./snooze-reminder.css";
+
+const localTime = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+
+export function SnoozeControl({ channelId }: { readonly channelId: string }): JSX.Element | null {
+  const { view, reload, snooze, clear } = useChannelSnooze(channelId);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState("");
+  const inFlight = useRef(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // The trigger changes element when the snooze starts or ends, so focus is handed back after the render that swaps it.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (refocus.current && !open) {
+      refocus.current = false;
+      triggerRef.current?.focus();
+    }
+  });
+
+  // Loading, off and a failed read all render nothing: the control is a convenience, so it fails closed and silent (the server decides).
+  if (view.status !== "ready") return null;
+
+  const { snooze: state } = view;
+  if (!state.snoozable) {
+    return (
+      <span className="wx-snooze">
+        <span className="wx-snooze-note">
+          <Glyph name="lock" size={14} /> {SNOOZE_UNSNOOZABLE_SHORT}
+          <span className="sr-only">. {SNOOZE_UNSNOOZABLE_TEXT}</span>
+        </span>
+      </span>
+    );
+  }
+
+  // Compared with the clock at render: a snooze that has run out reads as not snoozed (no timer, no polling).
+  const until = state.snoozed_until;
+  const active = until !== null && new Date(until).getTime() > Date.now();
+
+  async function run(
+    action: () => Promise<{ ok: boolean; status?: number; code?: string }>,
+    done: string,
+  ) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    const result = await action();
+    inFlight.current = false;
+    setBusy(false);
+    if (result.ok) {
+      setOpen(false);
+      setAnnounce(done);
+      refocus.current = true;
+    } else {
+      setError(snoozeErrorText(result.status, result.code));
+      // A refusal says the conversation changed (an urgent item arrived): read the truth again.
+      if (result.code) reload();
+    }
+  }
+
+  return (
+    <span className="wx-snooze">
+      {active ? (
+        <>
+          <span className="wx-snooze-note">
+            <Glyph name="bell" size={14} /> Snoozed until {localTime(until)}
+          </span>
+          <button
+            type="button"
+            ref={triggerRef}
+            className="wx-messaging-context-toggle"
+            disabled={busy}
+            onClick={() => void run(clear, SNOOZE_ENDED_TEXT)}
+          >
+            {SNOOZE_END_LABEL}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          ref={triggerRef}
+          className="wx-messaging-context-toggle"
+          aria-haspopup="dialog"
+          onClick={() => {
+            setError(null);
+            setOpen(true);
+          }}
+        >
+          <Glyph name="bell" size={16} />
+          <span className="wx-messaging-context-label">{SNOOZE_TRIGGER_LABEL}</span>
+        </button>
+      )}
+      <output className="sr-only" aria-live="polite">
+        {announce}
+      </output>
+      {open ? (
+        <Modal
+          open
+          onClose={busy ? undefined : () => setOpen(false)}
+          ariaLabel={SNOOZE_TITLE}
+          width="26rem"
+        >
+          <div className="wx-snooze-dialog">
+            <h2>{SNOOZE_TITLE}</h2>
+            <p>{SNOOZE_EXPLANATION}</p>
+            <fieldset className="wx-snooze-presets">
+              <legend className="sr-only">Snooze for</legend>
+              {SNOOZE_PRESETS.map((preset) => (
+                <Button
+                  key={preset.minutes}
+                  type="button"
+                  tone="secondary"
+                  disabled={busy}
+                  onClick={() => void run(() => snooze(preset.minutes), SNOOZE_STARTED_TEXT)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </fieldset>
+            {error ? (
+              <p className="wx-snooze-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="wx-snooze-actions">
+              <Button type="button" tone="secondary" disabled={busy} onClick={() => setOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </span>
+  );
+}

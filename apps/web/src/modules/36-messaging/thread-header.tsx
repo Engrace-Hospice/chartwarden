@@ -7,6 +7,7 @@ import { IdgDiscussionsSection } from "./idg-discussions-section";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
 import { PatientContextTiles } from "./patient-context-tiles";
+import { SnoozeControl } from "./snooze-control";
 
 export interface ThreadHeaderProps {
   channel: ChannelSummary;
@@ -57,6 +58,8 @@ export function ThreadHeader({
           <Glyph name="lock" size={13} /> Archived · read only
         </span>
       ) : null}
+      {/* WP 4.10: pauses non-urgent push / text / email notices for this conversation; shows nothing when the feature is off. */}
+      <SnoozeControl channelId={channel.channelId} />
       {onShowMembers ? (
         <button type="button" className="wx-messaging-context-toggle" onClick={onShowMembers}>
           <Glyph name="users" size={16} />

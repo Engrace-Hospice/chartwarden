@@ -1453,6 +1453,7 @@ import {
   buildPromotionDeps,
   buildReviewDeps,
   buildSbarDeps,
+  buildSnoozeReminderBinding,
   buildTaskDeps,
   buildUrgentDeps,
   createAttachmentService,
@@ -1478,6 +1479,7 @@ import {
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
+  registerM36ReminderSweepWorker,
   registerM36ScheduledSendWorker,
   registerMessagingErasers,
   registerMessagingSeams,
@@ -1486,6 +1488,7 @@ import {
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
+  scheduleM36ReminderSweepJobs,
   scheduleM36ScheduledSendJobs,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
@@ -4321,6 +4324,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m36AckTimerQueue = queueConnection
     ? new Queue(MESSAGING_QUEUES.ackEscalationTimer, { connection: queueConnection })
     : undefined;
+  // WP 4.10 (ADR-0077) - snooze (non-urgent out-of-band notices only) and reminders. ONE binding for the routes and the minute sweep; off
+  // unless the tenant flag `messaging.notification_policy` is on. A snooze never quiets an urgent or acknowledgment-bound alert.
+  const m36SnoozeReminders = dbHandle
+    ? buildSnoozeReminderBinding({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+      })
+    : undefined;
   const m36AckEscalation = m36Ack
     ? buildEscalationBinding({
         flags: featureFlagReader,
@@ -4910,6 +4922,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                     rateLimit: buildAckRateLimit(rateLimitStore ?? createInMemoryRateLimitStore()),
                   },
                 }
+              : {}),
+            // WP 4.10 - snooze and reminders; off unless the tenant flag `messaging.notification_policy` is on.
+            ...(m36SnoozeReminders
+              ? { snoozeReminders: { service: m36SnoozeReminders.service } }
               : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
@@ -8963,6 +8979,44 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     } else {
       app.log.warn(
         "M36 handoff expiry disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; open handoffs stay offered",
+      );
+    }
+
+    // ── M36 WP 4.10 — `messaging.reminder_sweep` (every minute): raises the alert of each reminder that came due and deletes the row.
+    // A tenant with `messaging.notification_policy` off is skipped (its reminders wait). Active-org fan-out needs the platform pool.
+    if (platformDbHandle && m36SnoozeReminders) {
+      const m36ReminderOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 4.10 reminder_sweep active-org fan-out",
+      });
+      const m36ReminderWorkers = registerM36ReminderSweepWorker({
+        connection: queueConnection,
+        sweep: m36SnoozeReminders.sweep(getSeam("AlertEmitter") as AlertEmitter),
+        activeOrgs: m36ReminderOrgs,
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 reminder sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36ReminderWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36ReminderWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36ReminderQueues = await scheduleM36ReminderSweepJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36ReminderQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 reminder-sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 reminders disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; reminders stay pending",
       );
     }
 

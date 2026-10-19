@@ -24,6 +24,7 @@ import {
   type ResolverArgs,
   createRecipientResolverRegistry,
   designatedClassOf,
+  isSnoozableEvent,
   planFanOutDetailed,
   resolveRecipients,
   severityAtLeast,
@@ -90,6 +91,17 @@ export interface AlertEmitterPorts {
     orgId: string,
     userIds: readonly string[],
   ): Promise<ReadonlyMap<string, ReadonlySet<NotificationChannel>>>;
+  /**
+   * WP 4.10 (ADR-0077) — which of these users have an ACTIVE conversation snooze for `channelId`? Asked only for an allowlisted
+   * non-urgent alert that carries a `channelId`; the port itself answers empty while the tenant flag is off and never reports a
+   * snooze that an open acknowledgment request makes void. A throw propagates (the outbox retries): never a silent "not snoozed"
+   * for a notice the user asked to quiet, and never a silent "snoozed" either.
+   */
+  snoozedUsersFor?(
+    orgId: string,
+    channelId: string,
+    userIds: readonly string[],
+  ): Promise<ReadonlySet<string>>;
   /** Evaluation clock — explicit so quiet-hours/vacation are deterministic in tests. */
   now(): Date;
   /**
@@ -129,6 +141,18 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
   const registry = createRecipientResolverRegistry(ports.recipients);
   ports.extendResolvers?.(registry);
 
+  /** WP 4.10: the snoozed recipients of an allowlisted, channel-keyed, non-designated alert; undefined = nothing to look up. */
+  async function snoozedFor(
+    orgId: string,
+    input: { readonly eventType: string; readonly payload: Record<string, unknown> },
+    userIds: readonly string[],
+  ): Promise<ReadonlySet<string> | undefined> {
+    if (!ports.snoozedUsersFor || !isSnoozableEvent(input.eventType)) return undefined;
+    const channelId = input.payload.channelId;
+    if (typeof channelId !== "string" || channelId.length === 0) return undefined;
+    return ports.snoozedUsersFor(orgId, channelId, userIds);
+  }
+
   return {
     async emit(orgId, input) {
       const { policyTrail: _callerTrail, ...callerPayload } = input.payload; // a caller cannot forge the trail
@@ -165,12 +189,14 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
           : rule.severityFloor;
 
         const preferences = await ports.preferencesFor(orgId, recipientUserIds);
+        const snoozedUserIds = await snoozedFor(orgId, input, recipientUserIds);
         const planned = planFanOutDetailed({
           alert: { eventType: input.eventType, category: rule.category, severity },
           channelsOverride: rule.channelsOverride,
           recipientUserIds,
           preferences,
           at,
+          ...(snoozedUserIds ? { snoozedUserIds } : {}),
           ...(designated
             ? {
                 policy: {
@@ -226,6 +252,8 @@ export interface InMemoryAlertEmitterOptions {
   readonly policyEnabledEventTypes?: ReadonlySet<string>;
   /** WP 4.6: verified-endpoint channels per user (default: none). */
   readonly verifiedChannels?: ReadonlyMap<string, ReadonlySet<NotificationChannel>>;
+  /** WP 4.10: users with an active snooze of every conversation (default: none). */
+  readonly snoozedUsers?: ReadonlySet<string>;
 }
 
 const EMPTY_RECIPIENT_PORTS: RecipientSourcePorts = {
@@ -275,6 +303,8 @@ export function createInMemoryAlertEmitter(options: InMemoryAlertEmitterOptions 
     policyEnabledFor: async (_orgId, eventType) =>
       options.policyEnabledEventTypes?.has(eventType) === true,
     verifiedChannelsFor: async () => options.verifiedChannels ?? new Map(),
+    snoozedUsersFor: async (_orgId, _channelId, userIds) =>
+      new Set(userIds.filter((id) => options.snoozedUsers?.has(id) === true)),
     persist: async (record) => {
       const key = `${record.orgId}|${record.correlationId}`;
       const seen = record.countRepeats ? counted.get(key) : undefined;

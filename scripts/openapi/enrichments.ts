@@ -1460,6 +1460,15 @@ import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
+// M36 WP 4.10 snooze and reminders.
+import {
+  ClearedResponseSchema as M36ClearedResponseSchema,
+  ReminderBodySchema as M36ReminderBodySchema,
+  ReminderListResponseSchema as M36ReminderListResponseSchema,
+  ReminderResponseSchema as M36ReminderResponseSchema,
+  SnoozeBodySchema as M36SnoozeBodySchema,
+  SnoozeResponseSchema as M36SnoozeResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/snooze-reminder-typebox";
 // M36 WP 3.4 communication tasks.
 import {
   CloseTaskBodySchema as M36CloseTaskBodySchema,
@@ -9745,6 +9754,40 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "The caller's own snooze of a conversation, and whether it can be snoozed now (WP 4.10, ADR-0077; messaging.read; 404 while the tenant flag `messaging.notification_policy` is off or the conversation is not visible). `snoozable` is false while the caller is the sender or the assignee of an OPEN acknowledgment request in it; a snooze such a request voids is reported as not snoozed. Read-audited against the channel",
+    response: M36SnoozeResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "Snooze a conversation's NON-URGENT out-of-band notices (push / SMS / email) for 5 minutes to 24 hours (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key). It never hides anything in the app and never quiets an urgent or acknowledgment-bound alert. 409 SNOOZE_URGENT_NOT_ALLOWED while the caller is the sender or the assignee of an open acknowledgment request in the conversation; 422 SNOOZE_DURATION_INVALID outside the bounds; one 404 while the flag is off or the conversation is not visible. Re-snoozing replaces the window",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SnoozeBodySchema,
+    response: M36SnoozeResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "End the caller's snooze of a conversation (idempotent; cleared=false when none was set)",
+    response: M36ClearedResponseSchema,
+  },
+  "GET /api/v1/messaging/reminders": {
+    summary:
+      "The caller's own pending message reminders, soonest first, with the per-user cap (WP 4.10, ADR-0077; messaging.read). Ids and instants only. Read-audited (a list)",
+    response: M36ReminderListResponseSchema,
+  },
+  "PUT /api/v1/messaging/messages/:id/reminder": {
+    summary:
+      "Remind the caller of a NON-URGENT message at an instant 1 minute to 30 days ahead (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key; one reminder per message, setting again replaces the time). At most 25 pending: 409 REMINDER_LIMIT_REACHED. 409 REMINDER_URGENT_NOT_ALLOWED for an urgent message or one with an open acknowledgment request; 422 REMINDER_TIME_INVALID for a time without an offset or outside the bounds; one 404 while the flag is off or the message is missing, deleted or not visible. The reminder arrives as an alert with fixed generic text and a link, never the message",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36ReminderBodySchema,
+    response: M36ReminderResponseSchema,
+  },
+  "DELETE /api/v1/messaging/messages/:id/reminder": {
+    summary:
+      "Cancel the caller's reminder on a message (idempotent; cleared=false when none was set)",
+    response: M36ClearedResponseSchema,
   },
   "GET /api/v1/messaging/deliveries/:id/target": {
     summary:

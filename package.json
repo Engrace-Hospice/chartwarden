@@ -535,6 +535,7 @@
     "test:m36:unacknowledged:live": "vitest run apps/backend/__tests__/m36-unacknowledged.live.test.ts",
     "test:m36:ack-delivery-failure:live": "vitest run apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",
     "test:m36:notification-policy:live": "vitest run apps/backend/__tests__/m36-notification-policy.live.test.ts",
+    "test:m36:snooze-reminder:live": "vitest run apps/backend/__tests__/m36-snooze-reminder.live.test.ts",
     "test:m36:handoff-lifecycle:live": "vitest run apps/backend/__tests__/m36-handoff-lifecycle.live.test.ts",
     "test:m36:lifecycle-review:live": "vitest run apps/backend/__tests__/m36-lifecycle-review.live.test.ts",
     "test:m36:care-team-review:live": "vitest run apps/backend/__tests__/m36-care-team-review.live.test.ts",

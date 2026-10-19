@@ -47,6 +47,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.promotion.idg_review_requested",
       "m36.promotion.no_reviewer",
       "m36.message.schedule_blocked",
+      "m36.reminder.due",
       "field_safety.sos",
       "m10.hope.sfv_created",
       "m10.hope.sfv_overdue",

@@ -196,6 +196,14 @@ describe("edit indicator in the real thread panel", () => {
         // The message-row Task trigger asks once whether the tenant has tasks on; off here.
         return { data: { enabled: false, tasks: [] }, error: undefined, response: { status: 200 } };
       }
+      if (
+        method === "GET" &&
+        (path === "/api/v1/messaging/channels/{id}/snooze" ||
+          path === "/api/v1/messaging/reminders")
+      ) {
+        // WP 4.10: the header snooze control and the message "Remind me" trigger each ask once whether the tenant has them on; off here.
+        return { data: undefined, error: {}, response: { status: 404 } };
+      }
       if (method === "GET" && path === "/api/v1/messaging/channels/{id}/draft") {
         return { data: { draft: null }, error: undefined, response: { status: 200 } };
       }

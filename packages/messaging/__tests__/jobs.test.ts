@@ -24,11 +24,11 @@ function row(id: string, storedHash: string, legalHold = false): HashVerifySampl
 }
 
 describe("M36-T08 queue parameters (§4.4.1)", () => {
-  it("declares all seventeen queues, each with a distinct DLQ", () => {
+  it("declares all eighteen queues, each with a distinct DLQ", () => {
     const names = Object.values(MESSAGING_QUEUES);
-    expect(names).toHaveLength(17);
+    expect(names).toHaveLength(18);
     const dlqs = names.map((n) => MESSAGING_QUEUE_PARAMETERS[n].dlq);
-    expect(new Set(dlqs).size).toBe(17);
+    expect(new Set(dlqs).size).toBe(18);
     for (const n of names) {
       const p = MESSAGING_QUEUE_PARAMETERS[n];
       expect(p.name).toBe(n);

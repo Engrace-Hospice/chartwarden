@@ -102,6 +102,11 @@ import {
   registerSbarRoutes,
 } from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
+import {
+  DISABLED_SNOOZE_REMINDER,
+  type SnoozeReminderRouteDeps,
+  registerSnoozeReminderRoutes,
+} from "./snooze-reminder-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
   DISABLED_UNACKNOWLEDGED,
@@ -148,6 +153,8 @@ export interface MessagingRouteDeps {
   ackRequests?: AckRouteDeps;
   /** WP 4.9: the supervisor's unacknowledged queue (read-only). Omitted => an empty queue. */
   unacknowledged?: UnacknowledgedRouteDeps;
+  /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
+  snoozeReminders?: SnoozeReminderRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
   deliveryTarget?: DeliveryTargetRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
@@ -454,6 +461,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- WP 4.9: the supervisor's unacknowledged-urgent queue (registered beside the ack routes; the static path wins over `/escalations/:id`) ---
   registerUnacknowledgedRoutes(app, deps.unacknowledged ?? DISABLED_UNACKNOWLEDGED, {
     read: READ,
+  });
+
+  // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---
+  registerSnoozeReminderRoutes(app, deps.snoozeReminders ?? DISABLED_SNOOZE_REMINDER, {
+    read: READ,
+    requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
   });
 
   // --- WP 4.8: the deep-link landing (an opaque delivery id -> channel + message + ack request, for the signed-in recipient only) ---

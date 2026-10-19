@@ -187,6 +187,7 @@ import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
 import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
+import type { SnoozeReminderRouteDeps as _SnoozeReminderRouteDeps } from "./routes/snooze-reminder-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
@@ -232,6 +233,8 @@ export function mountMessagingRoutes(
     urgent?: _UrgentRouteDeps;
     /** WP 4.2: acknowledgment requests (service + limiter). Omitted => every route is the uniform 404. */
     ackRequests?: _AckRouteDeps;
+    /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
+    snoozeReminders?: _SnoozeReminderRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -259,6 +262,7 @@ export function mountMessagingRoutes(
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
+    ...(opts.snoozeReminders ? { snoozeReminders: opts.snoozeReminders } : {}),
     // WP 4.9: the supervisor's unacknowledged queue (read-only; self-contained over `db`, no flag: with no requests it is empty).
     unacknowledged: {
       service: _createUnacknowledgedService({
@@ -337,6 +341,12 @@ export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";
+// WP 4.10 (ADR-0077): snooze and reminders.
+export { buildSnoozeReminderBinding } from "./snooze-reminders/binding";
+export {
+  registerM36ReminderSweepWorker,
+  scheduleM36ReminderSweepJobs,
+} from "./snooze-reminders/reminder-sweep-worker";
 // WP 4.4 (ADR-0070): the escalation timers - binding, BullMQ timer port and workers, and the DLQ audit recorder.
 export { buildEscalationBinding } from "./ack-escalation/binding";
 export { createDlqAuditRecorder } from "./ack-escalation/dlq-audit";
