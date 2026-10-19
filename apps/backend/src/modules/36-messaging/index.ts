@@ -349,6 +349,7 @@ export {
 } from "./snooze-reminders/reminder-sweep-worker";
 // WP 4.4 (ADR-0070): the escalation timers - binding, BullMQ timer port and workers, and the DLQ audit recorder.
 export { buildEscalationBinding } from "./ack-escalation/binding";
+export { createUnreachableWatch } from "./ack-escalation/unreachable-watch";
 export { createDlqAuditRecorder } from "./ack-escalation/dlq-audit";
 export { createBullmqTimerPort } from "./ack-escalation/escalation-timers";
 export {

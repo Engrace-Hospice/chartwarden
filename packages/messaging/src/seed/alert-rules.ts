@@ -140,9 +140,9 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    // WP 4.4: no further tier exists; the sender, the assignee and the supervisor audience (role keys copied from
-    // m36.medication_question.unrouted; tenants re-aim it through the alert-rule admin) are told it is still open.
-    resolverArgs: { roleKeys: ["clinical_supervisor", "don"], userIdPaths: ["recipientUserIds"] },
+    // WP 4.4: no further tier exists; the sender and the assignee are told it is still open. The supervisor audience is told by
+    // m36.ack.supervisor_attention (ADR-0079), not by this rule, so a supervisor gets one alert per event, not two.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
     enabled: true,
@@ -152,10 +152,25 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    // WP 4.5: every out-of-band route to the assignee failed and no further tier could be reached. The supervisor audience (role keys
-    // copied from m36.ack.ladder_exhausted; tenants re-aim it through the alert-rule admin), the sender and the assignee are told it
-    // is still open and that nobody is known to have been reached. In-app only: out-of-band delivery is WP 4.6.
-    resolverArgs: { roleKeys: ["clinical_supervisor", "don"], userIdPaths: ["recipientUserIds"] },
+    // WP 4.5: every out-of-band route to the assignee failed and no further tier could be reached. The sender and the assignee are
+    // told it is still open and that nobody is known to have been reached. The supervisor audience is told by
+    // m36.ack.supervisor_attention (ADR-0079).
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.supervisor_attention",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // ADR-0079 (G-3/G-5): a request no human is known to be handling (ladder exhausted, router unavailable, unreachable, or unreachable
+    // and still unwatched) is raised to the supervisor audience (role keys copied from m36.medication_question.unrouted; tenants
+    // re-aim it through the alert-rule admin; NOT pinned). In-app always; with `messaging.notification_policy` + `messaging.ack_requests`
+    // on, the platform floor of the request's class adds an out-of-band page to each supervisor's VERIFIED endpoint (SUPERVISOR_PAGE_EVENT_TYPES).
+    // Fixed generic text; no vendor transport exists, so a planned page can still fail (the ops notice says so).
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
     enabled: true,

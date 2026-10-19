@@ -23,6 +23,8 @@ export interface AckRow {
   readonly resolvedByUserId: string | null;
   readonly cancelledAt: Date | null;
   readonly version: number;
+  /** Last write (the instant a `failed_unreachable` request became so, while it stays so). Optional: older fixtures omit it. */
+  readonly updatedAt?: Date;
 }
 
 export interface NewAckRequest {
@@ -143,6 +145,12 @@ export interface AckTx {
    * ones whose unroutable backoff has not elapsed (decided in the query, so backed-off rows never consume the batch).
    */
   listDue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
+  /**
+   * ADR-0079 (G-5): `failed_unreachable` requests whose deadline is at or before `asOf`, oldest deadline first. The deadline timer does
+   * not watch these (nothing can escalate them), so the unreachable watch reads them to keep them in front of supervisors. Bounded in
+   * SQL to rows whose anchor, `greatest(deadline_at, updated_at)`, is after `since`, so rows past the end of their schedule never take a batch slot.
+   */
+  listUnreachableOverdue(asOf: Date, limit: number, since: Date): Promise<readonly AckRow[]>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
   /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */
   listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;

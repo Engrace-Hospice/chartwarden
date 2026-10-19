@@ -29,6 +29,27 @@ const MSG = schema.messages;
 type RequestRow = typeof R.$inferSelect;
 type EventRow = typeof E.$inferSelect;
 
+/**
+ * The mirror of unroutedRetryDue (ack-timer-rules.ts): a request with unroutable records in its current window is left out until its
+ * backoff has elapsed (1 h, 2 h ... 24 h), or, at the cap, until the daily probe window. Shared by the sweep's query and the stalled
+ * check (ADR-0079), so "the sweep should have handled this" means the same thing in both.
+ */
+export const unroutedBackoffElapsed = (asOf: Date) =>
+  sql`NOT EXISTS (
+              SELECT 1 FROM (
+                SELECT count(*) AS n, max(e.created_at) AS last_at
+                  FROM message_acknowledgment_event e
+                 WHERE e.organization_id = ${R.organizationId} AND e.request_id = ${R.id}
+                   AND e.event_type IN ('route_unavailable', 'ladder_exhausted')
+                   AND e.created_at >= ${R.windowStartedAt}
+              ) s
+              WHERE s.n > 0 AND NOT (
+                CASE WHEN s.n >= ${UNROUTED_MAX_RECORDS}
+                  THEN extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at)) >= 86400
+                   AND mod(extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at))::numeric, 86400) < ${UNROUTED_PROBE_WINDOW_MS / 1000}
+                  ELSE ${asOf.toISOString()}::timestamptz >= s.last_at + least(interval '1 hour' * power(2, s.n - 1), interval '24 hours')
+                END))`;
+
 const toRow = (r: RequestRow): AckRow => ({
   id: r.id,
   organizationId: r.organizationId,
@@ -49,6 +70,7 @@ const toRow = (r: RequestRow): AckRow => ({
   resolvedByUserId: r.resolvedByUserId,
   cancelledAt: r.cancelledAt,
   version: r.version,
+  updatedAt: r.updatedAt,
 });
 
 const toEvent = (e: EventRow): AckEventRow => ({
@@ -214,22 +236,24 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
             eq(R.organizationId, orgId),
             inArray(R.status, ["pending", "escalated"]),
             lte(R.deadlineAt, asOf),
-            // The mirror of unroutedRetryDue (ack-timer-rules.ts): a request with unroutable records in its current window is left out
-            // until its backoff has elapsed (1 h, 2 h ... 24 h), or, at the cap, until the daily probe window.
-            sql`NOT EXISTS (
-              SELECT 1 FROM (
-                SELECT count(*) AS n, max(e.created_at) AS last_at
-                  FROM message_acknowledgment_event e
-                 WHERE e.organization_id = ${R.organizationId} AND e.request_id = ${R.id}
-                   AND e.event_type IN ('route_unavailable', 'ladder_exhausted')
-                   AND e.created_at >= ${R.windowStartedAt}
-              ) s
-              WHERE s.n > 0 AND NOT (
-                CASE WHEN s.n >= ${UNROUTED_MAX_RECORDS}
-                  THEN extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at)) >= 86400
-                   AND mod(extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at))::numeric, 86400) < ${UNROUTED_PROBE_WINDOW_MS / 1000}
-                  ELSE ${asOf.toISOString()}::timestamptz >= s.last_at + least(interval '1 hour' * power(2, s.n - 1), interval '24 hours')
-                END))`,
+            unroutedBackoffElapsed(asOf),
+          ),
+        )
+        .orderBy(asc(R.deadlineAt), asc(R.id))
+        .limit(limit);
+      return rows.map(toRow);
+    },
+
+    async listUnreachableOverdue(asOf, limit, since) {
+      const rows = await tx
+        .select()
+        .from(R)
+        .where(
+          and(
+            eq(R.organizationId, orgId),
+            eq(R.status, "failed_unreachable"),
+            lte(R.deadlineAt, asOf),
+            sql`greatest(${R.deadlineAt}, ${R.updatedAt}) > ${since.toISOString()}::timestamptz`,
           ),
         )
         .orderBy(asc(R.deadlineAt), asc(R.id))

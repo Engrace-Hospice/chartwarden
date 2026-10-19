@@ -7,12 +7,14 @@
 import { describe, expect, it } from "vitest";
 import {
   type AlertContext,
+  DESIGNATED_EVENT_TYPES,
   type NotificationChannel,
   PLATFORM_CHANNEL_FLOOR,
   type PlannedDelivery,
   type PolicyAckClass,
   type QuietHoursConfig,
   type RecipientPreferences,
+  SUPERVISOR_PAGE_EVENT_TYPES,
   type ShiftState,
   createAlertEmitter,
   createInMemoryAlertEmitter,
@@ -476,6 +478,61 @@ describe("AlertEmitter wiring (in-memory ports)", () => {
         reasons: ["designated_floor", "no_verified_endpoint"],
       },
     ]);
+  });
+});
+
+describe("supervisor attention alert (ADR-0079)", () => {
+  const EVENT = "m36.ack.supervisor_attention";
+  const supervisors = new Map([
+    ["sup-1", new Set<NotificationChannel>(["push"])],
+    ["sup-2", new Set<NotificationChannel>()],
+  ]);
+  const emit = async (policyOn: boolean, verified = supervisors) => {
+    const { emitter, recorded } = createInMemoryAlertEmitter({
+      now: () => NIGHT_INSTANT,
+      recipients: { roleSetMembers: async () => ["sup-1", "sup-2"] },
+      verifiedChannels: verified,
+      ...(policyOn ? { policyEnabledEventTypes: new Set([EVENT]) } : {}),
+    });
+    const result = await emitter.emit("org-1", {
+      eventType: EVENT,
+      severity: "warn",
+      correlationId: "c-1",
+      payload: { reason: "ladder_exhausted", ackClass: "urgent", message: "x" },
+    });
+    return { result, alert: recorded[0] };
+  };
+
+  it("is a supervisor page, not an assignee designated route (the delivery-failure machinery and the rule pin stay on the four)", () => {
+    expect(SUPERVISOR_PAGE_EVENT_TYPES.has(EVENT)).toBe(true);
+    expect(DESIGNATED_EVENT_TYPES.has(EVENT)).toBe(false);
+    expect(designatedClassOf(EVENT, { ackClass: "critical" })).toEqual({
+      ackClass: "critical",
+      defaulted: false,
+    });
+    expect(designatedClassOf(EVENT, {})).toEqual({ ackClass: "urgent", defaulted: true });
+  });
+
+  it("policy off: in-app only for every supervisor, and the result says no out-of-band route was planned", async () => {
+    const { result, alert } = await emit(false);
+    expect(alert?.deliveries.map((d) => d.channel)).toEqual(["in_app", "in_app"]);
+    expect(result.outOfBandPlanned).toBe(0);
+    expect(result.resolvedRecipientCount).toBe(2);
+  });
+
+  it("policy on: a supervisor with a verified endpoint is paged by the class floor at night; one without stays in-app only", async () => {
+    const { result, alert } = await emit(true);
+    expect(alert?.deliveries.map((d) => `${d.recipientUserId}:${d.channel}`).sort()).toEqual([
+      "sup-1:in_app",
+      "sup-1:push",
+      "sup-2:in_app",
+    ]);
+    expect(result.outOfBandPlanned).toBe(1);
+  });
+
+  it("policy on but no supervisor has a verified endpoint: nothing is planned out-of-band, which the caller must surface", async () => {
+    const { result } = await emit(true, new Map());
+    expect(result.outOfBandPlanned).toBe(0);
   });
 });
 

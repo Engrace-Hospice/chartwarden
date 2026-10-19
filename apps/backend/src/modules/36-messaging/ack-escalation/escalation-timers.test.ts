@@ -128,6 +128,23 @@ describe("the worker bodies", () => {
     expect(observeOrg).toHaveBeenCalledWith(ORG);
   });
 
+  it("ADR-0079: watches unreachable requests for every org after its sweep, also when the sweep throws, and a failing watch never fails the tick", async () => {
+    const sweep = vi.fn().mockRejectedValue(new Error("sweep down"));
+    const watchUnreachable = vi.fn().mockRejectedValue(new Error("watch down"));
+    const onError = vi.fn();
+    const activeOrgs = { listActiveOrgs: async () => [{ organizationId: ORG }] };
+
+    await expect(
+      sweepTick({ service: { sweep, processDue: vi.fn() }, activeOrgs, watchUnreachable, onError }),
+    ).rejects.toThrow(); // only the sweep's own error fails the tick
+
+    expect(watchUnreachable).toHaveBeenCalledWith(ORG);
+    expect(onError).toHaveBeenCalledWith(
+      { organizationId: ORG, job: "ack_unreachable_watch" },
+      expect.any(Error),
+    );
+  });
+
   it("a dead timer job is copied to the DLQ queue and audited with a hashed payload, never verbatim", async () => {
     const add = vi.fn().mockResolvedValue({});
     const recordDlq = vi.fn().mockResolvedValue(undefined);

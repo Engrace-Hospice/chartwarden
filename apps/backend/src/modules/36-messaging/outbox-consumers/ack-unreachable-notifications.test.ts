@@ -52,8 +52,12 @@ const event = {
   },
 } as never;
 
-function setup(current: AckRow | null, canView: (u: string) => boolean = () => true) {
-  const emit = vi.fn(async () => undefined);
+function setup(
+  current: AckRow | null,
+  canView: (u: string) => boolean = () => true,
+  outOfBandPlanned = 1,
+) {
+  const emit = vi.fn(async () => ({ alertId: "a1", resolvedRecipientCount: 2, outOfBandPlanned }));
   const opsNotice = vi.fn();
   const consumer = buildM36AckUnreachableNotificationsConsumer({
     alerts: { emit } as never,
@@ -71,7 +75,7 @@ describe("m36.ack-unreachable-notifications", () => {
     await ctx.consumer.handle(event);
 
     expect(ctx.opsNotice).toHaveBeenCalledOnce();
-    expect(ctx.emit).toHaveBeenCalledOnce();
+    expect(ctx.emit).toHaveBeenCalledTimes(2); // the parties, then the supervisor attention alert
     const [org, alert] = ctx.emit.mock.calls[0] as unknown as [string, Record<string, any>];
     expect(org).toBe(ORG);
     expect(alert).toMatchObject({
@@ -81,6 +85,45 @@ describe("m36.ack-unreachable-notifications", () => {
         recipientUserIds: [REQUESTER, ASSIGNEE],
         message: ACK_UNREACHABLE_NOTIFICATION_TEXT,
       },
+    });
+  });
+
+  it("tells the supervisors through the attention alert (ADR-0079), with a class and a queue link, no channel or message", async () => {
+    const ctx = setup(row());
+
+    await ctx.consumer.handle(event);
+
+    const [, attention] = ctx.emit.mock.calls[1] as unknown as [string, Record<string, any>];
+    expect(attention).toMatchObject({
+      eventType: "m36.ack.supervisor_attention",
+      correlationId: `ack-attn:${REQUEST}:1:failed_unreachable`,
+      payload: {
+        reason: "failed_unreachable",
+        ackClass: "urgent",
+        deepLink: "/messaging/unacknowledged",
+      },
+    });
+    expect(attention.payload).not.toHaveProperty("channelId");
+    expect(attention.payload).not.toHaveProperty("messageId");
+  });
+
+  it("degrades visibly: no planned out-of-band route for the supervisors raises an unpaged ops notice", async () => {
+    const ctx = setup(row(), () => true, 0);
+
+    await ctx.consumer.handle(event);
+
+    expect(ctx.opsNotice).toHaveBeenCalledTimes(2);
+    expect(ctx.opsNotice).toHaveBeenLastCalledWith({
+      kind: "m36.ack.supervisor_unpaged",
+      summary: expect.stringContaining("in-app only"),
+      details: {
+        organizationId: ORG,
+        requestId: REQUEST,
+        ackClass: "urgent",
+        reason: "failed_unreachable",
+        supervisors: 2,
+      },
+      correlationId: `unpaged:ack-attn:${REQUEST}:1:failed_unreachable`,
     });
   });
 
@@ -123,7 +166,7 @@ describe("m36.ack-unreachable-notifications", () => {
     await ctx.consumer.handle(event); // the outbox retry
 
     expect(ctx.opsNotice).toHaveBeenCalledOnce();
-    expect(ctx.emit).toHaveBeenCalledTimes(2);
+    expect(ctx.emit).toHaveBeenCalledTimes(3); // failed parties alert, then parties + attention on the retry
   });
 
   it("takes the channel and message from the stored request, not the payload", async () => {
@@ -145,7 +188,7 @@ describe("m36.ack-unreachable-notifications", () => {
     expect(alert.payload.messageId).toBe(MESSAGE);
   });
 
-  it("drops a party who can no longer see the channel but still alerts the supervisor rule", async () => {
+  it("drops a party who can no longer see the channel but still alerts the supervisors", async () => {
     const ctx = setup(row(), (u) => u === REQUESTER);
 
     await ctx.consumer.handle(event);

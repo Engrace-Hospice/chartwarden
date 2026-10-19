@@ -123,6 +123,8 @@ describe("only an explicit transition writes an acknowledgment", () => {
         // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.
         "apps/backend/src/modules/36-messaging/ack-escalation/binding.ts",
         "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",
+        // ADR-0079 (G-5): the unreachable watch reads the aggregate's store port (a list of unreachable requests); it writes nothing.
+        "apps/backend/src/modules/36-messaging/ack-escalation/unreachable-watch.ts",
         "apps/backend/src/modules/36-messaging/index.ts",
         "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts",

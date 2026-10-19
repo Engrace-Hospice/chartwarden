@@ -375,8 +375,10 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       const notices: Array<Record<string, unknown>> = [];
       const notify = buildM36AckUnreachableNotificationsConsumer({
         alerts: {
-          emit: async (org: string, alert: Record<string, any>) =>
-            void emitted.push({ org, alert }),
+          emit: async (org: string, alert: Record<string, any>) => {
+            emitted.push({ org, alert });
+            return { alertId: "a", resolvedRecipientCount: 1, outOfBandPlanned: 1 };
+          },
         } as unknown as AlertEmitter,
         messaging: kit.service,
         readRequest: escalation.readRequest,
@@ -391,10 +393,15 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       await notify.handle(envelope);
       await notify.handle(envelope); // a redelivery converges on the same correlation id
 
-      expect(emitted).toHaveLength(2);
-      expect(new Set(emitted.map((e) => e.alert.correlationId)).size).toBe(1);
-      expect(emitted[0]?.alert.payload.recipientUserIds.sort()).toEqual([nurse, rn].sort());
-      expect(emitted[0]?.alert.payload.message).toMatch(/nobody is known to have received it/);
+      // Per delivery: the parties' alert, then (ADR-0079) the supervisor attention alert, both converging on one id each on redelivery.
+      const parties = emitted.filter((e) => e.alert.eventType === "m36.ack.failed_unreachable");
+      expect(
+        emitted.filter((e) => e.alert.eventType === "m36.ack.supervisor_attention"),
+      ).toHaveLength(2);
+      expect(parties).toHaveLength(2);
+      expect(new Set(parties.map((e) => e.alert.correlationId)).size).toBe(1);
+      expect(parties[0]?.alert.payload.recipientUserIds.sort()).toEqual([nurse, rn].sort());
+      expect(parties[0]?.alert.payload.message).toMatch(/nobody is known to have received it/);
       expect(notices[0]).toMatchObject({
         kind: "m36.ack.failed_unreachable",
         details: { organizationId: ORG_A, requestId: id },

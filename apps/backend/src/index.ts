@@ -89,6 +89,7 @@ import {
   registerAckQueueMetrics,
   sampleAckQueue,
 } from "./bootstrap/ack-queue-metrics";
+import { startAckQueueWatchdog } from "./bootstrap/ack-queue-watchdog";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
   bindPlatformStaffToOrg,
@@ -161,6 +162,7 @@ import {
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
 import {
   buildMembershipUserResolver,
   buildOrgAdminCountReader,
@@ -1474,6 +1476,7 @@ import {
   createRealtimeAuditWriter,
   createScheduledSendDispatcher,
   createSosContactCaller,
+  createUnreachableWatch,
   getEscalationRouter,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -6079,7 +6082,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   registerGeocodeCoverageMetrics(metricsRegistry, geocodeCoverageSampler);
   // M36 WP 4.9 (ADR-0076) — overdue count and acknowledgment latency of the unacknowledged queue. Aggregated over the active orgs
   // (audited platform read of the org list only; the figures are counts under each org's RLS); -1 when it cannot be measured.
-  registerAckQueueMetrics(metricsRegistry, async () => {
+  // ADR-0079: the stalled-escalation figure is measured only for tenants with `messaging.escalation_timers` on.
+  const ackQueueSampler = async () => {
     if (!dbHandle || !platformDbHandle) return null;
     const activeOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle.db,
@@ -6087,12 +6091,44 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       jobId: M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
       reason: "M36 WP 4.9 ack-queue gauges: active-org list",
     });
-    const statsForOrg = createDbAckQueueStatsReader(dbHandle.db);
+    const statsForOrg = createDbAckQueueStatsReader(dbHandle.db, {
+      ...(m36AckEscalation ? { isEscalationEnabled: m36AckEscalation.isEnabled } : {}),
+    });
     return sampleAckQueue({
       listOrgs: () => activeOrgs.listActiveOrgs(),
       statsForOrg: (organizationId) => statsForOrg(organizationId, new Date()),
     });
+  };
+  const ackQueueGuardedSampler = registerAckQueueMetrics(metricsRegistry, ackQueueSampler);
+  // ADR-0079 (G-4) — ops notice claims shared across workers (Valkey `SET NX PX`; per process when Valkey is absent or errors), the one
+  // ops sink for M36's ack notices, and the stalled-escalation watchdog: a plain timer in every process, independent of BullMQ, because
+  // the per-org notices run INSIDE the sweep and cannot report that the sweep is not running.
+  const m36OpsClaimsRedis = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2_000,
+        retryStrategy: (times) => Math.min(times * 200, 2_000),
+      })
+    : undefined;
+  m36OpsClaimsRedis?.on("error", () => {});
+  const m36OpsNoticeClaims = createOpsNoticeClaims(m36OpsClaimsRedis);
+  const m36AckOpsNotice = buildPlatformOpsNoticeSink({
+    webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+    log: (m) => app.log.warn(m),
   });
+  if (dbHandle && platformDbHandle) {
+    const stopAckQueueWatchdog = startAckQueueWatchdog({
+      sample: ackQueueGuardedSampler,
+      claims: m36OpsNoticeClaims,
+      notify: m36AckOpsNotice,
+    });
+    app.addHook("onClose", async () => {
+      stopAckQueueWatchdog();
+      m36OpsClaimsRedis?.disconnect();
+    });
+  }
   if (dbHandle) {
     void warnOnGeocodeCoverageGap(geocodeCoverageSampler, {
       warn: (fields, message) => app.log.warn(fields, message),
@@ -9050,12 +9086,31 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         // WP 4.9 (ADR-0076): the threshold notice (log line + optional OPS_ALERT_WEBHOOK_URL) per organisation per tick.
         observeOrg: createAckQueueNoticeEvaluator({
           statsForOrg: (organizationId) =>
-            createDbAckQueueStatsReader(dbHandle.db)(organizationId, new Date()),
-          notify: buildPlatformOpsNoticeSink({
-            webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
-            log: (m) => app.log.warn(m),
-          }),
+            createDbAckQueueStatsReader(dbHandle.db, {
+              isEscalationEnabled: m36AckEscalation.isEnabled,
+            })(organizationId, new Date()),
+          notify: m36AckOpsNotice,
+          claims: m36OpsNoticeClaims,
         }),
+        // ADR-0079 (G-5): keeps failed_unreachable requests in front of the supervisors (bounded, backed-off, once per stage fleet-wide).
+        ...(m36Ack
+          ? {
+              watchUnreachable: createUnreachableWatch({
+                store: m36Ack.store,
+                isEnabled: m36AckEscalation.isEnabled,
+                claims: m36OpsNoticeClaims,
+                attention: {
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  opsNotice: m36AckOpsNotice,
+                },
+                onError: (context, err) =>
+                  app.log.error(
+                    { ...context, reason: err instanceof Error ? err.name : "unknown" },
+                    "M36 unreachable watch error",
+                  ),
+              }).watch,
+            }
+          : {}),
         // Ids and the error class only: a database error can carry statement parameters.
         onError: (context, err) =>
           app.log.error(
@@ -10261,6 +10316,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ? [
                 buildM36AckEscalationNotificationsConsumer({
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  opsNotice: m36AckOpsNotice,
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   readRequest: m36AckEscalation.readRequest,
                   stillQualified: m36Ack.stillQualified,
@@ -10278,6 +10334,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                     m36AckEscalation.windowStartOfMessage,
                   ),
                   service: m36AckEscalation.deliveryFailure,
+                  opsNotice: m36AckOpsNotice,
                   warn: (message, context) => app.log.warn(context, message),
                   info: (message, context) => app.log.info(context, message),
                 }),
@@ -10291,10 +10348,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   readRequest: m36AckEscalation.readRequest,
-                  opsNotice: buildPlatformOpsNoticeSink({
-                    webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
-                    log: (m) => app.log.warn(m),
-                  }),
+                  opsNotice: m36AckOpsNotice,
                   warn: (message, context) => app.log.warn(context, message),
                 }),
               ]

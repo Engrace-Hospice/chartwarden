@@ -36,16 +36,42 @@ function setup(
   const readRoutes = vi.fn(async () => (routes ? state(routes, over) : null));
   const warn = vi.fn();
   const info = vi.fn();
+  const opsNotice = vi.fn();
   const consumer = buildM36AckDeliveryFailureConsumer({
     readRoutes,
     service: { onAllRoutesFailed },
+    opsNotice,
     warn,
     info,
   });
-  return { consumer, onAllRoutesFailed, readRoutes, warn, info };
+  return { consumer, onAllRoutesFailed, readRoutes, warn, info, opsNotice };
 }
 
 describe("m36.ack-delivery-failure consumer", () => {
+  it("reports a failed out-of-band supervisor PAGE to the ops sink (ids and channel only) and never touches the request (ADR-0079)", async () => {
+    const ctx = setup([], { alertEventType: "m36.ack.supervisor_attention", channel: "push" });
+
+    await ctx.consumer.handle(event(payload));
+
+    expect(ctx.onAllRoutesFailed).not.toHaveBeenCalled();
+    expect(ctx.opsNotice).toHaveBeenCalledOnce();
+    expect(ctx.opsNotice).toHaveBeenCalledWith({
+      kind: "m36.ack.supervisor_page_failed",
+      summary: expect.any(String),
+      details: { organizationId: ORG, deliveryId: DELIVERY, channel: "push" },
+      correlationId: `sup-page-failed:${DELIVERY}`,
+    });
+  });
+
+  it("does not raise the page-failed notice for a failed in-app supervisor row", async () => {
+    const ctx = setup([], { alertEventType: "m36.ack.supervisor_attention", channel: "in_app" });
+
+    await ctx.consumer.handle(event(payload));
+
+    expect(ctx.opsNotice).not.toHaveBeenCalled();
+    expect(ctx.onAllRoutesFailed).not.toHaveBeenCalled();
+  });
+
   it("declares the delivery-failed event only", () => {
     expect(setup([]).consumer.eventTypes).toEqual(["m36.notification.delivery_failed"]);
   });

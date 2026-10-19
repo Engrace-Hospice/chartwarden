@@ -4,6 +4,8 @@
 //   wardenx_m36_ack_overdue_total                     waiting requests past their deadline, all organisations (-1 = not measured)
 //   wardenx_m36_ack_failed_unreachable_total          requests no route could reach, all organisations (-1 = not measured)
 //   wardenx_m36_ack_oldest_overdue_seconds            the longest-overdue waiting request, any organisation (-1 = not measured)
+//   wardenx_m36_ack_escalation_stalled_seconds       how long the oldest request the escalation sweep should have handled is past its deadline
+//                                                     (0 = none; orgs with messaging.escalation_timers off count 0; -1 = not measured). ADR-0079.
 //   wardenx_m36_ack_latency_seconds{stat="mean|max"}  acknowledgment latency (acknowledged_at - requested_at) over the trailing 24 h
 //   wardenx_m36_ack_latency_samples                   how many acknowledgments those two figures cover
 //
@@ -11,11 +13,13 @@
 // organisation that could not be counted makes the whole reading UNMEASURED (-1), never zero: a gap that cannot be measured must not
 // look closed. Percentiles are not offered because they cannot be merged across organisations; mean and max can (ceiling in ADR-0076).
 import { Gauge, type Registry } from "prom-client";
+import { type OpsNoticeClaims, createOpsNoticeClaims } from "./ops-notice-claims";
 
 export interface AckQueueOrgStats {
   readonly overdue: number;
   readonly failedUnreachable: number;
   readonly oldestOverdueSeconds: number;
+  readonly escalationStalledSeconds: number;
   readonly ackedCount: number;
   readonly ackLatencySumSeconds: number;
   readonly ackLatencyMaxSeconds: number;
@@ -68,6 +72,7 @@ export async function sampleAckQueue(ports: AckQueuePorts): Promise<AckQueueSamp
     overdue: measured.reduce((n, r) => n + r.overdue, 0),
     failedUnreachable: measured.reduce((n, r) => n + r.failedUnreachable, 0),
     oldestOverdueSeconds: measured.reduce((n, r) => Math.max(n, r.oldestOverdueSeconds), 0),
+    escalationStalledSeconds: measured.reduce((n, r) => Math.max(n, r.escalationStalledSeconds), 0),
     ackedCount: measured.reduce((n, r) => n + r.ackedCount, 0),
     ackLatencySumSeconds: measured.reduce((n, r) => n + r.ackLatencySumSeconds, 0),
     ackLatencyMaxSeconds: measured.reduce((n, r) => Math.max(n, r.ackLatencyMaxSeconds), 0),
@@ -85,7 +90,7 @@ export function registerAckQueueMetrics(
   registry: Registry,
   sampler: AckQueueSampler,
   now: () => number = Date.now,
-): void {
+): AckQueueSampler {
   let cached: { readonly at: number; readonly read: Promise<AckQueueSample | null> } | null = null;
   // The sampler itself (not the timed-out race) is unsettled: never start another, so a hung database cannot pile up connections.
   let runningSince: number | null = null;
@@ -140,6 +145,11 @@ export function registerAckQueueMetrics(
     (s) => s.oldestOverdueSeconds,
   );
   gauge(
+    "wardenx_m36_ack_escalation_stalled_seconds",
+    "Seconds the oldest M36 request the escalation sweep should already have handled is past its deadline (0 = none, or escalation off for the tenant)",
+    (s) => s.escalationStalledSeconds,
+  );
+  gauge(
     "wardenx_m36_ack_latency_samples",
     "M36 acknowledgments in the trailing 24 h that the latency gauges cover",
     (s) => s.ackedCount,
@@ -158,6 +168,8 @@ export function registerAckQueueMetrics(
       this.set({ stat: "max" }, s ? s.ackLatencyMaxSeconds : UNMEASURED);
     },
   });
+  // The guarded sampler (30 s cache, 8 s timeout, one in flight): the ADR-0079 watchdog reads through it, so it adds no sample of its own.
+  return sample;
 }
 
 // ---- threshold notice (per organisation, evaluated by the minute sweep) ------------------------------------------------------------
@@ -173,7 +185,11 @@ export const NOTICE_REPEAT_MS = 60 * 60 * 1000;
 export type AckQueueNoticeKind = "overdue_long" | "latency_high";
 
 export interface AckQueueNotice {
-  readonly kind: "m36.ack.queue_overdue" | "m36.ack.latency_high";
+  readonly kind:
+    | "m36.ack.queue_overdue"
+    | "m36.ack.latency_high"
+    | "m36.ack.escalation_stalled"
+    | "m36.ack.escalation_stall_unmeasured";
   readonly summary: string;
   readonly details: Readonly<Record<string, string | number>>;
   readonly correlationId: string;
@@ -195,30 +211,29 @@ export function breachedKinds(stats: AckQueueOrgStats): readonly AckQueueNoticeK
 }
 
 /**
- * Build the evaluator the sweep calls once per organisation per tick. State is process-local and keyed by (organisation, kind): the first
- * breach notifies, a lasting breach repeats after NOTICE_REPEAT_MS, a recovery clears the key. The notice names the organisation id and
- * counts only; the always-on log line and optional webhook are the existing platform-ops sink's.
+ * Build the evaluator the sweep calls once per organisation per tick. Keyed by (organisation, kind): the first breach notifies, a lasting
+ * breach repeats after NOTICE_REPEAT_MS, a recovery releases the key. With `claims` backed by Valkey (ADR-0079) that holds across workers and
+ * restarts; without it, per process. The notice names the organisation id and counts only; the always-on log line and optional webhook are
+ * the existing platform-ops sink's.
  */
 export function createAckQueueNoticeEvaluator(deps: {
   readonly statsForOrg: (organizationId: string) => Promise<AckQueueOrgStats>;
   readonly notify: (notice: AckQueueNotice) => void;
   readonly now?: () => number;
+  /** ADR-0079: fleet-wide "once per window" claims (Valkey). Absent = process-local, the previous behaviour. */
+  readonly claims?: OpsNoticeClaims;
 }): (organizationId: string) => Promise<void> {
-  const lastNotified = new Map<string, number>();
-  const clock = deps.now ?? Date.now;
+  const claims = deps.claims ?? createOpsNoticeClaims(undefined, deps.now);
   return async (organizationId) => {
     const stats = await deps.statsForOrg(organizationId);
     const breached = new Set(breachedKinds(stats));
     for (const kind of ["overdue_long", "latency_high"] as const) {
       const key = `${organizationId}:${kind}`;
       if (!breached.has(kind)) {
-        lastNotified.delete(key);
+        await claims.release(key);
         continue;
       }
-      const at = clock();
-      const previous = lastNotified.get(key);
-      if (previous !== undefined && at - previous < NOTICE_REPEAT_MS) continue;
-      lastNotified.set(key, at);
+      if (!(await claims.claim(key, NOTICE_REPEAT_MS))) continue;
       deps.notify(
         kind === "overdue_long"
           ? {

@@ -701,10 +701,14 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
             return { alertId: "a", resolvedRecipientCount: 1 };
           },
         } as unknown as AlertEmitter,
+        opsNotice: () => undefined,
         messaging: kit.service,
         readRequest: escalation.readRequest,
         stillQualified: ack.stillQualified,
       });
+      // ADR-0079: the first unroutable record also raises the supervisor attention alert; this test is about the parties' alerts.
+      const partyAlerts = () =>
+        emitted.filter((a) => a.eventType !== "m36.ack.supervisor_attention");
       const outboxEvent = async (id: string, name: string) => {
         const [r] = await kit.one<{ id: string; payload: Record<string, unknown> }>(
           "SELECT id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2 ORDER BY created_at DESC LIMIT 1",
@@ -718,23 +722,23 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       ladder[1] = (asOf) => resolved(1, [tier1], null, asOf);
       await escalation.service.processDue(ORG_A, escalatedReq.id);
       await consumer.handle(await outboxEvent(escalatedReq.id, "m36.ack.escalated"));
-      expect(emitted).toHaveLength(1);
+      expect(partyAlerts()).toHaveLength(1);
       expect(emitted[0]?.payload).toMatchObject({ recipientUserId: tier1, channelId: channel });
       // Acknowledged since: the same event now tells nobody.
       expect((await acknowledge(tier1, escalatedReq.id)).statusCode).toBe(200);
       await consumer.handle(await outboxEvent(escalatedReq.id, "m36.ack.escalated"));
-      expect(emitted).toHaveLength(1);
+      expect(partyAlerts()).toHaveLength(1);
       // Not routed: the sender and the assignee are told; once the request closes, a redelivery tells nobody.
       ladder = {};
       const stuck = await freshRequest();
       await makeDue(stuck.id);
       await escalation.service.processDue(ORG_A, stuck.id);
       await consumer.handle(await outboxEvent(stuck.id, "m36.ack.route_unavailable"));
-      expect(emitted).toHaveLength(2);
-      expect(emitted[1]?.payload).toMatchObject({ recipientUserIds: [nurse, rn] });
+      expect(partyAlerts()).toHaveLength(2);
+      expect(partyAlerts()[1]?.payload).toMatchObject({ recipientUserIds: [nurse, rn] });
       expect((await acknowledge(rn, stuck.id)).statusCode).toBe(200);
       await consumer.handle(await outboxEvent(stuck.id, "m36.ack.route_unavailable"));
-      expect(emitted).toHaveLength(2);
+      expect(partyAlerts()).toHaveLength(2);
     });
 
     it("10. the database refuses a person's escalation, a cross-tenant or sender recipient, and a window that does not start now", async () => {

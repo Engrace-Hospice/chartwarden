@@ -55,6 +55,17 @@ export const DESIGNATED_EVENT_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * ADR-0079: the SUPERVISOR attention alert (a request no human is known to be handling: ladder exhausted, router unavailable,
+ * unreachable, or unreachable and still unwatched) takes the platform floor of the request's class, so it is paged out-of-band when a
+ * supervisor has a verified endpoint. Separate from DESIGNATED_EVENT_TYPES on purpose: those are the alerts that tell an ASSIGNEE (the
+ * delivery-failure machinery counts only them as routes to the person who owes the response, and the rule pin applies to them), while
+ * this one's audience is a tenant-aimable role set and its failure must never mark a request unreachable.
+ */
+export const SUPERVISOR_PAGE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "m36.ack.supervisor_attention",
+]);
+
+/**
  * The platform floor: the out-of-band channels a designated alert MUST be planned on (when the recipient has a verified endpoint
  * there). PROVISIONAL numbers for the clinical lead (brief section 8): important = push; urgent = push (the SMS "after 5 minutes
  * unopened" step of the brief needs a timer and is deferred, ADR-0073); critical = push + SMS at once. Voice stays SOS-only.
@@ -80,7 +91,9 @@ export function designatedClassOf(
   eventType: string,
   payload: Record<string, unknown>,
 ): { readonly ackClass: PolicyAckClass; readonly defaulted: boolean } | null {
-  if (!DESIGNATED_EVENT_TYPES.has(eventType)) return null;
+  if (!DESIGNATED_EVENT_TYPES.has(eventType) && !SUPERVISOR_PAGE_EVENT_TYPES.has(eventType)) {
+    return null;
+  }
   if (eventType === "m36.message.urgent_sent") return { ackClass: "urgent", defaulted: false };
   const raw = payload.ackClass;
   if (typeof raw === "string" && CLASSES.has(raw)) {
@@ -186,5 +199,9 @@ export const SNOOZABLE_EVENT_TYPES: ReadonlySet<string> = new Set(["m36.message.
 
 /** True when a snooze may quiet this alert's out-of-band rows: allowlisted AND never a designated route. */
 export function isSnoozableEvent(eventType: string): boolean {
-  return SNOOZABLE_EVENT_TYPES.has(eventType) && !DESIGNATED_EVENT_TYPES.has(eventType);
+  return (
+    SNOOZABLE_EVENT_TYPES.has(eventType) &&
+    !DESIGNATED_EVENT_TYPES.has(eventType) &&
+    !SUPERVISOR_PAGE_EVENT_TYPES.has(eventType)
+  );
 }

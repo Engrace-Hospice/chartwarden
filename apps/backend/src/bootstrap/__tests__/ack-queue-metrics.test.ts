@@ -21,6 +21,7 @@ const calm: AckQueueOrgStats = {
   overdue: 0,
   failedUnreachable: 0,
   oldestOverdueSeconds: 0,
+  escalationStalledSeconds: 0,
   ackedCount: 0,
   ackLatencySumSeconds: 0,
   ackLatencyMaxSeconds: 0,
@@ -34,6 +35,7 @@ describe("sampleAckQueue", () => {
         overdue: 2,
         failedUnreachable: 1,
         oldestOverdueSeconds: 60,
+        escalationStalledSeconds: 30,
         ackedCount: 2,
         ackLatencySumSeconds: 100,
         ackLatencyMaxSeconds: 70,
@@ -41,6 +43,7 @@ describe("sampleAckQueue", () => {
       b: stats({
         overdue: 1,
         oldestOverdueSeconds: 600,
+        escalationStalledSeconds: 90,
         ackedCount: 3,
         ackLatencySumSeconds: 50,
         ackLatencyMaxSeconds: 30,
@@ -56,6 +59,7 @@ describe("sampleAckQueue", () => {
       overdue: 3,
       failedUnreachable: 1,
       oldestOverdueSeconds: 600,
+      escalationStalledSeconds: 90,
       ackedCount: 5,
       ackLatencySumSeconds: 150,
       ackLatencyMaxSeconds: 70,
@@ -193,18 +197,20 @@ describe("registerAckQueueMetrics", () => {
     overdue: 4,
     failedUnreachable: 1,
     oldestOverdueSeconds: 900,
+    escalationStalledSeconds: 420,
     ackedCount: 4,
     ackLatencySumSeconds: 400,
     ackLatencyMaxSeconds: 250,
   };
 
-  it("exposes the five gauges with only a fixed stat label", async () => {
+  it("exposes the six gauges with only a fixed stat label", async () => {
     const registry = new Registry();
     registerAckQueueMetrics(registry, async () => sample);
     expect(await values(registry)).toEqual({
       wardenx_m36_ack_overdue_total: 4,
       wardenx_m36_ack_failed_unreachable_total: 1,
       wardenx_m36_ack_oldest_overdue_seconds: 900,
+      wardenx_m36_ack_escalation_stalled_seconds: 420,
       wardenx_m36_ack_latency_samples: 4,
       "wardenx_m36_ack_latency_seconds:mean": 100,
       "wardenx_m36_ack_latency_seconds:max": 250,
@@ -300,6 +306,28 @@ describe("threshold notice", () => {
     current = stats({ overdue: 1, oldestOverdueSeconds: 3600 });
     await observe("org-1");
     expect(notices).toHaveLength(3);
+  });
+
+  it("two evaluators (two workers) sharing the claims notify a breach once, not once each (ADR-0079)", async () => {
+    const held = new Map<string, number>();
+    const claims = {
+      claim: async (key: string) => {
+        if (held.has(key)) return false;
+        held.set(key, 1);
+        return true;
+      },
+      release: async (key: string) => void held.delete(key),
+    };
+    const notices: unknown[] = [];
+    const make = () =>
+      createAckQueueNoticeEvaluator({
+        statsForOrg: async () => stats({ overdue: 2, oldestOverdueSeconds: 3600 }),
+        notify: (n) => notices.push(n),
+        claims,
+      });
+    await make()("org-1");
+    await make()("org-1");
+    expect(notices).toHaveLength(1);
   });
 
   it("keeps organisations independent and puts only ids and numbers in the notice", async () => {

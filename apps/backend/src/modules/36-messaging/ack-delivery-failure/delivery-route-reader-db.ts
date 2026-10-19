@@ -16,6 +16,8 @@ export interface DeliveryRouteState {
   readonly sourceMessageId: string | null;
   readonly alertCreatedAt: Date;
   readonly recipientUserId: string;
+  /** The channel of the delivery that just failed (ADR-0079: a failed supervisor page is reported by channel). */
+  readonly channel?: string;
   /** Every route of the recipient across the message's assignee-facing alerts in the current window, the in-app floor included. */
   readonly routes: readonly { readonly channel: string; readonly status: string }[];
 }
@@ -40,6 +42,7 @@ export function createDeliveryRouteReader(
       const [row] = await tx
         .select({
           recipientUserId: ND.recipientUserId,
+          channel: ND.channel,
           alertEventType: AL.eventType,
           alertCreatedAt: AL.createdAt,
           sourceMessageId: sql<string | null>`${AL.payload}->>'sourceAggregateId'`,
