@@ -127,6 +127,8 @@ export const messageAckEvents = pgTable(
     assignedUserId: uuid("assigned_user_id"),
     previousAssignedUserId: uuid("previous_assigned_user_id"),
     tier: integer("tier").notNull().default(0),
+    /** ADR-0078 (migration 1126): why a SUPERVISOR reassigned; a fixed non-clinical code, null for every other event. */
+    reasonCode: text("reason_code"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -145,6 +147,10 @@ export const messageAckEvents = pgTable(
       sql`${t.actorKind} IN ('user', 'system') AND ((${t.actorKind} = 'system') = (${t.actorUserId} IS NULL))`,
     ),
     tier: check("message_ack_event_tier", sql`${t.tier} >= 0`),
+    reasonCode: check(
+      "message_ack_event_reason_code",
+      sql`${t.reasonCode} IS NULL OR (${t.eventType} = 'reassigned' AND ${t.actorKind} = 'user' AND ${t.reasonCode} IN ('assignee_unreachable', 'assignee_unable_to_sign_in', 'assignee_off_shift', 'coverage_change', 'workload', 'other_operational'))`,
+    ),
   }),
 );
 

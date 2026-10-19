@@ -2,7 +2,9 @@
 // urgent-notifications.ts). One alert per request and assignee, never a duplicate of the WP 4.1 alert:
 //   - `m36.ack.requested` alerts only for the IMPORTANT class (an urgent message already told its recipient through
 //     m36.message.urgent_sent; this consumer stays silent for it);
-//   - `m36.ack.reassigned` alerts the NEW assignee, whatever the class.
+//   - `m36.ack.reassigned` alerts the NEW assignee, whatever the class;
+//   - ADR-0078: when a SUPERVISOR made the reassign (`supervisorReassign`), the previous assignee and the sender are also told, in-app,
+//     with generic text, only once the event passed the same stale checks as the new assignee's alert (a separate, non-designated alert type: never out-of-band, never counted as a route to the assignee).
 // The tenant comes from the envelope, never the payload. At consume time the request must STILL be waiting (pending), STILL assigned to the
 // recipient and STILL at the event's version (a stale event alerts nobody), the recipient must still see the channel and still be qualified. A clean "no" is a quiet,
 // id-only warn-level skip; a lookup ERROR is rethrown so the outbox retries and dead-letters (an alert is never dropped on a blip).
@@ -20,7 +22,12 @@ export const M36_ACK_NOTIFICATION_CONSUMER = "m36.ack-notifications" as const;
 export const ACK_NOTIFICATION_TEXT = {
   requested: "You have an important clinical message that needs your response",
   reassigned: "A clinical message was reassigned to you",
+  supervisorReassigned:
+    "A supervisor reassigned a clinical message to a colleague; it is still open",
 } as const;
+
+/** The alert type of the notice to the previous assignee and the sender (seeded rule, in-app only, not a designated route). */
+export const ACK_SUPERVISOR_REASSIGNED_NOTICE_EVENT = "m36.ack.supervisor_reassigned" as const;
 
 function requireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
@@ -45,6 +52,41 @@ export function buildM36AckNotificationsConsumer(deps: {
   /** Warn-level, ids and a reason code only - never a name, patient or text. */
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
+  /** ADR-0078: the previous assignee and the sender (never the supervisor, never the new assignee). A clean "cannot see it" is a skip. */
+  async function tellOthers(
+    event: DispatchableOutboxEvent,
+    payload: Record<string, unknown>,
+    ids: { requestId: string; channelId: string; messageId: string; version: number },
+  ): Promise<void> {
+    const excluded = new Set(
+      [payload.actorUserId, payload.assignedUserId].filter(
+        (v): v is string => typeof v === "string",
+      ),
+    );
+    const wanted = [payload.previousAssignedUserId, payload.requesterUserId].filter(
+      (v): v is string => typeof v === "string" && v.length > 0 && !excluded.has(v),
+    );
+    const recipients: string[] = [];
+    for (const userId of new Set(wanted)) {
+      if (await deps.messaging.canViewChannel(event.organizationId, userId, ids.channelId)) {
+        recipients.push(userId);
+      }
+    }
+    if (recipients.length === 0) return;
+    await deps.alerts.emit(event.organizationId, {
+      eventType: ACK_SUPERVISOR_REASSIGNED_NOTICE_EVENT,
+      severity: "warn",
+      correlationId: `ack-sup:${ids.requestId}:${ids.version}`,
+      payload: {
+        recipientUserIds: recipients,
+        channelId: ids.channelId,
+        messageId: ids.messageId,
+        message: ACK_NOTIFICATION_TEXT.supervisorReassigned,
+        deepLink: `/messaging?channelId=${encodeURIComponent(ids.channelId)}&messageId=${encodeURIComponent(ids.messageId)}`,
+      },
+    });
+  }
+
   return {
     consumerName: M36_ACK_NOTIFICATION_CONSUMER,
     consumerModule: "m36",
@@ -80,6 +122,9 @@ export function buildM36AckNotificationsConsumer(deps: {
       }
       if (!(await deps.stillQualified(event.organizationId, assignedUserId, channelId))) {
         return skip("recipient_not_qualified");
+      }
+      if (event.eventType === M36_ACK_REASSIGNED && payload.supervisorReassign === true) {
+        await tellOthers(event, payload, { requestId, channelId, messageId, version });
       }
       await deps.alerts.emit(event.organizationId, {
         eventType: event.eventType,

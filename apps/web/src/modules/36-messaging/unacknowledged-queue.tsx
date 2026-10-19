@@ -14,9 +14,11 @@ import {
   type StatusTone,
   WorkQueueLayout,
 } from "@wardenx/ui";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, MouseEvent } from "react";
 import { Link } from "react-router-dom";
+import { AckReassignDialog } from "./ack-reassign-dialog";
+import { localTime } from "./ack-request-card";
 import {
   OVERDUE_FILTER_LABEL,
   QUEUE_BREADCRUMB,
@@ -32,6 +34,7 @@ import {
   QUEUE_NOTE_TEXT,
   QUEUE_NOTICE,
   QUEUE_OPEN_LABEL,
+  QUEUE_REASSIGN_LABEL,
   QUEUE_RESTRICTED_TEXT,
   QUEUE_RETRY_LABEL,
   QUEUE_SHOW_ALL_LABEL,
@@ -45,8 +48,11 @@ import {
   STATUS_FILTERS,
   dueText,
   overdueText,
+  queueReassignName,
+  queueSenderText,
   summaryText,
 } from "./unacknowledged-wording";
+import type { ReassignRun } from "./use-ack-reassign";
 import { type QueueFilter, useUnacknowledgedQueue } from "./use-unacknowledged-queue";
 import "./unacknowledged.css";
 
@@ -68,7 +74,15 @@ export const threadLink = (item: AckQueueItemDto): string | null =>
 const overdueSecondsAt = (item: AckQueueItemDto, now: number): number =>
   Math.max(0, Math.floor((now - Date.parse(item.deadline_at)) / 1000));
 
-function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.Element {
+function QueueRow({
+  item,
+  now,
+  onReassign,
+}: {
+  item: AckQueueItemDto;
+  now: number;
+  onReassign: (requestRef: string, trigger: HTMLElement) => void;
+}): JSX.Element {
   const link = threadLink(item);
   // The server's verdict can only be added to, never undone: a client clock running behind cannot hide an overdue row.
   const overdueSeconds = Math.max(item.overdue_seconds, overdueSecondsAt(item, now));
@@ -92,6 +106,7 @@ function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.El
         ) : null}
       </div>
       <p className="wx-queue-line">{`Assigned to ${who}.`}</p>
+      <p className="wx-queue-line">{queueSenderText(item.requester_display_name)}</p>
       {item.delivery_failed ? <p className="wx-queue-line">{QUEUE_UNREACHABLE_TEXT}</p> : null}
       {item.escalation_note ? (
         <p className="wx-queue-line">{QUEUE_NOTE_TEXT[item.escalation_note]}</p>
@@ -107,6 +122,22 @@ function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.El
       ) : (
         <p className="wx-queue-line wx-queue-restricted">{QUEUE_RESTRICTED_TEXT}</p>
       )}
+      <Button
+        type="button"
+        tone="secondary"
+        size="sm"
+        style={{ justifySelf: "start" }}
+        aria-haspopup="dialog"
+        aria-label={queueReassignName(
+          who,
+          item.requester_display_name,
+          // A fixed clock time, not "in 5 min": the name must not change on every tick of the screen's clock.
+          `due ${localTime(item.deadline_at)}`,
+        )}
+        onClick={(event) => onReassign(item.request_ref, event.currentTarget)}
+      >
+        {QUEUE_REASSIGN_LABEL}
+      </Button>
     </li>
   );
 }
@@ -122,7 +153,32 @@ const personStillHere = (control: HTMLElement): boolean => {
 
 export function UnacknowledgedQueue(): JSX.Element {
   const [filter, setFilter] = useState<QueueFilter>(ALL);
-  const { view, retry, showMore, busyMore } = useUnacknowledgedQueue(filter);
+  const { view, retry, refresh, showMore, busyMore } = useUnacknowledgedQueue(filter);
+  // ADR-0078 (G-2): the open supervisor-reassign dialog (by request_ref) and the one-line result it leaves. The dialog lives up here,
+  // not in a row, so a background refresh that re-renders the rows can never unmount it or move focus.
+  const [reassignRef, setReassignRef] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ text: string; failure: boolean } | null>(null);
+  // The view object at the moment a dialog closed: focus is re-checked on the NEXT view change, once the refresh has actually landed.
+  const focusLostCheck = useRef<unknown>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const trigger = useRef<HTMLElement | null>(null);
+  const closedRef = useRef(false);
+  const openReassign = (requestRef: string, button: HTMLElement): void => {
+    trigger.current = button;
+    setReassignRef(requestRef);
+  };
+  const runReassign = useCallback<ReassignRun>(
+    async (perform) => {
+      setOutcome(null);
+      const result = await perform();
+      if (result.kind === "stay") return result;
+      setOutcome({ text: result.text, failure: result.failure });
+      refresh();
+      return result;
+    },
+    [refresh],
+  );
   const sectionRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   // Where focus goes when the control that had it (Show more, Retry) leaves the page: the first row it appended, else the section.
@@ -166,6 +222,22 @@ export function UnacknowledgedQueue(): JSX.Element {
       if (active === null || active === document.body) sectionRef.current?.focus();
     }
   }, [view, rowCount, busyMore]);
+  // The dialog has closed: focus goes back to the button that opened it (a mouse click does not focus a button in Safari, so the
+  // modal cannot be trusted to remember it). If that row has left the list, the check below hands focus to the list instead.
+  useEffect(() => {
+    if (reassignRef !== null || !closedRef.current) return;
+    closedRef.current = false;
+    if (trigger.current?.isConnected) trigger.current.focus();
+    else sectionRef.current?.focus();
+  }, [reassignRef]);
+  // After a reassign closed: if the row's button left the page with the refresh, focus must not fall to the page - the list takes it.
+  useEffect(() => {
+    if (focusLostCheck.current === null || reassignRef !== null || view.status !== "ready") return;
+    if (focusLostCheck.current === view) return;
+    focusLostCheck.current = null;
+    const active = document.activeElement;
+    if (active === null || active === document.body) sectionRef.current?.focus();
+  }, [view, reassignRef]);
   const retryWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
     if (busyMore) sectionFallback.current = true;
     else
@@ -273,6 +345,7 @@ export function UnacknowledgedQueue(): JSX.Element {
               key={item.id ?? `r-${item.requested_at}-${item.deadline_at}-${index}`}
               item={item}
               now={now}
+              onReassign={openReassign}
             />
           ))}
         </ul>
@@ -299,21 +372,44 @@ export function UnacknowledgedQueue(): JSX.Element {
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title={QUEUE_TITLE} breadcrumb={QUEUE_BREADCRUMB}>
-          <p className="wx-queue-note">{QUEUE_NOTICE}</p>
-          <output className="wx-queue-summary" aria-live="polite">
-            {summary}
-          </output>
-        </PageHeader>
-      }
-      filters={filters}
-      table={
-        <section className="wx-queue" aria-label={QUEUE_TITLE} ref={sectionRef} tabIndex={-1}>
-          {body}
-        </section>
-      }
-    />
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title={QUEUE_TITLE} breadcrumb={QUEUE_BREADCRUMB}>
+            <p className="wx-queue-note">{QUEUE_NOTICE}</p>
+            <output className="wx-queue-summary" aria-live="polite">
+              {summary}
+            </output>
+            <output className="wx-queue-note" aria-live="polite">
+              {outcome && !outcome.failure ? outcome.text : ""}
+            </output>
+            {outcome?.failure ? (
+              <p role="alert" className="wx-queue-note">
+                {outcome.text}
+              </p>
+            ) : null}
+          </PageHeader>
+        }
+        filters={filters}
+        table={
+          <section className="wx-queue" aria-label={QUEUE_TITLE} ref={sectionRef} tabIndex={-1}>
+            {body}
+          </section>
+        }
+      />
+      {reassignRef !== null ? (
+        <AckReassignDialog
+          mode="supervisor"
+          requestId={reassignRef}
+          run={runReassign}
+          onClose={() => {
+            // The LATEST view, not the one this render closed over: a poll that landed during the POST must not disarm the check.
+            focusLostCheck.current = viewRef.current;
+            closedRef.current = true;
+            setReassignRef(null);
+          }}
+        />
+      ) : null}
+    </>
   );
 }

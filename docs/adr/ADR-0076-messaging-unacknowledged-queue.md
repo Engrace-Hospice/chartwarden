@@ -5,6 +5,7 @@
 - **Phase:** Messaging Hub Phase 4 (WP 4.9, Unacknowledged-urgent queue).
 - **Implements:** `docs/messaging-hub/04-phases-4-to-6.md` WP 4.9 (`GET /escalations/unacknowledged` plus a supervisor screen; ops dashboard and alerts on overdue count and ack latency; acceptance: "Supervisor sees every pending/overdue item in their scope; none hidden by filters"). Closes the items earlier WPs deferred here: the "supervisor work item" of [ADR-0071](ADR-0071-messaging-delivery-failure-handling.md) (until now only an alert) and the visibility of `route_unavailable` / `ladder_exhausted` / `failed_unreachable` requests ([ADR-0070](ADR-0070-messaging-escalation-timers.md)).
 - **Extends:** [ADR-0069](ADR-0069-messaging-acknowledgment-request-aggregate.md) (the aggregate; a supervisor still cannot acknowledge, reassign or resolve), ADR-0070, ADR-0071.
+- **Amended by [ADR-0078](ADR-0078-messaging-supervisor-reassign.md) for reassign only:** "a supervisor still cannot ... reassign" is superseded; a supervisor may now reassign a waiting request (never acknowledge or resolve it). ADR-0078 also adds the requester's display name and the request reference to the queue row.
 - **Numbering note:** the index still has two ADR-0069 files and a missing number between 0071 and 0073 (pre-existing irregularities that `arch:adr-docs` reports). 0076 is the next free number after ADR-0075; this branch adds no `arch:adr-docs` violation naming 0076.
 
 ## Context

@@ -41,6 +41,8 @@ const Item = Type.Object({
   current_tier: Type.Integer(),
   escalation_note: nullable(oneOf(ACK_ESCALATION_NOTES)),
   delivery_failed: Type.Boolean(),
+  requester_display_name: nullable(Type.String()),
+  request_ref: UuidOut,
 });
 
 export const UnacknowledgedResponseSchema = Type.Object({

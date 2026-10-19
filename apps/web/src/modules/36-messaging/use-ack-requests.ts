@@ -8,6 +8,7 @@
 import type { AckRequestDto } from "@wardenx/types";
 import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { REASSIGN_BUSY_TEXT } from "./ack-reassign-wording";
 import {
   ACK_CHANGED_TEXT,
   ACK_CLOSE_NOT_QUALIFIED_TEXT,
@@ -26,6 +27,7 @@ import {
   ACK_TOO_MANY_TEXT,
   ACK_UNREACHABLE_NOTICE,
 } from "./ack-wording";
+import type { ReassignResult } from "./use-ack-reassign";
 
 /** The two calls this hook makes, typed loosely: the generated path union makes the full client type too deep to instantiate here. */
 interface AckClient {
@@ -312,6 +314,47 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
     [client, boundedLoad],
   );
 
+  /**
+   * ADR-0078 (G-6): the card's reassign dialog does its own call (`perform`); this holds the same busy state as the other two
+   * actions, announces the outcome (success politely, a failure assertively) and re-reads the list. A refusal that leaves the dialog
+   * open (`stay`) announces nothing here. Focus is NOT moved here: the dialog is still on screen, so the card asks for it afterwards.
+   */
+  const runReassign = useCallback(
+    async (requestId: string, perform: () => Promise<ReassignResult>): Promise<ReassignResult> => {
+      if (busyRef.current?.channelId === channelRef.current) {
+        return { kind: "stay", text: REASSIGN_BUSY_TEXT };
+      }
+      const mine: Busy = { channelId: channelRef.current, requestId };
+      busyRef.current = mine;
+      const startedEpoch = epoch.current;
+      setBusy(mine);
+      announcedRef.current = false;
+      setNotice(null);
+      let result: ReassignResult;
+      try {
+        result = await perform();
+      } catch {
+        result = { kind: "done", text: ACK_INDETERMINATE_TEXT, failure: true };
+      }
+      try {
+        if (result.kind === "stay") return result;
+        if (epoch.current === startedEpoch) {
+          setNotice(result.text);
+          setNoticeIsFailure(result.failure);
+        }
+        if (mine.channelId === channelRef.current && aliveRef.current && enabledRef.current) {
+          await boundedLoad();
+        }
+        return result;
+      } finally {
+        if (busyRef.current === mine) busyRef.current = null;
+        setBusy((b) => (b === mine ? null : b));
+      }
+    },
+    [boundedLoad],
+  );
+
+  const requestFocus = useCallback((requestId: string) => setFocusRequestId(requestId), []);
   const clearFocus = useCallback(() => setFocusRequestId(null), []);
   return {
     status: (current?.status ?? "loading") as AckListStatus,
@@ -325,6 +368,8 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
       : null,
     clearFocus,
     act,
+    runReassign,
+    requestFocus,
     reload: load,
   };
 }

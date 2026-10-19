@@ -1319,10 +1319,13 @@ import {
   AckChannelListResponseSchema as M36AckChannelListResponseSchema,
   AckCreateResponseSchema as M36AckCreateResponseSchema,
   AckDetailResponseSchema as M36AckDetailResponseSchema,
+  AckReassignCandidatesResponseSchema as M36AckReassignCandidatesResponseSchema,
   AckRequestResponseSchema as M36AckRequestResponseSchema,
+  AckSupervisorReassignResponseSchema as M36AckSupervisorReassignResponseSchema,
   CreateAckBodySchema as M36CreateAckBodySchema,
   EmptyAckBodySchema as M36EmptyAckBodySchema,
   ReassignAckBodySchema as M36ReassignAckBodySchema,
+  SupervisorReassignBodySchema as M36SupervisorReassignBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/ack-typebox";
 import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
@@ -9751,7 +9754,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/escalations/unacknowledged": {
     summary:
-      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
   },
@@ -9823,6 +9826,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Move a request to another qualified colleague (WP 4.2; messaging.read, rate limited like create). Only the current assignee may at any open state (no qualification check, so a hand-off never strands the item); the requester may only until the request is taken (403 ACK_NOT_ASSIGNEE once acknowledged) and must still hold messaging.urgent.send. The new assignee passes the same checks as at create and differs from the current one and the requester (422 ACK_ASSIGNEE_INVALID otherwise, 403 ACK_NOT_PARTY for anyone else). The window restarts for the new assignee (status back to pending, new default deadline) and `requested_at` is kept. A repeat by the same actor is 200 changed:false. 409 once resolved or cancelled. Read-audited",
     body: M36ReassignAckBodySchema,
     response: M36AckRequestResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/:id/reassign-candidates": {
+    summary:
+      "Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50; rate limited like reassign. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only",
+    response: M36AckReassignCandidatesResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates": {
+    summary:
+      "The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. A supervisor the Part 2 gate walls off from the patient gets an EMPTY list (the care team is never named to them). Rate limited like reassign. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only",
+    response: M36AckReassignCandidatesResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations/:id/supervisor-reassign": {
+    summary:
+      "A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SupervisorReassignBodySchema,
+    response: M36AckSupervisorReassignResponseSchema,
   },
   "POST /api/v1/messaging/escalations/:id/resolve": {
     summary:

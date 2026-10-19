@@ -24,8 +24,11 @@ import {
 import {
   ACK_CHANNEL_LIST_CAP,
   type AckChannelListResponse,
+  type AckReassignCandidatesResponse,
   type AckRequestDetailResponse,
   type AckRequestResponse,
+  type AckSupervisorReasonCode,
+  type AckSupervisorReassignResponse,
   ForbiddenError,
   NotFoundError,
   WardenXError,
@@ -41,6 +44,8 @@ import {
   M36_ACK_RESOLVED,
   publishAckEvent,
 } from "./ack-events";
+import { assigneeInvalid, isOpen, isWaiting, orElse, requestNotFound } from "./ack-shared";
+import { createAckSupervisor } from "./ack-supervisor";
 import { type AckRow, AckStaleError, type AckStore, type AckTx } from "./ack-types";
 
 export interface AckActorRef {
@@ -68,6 +73,10 @@ export interface AckServiceDeps {
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   /** Does the user hold the keys to raise a request (`messaging.send` + `messaging.urgent.send`) right now? A throw propagates. */
   readonly canRaise: (orgId: string, userId: string) => Promise<boolean>;
+  /** The display name of a colleague for the reassign pickers; absent or a throw reads as "no name" (the id still identifies them). */
+  /** ADR-0078: is this user admitted by the Part 2 gate for the patient? A supervisor who is not is shown no candidates. REQUIRED: a missing gate must never admit anyone. */
+  readonly part2Admitted: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
+  readonly displayName?: (orgId: string, userId: string) => Promise<string | null>;
   /** Warn-level, ids and a constraint name only (never a name, patient or text). Defaults to console.warn. */
   readonly log?: (message: string, context: Record<string, string>) => void;
   readonly now?: () => Date;
@@ -105,9 +114,25 @@ export interface AckService {
     newAssigneeUserId: string,
   ): Promise<AckRequestResponse>;
   resolve(actor: AckActorRef, requestId: string): Promise<AckRequestResponse>;
+  /** ADR-0078 (G-6): who the sender or assignee may hand THIS request to (same visibility and party rules as `reassign`). */
+  reassignCandidates(actor: AckActorRef, requestId: string): Promise<AckReassignCandidatesResponse>;
+  /** ADR-0078 (G-2): the same for a supervisor (the route demands `messaging.review`); works on a request they cannot open. */
+  supervisorReassignCandidates(
+    actor: AckActorRef,
+    requestId: string,
+  ): Promise<AckReassignCandidatesResponse>;
+  /**
+   * ADR-0078 (G-2): a supervisor moves a WAITING request to an eligible colleague with a required fixed reason. It reads no conversation,
+   * acknowledges nothing and touches no acknowledged, resolved or cancelled request; the new assignee passes the normal reassign checks.
+   */
+  supervisorReassign(
+    actor: AckActorRef,
+    requestId: string,
+    newAssigneeUserId: string,
+    reasonCode: AckSupervisorReasonCode,
+  ): Promise<AckSupervisorReassignResponse>;
 }
 
-const requestNotFound = (): NotFoundError => new NotFoundError("escalation");
 const messageNotFound = (): NotFoundError => new NotFoundError("message");
 const unavailable = (): WardenXError =>
   new WardenXError(
@@ -115,18 +140,6 @@ const unavailable = (): WardenXError =>
     "Response requests are unavailable right now. Try again.",
     503,
   );
-const assigneeInvalid = (): WardenXError =>
-  new WardenXError("ACK_ASSIGNEE_INVALID", "Choose a colleague who can take this message.", 422);
-
-/** A port that throws answers "no" (used where a wrong "yes" is the danger: choosing an assignee). */
-async function orElse<T>(read: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await read();
-  } catch {
-    return fallback;
-  }
-}
-
 interface PgErrorLike {
   readonly code?: string;
   readonly constraint?: string;
@@ -155,10 +168,6 @@ export function ackGuardName(err: unknown): string | null {
 }
 
 const errorName = (err: unknown): string => (err instanceof Error ? err.name : "unknown");
-
-const WAITING = ["pending", "escalated", "failed_unreachable"] as const;
-const isWaiting = (s: AckRow["status"]): boolean => (WAITING as readonly string[]).includes(s);
-const isOpen = (s: AckRow["status"]): boolean => isWaiting(s) || s === "acknowledged";
 
 /** Who may reassign: the current assignee; the requester only until the request is taken. Null when allowed. */
 function reassignDenied(actorId: string, row: AckRow): WardenXError | null {
@@ -301,6 +310,15 @@ export function createAckService(deps: AckServiceDeps): AckService {
       throw err;
     }
   }
+
+  const supervisor = createAckSupervisor({
+    deps,
+    store,
+    clock,
+    assignable,
+    factsOf,
+    guarded,
+  });
 
   const unchanged = (row: AckRow, viewer: string): AckRequestResponse => ({
     request: toAckRequestDto(row, viewer),
@@ -632,5 +650,16 @@ export function createAckService(deps: AckServiceDeps): AckService {
         { organizationId: actor.orgId, requestId },
       );
     },
+
+    async reassignCandidates(actor, requestId) {
+      const seen = await visibleRequest(actor, requestId);
+      const denied = reassignDenied(actor.userId, seen);
+      if (denied) throw denied;
+      if (!isOpen(seen.status)) throw ackStateInvalid();
+      return supervisor.candidatesFor(seen);
+    },
+
+    supervisorReassignCandidates: supervisor.candidates,
+    supervisorReassign: supervisor.reassign,
   };
 }

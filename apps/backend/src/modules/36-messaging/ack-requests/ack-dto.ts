@@ -55,6 +55,7 @@ export function toAckEventDto(e: AckEventRow): AckEventDto {
     assigned_user_id: e.assignedUserId,
     previous_assigned_user_id: e.previousAssignedUserId,
     tier: e.tier,
+    reason_code: (e.reasonCode ?? null) as AckEventDto["reason_code"],
     created_at: e.createdAt.toISOString(),
   };
 }

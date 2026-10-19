@@ -234,6 +234,10 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/escalations/:id/acknowledge": { kind: "idor" },
   "POST /api/v1/messaging/escalations/:id/reassign": { kind: "idor" },
   "POST /api/v1/messaging/escalations/:id/resolve": { kind: "idor" },
+  // ADR-0078: the card's picker and the supervisor reassign; the id is a request's, every refusal is the 404 a random id gets.
+  "GET /api/v1/messaging/escalations/:id/reassign-candidates": { kind: "idor" },
+  "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates": { kind: "idor" },
+  "POST /api/v1/messaging/escalations/:id/supervisor-reassign": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/medication-questions/options": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
@@ -2160,7 +2164,26 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         await expectNoOracle("GET /api/v1/messaging/channels/:id/escalations", attacker, {
           id: careTeamA,
         });
+        await expectNoOracle(
+          "GET /api/v1/messaging/escalations/:id/reassign-candidates",
+          attacker,
+          {
+            id,
+          },
+        );
       }
+      // ADR-0078: the org-B holder of messaging.review reaches the service and is stopped by tenancy alone.
+      await expectNoOracle(
+        "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates",
+        reviewerB,
+        { id },
+      );
+      await expectNoOracle(
+        "POST /api/v1/messaging/escalations/:id/supervisor-reassign",
+        reviewerB,
+        { id },
+        { assigned_user_id: reviewerB.userId, reason_code: "workload" },
+      );
       expect((await state()).rows[0]).toEqual(before);
       // the assignee, by contrast, really can act: the refusals above were tenancy, not shape.
       const ack = await call("POST /api/v1/messaging/escalations/:id/acknowledge", u2, { id });

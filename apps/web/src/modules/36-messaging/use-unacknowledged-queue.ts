@@ -5,7 +5,7 @@
 // superseded (never a failure); a "show more" answer is applied only if the list it extends is still the one it was asked for, and
 // otherwise says so (`moreFailed`) instead of vanishing. A poll waits while a "show more" is in flight, and a "show more" supersedes any
 // read already in flight. After a 401/403/404 the poll and retry make no request; changing the filter asks again (the answer may differ).
-// Read-only.
+// Read-only (the supervisor reassign is a separate dialog that calls `refresh` after it saves).
 import type {
   AckQueueCounts,
   AckQueueItemDto,
@@ -231,5 +231,5 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
     }
   }, [client, get, read]);
 
-  return { view, retry, showMore, busyMore };
+  return { view, retry, refresh: retry, showMore, busyMore };
 }

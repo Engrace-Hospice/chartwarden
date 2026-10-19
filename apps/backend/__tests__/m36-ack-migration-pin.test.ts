@@ -10,6 +10,7 @@ import {
   ACK_EVENT_TYPES,
   ACK_EVENT_TYPES_WRITTEN_BY_4_4,
   ACK_STATUSES,
+  ACK_SUPERVISOR_REASON_CODES,
   type AckStatus,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
@@ -21,6 +22,8 @@ const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request
 const sql1114 = read("packages/db/migrations/1114_m36_ack_escalation_timers.sql");
 // WP 4.5 (migration 1120) replaces the update guard in full once more (only `failed_unreachable` is new); the guard is pinned on THAT text.
 const sql1120 = read("packages/db/migrations/1120_m36_ack_delivery_failure.sql");
+// ADR-0078 (migration 1126) replaces the update guard in full once more (the supervisor reassign); the CURRENT guard is pinned on THAT text.
+const sql1126 = read("packages/db/migrations/1126_m36_ack_supervisor_reassign.sql");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
 const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
@@ -61,8 +64,8 @@ describe("migration 1114 event types", () => {
   });
 });
 
-describe("the update guard (migration 1120 replaces 1114's, in full) is the state machine", () => {
-  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
+describe("the update guard (migration 1126 replaces 1120's, in full) is the state machine", () => {
+  const guard = flat(sql1126.slice(sql1126.indexOf("message_ack_request_update_guard()")));
 
   it("final states cannot change", () => {
     expect(guard).toContain("IF OLD.status IN ('resolved', 'cancelled') THEN");
@@ -117,8 +120,8 @@ describe("the update guard (migration 1120 replaces 1114's, in full) is the stat
   });
 });
 
-describe("migration 1114 escalation write (kept by 1120)", () => {
-  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
+describe("migration 1114 escalation write (kept by 1120 and 1126)", () => {
+  const guard = flat(sql1126.slice(sql1126.indexOf("message_ack_request_update_guard()")));
 
   it("is the timer's alone: a person's session (a non-empty app.user_id) cannot write an escalation", () => {
     expect(guard).toContain(
@@ -164,8 +167,8 @@ describe("migration 1114 escalation write (kept by 1120)", () => {
   });
 });
 
-describe("migration 1120 failed_unreachable write", () => {
-  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
+describe("migration 1120 failed_unreachable write (kept by 1126)", () => {
+  const guard = flat(sql1126.slice(sql1126.indexOf("message_ack_request_update_guard()")));
 
   it("is the delivery-failure handler's alone: a person's session (a non-empty app.user_id) cannot write it", () => {
     expect(guard).toContain(
@@ -184,6 +187,64 @@ describe("migration 1120 failed_unreachable write", () => {
 
   it("adds no table, grant, policy, enum value or drop", () => {
     expect(sql1120).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP |ALTER TYPE/);
+  });
+});
+
+describe("migration 1126 supervisor reassign (ADR-0078)", () => {
+  const guard = flat(sql1126.slice(sql1126.indexOf("message_ack_request_update_guard()")));
+
+  it("adds the reason column with a fixed non-clinical set, only on a user's reassigned event", () => {
+    const flatSql = flat(sql1126);
+    expect(flatSql).toContain(
+      'ALTER TABLE "message_acknowledgment_event" ADD COLUMN "reason_code" text',
+    );
+    expect(flatSql).toContain(
+      `"event_type" = 'reassigned' AND "actor_kind" = 'user' AND "reason_code" IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+    );
+    expect(flat(read("packages/db/src/schema/messaging/message-acknowledgments.ts"))).toContain(
+      `${"${t.eventType}"} = 'reassigned' AND ${"${t.actorKind}"} = 'user' AND ${"${t.reasonCode}"} IN (${list(ACK_SUPERVISOR_REASON_CODES)})`,
+    );
+  });
+
+  it("lets a non-party reassign only with the transaction-local marker, on a request that still waits, as the reassign itself", () => {
+    expect(guard).toContain(
+      "v_supervisor := v_actor IS NOT NULL AND COALESCE(current_setting('app.ack_supervisor_reassign', true), '') = 'on'",
+    );
+    expect(guard).toContain(
+      "IF v_supervisor AND (NOT v_reassign OR OLD.status NOT IN ('pending', 'escalated', 'failed_unreachable')) THEN",
+    );
+    expect(guard).toContain(
+      "IF v_reassign AND v_actor IS NOT NULL AND NOT v_supervisor AND v_actor NOT IN (OLD.requester_user_id::text, OLD.assigned_user_id::text) THEN",
+    );
+  });
+
+  it("keeps every other actor rule: acknowledge/resolve as the assignee, cancel as the sender, only the assignee hands on a taken request", () => {
+    expect(guard).toContain(
+      "NEW.status IN ('acknowledged', 'resolved') AND OLD.status <> NEW.status AND v_actor IS DISTINCT FROM NEW.assigned_user_id::text",
+    );
+    expect(guard).toContain(
+      "NEW.status = 'cancelled' AND v_actor IS NOT NULL AND v_actor <> OLD.requester_user_id::text",
+    );
+    expect(guard).toContain(
+      "IF v_reassign AND OLD.status = 'acknowledged' AND v_actor IS NOT NULL AND v_actor <> OLD.assigned_user_id::text THEN",
+    );
+    expect(guard).toContain("IF v_escalation AND v_actor IS NOT NULL THEN");
+    expect(guard).toContain("only the delivery-failure handler marks a request unreachable");
+  });
+
+  it("never lets a supervisor reach the event insert guard's rule: the event names the session's own user (1107 stays)", () => {
+    expect(flat(sql)).toContain("an event names the session''s own user");
+    expect(sql1126).not.toContain("message_ack_event_insert_guard");
+  });
+
+  it("adds no table, grant, policy, enum value or drop", () => {
+    expect(sql1126).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP |ALTER TYPE/);
+  });
+
+  it("stays SECURITY DEFINER with a pinned search_path", () => {
+    expect(guard).toContain(
+      "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+    );
   });
 });
 

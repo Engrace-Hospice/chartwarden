@@ -4,13 +4,17 @@
 import type { DbClient } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
+import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
 import { createSeamPart2ChannelGate } from "../part2-channel-gate";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { createDbAckStore } from "./ack-store-db";
 import { type AckBinding, type AckBindingInput, buildAckBinding } from "./binding";
 
-export type AckDepsInput = Omit<AckBindingInput, "store" | "channelFacts" | "eligibility"> & {
+export type AckDepsInput = Omit<
+  AckBindingInput,
+  "store" | "channelFacts" | "eligibility" | "displayName"
+> & {
   readonly db: DbClient;
   readonly permissionsFor: (orgId: string, userId: string) => Promise<ReadonlySet<string>>;
   readonly part2Gate?: Part2ChannelGate | undefined;
@@ -23,6 +27,7 @@ export function buildAckDeps(input: AckDepsInput): AckBinding {
     ...rest,
     store: createDbAckStore(db),
     channelFacts: createDbChannelFactsLookup(db),
+    displayName: createMentionActorNameResolver(db),
     eligibility: {
       permissionsFor,
       part2Gate: part2Gate ?? createSeamPart2ChannelGate(db),

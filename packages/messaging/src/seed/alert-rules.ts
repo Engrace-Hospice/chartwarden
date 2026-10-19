@@ -101,6 +101,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.ack.supervisor_reassigned",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // ADR-0078: a supervisor moved a waiting request; the previous assignee and the sender are told, in-app only, with generic text. NOT a
+    // designated safety route (the new assignee's alert is the m36.ack.reassigned one) and never out-of-band.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.ack.escalated",
     category: "clinical_urgent",
     severityFloor: "warn",

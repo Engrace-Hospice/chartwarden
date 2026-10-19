@@ -27,6 +27,19 @@ export const QUEUE_OPEN_LABEL = "Open the conversation";
 export const QUEUE_RESTRICTED_TEXT =
   "You cannot open this conversation, so it is listed without the patient or message. Contact the person it is assigned to.";
 export const QUEUE_UNASSIGNED_NAME = "a colleague";
+/** ADR-0078 (G-7): the sender, in words, on every row (a restricted row too: the same disclosure as the assignee's name). */
+export const QUEUE_SENDER_UNKNOWN = "Sender not available.";
+export const queueSenderText = (name: string | null): string =>
+  name?.trim() ? `Sent by ${name.trim()}.` : QUEUE_SENDER_UNKNOWN;
+/** ADR-0078 (G-2): the supervisor's Reassign button; the dialog's own words are in ack-reassign-wording.ts. */
+export const QUEUE_REASSIGN_LABEL = "Reassign";
+/** The accessible name starts with the visible text (WCAG 2.5.3) and tells the rows apart: assignee, sender and due time. */
+export const queueReassignName = (
+  assignee: string,
+  sender: string | null,
+  dueLabel: string,
+): string =>
+  `${QUEUE_REASSIGN_LABEL}, assigned to ${assignee}, ${sender?.trim() ? `sent by ${sender.trim()}` : "sender not available"}, ${dueLabel}`;
 
 export const STATUS_FILTERS: readonly { value: AckQueueStatus | "all"; label: string }[] = [
   { value: "all", label: "Everything waiting" },

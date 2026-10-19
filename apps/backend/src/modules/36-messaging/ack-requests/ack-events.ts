@@ -39,6 +39,10 @@ export interface AckEventFacts {
   readonly actorUserId: string | null;
   readonly version: number;
   readonly previousAssignedUserId?: string;
+  /** ADR-0078 (`reassigned` only): a SUPERVISOR moved it. The notification consumer then also tells the previous assignee and the sender. */
+  readonly supervisorReassign?: boolean;
+  /** ADR-0078 (supervisor `reassigned` only): the sender, so the consumer can tell them without a second read. An id, never a name. */
+  readonly requesterUserId?: string;
   /** WP 4.4: the router tier the request was escalated to, or the tier that could not be reached. */
   readonly tier?: number;
   /** WP 4.4 (`route_unavailable` / `ladder_exhausted`): which such record this is for the request's current window (1-based). */
@@ -62,6 +66,8 @@ export function ackEventPayload(f: AckEventFacts): Record<string, unknown> {
     requestVersion: f.version,
     at: f.at.toISOString(),
     ...(f.previousAssignedUserId ? { previousAssignedUserId: f.previousAssignedUserId } : {}),
+    ...(f.supervisorReassign ? { supervisorReassign: true } : {}),
+    ...(f.requesterUserId ? { requesterUserId: f.requesterUserId } : {}),
     ...(f.tier !== undefined ? { tier: f.tier } : {}),
     ...(f.occurrence !== undefined ? { occurrence: f.occurrence } : {}),
     ...(f.typeOccurrence !== undefined ? { typeOccurrence: f.typeOccurrence } : {}),

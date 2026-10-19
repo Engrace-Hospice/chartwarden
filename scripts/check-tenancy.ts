@@ -84,7 +84,9 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
 // and never inside a policy.
 const ACK_ACTOR_GUARD_HEAD =
   /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard)\s*\(/i;
-const ACK_ACTOR_VARS = new Set<string>(["app.user_id"]);
+// ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
+// backstop, the same two functions, never a policy.
+const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([

@@ -6,6 +6,7 @@
 - **Implements:** [ADR-0056](ADR-0056-clinical-acknowledgment-vs-read-receipts.md) (the aggregate, its state machine, the D4 deadline table, the eligible roles, the edit lock). ADR-0056 stays **Proposed** until the clinical lead signs the numbers; this ADR records what was built and which of its open points were closed provisionally.
 - **Extends:** [ADR-0068](ADR-0068-messaging-urgency-model.md) (the urgent entry creates the request in its own send transaction; the 4.1 note "delete must cancel the request" is met here).
 - **Followed by:** [ADR-0070](ADR-0070-messaging-escalation-timers.md) (WP 4.4: the only writer of `escalated`; migration 1114 replaces the update guard so the timer may move the assignee and start the next window, and adds two history event types).
+- **Amended by [ADR-0078](ADR-0078-messaging-supervisor-reassign.md) for reassign only:** decision 6's "no supervisor override" no longer applies to reassigning a waiting request (a `messaging.review` holder may now reassign it); a supervisor still cannot acknowledge or resolve.
 - **Related:** [ADR-0057](ADR-0057-escalation-ownership-m19-m36.md) (who is paged and when is WP 4.3 - 4.5, not here), [ADR-0010](ADR-0010-tenancy-rls-invariants.md), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md).
 
 ## Context

@@ -4,7 +4,9 @@
 // `restricted` row: the request, channel, message and patient ids are withheld (they would name a conversation the viewer may not
 // enter), and so is the assignee's id. What stays is what a supervisor needs to chase it without learning who it is about: the
 // assignee's display name, the class, the status, the times, the tier and the note. It is still listed and still counted, never
-// invisible. A visibility check that throws withholds the ids (fail closed); it does not drop the item. No message text is ever read.
+// invisible. ADR-0078 adds two fields to EVERY row, restricted or not: the sender's display name (the same disclosure class as the
+// assignee's, OPEN for compliance review) and `request_ref`, the request's own id as the handle the supervisor reassign acts on (it opens
+// nothing: every route that reads a request, thread or patient still answers 404 to a viewer who cannot see the channel). A visibility check that throws withholds the ids (fail closed); it does not drop the item. No message text is ever read.
 import type { AckQueueItemDto, AckQueueResponse, AckQueueStatus } from "@wardenx/types";
 import { ACK_QUEUE_LIMIT_DEFAULT, ACK_QUEUE_LIMIT_MAX } from "@wardenx/types";
 import type { QueueRow, UnacknowledgedReader } from "./unacknowledged-reader-db";
@@ -64,8 +66,9 @@ export function createUnacknowledgedService(
     rows: readonly QueueRow[],
   ): Promise<ReadonlyMap<string, string | null>> {
     const names = new Map<string, string | null>();
-    const assignees = new Set(rows.map((r) => r.row.assignedUserId));
-    for (const id of assignees) {
+    // ADR-0078 (G-7): the sender's name is looked up with the assignee's, one lookup per distinct person, bounded by the page.
+    const people = new Set(rows.flatMap((r) => [r.row.assignedUserId, r.row.requesterUserId]));
+    for (const id of people) {
       names.set(id, await deps.displayName(actor.orgId, id).catch(() => null));
     }
     return names;
@@ -92,6 +95,8 @@ export function createUnacknowledgedService(
           overdue: row.deadlineAt.getTime() <= now.getTime(),
           overdue_seconds: overdueSeconds,
           delivery_failed: row.status === "failed_unreachable",
+          requester_display_name: names.get(row.requesterUserId) ?? null,
+          request_ref: row.id,
         };
         if (!visible.has(row.channelId)) {
           return {

@@ -17,6 +17,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { AckReassignDialog } from "./ack-reassign-dialog";
+import { REASSIGN_LABEL, reassignName } from "./ack-reassign-wording";
 import {
   ACK_CLOSE_LABEL,
   ACK_FORBIDDEN_LOAD_TEXT,
@@ -64,6 +66,8 @@ interface CardProps {
   readonly focusRequested?: boolean;
   readonly onFocused?: (requestId: string) => void;
   readonly onAct: (requestId: string, action: AckAction) => void;
+  /** ADR-0078 (G-6): opens the reassign dialog, which the provider keeps above the list so a reload cannot lose it. Absent = no control. */
+  readonly onReassign?: (requestId: string) => void;
 }
 
 export function AckRequestCard({
@@ -76,6 +80,7 @@ export function AckRequestCard({
   focusRequested = false,
   onFocused,
   onAct,
+  onReassign,
 }: CardProps): JSX.Element {
   const statusId = useId();
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -109,6 +114,7 @@ export function AckRequestCard({
     tone: "secondary",
     "aria-disabled": anyBusy || undefined,
   } as const;
+  const showReassign = actions.can_reassign && Boolean(onReassign);
   const inertStyle = anyBusy ? { cursor: "not-allowed", opacity: 0.72 } : undefined;
   return (
     <fieldset
@@ -116,6 +122,7 @@ export function AckRequestCard({
       className="wx-ack-card"
       aria-labelledby={statusId}
       data-status={request.status}
+      data-ack-card={request.id}
     >
       <p id={statusId} ref={statusRef} tabIndex={-1} className="wx-ack-status">
         <Glyph name={unreachable ? "alert" : icon} size={14} />
@@ -142,7 +149,7 @@ export function AckRequestCard({
           <time dateTime={request.acknowledged_at}>{localTime(request.acknowledged_at)}</time>
         </p>
       ) : null}
-      {actions.can_acknowledge || actions.can_resolve ? (
+      {actions.can_acknowledge || actions.can_resolve || showReassign ? (
         <div className="wx-ack-buttons">
           {actions.can_acknowledge ? (
             <Button
@@ -166,6 +173,20 @@ export function AckRequestCard({
               {busy ? ACK_WORKING_TEXT : ACK_CLOSE_LABEL}
             </Button>
           ) : null}
+          {showReassign ? (
+            <Button
+              {...buttonProps}
+              style={inertStyle}
+              aria-label={nameOf(REASSIGN_LABEL, reassignName)}
+              aria-haspopup="dialog"
+              data-reassign-button={request.id}
+              onClick={() => {
+                if (!anyBusy) onReassign?.(request.id);
+              }}
+            >
+              {busy ? ACK_WORKING_TEXT : REASSIGN_LABEL}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </fieldset>
@@ -179,6 +200,7 @@ interface Slot {
   readonly focusRequestId: string | null;
   readonly clearFocus: (requestId: string) => void;
   readonly act: (requestId: string, action: AckAction) => Promise<void>;
+  readonly openReassign: (requestId: string) => void;
 }
 const SlotContext = createContext<Slot | null>(null);
 
@@ -227,6 +249,33 @@ export function AckRequestsProvider({
     },
     [landingId, onLanded, state.clearFocus],
   );
+  const [reassignFor, setReassignFor] = useState<string | null>(null);
+  const liveRef = useRef<HTMLOutputElement>(null);
+  // A dialog belongs to one channel's thread and to an enabled provider.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes on a channel change or when the provider is turned off
+  useEffect(() => setReassignFor(null), [channelId, enabled]);
+  const closedReassign = useRef<{ id: string; saved: boolean } | null>(null);
+  const closeReassign = (saved: boolean): void => {
+    if (!reassignFor) return;
+    const closing = reassignFor;
+    closedReassign.current = { id: closing, saved };
+    setReassignFor((current) => (current === closing ? null : current));
+  };
+  // The dialog has unmounted. A saved reassign hands focus to the card's status line; a cancel puts it back on the button that opened
+  // the dialog (a mouse click does not focus a button in Safari, so the modal cannot be trusted to remember it).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the dialog has closed
+  useEffect(() => {
+    const closed = closedReassign.current;
+    if (reassignFor !== null || !closed) return;
+    closedReassign.current = null;
+    const id = CSS.escape(closed.id);
+    const button = document.querySelector<HTMLElement>(`[data-reassign-button="${id}"]`);
+    // A cancel goes back to the button that opened the dialog. A saved reassign, or a button that left with the re-read (the request
+    // moved on), goes to the card's status line; if the card left too, to the always-mounted result region. Never to the page.
+    if (!closed.saved && button) button.focus();
+    else if (document.querySelector(`[data-ack-card="${id}"]`)) state.requestFocus(closed.id);
+    else liveRef.current?.focus();
+  }, [reassignFor]);
   const slot = useMemo<Slot>(
     () => ({
       byMessage: new Map(state.requests.map((r) => [r.message_id, r])),
@@ -235,6 +284,7 @@ export function AckRequestsProvider({
       focusRequestId,
       clearFocus,
       act: state.act,
+      openReassign: setReassignFor,
     }),
     [state.requests, state.busyId, focusRequestId, clearFocus, state.act, noticeId],
   );
@@ -250,7 +300,13 @@ export function AckRequestsProvider({
       {enabled ? (
         <>
           {/* Always mounted so a screen reader hears the result of an action: success politely, a failure assertively. */}
-          <output aria-live="polite" aria-atomic="true" className="wx-ack-live">
+          <output
+            ref={liveRef}
+            tabIndex={-1}
+            aria-live="polite"
+            aria-atomic="true"
+            className="wx-ack-live"
+          >
             {state.noticeIsFailure ? null : state.notice}
           </output>
           <div role="alert" className="wx-ack-live wx-ack-alert">
@@ -275,6 +331,14 @@ export function AckRequestsProvider({
         </>
       ) : null}
       {children}
+      {enabled && reassignFor ? (
+        <AckReassignDialog
+          mode="party"
+          requestId={reassignFor}
+          run={(perform) => state.runReassign(reassignFor, perform)}
+          onClose={closeReassign}
+        />
+      ) : null}
     </SlotContext.Provider>
   );
 }
@@ -299,6 +363,7 @@ export function AckForMessage({
       focusRequested={slot.focusRequestId === request.id}
       onFocused={slot.clearFocus}
       onAct={(id, action) => void slot.act(id, action)}
+      onReassign={slot.openReassign}
     />
   );
 }

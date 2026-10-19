@@ -45,6 +45,8 @@ const item = (over: Partial<AckQueueItemDto> = {}): AckQueueItemDto => ({
   current_tier: 0,
   escalation_note: null,
   delivery_failed: false,
+  requester_display_name: "Sam Sender",
+  request_ref: "cccccccc-cccc-4ccc-8ccc-000000000001",
   ...over,
 });
 const RESTRICTED: AckQueueItemDto = item({
@@ -58,9 +60,12 @@ const RESTRICTED: AckQueueItemDto = item({
   current_tier: 1,
   escalation_note: "ladder_exhausted",
   assigned_display_name: "Rae Responder",
+  requester_display_name: "Sam Sender",
+  request_ref: "cccccccc-cccc-4ccc-8ccc-000000000002",
 });
 const FAILED = item({
   id: "cccccccc-cccc-4ccc-8ccc-000000000003",
+  request_ref: "cccccccc-cccc-4ccc-8ccc-000000000003",
   status: "failed_unreachable",
   delivery_failed: true,
   overdue: false,

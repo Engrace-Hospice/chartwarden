@@ -10,6 +10,7 @@ import type { RateLimitStore } from "./rate-limit-store";
 import { type RouteRateLimit, createRouteRateLimit } from "./route-rate-limit";
 
 export const ACK_RATE_LIMIT_KEY_PREFIX = "m36-ack";
+export const ACK_PICKER_RATE_LIMIT_KEY_PREFIX = "m36-ack-picker";
 /** 20 per minute per user, 200 per minute per organisation. */
 export const ACK_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,
@@ -26,13 +27,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function buildAckRateLimit(
   store: RateLimitStore,
-  opts: { readonly onStoreError?: (err: unknown) => void } = {},
+  opts: {
+    readonly onStoreError?: (err: unknown) => void;
+    /** ADR-0078: the picker reads use their own buckets so polling cannot starve a reassign or a create. */
+    readonly keyPrefix?: string;
+  } = {},
 ): AckRouteRateLimit {
   const { onStoreError } = opts;
+  const prefix = opts.keyPrefix ?? ACK_RATE_LIMIT_KEY_PREFIX;
   const base = createRouteRateLimit({
     store,
     limit: ACK_ROUTE_RATE_LIMIT,
-    keyPrefix: ACK_RATE_LIMIT_KEY_PREFIX,
+    keyPrefix: prefix,
     ...(onStoreError ? { onStoreError } : {}),
   });
   return async (request, reply) => {
@@ -45,14 +51,14 @@ export function buildAckRateLimit(
     let seen: number;
     try {
       seen = await store.increment(
-        `${ACK_RATE_LIMIT_KEY_PREFIX}:pair:${organizationId}:${userId}:${assignee.toLowerCase()}`,
+        `${prefix}:pair:${organizationId}:${userId}:${assignee.toLowerCase()}`,
         ACK_PAIR_LIMIT.windowMs,
       );
       if (!Number.isInteger(seen) || seen < 1) throw new Error("bad count");
     } catch (err) {
       onStoreError?.(err);
       request.log.warn(
-        { keyPrefix: ACK_RATE_LIMIT_KEY_PREFIX },
+        { keyPrefix: prefix },
         "acknowledgment-request rate-limit store unavailable",
       );
       throw new DegradedError("rate-limit", "temporarily unavailable");
