@@ -19,6 +19,8 @@ export const QUEUE_STALE = "The list may be out of date: the last refresh failed
 export const QUEUE_DENIED = "You are not permitted to see this list.";
 export const QUEUE_SIGN_IN = "Your session has ended. Sign in again to see this list.";
 export const QUEUE_RETRY_LABEL = "Retry";
+export const QUEUE_SPAN_CAPPED =
+  "The list was refreshed from the top because it had grown very long. Use Show more to load the rest.";
 export const QUEUE_MORE_LABEL = "Show more";
 export const QUEUE_MORE_FAILED = "Could not load more. Try again.";
 export const QUEUE_OPEN_LABEL = "Open the conversation";

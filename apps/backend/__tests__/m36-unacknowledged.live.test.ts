@@ -23,7 +23,11 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbAckQueueStatsReader } from "../src/modules/36-messaging/ack-requests/ack-queue-stats-db";
-import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
+import {
+  createDbUnacknowledgedReader,
+  queueFilters,
+  queueRowsQuery,
+} from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { createMentionActorNameResolver } from "../src/modules/36-messaging/mention-non-member-service-db";
@@ -530,12 +534,17 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
         const patients = new Set(out.items.map((i) => i.patient_id).filter(Boolean));
         expect(patients).toEqual(new Set([PATIENT_1, PATIENT_3]));
         expect(await audit(supervisor)).toBe(before + 2);
+        // the two newest rows of this actor are this read's: one per patient, each against the one request id the response names.
         const rows = await kit.one<{ resource_id: string }>(
-          "SELECT resource_id FROM audit_event WHERE actor_user_id=$1 AND event_type='message_acknowledgment_request.viewed' AND resource_id=$2",
-          [supervisor, out.audit_request_id],
+          `SELECT resource_id FROM audit_event WHERE actor_user_id=$1 AND event_type='message_acknowledgment_request.viewed'
+            ORDER BY created_at DESC LIMIT 2`,
+          [supervisor],
         );
-        // attribution: every patient's event hangs off the one request id the response names.
-        expect(rows.length).toBeGreaterThanOrEqual(2);
+        expect(rows.map((r) => r.resource_id)).toEqual([
+          out.audit_request_id,
+          out.audit_request_id,
+        ]);
+        expect(rows.length).toBe(2);
       } finally {
         await acknowledge(extra);
       }
@@ -584,11 +593,21 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
         await kit.admin.query("SET LOCAL plan_cache_mode = force_generic_plan");
         await kit.admin.query("SET LOCAL enable_seqscan = off");
         await kit.admin.query("SET LOCAL enable_bitmapscan = off");
-        await kit.admin.query(
-          `PREPARE q(uuid) AS SELECT id FROM message_acknowledgment_request
-            WHERE organization_id = $1 AND status IN ('pending', 'escalated', 'failed_unreachable') ORDER BY deadline_at LIMIT 51`,
-        );
-        const plan = (await kit.admin.query(`EXPLAIN EXECUTE q('${ORG_A}')`)).rows
+        // The reader's REAL page statement (built by the same function it runs), prepared with untyped parameters.
+        const built = queueRowsQuery(
+          kit.handle.db,
+          queueFilters(ORG_A, { status: null, overdueOnly: false, now: new Date() }),
+          null,
+          50,
+        ).toSQL();
+        await kit.admin.query(`PREPARE q AS ${built.sql}`);
+        const args = built.params.map((_, i) => `$${i + 1}`);
+        expect(args.length).toBeGreaterThan(0);
+        const literal = (v: unknown) =>
+          `'${String(v instanceof Date ? v.toISOString() : v).replace(/'/g, "''")}'`;
+        const plan = (
+          await kit.admin.query(`EXPLAIN EXECUTE q(${built.params.map(literal).join(", ")})`)
+        ).rows
           .map((r) => r["QUERY PLAN"] as string)
           .join("\n");
         expect(plan).toContain("message_ack_request_open_deadline_idx");

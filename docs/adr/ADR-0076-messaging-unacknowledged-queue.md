@@ -55,6 +55,7 @@ Checked in the code, not assumed:
 
 ## Known ceilings
 
+- **Span cap on refresh:** the screen's 15 s poll re-reads the whole loaded list by chaining cursor pages of up to 100 rows, at most 10 requests (1000 rows) per tick. A list the person extended beyond that restarts from the top on the next refresh and the screen says so ("Show more" loads the rest); until then a tick can cost up to 10 requests. The poll waits while "Show more" is in flight, and "Show more" supersedes any read already in flight.
 - **Cursor integrity:** the cursor is opaque and strictly validated (shape, a real instant, a 64-hex tie) but **not signed**: the codebase has no cursor/token signing helper and this ADR does not invent key management. A caller can forge a cursor from a hash, which only moves where *their own* organisation-scoped, permission-checked list resumes; it cannot reach another tenant (every statement names the organisation) and the hash of a request id reveals nothing. A signed cursor is the upgrade if that ever matters.
 - Percentiles of acknowledgment latency; per-tenant dashboards; a real alert-rule file.
 - `audit_request_id` is an API field that exists for the audit plugin's one-resource-id limit.

@@ -3,8 +3,9 @@
 // (page after page, so a list the person extended is not shrunk) and a failed refresh keeps the last list and says it may be stale.
 // Two tokens keep answers honest: `generation` changes with the filter (and on unmount), so an answer for an old filter is dropped as
 // superseded (never a failure); a "show more" answer is applied only if the list it extends is still the one it was asked for, and
-// otherwise says so (`moreFailed`) instead of vanishing. A poll waits while a "show more" is in flight. A 401/403/404 stops all
-// further reads. Read-only.
+// otherwise says so (`moreFailed`) instead of vanishing. A poll waits while a "show more" is in flight, and a "show more" supersedes any
+// read already in flight. After a 401/403/404 the poll and retry make no request; changing the filter asks again (the answer may differ).
+// Read-only.
 import type {
   AckQueueCounts,
   AckQueueItemDto,
@@ -34,13 +35,15 @@ export type QueueView =
       readonly nextCursor: string | null;
       /** The last refresh failed; the list is the last good one. */
       readonly stale: boolean;
+      /** A refresh could not rebuild the whole loaded span (more than MAX_SPAN_PAGES pages): the list restarted from the top. */
+      readonly spanCapped: boolean;
       /** "Show more" failed, or its page no longer fitted the list (a refresh replaced it): ask again. */
       readonly moreFailed: boolean;
     };
 
 const DENIED = new Set([401, 403, 404]);
 /** Most pages a refresh chains to rebuild a long span (10 x 100 rows); beyond it the list restarts from the top and says "Show more". */
-const MAX_SPAN_PAGES = 10;
+export const MAX_SPAN_PAGES = 10;
 
 const queryOf = (filter: QueueFilter, limit: number, cursor?: string) => ({
   limit,
@@ -56,6 +59,7 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   const generation = useRef(0);
   const seq = useRef(0);
   const moreBusy = useRef(false);
+  const deniedRef = useRef(false);
   const viewRef = useRef(view);
   viewRef.current = view;
 
@@ -67,13 +71,14 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
     [client, status, overdueOnly],
   );
 
-  /** Re-reads at least `target` rows from the top (pages chained by cursor). Returns false only for a real failure. */
+  /** Re-reads at least `target` rows from the top (pages chained by cursor). `false` = a real failure; `undefined` = nothing learned (superseded or skipped). */
   const read = useCallback(
-    async (target: number): Promise<boolean> => {
-      if (!client || viewRef.current.status === "denied") return true;
+    async (target: number): Promise<boolean | undefined> => {
+      if (!client || deniedRef.current) return undefined;
       const gen = generation.current;
       const id = ++seq.current;
-      const current = (): boolean => gen === generation.current && id === seq.current;
+      const current = (): boolean =>
+        gen === generation.current && id === seq.current && !moreBusy.current;
       try {
         let items: AckQueueItemDto[] = [];
         let last: AckQueueResponse | null = null;
@@ -84,12 +89,13 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
             Math.max(ACK_QUEUE_LIMIT_DEFAULT, target - items.length),
           );
           const { data, response } = await get(cursor, want);
-          if (!current()) return true; // superseded: not a failure
+          if (!current()) return undefined; // superseded: not a failure, and not a success either
           if (!data) {
             const code = response?.status ?? 0;
             if (DENIED.has(code)) {
+              deniedRef.current = true;
               setView({ status: "denied", signedOut: code === 401 });
-              return true; // nothing more to ask; stop the back-off
+              return undefined; // nothing more to ask
             }
             setView((prev) =>
               prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
@@ -101,7 +107,7 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
           cursor = last.next_cursor ?? undefined;
           if (!cursor || items.length >= target) break;
         }
-        if (!last) return true;
+        if (!last) return undefined;
         const final = last;
         setView({
           status: "ready",
@@ -110,11 +116,12 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
           filtered: final.filtered,
           nextCursor: final.next_cursor,
           stale: false,
+          spanCapped: items.length < target && final.next_cursor !== null,
           moreFailed: false,
         });
         return true;
       } catch {
-        if (!current()) return true;
+        if (!current()) return undefined;
         setView((prev) =>
           prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
         );
@@ -128,6 +135,7 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   useEffect(() => {
     generation.current += 1;
     moreBusy.current = false;
+    deniedRef.current = false;
     setBusyMore(false);
     setView({ status: "loading" });
     void read(1); // one page: the server fills it whenever more exist
@@ -142,7 +150,7 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   }, []);
 
   const refresh = useCallback(
-    () => (moreBusy.current ? Promise.resolve(true) : read(loadedCount())),
+    () => (moreBusy.current ? Promise.resolve(undefined) : read(loadedCount())),
     [read, loadedCount],
   );
   useLatestPolling(refresh, false);
@@ -158,6 +166,7 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
     const gen = generation.current;
     const asked = current.nextCursor;
     moreBusy.current = true;
+    seq.current += 1; // supersede any read already in flight: it must not overwrite the page about to be appended
     setBusyMore(true);
     try {
       const { data } = await get(asked, ACK_QUEUE_LIMIT_DEFAULT);
@@ -172,7 +181,6 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
           items: [...prev.items, ...page.items],
           counts: page.counts,
           nextCursor: page.next_cursor,
-          stale: false,
           moreFailed: false,
         };
       });

@@ -102,6 +102,34 @@ describe("sampleAckQueue bounds", () => {
 });
 
 describe("registerAckQueueMetrics", () => {
+  it("does not start a second sample while the previous one is still unsettled", async () => {
+    vi.useFakeTimers();
+    try {
+      let starts = 0;
+      let clock = 0;
+      const registry = new Registry();
+      registerAckQueueMetrics(
+        registry,
+        () => {
+          starts += 1;
+          return new Promise(() => undefined);
+        },
+        () => clock,
+      );
+      const first = registry.getMetricsAsJSON();
+      await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
+      await first;
+      clock = SAMPLE_TTL_MS * 3;
+      const second = registry.getMetricsAsJSON();
+      await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
+      const values = (await second).flatMap((m) => m.values.map((v) => v.value));
+      expect(starts).toBe(1);
+      expect(values.every((v) => v === -1)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reads -1 when the sampler hangs past the timeout instead of hanging the scrape", async () => {
     vi.useFakeTimers();
     try {

@@ -15,7 +15,7 @@ import {
   WorkQueueLayout,
 } from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import {
   OVERDUE_FILTER_LABEL,
@@ -36,6 +36,7 @@ import {
   QUEUE_RETRY_LABEL,
   QUEUE_SHOW_ALL_LABEL,
   QUEUE_SIGN_IN,
+  QUEUE_SPAN_CAPPED,
   QUEUE_STALE,
   QUEUE_STATUS_TEXT,
   QUEUE_TITLE,
@@ -69,10 +70,9 @@ const overdueSecondsAt = (item: AckQueueItemDto, now: number): number =>
 
 function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.Element {
   const link = threadLink(item);
-  const overdueSeconds = overdueSecondsAt(item, now);
-  const overdue = Number.isNaN(Date.parse(item.deadline_at))
-    ? item.overdue
-    : overdueSeconds > 0 || Date.parse(item.deadline_at) <= now;
+  // The server's verdict can only be added to, never undone: a client clock running behind cannot hide an overdue row.
+  const overdueSeconds = Math.max(item.overdue_seconds, overdueSecondsAt(item, now));
+  const overdue = item.overdue || Date.parse(item.deadline_at) <= now;
   const who = item.assigned_display_name ?? QUEUE_UNASSIGNED_NAME;
   return (
     <li className="wx-queue-row" tabIndex={-1}>
@@ -120,20 +120,32 @@ export function UnacknowledgedQueue(): JSX.Element {
   const focusAfter = useRef<{ readonly row: number } | "section" | null>(null);
   const rowCount = view.status === "ready" ? view.items.length : -1;
 
+  // A new filter makes any pending focus target meaningless.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the filter primitives
+  useEffect(() => {
+    focusAfter.current = null;
+  }, [filter.status, filter.overdueOnly]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the list grows or the view settles
   useEffect(() => {
     const target = focusAfter.current;
     if (target === null || view.status === "loading" || busyMore) return;
     focusAfter.current = null;
+    // The control that had focus is still there when the action failed (its alert and button stay): do not move focus then.
+    if (view.status === "error" || view.status === "denied") return;
+    if (view.status === "ready" && (view.moreFailed || (target === "section" && view.stale)))
+      return;
     const row = target === "section" ? undefined : listRef.current?.children[target.row];
+    if (target !== "section" && !row) return;
     ((row as HTMLElement | undefined) ?? sectionRef.current)?.focus();
   }, [view, rowCount, busyMore]);
-  const retryWithFocus = (): void => {
-    focusAfter.current = "section";
+  // Focus is only handed on when it is still on the control that was clicked (the person has not moved on).
+  const retryWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
+    focusAfter.current = document.activeElement === event.currentTarget ? "section" : null;
     retry();
   };
-  const moreWithFocus = (): void => {
-    focusAfter.current = { row: rowCount };
+  const moreWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
+    focusAfter.current = document.activeElement === event.currentTarget ? { row: rowCount } : null;
     void showMore();
   };
   // Minute-grained "due in" text re-renders itself; the data poll is the hook's.
@@ -221,6 +233,7 @@ export function UnacknowledgedQueue(): JSX.Element {
             </Button>
           </div>
         ) : null}
+        {view.spanCapped ? <p className="wx-queue-note">{QUEUE_SPAN_CAPPED}</p> : null}
         <ul className="wx-queue-rows" aria-label={QUEUE_TITLE} ref={listRef}>
           {view.items.map((item, index) => (
             // A restricted row has no id: its position and deadline are its key within this ordered, append-only page.

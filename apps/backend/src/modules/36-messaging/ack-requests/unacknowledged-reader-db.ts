@@ -9,12 +9,13 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
+  ACK_QUEUE_STATUSES,
   type AckEscalationNote,
   type AckQueueCounts,
   type AckQueueStatus,
   WardenXError,
 } from "@wardenx/types";
-import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
+import { type SQL, and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import type { AckRow } from "./ack-types";
 
 const R = schema.messageAckRequests;
@@ -24,7 +25,7 @@ const E = schema.messageAckEvents;
  * The queue's status predicate as an inline literal list, never bound parameters: under a generic plan the planner can only prove the
  * partial index `message_ack_request_open_deadline_idx` applies when the predicate text matches its own (ADR-0076).
  */
-export const WAITING = sql`${R.status} IN ('pending', 'escalated', 'failed_unreachable')`;
+export const WAITING = sql`${R.status} IN (${sql.raw(ACK_QUEUE_STATUSES.map((status) => `'${status}'`).join(", "))})`;
 
 const TIE = sql<string>`encode(sha256(convert_to(${R.id}::text, 'UTF8')), 'hex')`;
 
@@ -163,16 +164,57 @@ async function notesFor(
   });
 }
 
+/**
+ * The page query (exported so the live suite plans the REAL statement against the partial index): the waiting set in deadline order,
+ * one row past the limit to learn whether more exist.
+ */
+export function queueRowsQuery(
+  tx: Pick<DbClient, "select">,
+  filters: readonly SQL[],
+  keyset: { readonly deadlineAt: string; readonly tie: string } | null,
+  limit: number,
+) {
+  return tx
+    .select({ r: R, deadlineText: sql<string>`${R.deadlineAt}::text`, tie: TIE })
+    .from(R)
+    .where(
+      and(
+        ...filters,
+        ...(keyset
+          ? [
+              or(
+                gt(R.deadlineAt, sql`${keyset.deadlineAt}::timestamptz`),
+                and(
+                  eq(R.deadlineAt, sql`${keyset.deadlineAt}::timestamptz`),
+                  sql`${TIE} > ${keyset.tie}`,
+                ),
+              ),
+            ]
+          : []),
+      ),
+    )
+    .orderBy(asc(R.deadlineAt), asc(TIE))
+    .limit(limit + 1);
+}
+
+/** The filters every queue statement shares (organisation, the waiting set, the two narrowing filters). */
+export function queueFilters(
+  orgId: string,
+  q: Pick<QueueQuery, "status" | "overdueOnly" | "now">,
+): SQL[] {
+  return [
+    eq(R.organizationId, orgId),
+    WAITING,
+    ...(q.status ? [eq(R.status, q.status)] : []),
+    ...(q.overdueOnly ? [lte(R.deadlineAt, q.now)] : []),
+  ];
+}
+
 export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader {
   return async (orgId, userId, q) => {
     const keyset = q.cursor ? decodeQueueCursor(q.cursor) : null;
     const nowIso = q.now.toISOString();
-    const filters = [
-      eq(R.organizationId, orgId),
-      WAITING,
-      ...(q.status ? [eq(R.status, q.status)] : []),
-      ...(q.overdueOnly ? [lte(R.deadlineAt, q.now)] : []),
-    ];
+    const filters = queueFilters(orgId, q);
     const page = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
       const [counts] = await tx
         .select({
@@ -183,27 +225,7 @@ export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader
         })
         .from(R)
         .where(and(eq(R.organizationId, orgId), WAITING));
-      const rows = await tx
-        .select({ r: R, deadlineText: sql<string>`${R.deadlineAt}::text`, tie: TIE })
-        .from(R)
-        .where(
-          and(
-            ...filters,
-            ...(keyset
-              ? [
-                  or(
-                    gt(R.deadlineAt, sql`${keyset.deadlineAt}::timestamptz`),
-                    and(
-                      eq(R.deadlineAt, sql`${keyset.deadlineAt}::timestamptz`),
-                      sql`${TIE} > ${keyset.tie}`,
-                    ),
-                  ),
-                ]
-              : []),
-          ),
-        )
-        .orderBy(asc(R.deadlineAt), asc(TIE))
-        .limit(q.limit + 1);
+      const rows = await queueRowsQuery(tx, filters, keyset, q.limit);
       return { counts, rows };
     });
     const more = page.rows.length > q.limit;

@@ -8,7 +8,8 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import type { AckQueueResponse } from "@wardenx/types";
+import { ACK_QUEUE_STATUSES, type AckQueueResponse } from "@wardenx/types";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -16,6 +17,7 @@ import type { AckRow } from "../src/modules/36-messaging/ack-requests/ack-types"
 import {
   type QueuePage,
   type QueueQuery,
+  WAITING,
   decodeQueueCursor,
   encodeQueueCursor,
 } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
@@ -302,6 +304,15 @@ describe("unacknowledged service - what the viewer is shown", () => {
     expect(queries[0]?.limit).toBe(100);
     await service.list(actor, { limit: 0 });
     expect(queries[1]?.limit).toBe(1);
+  });
+});
+
+describe("the inlined waiting list", () => {
+  it("is exactly ACK_QUEUE_STATUSES as inline literals, never bound parameters", () => {
+    const { sql: text, params } = new PgDialect().sqlToQuery(WAITING);
+    expect(params).toEqual([]);
+    const listed = [...text.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(listed).toEqual([...ACK_QUEUE_STATUSES]);
   });
 });
 

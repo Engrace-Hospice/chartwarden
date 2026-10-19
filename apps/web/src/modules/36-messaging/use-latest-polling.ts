@@ -8,7 +8,7 @@ const MAX_POLL_INTERVAL_MS = 60_000;
 const REALTIME_POLL_INTERVAL_MS = 120_000;
 
 export function useLatestPolling(
-  loadLatest: (background?: boolean) => Promise<boolean>,
+  loadLatest: (background?: boolean) => Promise<boolean | undefined>,
   realtimeConnected: boolean,
 ): void {
   useEffect(() => {
@@ -26,7 +26,9 @@ export function useLatestPolling(
         schedule();
         return;
       }
-      failures = (await loadLatest(true)) ? 0 : Math.min(failures + 1, 2);
+      // undefined = nothing was learned (superseded or skipped): leave the back-off where it is
+      const outcome = await loadLatest(true);
+      if (outcome !== undefined) failures = outcome ? 0 : Math.min(failures + 1, 2);
       schedule();
     };
     const refreshWhenVisible = (): void => {

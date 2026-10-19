@@ -18,9 +18,11 @@ import {
   QUEUE_OPEN_LABEL,
   QUEUE_RESTRICTED_TEXT,
   QUEUE_SIGN_IN,
+  QUEUE_SPAN_CAPPED,
   QUEUE_STALE,
   QUEUE_UNREACHABLE_TEXT,
 } from "./unacknowledged-wording";
+import { MAX_SPAN_PAGES } from "./use-unacknowledged-queue";
 
 const PATH = "/api/v1/messaging/escalations/unacknowledged";
 const CH = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
@@ -439,16 +441,22 @@ describe("UnacknowledgedQueue", () => {
     it("unmounting with a request in flight raises no React warning", async () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const slow = deferred<unknown>();
-      const { unmount } = mount(() => slow.promise);
+      const { unmount, GET } = mount(() => slow.promise);
       unmount();
-      await act(async () => slow.resolve(page([item()])));
+      await act(async () =>
+        slow.resolve(page([item(), item({ id: "cccccccc-cccc-4ccc-8ccc-0000000000e1" })])),
+      );
       expect(spy).not.toHaveBeenCalled();
+      expect(GET).toHaveBeenCalledTimes(1); // the late answer started nothing (no chained page, no retry)
+      expect(document.body.textContent).not.toContain("Assigned to");
     });
 
     it("moves focus to the first appended row when Show more disappears, and to the list after a Retry", async () => {
       mount((query) => (query.cursor === "CUR" ? page([SECOND]) : withMore([FIRST])));
       await screen.findAllByRole("listitem");
-      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      const more = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      more.focus();
+      fireEvent.click(more);
       await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
       await waitFor(() => expect(document.activeElement).toBe(screen.getAllByRole("listitem")[1]));
     });
@@ -458,6 +466,7 @@ describe("UnacknowledgedQueue", () => {
       mount(() => (fail ? { error: {}, response: { status: 500 } } : page([item()])));
       const retry = await screen.findByRole("button", { name: "Retry" });
       fail = false;
+      retry.focus();
       fireEvent.click(retry);
       await screen.findAllByRole("listitem");
       await waitFor(() => expect(document.activeElement?.tagName).toBe("SECTION"));
@@ -515,6 +524,133 @@ describe("UnacknowledgedQueue", () => {
       await screen.findByText(QUEUE_DENIED);
       expect((await axe.run(document.body)).violations).toEqual([]);
       denied.unmount();
+    });
+
+    it("after a denied answer, changing the filter asks again and resolves (no stuck spinner)", async () => {
+      let mode: "denied" | "ok" = "denied";
+      const { GET } = mount(() =>
+        mode === "denied" ? { error: {}, response: { status: 403 } } : page([SECOND]),
+      );
+      await screen.findByText(QUEUE_DENIED);
+      const reads = GET.mock.calls.length;
+      mode = "ok";
+      fireEvent.click(screen.getByRole("button", { name: "Escalated" }));
+      expect(await screen.findByText("Assigned to Second Person.")).toBeTruthy();
+      expect(GET.mock.calls.length).toBe(reads + 1);
+      expect(screen.queryByLabelText("Loading")).toBeNull();
+    });
+
+    it("a poll already in flight cannot overwrite the rows Show more appended", async () => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      });
+      const poll = deferred<unknown>();
+      let firstRead = true;
+      mount((query) => {
+        if (query.cursor === "CUR") return page([SECOND]);
+        if (firstRead) {
+          firstRead = false;
+          return withMore([FIRST]);
+        }
+        return poll.promise;
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000); // the poll starts and hangs
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      await act(async () => poll.resolve(withMore([FIRST])));
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("never hides a server-overdue row, whatever the client clock says", async () => {
+      vi.useFakeTimers({ now: new Date("2026-10-18T09:00:00.000Z"), toFake: ["Date"] }); // hours BEHIND the deadline
+      mount(() => page([item()]));
+      expect(await screen.findByText("Overdue by 12 min")).toBeTruthy();
+      expect(screen.queryByText(/^Due /)).toBeNull();
+    });
+
+    it("moves no focus when the person has moved on, and none when Show more failed", async () => {
+      mount((query) =>
+        query.cursor === "CUR" ? { error: {}, response: { status: 500 } } : withMore([FIRST]),
+      );
+      await screen.findAllByRole("listitem");
+      const more = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      more.focus();
+      fireEvent.click(more);
+      await screen.findByRole("alert");
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("hands focus on only when it was still on the clicked control", async () => {
+      mount((query) => (query.cursor === "CUR" ? page([SECOND]) : withMore([FIRST])));
+      await screen.findAllByRole("listitem");
+      const filterButton = screen.getByRole("button", { name: "Overdue only" });
+      const more = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      more.focus();
+      fireEvent.mouseDown(more);
+      filterButton.focus(); // the person moved on before the click handler ran
+      fireEvent.click(more);
+      await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
+      expect(document.activeElement).toBe(filterButton);
+    });
+
+    it("a filter change while Show more is in flight leaves the new filter's own Show more working", async () => {
+      const slow = deferred<unknown>();
+      mount((query) => {
+        if (query.cursor === "CUR") return slow.promise;
+        if (query.cursor === "CUR2") return page([OLD_ONLY], { filtered: true });
+        return query.status === "escalated"
+          ? page([SECOND], { filtered: true, next_cursor: "CUR2", complete: false })
+          : withMore([FIRST]);
+      });
+      await screen.findAllByRole("listitem");
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      fireEvent.click(screen.getByRole("button", { name: "Escalated" }));
+      await screen.findByText("Assigned to Second Person.");
+      const more = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      expect((more as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(more);
+      expect(await screen.findByText("Assigned to Old Filter Person.")).toBeTruthy();
+      await act(async () => slow.resolve(page([FIRST])));
+      expect(screen.queryByText("Assigned to First Person.")).toBeNull();
+    });
+
+    it("says so when a refresh could not rebuild a very long list, after at most MAX_SPAN_PAGES requests", async () => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      });
+      let n = 0;
+      const hundred = () =>
+        Array.from({ length: 100 }, () => {
+          n += 1;
+          return item({ id: `cccccccc-cccc-4ccc-8ccc-${String(n).padStart(12, "0")}` });
+        });
+      const { GET } = mount(() => page(hundred(), { next_cursor: `C${n}`, complete: false }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      for (let i = 0; i < 10; i += 1) {
+        fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      }
+      expect(screen.getAllByRole("listitem")).toHaveLength(1100);
+      const before = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(GET.mock.calls.length - before).toBe(MAX_SPAN_PAGES);
+      expect(screen.getByText(QUEUE_SPAN_CAPPED)).toBeTruthy();
+      expect(screen.getAllByRole("listitem")).toHaveLength(MAX_SPAN_PAGES * 100);
     });
   });
 });

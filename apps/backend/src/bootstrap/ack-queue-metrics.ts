@@ -85,19 +85,25 @@ export function registerAckQueueMetrics(
   now: () => number = Date.now,
 ): void {
   let cached: { readonly at: number; readonly read: Promise<AckQueueSample | null> } | null = null;
+  // The sampler itself (not the timed-out race) is unsettled: never start another, so a hung database cannot pile up connections.
+  let running = false;
   const sample = (): Promise<AckQueueSample | null> => {
-    if (!cached || now() - cached.at >= SAMPLE_TTL_MS) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), SAMPLE_TIMEOUT_MS);
+    const expired = !cached || now() - cached.at >= SAMPLE_TTL_MS;
+    if (cached && (!expired || running)) return cached.read;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), SAMPLE_TIMEOUT_MS);
+    });
+    running = true;
+    const underlying = sampler()
+      .catch(() => null)
+      .finally(() => {
+        running = false;
       });
-      cached = {
-        at: now(),
-        read: Promise.race([sampler().catch(() => null), timeout]).finally(() =>
-          clearTimeout(timer),
-        ),
-      };
-    }
+    cached = {
+      at: now(),
+      read: Promise.race([underlying, timeout]).finally(() => clearTimeout(timer)),
+    };
     return cached.read;
   };
   const measured = (s: AckQueueSample | null): AckQueueSample | null =>
