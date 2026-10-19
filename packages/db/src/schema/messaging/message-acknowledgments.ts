@@ -50,6 +50,8 @@ export const messageAckRequests = pgTable(
     resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     version: integer("version").notNull().default(0),
+    /** ADR-0081 (migration 1129): the ROLE the sender addressed ('rn' | 'physician'), null when a person was named. Fixed once set. */
+    addressedRole: text("addressed_role"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

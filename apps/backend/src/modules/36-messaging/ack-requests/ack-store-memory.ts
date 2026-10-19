@@ -61,6 +61,7 @@ export function createMemoryAckStore(): MemoryAckStore {
         channelId: n.channelId,
         patientId: n.patientId,
         ackClass: n.ackClass,
+        addressedRole: n.addressedRole ?? null,
         status: "pending",
         requesterUserId: n.requesterUserId,
         assignedUserId: n.assignedUserId,

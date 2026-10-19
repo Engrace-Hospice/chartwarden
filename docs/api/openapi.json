@@ -168040,6 +168040,324 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/role-send": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdRolesend",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message_id",
+                    "channel_id",
+                    "patient_id",
+                    "recipient_user_id",
+                    "role",
+                    "created"
+                  ],
+                  "properties": {
+                    "message_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "channel_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patient_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "recipient_user_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "role": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "physician",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "role",
+                  "patient_id",
+                  "recipient_user_id",
+                  "body_doc",
+                  "client_message_id"
+                ],
+                "properties": {
+                  "role": {
+                    "anyOf": [
+                      {
+                        "const": "rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "physician",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "patient_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "recipient_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "body_doc": {
+                    "type": "object",
+                    "required": [
+                      "schemaVersion",
+                      "doc"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "const": 1,
+                        "type": "number"
+                      },
+                      "doc": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "content"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "doc",
+                            "type": "string"
+                          },
+                          "content": {
+                            "maxItems": 500,
+                            "type": "array",
+                            "items": {}
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "client_message_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/role-send/resolution": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdRolesendResolution",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids and display names to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "rn",
+                  "type": "string"
+                },
+                {
+                  "const": "physician",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patient_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "role",
+                    "as_of",
+                    "status",
+                    "people",
+                    "shift_ends_at",
+                    "time_zone"
+                  ],
+                  "properties": {
+                    "role": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "physician",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "as_of": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "covered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "coverage_gap",
+                          "type": "string"
+                        },
+                        {
+                          "const": "roster_not_connected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_configured",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "user_id",
+                          "display_name"
+                        ],
+                        "properties": {
+                          "user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "shift_ends_at": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "time_zone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/scheduled-messages": {
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdScheduledmessages",

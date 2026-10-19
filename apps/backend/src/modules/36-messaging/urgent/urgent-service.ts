@@ -38,6 +38,11 @@ export interface UrgentSend {
   readonly recipientUserId: string;
   readonly clientMessageId: string;
   readonly correlationId?: string | undefined;
+  /**
+   * ADR-0081: set ONLY by the role-based send, after it resolved and the sender confirmed `recipientUserId`. The role is stored on the
+   * response request, so the send REQUIRES response tracking: with tracking off it is refused (never sent without a record of the role).
+   */
+  readonly roleAddressed?: string | undefined;
 }
 
 /** Request-scoped: authorises the link node(s) exactly as a normal send does (validateRichBodyLinks). */
@@ -88,6 +93,7 @@ export interface UrgentServiceDeps {
         readonly patientId: string;
         readonly requesterUserId: string;
         readonly assigneeUserId: string;
+        readonly addressedRole?: string | undefined;
       },
     ) => Promise<void>;
   };
@@ -104,6 +110,13 @@ export interface UrgentService {
 }
 
 const channelNotFound = (): NotFoundError => new NotFoundError("channel");
+/** ADR-0081: a role-based send whose response cannot be tracked is refused whole (nothing sent), never sent without the role on record. */
+const roleSendUntracked = (): WardenXError =>
+  new WardenXError(
+    "ROLE_SEND_UNAVAILABLE",
+    "Messaging a role is unavailable right now. Use the agency telephone procedure; no message was sent.",
+    503,
+  );
 
 /** A port that throws answers "no": a seam outage must never name a guess as the recipient. */
 async function orElse<T>(read: () => Promise<T>, fallback: T): Promise<T> {
@@ -164,7 +177,8 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
             null,
           )
         : null;
-      if (replayRecipient?.toLowerCase() !== input.recipientUserId.toLowerCase()) {
+      const isReplay = replayRecipient?.toLowerCase() === input.recipientUserId.toLowerCase();
+      if (!isReplay) {
         // One uniform answer for: the author, a non-member, off the care team, not qualified (H-02).
         const careTeam = await orElse(() => deps.careTeamMembers(actor.orgId, patientId), []);
         const qualified =
@@ -185,6 +199,8 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       const tracker = deps.responseTracker;
       // A flag lookup ERROR propagates: an urgent message must never silently lose its request on a blip.
       const track = tracker ? await tracker.enabled(actor.orgId) : false;
+      // A replay of a send that already committed answers with the original even if tracking was turned off since (the core replays).
+      if (input.roleAddressed && !track && !isReplay) throw roleSendUntracked();
       const outcome = { hookRan: false };
       const sent = await deps.messaging.sendMessage(actor.orgId, {
         channelId: input.channelId,
@@ -215,6 +231,7 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
               patientId,
               requesterUserId: actor.userId,
               assigneeUserId: input.recipientUserId,
+              addressedRole: input.roleAddressed,
             });
           }
         },

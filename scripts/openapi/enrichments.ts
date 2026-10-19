@@ -1451,6 +1451,13 @@ import {
   ReviewItemResponseSchema as M36ReviewItemResponseSchema,
   ReviewListResponseSchema as M36ReviewListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/review-typebox";
+// M36 role-based send (ADR-0081, PROPOSED).
+import {
+  RoleSendResolutionQuerySchema as M36RoleSendResolutionQuerySchema,
+  RoleSendResolutionResponseSchema as M36RoleSendResolutionResponseSchema,
+  RoleSendResponseSchema as M36RoleSendResponseSchema,
+  SendRoleMessageBodySchema as M36SendRoleMessageBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/role-send-typebox";
 // M36 WP 3.3 SBAR policy.
 import {
   PutSbarPolicyBodySchema as M36PutSbarPolicyBodySchema,
@@ -9750,6 +9757,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendUrgentMessageBodySchema,
     response: M36UrgentMessageResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/channels/:id/role-send/resolution": {
+    summary:
+      "Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids and display names to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient",
+    query: M36RoleSendResolutionQuerySchema,
+    response: M36RoleSendResolutionResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/role-send": {
+    summary:
+      "Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SendRoleMessageBodySchema,
+    response: M36RoleSendResponseSchema,
     status: 201,
   },
   "GET /api/v1/messaging/channels/:id/urgent-messages/options": {

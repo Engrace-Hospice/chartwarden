@@ -15,6 +15,7 @@ import { composeGuards, requireAbac, requirePermission } from "@wardenx/auth";
 import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { OnCallCoverageService } from "../oncall-directory/oncall-coverage-service";
+import type { RoleSendPorts } from "../oncall-directory/role-send-service";
 import { parse } from "./messaging-typebox";
 import { OnCallCoverageQuerySchema, OnCallCoverageResponseSchema } from "./oncall-typebox";
 
@@ -28,6 +29,8 @@ export interface OnCallRouteDeps {
    * 404 the gate gives (a missing patient must not be told apart from an invisible one) and before the router and the read audit.
    */
   readonly patientExists: (organizationId: string, patientId: string) => Promise<boolean>;
+  /** ADR-0081: the ports of the role-based send (the urgent service is added where the routes are mounted). Absent => the uniform 404. */
+  readonly roleSend?: RoleSendPorts;
 }
 
 /** Used when the boot supplies none: the uniform 404. */
@@ -40,16 +43,33 @@ export const DISABLED_ONCALL: OnCallRouteDeps = {
   },
 };
 
-const PATIENT_SCOPE = composeGuards(
-  requirePermission("patient.read"),
-  requireAbac("patient.read", "caseload_or_scope", {
-    getTarget: (request) => ({
-      patientId: (request.query as { patient_id?: unknown } | undefined)?.patient_id,
+/**
+ * The chart-read gate of a route that names a patient (`patient.read` + `caseload_or_scope`, no break-glass), then the org-scoped
+ * existence check, both throwing the same `NotFoundError("resource")`. `patientIdOf` says where the route carries the id (the query for
+ * the directory, the body for a role-based send). A malformed id must be refused (422) BEFORE these run: the predicate never sees a non-uuid.
+ */
+export function buildPatientGate(
+  patientIdOf: (request: { readonly query?: unknown; readonly body?: unknown }) => unknown,
+  patientExists: OnCallRouteDeps["patientExists"],
+): readonly [PreHandler, PreHandler] {
+  const scope = composeGuards(
+    requirePermission("patient.read"),
+    requireAbac("patient.read", "caseload_or_scope", {
+      getTarget: (request) => ({ patientId: patientIdOf(request) }),
+      notFoundOnDeny: true,
+      breakGlassBypassable: false,
     }),
-    notFoundOnDeny: true,
-    breakGlassBypassable: false,
-  }),
-) as PreHandler;
+  ) as PreHandler;
+  // The scope gate's own deny is NotFoundError("resource"); a missing / other-org patient throws the identical error.
+  const exists: PreHandler = async (request) => {
+    const orgId = request.context?.organizationId;
+    if (!orgId) throw new UnauthorizedError();
+    if (!(await patientExists(orgId, String(patientIdOf(request))))) {
+      throw new NotFoundError("resource");
+    }
+  };
+  return [scope, exists];
+}
 
 export function registerOnCallRoutes(
   app: FastifyInstance,
@@ -61,13 +81,10 @@ export function registerOnCallRoutes(
   const VALID_QUERY: PreHandler = async (request) => {
     parse(OnCallCoverageQuerySchema, request.query);
   };
-  // The scope gate's own deny is NotFoundError("resource"); a missing / other-org patient throws the identical error.
-  const PATIENT_EXISTS: PreHandler = async (request) => {
-    const orgId = request.context?.organizationId;
-    if (!orgId) throw new UnauthorizedError();
-    const { patient_id: patientId } = request.query as { patient_id: string };
-    if (!(await deps.patientExists(orgId, patientId))) throw new NotFoundError("resource");
-  };
+  const [PATIENT_SCOPE, PATIENT_EXISTS] = buildPatientGate(
+    (request) => (request.query as { patient_id?: unknown } | undefined)?.patient_id,
+    deps.patientExists,
+  );
   app.get(
     "/api/v1/messaging/oncall/coverage",
     {

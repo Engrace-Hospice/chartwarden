@@ -35,6 +35,7 @@ import type {
 } from "@wardenx/messaging";
 import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createRoleSendService } from "../oncall-directory/role-send-service";
 import { resolveRichWrite } from "../rich-body-codec";
 import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
@@ -96,6 +97,7 @@ import {
 } from "./promotion-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import { DISABLED_REVIEW, type ReviewRouteDeps, registerReviewRoutes } from "./review-routes";
+import { DISABLED_ROLE_SEND, registerRoleSendRoutes } from "./role-send-routes";
 import {
   DISABLED_SBAR,
   type SbarRouteDeps,
@@ -468,6 +470,27 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
   registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });
+
+  // --- ADR-0081 (PROPOSED): role-based send over the urgent service and the same guarded router; flag-gated in the service ---
+  registerRoleSendRoutes(
+    app,
+    deps.oncall?.roleSend && deps.urgent
+      ? {
+          service: createRoleSendService({ ...deps.oncall.roleSend, urgent: deps.urgent.service }),
+          patientExists: deps.oncall.patientExists,
+          ...(deps.urgent.rateLimit ? { rateLimit: deps.urgent.rateLimit } : {}),
+        }
+      : DISABLED_ROLE_SEND,
+    {
+      read: READ,
+      viewChannel: VIEW_CHANNEL,
+      send: SEND,
+      sendToChannel: SEND_TO_CHANNEL,
+      requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+      validateLinks: (request, richBody) =>
+        validateRichBodyLinks(request, clinicalLinkDeps, richBody),
+    },
+  );
 
   // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---
   registerSnoozeReminderRoutes(app, deps.snoozeReminders ?? DISABLED_SNOOZE_REMINDER, {
