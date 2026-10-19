@@ -65,6 +65,7 @@ import {
   addCalendarDays,
   computeAssessmentWindowDeadline,
   computeCtiSignatureDueAt,
+  computeF2fWindow,
   computeWrittenCertDeadline,
   isAssessmentWindowKind,
   localDateOfInstant,
@@ -2146,6 +2147,7 @@ export function createDbAdmissionRouteService(
             serviceAddressPostalCode: ADM.serviceAddressPostalCode,
             serviceAddressCountry: ADM.serviceAddressCountry,
             hospicePhysicianId: ADM.hospicePhysicianId,
+            attendingPhysicianId: ADM.attendingPhysicianId,
             primaryDiagnosisIcd10: REF.icd10TerminalPrimary,
             referringDxText: REF.referringDxText,
             recommendedByUserId: ADM.recommendedByUserId,
@@ -2153,7 +2155,6 @@ export function createDbAdmissionRouteService(
             recommendedAt: ADM.recommendedAt,
             attendingConsulted: ADM.attendingConsulted,
             attendingConsultNote: ADM.attendingConsultNote,
-            attendingPhysicianId: ADM.attendingPhysicianId,
             admissionTypeCode: ADM.admissionTypeCode,
             admissionSourceCode: ADM.admissionSourceCode,
           })
@@ -2464,22 +2465,66 @@ export function createDbAdmissionRouteService(
     async getElectionStatement(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
-          .select({ id: ES.id, status: ES.status, version: ES.version })
+          .select({
+            id: ES.id,
+            status: ES.status,
+            version: ES.version,
+            electionPeriodId: ES.electionPeriodId,
+            declaredEffectiveDate: ES.declaredEffectiveDate,
+            primaryDiagnosisIcd10AtElection: ES.primaryDiagnosisIcd10AtElection,
+            electedProviderEntityId: ES.providerEntityId,
+            electedAttendingPhysicianId: ES.attendingPhysicianId,
+            waiverAcknowledged: ES.curativeCareAcknowledgment,
+            stateAddendum: ES.stateAddendum,
+            signerKind: ES.signerKind,
+            signedAt: ES.signedAt,
+          })
           .from(ES)
           .where(eq(ES.id, id))
           .limit(1);
-        return r ? { id: r.id, state: r.status, version: Number(r.version) } : null;
+        return r
+          ? {
+              id: r.id,
+              state: r.status,
+              version: Number(r.version),
+              electionPeriodId: r.electionPeriodId,
+              effectiveDate: r.declaredEffectiveDate,
+              primaryDiagnosisIcd10: r.primaryDiagnosisIcd10AtElection,
+              electedProviderEntityId: r.electedProviderEntityId,
+              electedAttendingPhysicianId: r.electedAttendingPhysicianId,
+              waiverAcknowledged: r.waiverAcknowledged,
+              stateAddendum: r.stateAddendum,
+              signerKind: r.signerKind,
+              signedAt: r.signedAt,
+            }
+          : null;
       });
     },
     async listElectionPeriods(organizationId, admissionId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         if (!(await admissionExists(tx as DbClient, admissionId))) return null;
         const rows = await tx
-          .select({ id: EP.id, state: EP.status, version: EP.version })
+          .select({
+            id: EP.id,
+            state: EP.status,
+            version: EP.version,
+            sequenceNumber: EP.sequenceNumber,
+            expectedStart: EP.expectedStart,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+            actualEndAt: EP.actualEndAt,
+          })
           .from(EP)
           .where(eq(EP.admissionId, admissionId))
           .orderBy(EP.sequenceNumber);
-        return rows.map(toSummary);
+        return rows.map((r) => ({
+          ...toSummary(r),
+          sequenceNumber: Number(r.sequenceNumber),
+          expectedStart: r.expectedStart,
+          effectiveAt: r.effectiveAt,
+          scheduledEndAt: r.scheduledEndAt,
+          actualEndAt: r.actualEndAt,
+        }));
       });
     },
 
@@ -2487,21 +2532,88 @@ export function createDbAdmissionRouteService(
     async getCti(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
-          .select({ id: CTI.id, state: CTI.status, version: CTI.version })
+          .select({
+            id: CTI.id,
+            state: CTI.status,
+            version: CTI.version,
+            electionPeriodId: CTI.electionPeriodId,
+            hospiceMedicalDirectorId: CTI.hospiceMdId,
+            attendingPhysicianId: CTI.attendingMdId,
+            terminalDiagnosisIcd10: CTI.terminalDiagnosisIcd10,
+            secondaryDiagnoses: CTI.relatedConditionsIcd10,
+            prognosisStatement: CTI.prognosisStatement,
+            narrative: CTI.narrative,
+            clinicalFindings: CTI.clinicalFindings,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+            attendingMdSignedAt: CTI.attendingMdSignedAt,
+            periodStart: CTI.periodStart,
+            periodEnd: CTI.periodEnd,
+          })
           .from(CTI)
           .where(eq(CTI.id, id))
           .limit(1);
-        return r ? toSummary(r) : null;
+        return r
+          ? {
+              ...toSummary(r),
+              electionPeriodId: r.electionPeriodId,
+              hospiceMedicalDirectorId: r.hospiceMedicalDirectorId,
+              attendingPhysicianId: r.attendingPhysicianId,
+              terminalDiagnosisIcd10: r.terminalDiagnosisIcd10,
+              secondaryDiagnoses: r.secondaryDiagnoses,
+              prognosisStatement: r.prognosisStatement,
+              narrative: r.narrative,
+              clinicalFindings: r.clinicalFindings,
+              hospiceMdSignedAt: r.hospiceMdSignedAt?.toISOString() ?? null,
+              attendingMdSignedAt: r.attendingMdSignedAt?.toISOString() ?? null,
+              periodStart: r.periodStart,
+              periodEnd: r.periodEnd,
+            }
+          : null;
       });
     },
     async getF2f(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
-          .select({ id: F2F.id, state: F2F.status, version: F2F.version })
+          .select({
+            id: F2F.id,
+            state: F2F.status,
+            version: F2F.version,
+            electionPeriodId: F2F.electionPeriodId,
+            scheduledClinicianId: F2F.performedByUserId,
+            clinicianRole: F2F.performerRole,
+            scheduledDate: F2F.scheduledDate,
+            encounterDate: F2F.encounterDate,
+            requestedWindowStart: F2F.requestedWindowStart,
+            requestedWindowEnd: F2F.requestedWindowEnd,
+            authoritativeWindowStart: F2F.authoritativeWindowStart,
+            authoritativeWindowEnd: F2F.authoritativeWindowEnd,
+            withinWindow: F2F.withinWindow,
+            windowOverride: F2F.windowOverride,
+            attestationSignedAt: F2F.attestationSignedAt,
+          })
           .from(F2F)
           .where(eq(F2F.id, id))
           .limit(1);
-        return r ? toSummary(r) : null;
+        if (!r) return null;
+        const currentStart = await resolvePeriodF2fWindowStart(tx as DbClient, r.electionPeriodId);
+        const currentWindow = currentStart
+          ? computeF2fWindow(currentStart.start, DEFAULT_ORG_TZ)
+          : null;
+        return {
+          ...toSummary(r),
+          electionPeriodId: r.electionPeriodId,
+          scheduledClinicianId: r.scheduledClinicianId,
+          clinicianRole: r.clinicianRole,
+          scheduledDate: r.scheduledDate,
+          encounterDate: r.encounterDate,
+          requestedWindowStart: r.requestedWindowStart,
+          requestedWindowEnd: r.requestedWindowEnd,
+          authoritativeWindowStart: currentWindow?.windowStart ?? null,
+          authoritativeWindowEnd: currentWindow?.windowEnd ?? null,
+          withinWindow: r.withinWindow,
+          windowOverride: r.windowOverride,
+          attestationSignedAt: r.attestationSignedAt?.toISOString() ?? null,
+        };
       });
     },
 
@@ -2524,11 +2636,31 @@ export function createDbAdmissionRouteService(
     async getNor(organizationId, admissionId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
-          .select({ id: NOR.id, version: NOR.version })
+          .select({
+            id: NOR.id,
+            version: NOR.version,
+            acknowledgedAt: NOR.acknowledgedAt,
+            acknowledgedAtInstant: NOR.acknowledgedAtInstant,
+            acknowledgedByName: NOR.acknowledgedByName,
+            acknowledgedByRole: NOR.signerKind,
+            deliveryMethod: NOR.acknowledgmentMethod,
+          })
           .from(NOR)
           .where(eq(NOR.admissionId, admissionId))
           .limit(1);
-        return r ? { id: r.id, state: "acknowledged", version: Number(r.version) } : null;
+        return r
+          ? {
+              id: r.id,
+              state: "acknowledged",
+              version: Number(r.version),
+              acknowledgedAt: r.acknowledgedAt,
+              acknowledgedAtInstant: r.acknowledgedAtInstant?.toISOString() ?? null,
+              acknowledgedByName: r.acknowledgedByName,
+              acknowledgedByRole:
+                r.acknowledgedByRole === "representative" ? "legal_representative" : "patient",
+              deliveryMethod: r.deliveryMethod,
+            }
+          : null;
       });
     },
 
@@ -4216,6 +4348,8 @@ export function createDbAdmissionRouteService(
               // case and signElection corrects it from what the signer actually declared.
               signerKind: "patient",
               providerEntityId: input.electedProviderEntityId,
+              declaredEffectiveDate: input.effectiveDate ?? null,
+              primaryDiagnosisIcd10AtElection: input.primaryDiagnosisIcd10 ?? null,
               attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
               curativeCareAcknowledgment: input.waiverAcknowledged,
               // The column is jsonb NOT NULL DEFAULT '{}', so the addendum is stored as an object
@@ -4532,10 +4666,12 @@ export function createDbAdmissionRouteService(
               organizationId,
               electionPeriodId: input.electionPeriodId,
               hospiceMdId: adm.hospicePhysicianId,
-              attendingMdId: null,
+              attendingMdId: input.attendingPhysicianId ?? null,
               terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
               relatedConditionsIcd10: [...(input.secondaryDiagnoses ?? [])],
               narrative: input.narrative,
+              prognosisStatement: input.prognosisStatement,
+              clinicalFindings: input.clinicalFindings,
               signatureRequestedAt,
               signatureDueAt,
             })
@@ -4899,6 +5035,13 @@ export function createDbAdmissionRouteService(
           .where(and(eq(EP.id, input.electionPeriodId), eq(EP.admissionId, input.admissionId)))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
+        const periodWindowStart = await resolvePeriodF2fWindowStart(
+          tx as DbClient,
+          input.electionPeriodId,
+        );
+        const authoritativeWindow = periodWindowStart
+          ? computeF2fWindow(periodWindowStart.start, DEFAULT_ORG_TZ)
+          : null;
         const f2f = firstOrThrow(
           await tx
             .insert(F2F)
@@ -4908,6 +5051,10 @@ export function createDbAdmissionRouteService(
               performedByUserId: input.scheduledClinicianId,
               performerRole: role,
               scheduledDate: input.scheduledDate,
+              requestedWindowStart: input.windowStart ?? null,
+              requestedWindowEnd: input.windowEnd ?? null,
+              authoritativeWindowStart: authoritativeWindow?.windowStart ?? null,
+              authoritativeWindowEnd: authoritativeWindow?.windowEnd ?? null,
             })
             .returning({
               id: F2F.id,
@@ -6381,6 +6528,8 @@ export function createDbAdmissionRouteService(
               signerKind:
                 input.acknowledgedByRole === "legal_representative" ? "representative" : "patient",
               acknowledgedAt: acknowledgedAt.toISOString().slice(0, 10),
+              acknowledgedAtInstant: input.acknowledgedAt ? new Date(input.acknowledgedAt) : null,
+              acknowledgedByName: input.acknowledgedByName ?? null,
               acknowledgmentMethod: input.deliveryMethod,
             })
             .returning({ id: NOR.id }),

@@ -60,6 +60,7 @@ import {
   CollaboratorInviteRequestSchema as M2CollaboratorInviteRequestSchema,
   CollaboratorInviteResponseSchema as M2CollaboratorInviteResponseSchema,
   CredentialStatusResponseSchema as M2CredentialStatusResponseSchema,
+  CsrfBootstrapResponseSchema as M2CsrfBootstrapResponseSchema,
   ElevatedApprovalGrantRequestSchema as M2ElevatedApprovalGrantRequestSchema,
   ElevatedApprovalGrantSchema as M2ElevatedApprovalGrantSchema,
   ElevatedApprovalRevokeRequestSchema as M2ElevatedApprovalRevokeRequestSchema,
@@ -126,6 +127,7 @@ import {
   AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
+  CtiDetailResponseSchema,
   CtiDraftSchema,
   CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
@@ -136,12 +138,15 @@ import {
   DischargeDeclineSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
+  ElectionPeriodListResponseSchema,
   ElectionPeriodPatchSchema,
   ElectionSignSchema,
+  ElectionStatementDetailResponseSchema,
   ElectionStatementDraftSchema,
   ElectionVoidSchema,
   F2fAttestSchema,
   F2fCompleteSchema,
+  F2fDetailResponseSchema,
   F2fOverrideWindowSchema,
   F2fScheduleSchema,
   LocChangeSchema,
@@ -158,6 +163,7 @@ import {
   SummaryPageResponseSchema as M6SummaryPageResponseSchema,
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
   NorAcknowledgeSchema,
+  NorDetailResponseSchema,
   PatientElectionCertificationResponseSchema,
   PhysicianSignerListResponseSchema,
   ReferralAcceptResponseSchema,
@@ -1987,10 +1993,12 @@ import {
   EvvMetricsView as M18EvvMetricsView,
   EvvMissingResolutionListResponse as M18EvvMissingResolutionListResponse,
   EvvMissingResolutionView as M18EvvMissingResolutionView,
+  EvvOfflineSyncV2Response as M18EvvOfflineSyncV2Response,
   MembershipIdQuery as M18MembershipIdQuery,
   MetricsQuery as M18MetricsQuery,
   MissingResolutionListQuery as M18MissingResolutionListQuery,
   OfflineSyncRequest as M18OfflineSyncRequest,
+  OfflineSyncV2Request as M18OfflineSyncV2Request,
   RejectDeviceRequest as M18RejectDeviceRequest,
   ResubmitSubmissionRequest as M18ResubmitSubmissionRequest,
   RetireDeviceRequest as M18RetireDeviceRequest,
@@ -4240,7 +4248,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/election-statements/:id": {
     summary: "One election statement's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: ElectionStatementDetailResponseSchema,
   },
   "POST /api/v1/election-statements/:id/sign": {
     summary: "Sign the election statement",
@@ -4313,7 +4321,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
-    response: M6SummaryItemsResponseSchema,
+    response: ElectionPeriodListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/admissions": {
     summary:
@@ -4345,7 +4353,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/cti/:id": {
     summary: "One CTI's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: CtiDetailResponseSchema,
   },
   "POST /api/v1/cti/:id/sign-hospice-md": {
     summary: "Hospice medical director signs the CTI",
@@ -4367,7 +4375,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/face-to-face/:id": {
     summary: "One F2F encounter's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: F2fDetailResponseSchema,
   },
   "POST /api/v1/face-to-face/:id/complete": {
     summary: "Mark the F2F encounter completed",
@@ -4480,7 +4488,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/nor": {
     summary: "The admission's notice-of-rights acknowledgment",
-    response: M6SummaryRowResponseSchema,
+    response: NorDetailResponseSchema,
   },
   // Compliance windows (routes 43–46)
   "GET /api/v1/admissions/:id/compliance-windows": {
@@ -5934,9 +5942,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvCheckResultView,
   },
   "POST /api/v1/evv/offline-sync": {
-    summary: "Batch offline-sync of capture events (idempotent on device+localId)",
+    summary: "Legacy offline-sync (array response; durable only when localId is supplied)",
     body: M18OfflineSyncRequest,
     response: M18EvvCheckResultListResponse,
+  },
+  "POST /api/v1/evv/offline-sync/v2": {
+    summary: "Durable per-capture offline EVV reconciliation (at-least-once transport)",
+    body: M18OfflineSyncV2Request,
+    response: M18EvvOfflineSyncV2Response,
   },
   "POST /api/v1/evv/events/:eventId/correct": {
     summary: "Correction-of-record (Clinical Supervisor+, fresh step-up)",
@@ -6384,6 +6397,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/auth/context": {
     summary: "App-shell identity/role/permission projection (FB-T15)",
     response: M2AuthContextResponseSchema,
+  },
+  "GET /api/v1/auth/csrf": {
+    summary: "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+    response: M2CsrfBootstrapResponseSchema,
   },
   "GET /api/v1/auth/credential-status": {
     summary: "Read the authenticated identity's authoritative password-rotation state",

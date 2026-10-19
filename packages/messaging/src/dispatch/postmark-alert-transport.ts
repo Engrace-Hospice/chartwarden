@@ -1,15 +1,15 @@
-import { TransportError } from "./transports";
-import type { OutOfBandTransport } from "./transports";
 // @wardenx/messaging — Postmark alert-email transport (M36 GAP-062, spec §4.4 / §4.7).
 //
 // The OUT-OF-BAND alert path (`messaging.send_email`): a sanitized notification, never a body. Distinct from
 // `createPostmarkTransactionalEmailTransport` (auth/invite emails, void return): the delivery sweep needs the
 // Postmark `MessageID` back so the signed `/webhooks/postmark/event` callback can reconcile `delivered | bounced`
 // against it, and it must NOT retry internally (the sweep owns retry + backoff).
+import { renderOutOfBand } from "../notification/sanitize";
+import { TransportError } from "./transports";
+import type { OutOfBandTransport } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
 
 export const POSTMARK_ALERT_DEFAULT_BASE_URL = "https://api.postmarkapp.com";
-const ALERT_SUBJECT = "WardenX notification";
 
 export interface PostmarkAlertEmailOptions {
   readonly serverToken: string;
@@ -65,10 +65,11 @@ export function createPostmarkAlertEmailTransport(
 ): OutOfBandTransport {
   return {
     async send({ notification, destination }) {
+      const rendered = renderOutOfBand(notification, "email");
       const vendorMessageId = await sendPostmarkEmail(opts, {
         to: destination,
-        subject: ALERT_SUBJECT,
-        text: `${notification.short}\n\n${notification.deepLink}`,
+        subject: rendered.subject,
+        text: rendered.body,
       });
       return { vendorMessageId, settlesOnAcceptance: false };
     },

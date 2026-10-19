@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1653,
-    "coveredRoutes": 1653,
-    "directRoutesReferenced": 1543
+    "routes": 1655,
+    "coveredRoutes": 1655,
+    "directRoutesReferenced": 1545
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 53,
+      "routes": 54,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -40,7 +40,7 @@
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 47
+      "directRoutesReferenced": 48
     },
     {
       "module": "03-authorization",
@@ -287,12 +287,12 @@
     },
     {
       "module": "18-evv",
-      "routes": 25,
+      "routes": 26,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/evv-inject.test.ts"
       ],
-      "directRoutesReferenced": 25
+      "directRoutesReferenced": 26
     },
     {
       "module": "19-oncall",

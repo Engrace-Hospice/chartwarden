@@ -187,3 +187,10 @@ export interface AckRequestDetailResponse {
 export interface AckChannelListResponse {
   readonly requests: readonly AckRequestDto[];
 }
+
+/**
+ * Ops flag (default off, absent = off) for WP 4.6 (ADR-0073). Gates the notification policy's OUT-OF-BAND routes for the designated
+ * safety-critical alerts (urgent_sent, ack.requested / reassigned / escalated). It must be on TOGETHER WITH the flag of the event's own
+ * family (`messaging.urgent_clinical` for urgent_sent, `messaging.ack_requests` for ack.*); with it off the seeded in-app-only rules apply.
+ */
+export const NOTIFICATION_POLICY_FLAG_KEY = "messaging.notification_policy";

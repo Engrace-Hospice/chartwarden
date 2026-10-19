@@ -29,6 +29,7 @@ wins until the spec is re-locked.
 | Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
 | API contract & integrator changes | [`api/`](./api/) | [`api/CHANGES.md`](./api/CHANGES.md) |
+| Mobile architecture & cross-repository contracts | [`mobile/`](./mobile/) | [`mobile/README.md`](./mobile/README.md) |
 | Governance & history | audit + remediation pointers | [below](#governance--history) |
 
 ---

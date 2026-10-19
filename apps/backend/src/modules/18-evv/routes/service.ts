@@ -24,6 +24,7 @@ import {
   type EvvMissingResolutionKind,
   type EvvMissingResolutionStatus,
   ForbiddenError,
+  IdempotencyConflictError,
   NotFoundError,
 } from "@wardenx/types";
 import {
@@ -46,6 +47,7 @@ import {
   type EvvMissingResolutionEvent,
   transitionMissingResolution,
 } from "../domain/missing-resolution";
+import { fingerprintOfflineCapture, offlineFingerprintKey } from "../offline-idempotency";
 
 // ── view shapes returned to the route layer (coordinate-free except the team-location read, D10) ──────────
 export interface CheckResultView {
@@ -54,6 +56,21 @@ export interface CheckResultView {
   readonly gpsQuality: EvvEventGpsQuality;
   readonly geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
   readonly visitStateAfterEvent: string | null;
+}
+export interface OfflineCaptureInput {
+  readonly visitId: string;
+  readonly coords: { readonly lat: number; readonly lng: number };
+  readonly accuracyM: number;
+  readonly capturedAt: string;
+  readonly gpsQualityAttested?: "degraded_attested";
+  readonly claimedDeviceId: string;
+  readonly localId: string;
+  readonly serviceTypeCode?: string;
+}
+export interface OfflineCaptureResult extends CheckResultView {
+  readonly localId: string;
+  readonly status: "applied" | "already_applied";
+  readonly capturedAt: string;
 }
 export interface DeviceView {
   readonly id: string;
@@ -181,6 +198,9 @@ interface EventRow {
   lat: number;
   lng: number;
   accuracyM: number;
+  evvDeviceId: string;
+  offlineCapture: boolean;
+  localId: string | null;
   /** §7.7 correction chain. `replacesEventId` on the correction, `supersededByEventId` on the original. */
   replacesEventId: string | null;
   supersededByEventId: string | null; // stamped in place when a correction supersedes this row
@@ -201,6 +221,10 @@ export class EvvRouteService implements EvvAbacResolver {
   private readonly devices: DeviceRow[] = [];
   private readonly submissions = new Map<string, SubmissionRow>();
   private readonly resolutions = new Map<string, ResolutionRow>();
+  private readonly offlineReceipts = new Map<
+    string,
+    { fingerprint: string; result: OfflineCaptureResult }
+  >();
   private readonly tenantPolicy = new Map<string, { radiusM: number; maxAccuracyM: number }>();
   private readonly perAddress: Array<{
     organizationId: string;
@@ -302,6 +326,8 @@ export class EvvRouteService implements EvvAbacResolver {
       gpsQualityAttested?: "degraded_attested";
       /** The client's CLAIM of the posting device — only ever compared to the session-bound device. */
       claimedDeviceId?: string;
+      offlineCapture?: boolean;
+      localId?: string;
     },
     authority: EvvCaptureAuthority,
   ): Promise<CheckResultView> {
@@ -316,6 +342,61 @@ export class EvvRouteService implements EvvAbacResolver {
       this.boundDeviceOf(orgId, userId, input.claimedDeviceId, authority);
       return this.captureUnguarded(orgId, userId, kind, input);
     });
+  }
+
+  async recordOfflineCapture(
+    orgId: string,
+    userId: string,
+    kind: EvvEventKind,
+    input: OfflineCaptureInput,
+    authority: EvvCaptureAuthority,
+  ): Promise<OfflineCaptureResult> {
+    await assertCaptureAllowed(
+      this,
+      orgId,
+      userId,
+      input,
+      authority,
+      this.deviceAttestationEnforced,
+    );
+    const deviceId = this.boundDeviceOf(orgId, userId, input.claimedDeviceId, authority);
+    if (!deviceId) throw new ForbiddenError("No approved EVV device is bound to this capture.");
+    const fingerprint = fingerprintOfflineCapture(
+      {
+        organizationId: orgId,
+        postingMembershipId: userId,
+        evvDeviceId: deviceId,
+        localId: input.localId,
+        kind,
+        visitId: input.visitId,
+        capturedAt: input.capturedAt,
+        coords: input.coords,
+        accuracyM: input.accuracyM,
+        gpsQualityAttested: input.gpsQualityAttested,
+        serviceTypeCode: input.serviceTypeCode,
+      },
+      offlineFingerprintKey(),
+    );
+    const key = `${orgId}|${deviceId}|${input.localId}`;
+    const prior = this.offlineReceipts.get(key);
+    if (prior) {
+      if (prior.fingerprint !== fingerprint) throw new IdempotencyConflictError();
+      return { ...prior.result, status: "already_applied" };
+    }
+    const captured = this.captureUnguarded(orgId, userId, kind, {
+      ...input,
+      offlineCapture: true,
+      localId: input.localId,
+      claimedDeviceId: deviceId,
+    });
+    const result: OfflineCaptureResult = {
+      ...captured,
+      localId: input.localId,
+      status: "applied",
+      capturedAt: new Date(input.capturedAt).toISOString(),
+    };
+    this.offlineReceipts.set(key, { fingerprint, result });
+    return result;
   }
 
   /** Pre-flight for a batch: refuse a claimed device that is not the session-bound one, before any write. */
@@ -370,6 +451,9 @@ export class EvvRouteService implements EvvAbacResolver {
       gpsQualityAttested?: "degraded_attested";
       /** Set only by {@link EvvRouteService.correctEvent} — the event this one supersedes (§7.7). */
       replacesEventId?: string;
+      offlineCapture?: boolean;
+      localId?: string;
+      claimedDeviceId?: string;
     },
   ): CheckResultView {
     const visit = this.requireVisit(orgId, input.visitId);
@@ -396,6 +480,9 @@ export class EvvRouteService implements EvvAbacResolver {
       lat: input.coords.lat,
       lng: input.coords.lng,
       accuracyM: input.accuracyM,
+      evvDeviceId: input.claimedDeviceId ?? "",
+      offlineCapture: input.offlineCapture ?? false,
+      localId: input.localId ?? null,
       replacesEventId: input.replacesEventId ?? null,
       supersededByEventId: null,
     });
@@ -498,11 +585,11 @@ export class EvvRouteService implements EvvAbacResolver {
       serviceTypeCode: "",
       postingMembershipId: e.postingMembershipId,
       postingDisciplineAtRecording: "",
-      evvDeviceId: "",
+      evvDeviceId: e.evvDeviceId,
       capturedAt: e.capturedAt,
       recordedAt: e.capturedAt,
       gpsQuality: e.gpsQuality,
-      offlineCapture: false,
+      offlineCapture: e.offlineCapture,
       replacesEventId: e.replacesEventId,
       supersededByEventId: e.supersededByEventId,
     };

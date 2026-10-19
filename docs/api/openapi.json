@@ -29156,6 +29156,49 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "sequenceNumber": {
+                            "type": "integer"
+                          },
+                          "expectedStart": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scheduledEndAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualEndAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -29661,6 +29704,42 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgedAtInstant": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgedByRole": {
+                      "type": "string"
+                    },
+                    "deliveryMethod": {
+                      "type": "string"
                     }
                   }
                 }
@@ -42378,6 +42457,45 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "operationId": "getApiV1AuthCsrf",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "token"
+                  ],
+                  "properties": {
+                    "token": {
+                      "minLength": 64,
+                      "maxLength": 64,
+                      "pattern": "^[a-f0-9]+$",
+                      "type": "string"
                     }
                   }
                 }
@@ -96516,6 +96634,111 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "electionPeriodId": {
+                      "type": "string"
+                    },
+                    "hospiceMedicalDirectorId": {
+                      "type": "string"
+                    },
+                    "attendingPhysicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "terminalDiagnosisIcd10": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "secondaryDiagnoses": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "prognosisStatement": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "narrative": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicalFindings": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hospiceMdSignedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attendingMdSignedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "periodStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "periodEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -107514,6 +107737,78 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "electionPeriodId": {
+                      "type": "string"
+                    },
+                    "effectiveDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "primaryDiagnosisIcd10": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electedProviderEntityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electedAttendingPhysicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "waiverAcknowledged": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stateAddendum": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {}
+                      }
+                    },
+                    "signerKind": {
+                      "type": "string"
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -117809,7 +118104,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Batch offline-sync of capture events (idempotent on device+localId)",
+        "summary": "Legacy offline-sync (array response; durable only when localId is supplied)",
         "parameters": [],
         "responses": {
           "200": {
@@ -118086,6 +118381,407 @@
                                 },
                                 "gpsQualityAttested": {
                                   "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evv/offline-sync/v2": {
+      "post": {
+        "operationId": "postApiV1EvvOfflinesyncV2",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "Durable per-capture offline EVV reconciliation (at-least-once transport)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results",
+                    "summary"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "localId",
+                              "status",
+                              "eventId",
+                              "kind",
+                              "capturedAt",
+                              "gpsQuality",
+                              "geofenceDecision",
+                              "visitStateAfterEvent"
+                            ],
+                            "properties": {
+                              "localId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "applied",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "already_applied",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "eventId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "check_in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "check_out",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "capturedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "gpsQuality": {
+                                "anyOf": [
+                                  {
+                                    "const": "high",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "acceptable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "degraded_attested",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "outside_geofence",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_geofence_baseline",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "suspected_spoof",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "geofenceDecision": {
+                                "anyOf": [
+                                  {
+                                    "const": "pass",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_distance",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_accuracy",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_no_baseline",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "visitStateAfterEvent": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "localId",
+                              "status",
+                              "code",
+                              "correlationId"
+                            ],
+                            "properties": {
+                              "localId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "rejected",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "retryable",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "code": {
+                                "type": "string"
+                              },
+                              "correlationId": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "summary": {
+                      "type": "object",
+                      "required": [
+                        "applied",
+                        "alreadyApplied",
+                        "rejected",
+                        "retryable"
+                      ],
+                      "properties": {
+                        "applied": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "alreadyApplied": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "rejected": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "retryable": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "evvDeviceId",
+                  "events"
+                ],
+                "properties": {
+                  "evvDeviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "events": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "allOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "localId",
+                                "visitId",
+                                "capturedAt",
+                                "coords",
+                                "accuracyM",
+                                "evvDeviceId"
+                              ],
+                              "properties": {
+                                "localId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "visitId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "capturedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "coords": {
+                                  "type": "object",
+                                  "required": [
+                                    "lat",
+                                    "lng"
+                                  ],
+                                  "properties": {
+                                    "lat": {
+                                      "minimum": -90,
+                                      "maximum": 90,
+                                      "type": "number"
+                                    },
+                                    "lng": {
+                                      "minimum": -180,
+                                      "maximum": 180,
+                                      "type": "number"
+                                    }
+                                  }
+                                },
+                                "accuracyM": {
+                                  "minimum": 0,
+                                  "maximum": 500,
+                                  "type": "number"
+                                },
+                                "evvDeviceId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "offlineCapture": {
+                                  "const": true,
+                                  "type": "boolean"
+                                },
+                                "gpsQualityAttested": {
+                                  "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "serviceTypeCode"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "const": "check_in",
+                                  "type": "string"
+                                },
+                                "serviceTypeCode": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "allOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "localId",
+                                "visitId",
+                                "capturedAt",
+                                "coords",
+                                "accuracyM",
+                                "evvDeviceId"
+                              ],
+                              "properties": {
+                                "localId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "visitId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "capturedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "coords": {
+                                  "type": "object",
+                                  "required": [
+                                    "lat",
+                                    "lng"
+                                  ],
+                                  "properties": {
+                                    "lat": {
+                                      "minimum": -90,
+                                      "maximum": 90,
+                                      "type": "number"
+                                    },
+                                    "lng": {
+                                      "minimum": -180,
+                                      "maximum": 180,
+                                      "type": "number"
+                                    }
+                                  }
+                                },
+                                "accuracyM": {
+                                  "minimum": 0,
+                                  "maximum": 500,
+                                  "type": "number"
+                                },
+                                "evvDeviceId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "offlineCapture": {
+                                  "const": true,
+                                  "type": "boolean"
+                                },
+                                "gpsQualityAttested": {
+                                  "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "const": "check_out",
                                   "type": "string"
                                 }
                               }
@@ -118553,6 +119249,98 @@
                       "type": "integer"
                     },
                     "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electionPeriodId": {
+                      "type": "string"
+                    },
+                    "scheduledClinicianId": {
+                      "type": "string"
+                    },
+                    "clinicianRole": {
+                      "type": "string"
+                    },
+                    "scheduledDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedWindowStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedWindowEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "authoritativeWindowStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "authoritativeWindowEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "withinWindow": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "windowOverride": {
+                      "type": "boolean"
+                    },
+                    "attestationSignedAt": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -206118,8 +206906,64 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "patternProperties": {
-                          "^(.*)$": {}
+                        "required": [
+                          "id",
+                          "sequenceNumber",
+                          "periodKind",
+                          "effectiveAt",
+                          "scheduledEndAt",
+                          "actualEndAt",
+                          "status",
+                          "electionStatement",
+                          "cti",
+                          "faceToFace"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "sequenceNumber": {
+                            "type": "integer"
+                          },
+                          "periodKind": {
+                            "type": "string"
+                          },
+                          "effectiveAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scheduledEndAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualEndAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "electionStatement": {},
+                          "cti": {},
+                          "faceToFace": {}
                         }
                       }
                     },

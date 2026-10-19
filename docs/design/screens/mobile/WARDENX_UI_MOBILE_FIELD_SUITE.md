@@ -8,10 +8,12 @@ Module: MOBILE (M17, M18, M22)
 
 ## Purpose
 
-The Mobile Field Suite is the field clinician's offline-first surface — a Capacitor wrap of
-`apps/web` (ADR-0035), not a separate codebase. It carries the day's schedule, visit
+The Mobile Field Suite is the target specification for the separate React Native/Expo application
+in the `wardenx-mobile` repository (ADR-0069); it is not implemented in this monorepo and does not
+reuse DOM components from `apps/web`. It carries the day's schedule, visit
 documentation, EVV check-in/out, tasks, and messages into homes with poor or no
-connectivity. Work is captured locally and queued; a persistent sync indicator tells the
+connectivity. Offline capture, encryption, and reconciliation remain later mobile work; when those
+controls exist, a persistent sync indicator tells the
 clinician what has and has not reached the server. PHI masking, SUD redaction, and consent
 gating are identical to desktop — the smaller screen never loosens the rules.
 

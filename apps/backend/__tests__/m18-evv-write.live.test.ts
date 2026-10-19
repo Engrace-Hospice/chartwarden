@@ -347,6 +347,57 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     ).rejects.toBeInstanceOf(EvvCoordsKeyUnboundError);
   });
 
+  it("offline receipt deduplicates concurrent/replayed capture atomically across event partitions", async () => {
+    const { member, device } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const localId = crypto.randomUUID();
+    const input = {
+      visitId: visit,
+      coords: ADDRESS_BASELINE,
+      accuracyM: 5,
+      capturedAt: "2025-01-31T23:59:59.000Z",
+      claimedDeviceId: device,
+      localId,
+      serviceTypeCode: "routine_visit",
+    };
+    const [a, b] = await Promise.all([
+      svcAttestationOff.recordOfflineCapture(ORG_A, member, "check_in", input, SYSTEM_FIXTURE),
+      svcAttestationOff.recordOfflineCapture(ORG_A, member, "check_in", input, SYSTEM_FIXTURE),
+    ]);
+    expect(new Set([a.eventId, b.eventId]).size).toBe(1);
+    expect([a.status, b.status].sort()).toEqual(["already_applied", "applied"]);
+    const eventId = a.eventId;
+    const counts = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM evv_event WHERE id=$1) AS events,
+         (SELECT count(*)::int FROM evv_geofence_evaluation WHERE evv_event_id=$1) AS evaluations,
+         (SELECT count(*)::int FROM evv_offline_capture_receipt WHERE event_id=$1) AS receipts,
+         (SELECT count(*)::int FROM outbox_event WHERE aggregate_id=$1 AND event_type='m18.evv.check_in_recorded') AS outbox`,
+      [eventId],
+    );
+    expect(counts.rows[0]).toMatchObject({ events: 1, evaluations: 1, receipts: 1, outbox: 1 });
+    const event = await admin.query(
+      "SELECT offline_capture, local_id, synced_at FROM evv_event WHERE id=$1",
+      [eventId],
+    );
+    expect(event.rows[0]).toMatchObject({ offline_capture: true, local_id: localId });
+    expect(event.rows[0].synced_at).toBeTruthy();
+
+    await expect(
+      svcAttestationOff.recordOfflineCapture(
+        ORG_A,
+        member,
+        "check_in",
+        { ...input, capturedAt: "2025-02-01T00:00:01.000Z" },
+        SYSTEM_FIXTURE,
+      ),
+    ).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM evv_event WHERE id=$1", [eventId])).rows[0]
+        .n,
+    ).toBe(1);
+  });
+
   it("GAP-133 — with no coordinate key bound the capture is REFUSED and nothing is written", async () => {
     const { member } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);

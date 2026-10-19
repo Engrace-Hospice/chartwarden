@@ -5,9 +5,11 @@
 export {
   INVITE_TOKEN_HEADER,
   createIdentityAuth,
+  resolveMobileAuthOrigins,
   resolvePasskeyOrigins,
   resolveSignUpRequiresInvite,
   resolveTrustedOrigins,
+  resolveWebTrustedOrigins,
   resolvePasskeyRpId,
   type IdentityAuth,
   type IdentityAuthDb,

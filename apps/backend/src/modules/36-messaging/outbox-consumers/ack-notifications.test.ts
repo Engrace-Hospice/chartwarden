@@ -69,6 +69,7 @@ describe("M36 acknowledgment-request notifications consumer", () => {
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
       [
+        "ackClass",
         "channelId",
         "deepLink",
         "message",

@@ -92,6 +92,8 @@ export function buildM36AckNotificationsConsumer(deps: {
           messageId,
           // The message the alert is ABOUT (read back by `m36.notification.delivery_failed`, WP 4.5).
           sourceAggregateId: messageId,
+          // WP 4.6: the class the notification policy takes its platform floor from (a class, not PHI).
+          ackClass,
           message:
             event.eventType === M36_ACK_REQUESTED
               ? ACK_NOTIFICATION_TEXT.requested

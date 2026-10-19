@@ -1,5 +1,5 @@
 // M25 milestone 6a - the submission attempt's vocabulary and status machine (hospice ADR/TPE/QIC PRD, milestone 6).
-// PURE. Closed sets mirror the migration 1121 CHECKs (text + CHECK, no pgEnum).
+// PURE. Closed sets mirror the migration 1124 CHECKs (text + CHECK, no pgEnum).
 //
 // Every "submit" in M25 records a filing made outside WardenX; an attempt is the one place that tracks HOW it was
 // filed and the proof that came back. In 6a only the manual (guided) adapter is live, so an attempt is born either
@@ -89,7 +89,7 @@ const EDGES: Readonly<Record<SubmissionStatus, readonly SubmissionStatus[]>> = {
   cancelled: [],
 };
 
-/** Mirrors `m25_submission_attempt_guard()` in migration 1121. Nothing reaches acknowledged except from sent or needs_manual. */
+/** Mirrors `m25_submission_attempt_guard()` in migration 1124. Nothing reaches acknowledged except from sent or needs_manual. */
 export function canTransitionSubmission(from: SubmissionStatus, to: SubmissionStatus): boolean {
   return EDGES[from].includes(to);
 }

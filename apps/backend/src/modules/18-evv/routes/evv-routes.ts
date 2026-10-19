@@ -16,7 +16,13 @@ import {
   requireAbac,
   requirePermission,
 } from "@wardenx/auth";
-import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { clinicianCapture } from "../capture-guards";
@@ -37,6 +43,7 @@ import {
   MetricsQuery,
   MissingResolutionListQuery,
   OfflineSyncRequest,
+  OfflineSyncV2Request,
   RejectDeviceRequest,
   ResubmitSubmissionRequest,
   RetireDeviceRequest,
@@ -46,7 +53,7 @@ import {
   VisitIdParams,
   parse,
 } from "./evv-typebox";
-import type { EvvRoutePort } from "./service";
+import type { EvvRoutePort, OfflineCaptureResult } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -239,7 +246,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // BEFORE any is written, so one guard failure refuses the whole batch (the module-wide offline-sync
   // convention, cf. M13) — a denied event cannot slip through behind a "synced" ack. The writes themselves are
   // independent transactions, so a runtime failure on event N can still leave events 1..N-1 committed.
-  app.post("/api/v1/evv/offline-sync", { preHandler: [CHECK_IN] }, async (request) => {
+  app.post("/api/v1/evv/offline-sync", async (request) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(OfflineSyncRequest, request.body);
     const authority = captureAuthorityOf(request);
@@ -278,11 +285,12 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     }
     for (const claimed of claims)
       await service.assertCaptureDevice(organizationId, userId, claimed, authority);
-    // `Promise.all`, not a bare `.map` (F-068 §2): the production service is async. The service re-asserts
-    // the same guards per event (defence in depth).
-    return Promise.all(
-      b.events.map((e) =>
-        service.recordCapture(
+    // Compatibility endpoint: preserve the historical array response, but serialize writes. Captures with
+    // localId use the durable v2 engine; older captures without one remain non-reconcilable by definition.
+    const results = [];
+    for (const e of b.events) {
+      if (e.localId) {
+        const applied = await service.recordOfflineCapture(
           organizationId,
           userId,
           e.kind,
@@ -293,11 +301,159 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
             capturedAt: e.capturedAt,
             gpsQualityAttested: e.gpsQualityAttested,
             claimedDeviceId: e.evvDeviceId,
+            localId: e.localId,
+            serviceTypeCode: "serviceTypeCode" in e ? e.serviceTypeCode : undefined,
           },
           authority,
-        ),
-      ),
-    );
+        );
+        const { localId: _localId, status: _status, capturedAt: _capturedAt, ...legacy } = applied;
+        results.push(legacy);
+      } else {
+        results.push(
+          await service.recordCapture(
+            organizationId,
+            userId,
+            e.kind,
+            {
+              visitId: e.visitId,
+              coords: e.coords,
+              accuracyM: e.accuracyM,
+              capturedAt: e.capturedAt,
+              gpsQualityAttested: e.gpsQualityAttested,
+              claimedDeviceId: e.evvDeviceId,
+              offlineCapture: true,
+            },
+            authority,
+          ),
+        );
+      }
+    }
+    return results;
+  });
+
+  // V2 — at-least-once transport with durable, transactionally deduplicated evidence per capture.
+  app.post("/api/v1/evv/offline-sync/v2", async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const b = parse(OfflineSyncV2Request, request.body);
+    const authority = captureAuthorityOf(request);
+    if (new Set(b.events.map((event) => event.localId)).size !== b.events.length)
+      throw new ValidationError("localId must be unique in a batch", [
+        {
+          field: "events.localId",
+          code: "DUPLICATE_LOCAL_ID",
+          message: "localId must be unique in a batch",
+        },
+      ]);
+    for (const event of b.events) {
+      if (event.evvDeviceId !== b.evvDeviceId)
+        throw new ForbiddenError("an offline-sync event names a different device than the batch");
+    }
+    // Device coherence/trust is a batch-level fail-closed preflight. It runs again inside every capture tx.
+    await service.assertCaptureDevice(organizationId, userId, b.evvDeviceId, authority);
+
+    const invalidCausal = new Set<number>();
+    for (const [index, event] of b.events.entries()) {
+      if (event.kind !== "check_out") continue;
+      const checkIns = b.events.filter(
+        (candidate) => candidate.visitId === event.visitId && candidate.kind === "check_in",
+      );
+      if (
+        checkIns.length &&
+        checkIns.every((checkIn) => Date.parse(checkIn.capturedAt) > Date.parse(event.capturedAt))
+      )
+        invalidCausal.add(index);
+    }
+    const ordered = b.events
+      .map((event, index) => ({ event, index }))
+      .sort((a, z) => {
+        const visit = a.event.visitId.localeCompare(z.event.visitId);
+        if (visit) return visit;
+        const at = Date.parse(a.event.capturedAt) - Date.parse(z.event.capturedAt);
+        if (at) return at;
+        if (a.event.kind !== z.event.kind) return a.event.kind === "check_in" ? -1 : 1;
+        return a.index - z.index;
+      });
+    const results: Array<
+      | OfflineCaptureResult
+      | {
+          localId: string;
+          status: "rejected" | "retryable";
+          code: string;
+          correlationId: string;
+        }
+    > = new Array(b.events.length);
+    for (const { event, index } of ordered) {
+      if (invalidCausal.has(index)) {
+        results[index] = {
+          localId: event.localId,
+          status: "rejected",
+          code: "EVV_CAUSAL_ORDER_INVALID",
+          correlationId: request.context?.correlationId ?? request.id,
+        };
+        continue;
+      }
+      try {
+        const permission = event.kind === "check_out" ? "evv.check_out" : "evv.check_in";
+        const target = captureGateTarget({
+          body: { visitId: event.visitId, capturedAt: event.capturedAt },
+          context: request.context,
+        });
+        await requirePermission(permission)(request);
+        if (attested)
+          await requireAbac(permission, "device_attestation_valid", {
+            breakGlassBypassable: false,
+          })(request);
+        await requireAbac(permission, "assigned_clinician_for_visit", {
+          getTarget: () => target,
+          breakGlassBypassable: false,
+        })(request);
+        await requireAbac(permission, "evv_within_visit_window", {
+          getTarget: () => target,
+          breakGlassBypassable: false,
+        })(request);
+        results[index] = await service.recordOfflineCapture(
+          organizationId,
+          userId,
+          event.kind,
+          {
+            visitId: event.visitId,
+            coords: event.coords,
+            accuracyM: event.accuracyM,
+            capturedAt: event.capturedAt,
+            gpsQualityAttested: event.gpsQualityAttested,
+            claimedDeviceId: event.evvDeviceId,
+            localId: event.localId,
+            serviceTypeCode: "serviceTypeCode" in event ? event.serviceTypeCode : undefined,
+          },
+          authority,
+        );
+      } catch (error) {
+        results[index] =
+          error instanceof WardenXError && error.statusCode < 500
+            ? {
+                localId: event.localId,
+                status: "rejected",
+                code: error.code,
+                correlationId: request.context?.correlationId ?? request.id,
+              }
+            : {
+                localId: event.localId,
+                status: "retryable",
+                code: "EVV_SYNC_RETRYABLE",
+                correlationId: request.context?.correlationId ?? request.id,
+              };
+      }
+    }
+    const count = (status: string) => results.filter((result) => result?.status === status).length;
+    return reply.code(200).send({
+      results,
+      summary: {
+        applied: count("applied"),
+        alreadyApplied: count("already_applied"),
+        rejected: count("rejected"),
+        retryable: count("retryable"),
+      },
+    });
   });
 
   // 4 — fetch one event (coords only with ?include=coords + evv.read_coords; the slice returns metadata).

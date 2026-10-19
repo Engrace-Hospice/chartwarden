@@ -62,6 +62,10 @@ export const faceToFaceEncounters = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     performerRole: f2fPerformerRole("performer_role").notNull(),
     scheduledDate: date("scheduled_date"),
+    requestedWindowStart: date("requested_window_start"),
+    requestedWindowEnd: date("requested_window_end"),
+    authoritativeWindowStart: date("authoritative_window_start"),
+    authoritativeWindowEnd: date("authoritative_window_end"),
     encounterDate: date("encounter_date"),
     encounterLocation: f2fEncounterLocation("encounter_location"),
     // FY2027 CoP R-F2F-05 (migration 0390): the completing clinician's § 418.22(a)(4)(ii)(A)–(C) attestation

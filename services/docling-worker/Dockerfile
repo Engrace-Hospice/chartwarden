@@ -6,8 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
 
 # libcurl4t64 is named so the layer is rebuilt against the current security repo: tesseract pulls it in, and a
 # cached older layer kept the vulnerable 8.14.1-2+deb13u5 (CVE-2026-8286, CVE-2026-8927; fixed in deb13u7).
+# libexpat1 is named for the same reason: the base image ships 2.8.3-1~deb13u1 (CVE-2026-66046, -76956, -76957,
+# -77214, -93990; fixed in 2.9.0-1~deb13u1), and naming it makes apt upgrade it in place.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libcurl4t64 libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
+ && apt-get install -y --no-install-recommends libcurl4t64 libexpat1 libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv

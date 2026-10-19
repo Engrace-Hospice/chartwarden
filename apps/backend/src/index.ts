@@ -29,7 +29,7 @@ import {
   registerIdentityAuth,
   resolveActorPermissions,
   resolveMfaEnforcement,
-  resolveTrustedOrigins,
+  resolveWebTrustedOrigins,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
@@ -49,6 +49,7 @@ import {
   accountRoom,
   computeRoomSet,
   createAlertPayloadRegistry,
+  setOutOfBandFallbackObserver,
   userRoom,
 } from "@wardenx/messaging";
 import {
@@ -1713,6 +1714,8 @@ export function wireModuleSeams(
           // GAP-057 — M34's two recipient resolvers are registered onto the emitter's registry here (M36
           // cannot import M34); without this every rule naming them would throw/never deliver.
           emitter: createDrizzleAlertEmitter(deps.db, {
+            // WP 4.6 (ADR-0073): the notification policy's flag gate (default off per tenant).
+            flags: createDrizzleFeatureFlagReader(deps.db),
             extendResolvers: m34ResolverExtension(
               createDrizzleM34AlertResolverPorts(deps.db, {
                 roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),
@@ -4383,14 +4386,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
-    ...(rateLimitStore || rateLimitTiers
-      ? {
-          security: {
-            ...(rateLimitStore ? { rateLimitStore } : {}),
-            ...(rateLimitTiers ? { rateLimitTiers } : {}),
-          },
-        }
-      : {}),
+    security: {
+      // CORS is a browser HTTP concern. Native callback schemes are trusted only inside Better Auth
+      // and must never become Access-Control-Allow-Origin values.
+      corsAllowOrigins: resolveWebTrustedOrigins(),
+      ...(rateLimitStore ? { rateLimitStore } : {}),
+      ...(rateLimitTiers ? { rateLimitTiers } : {}),
+    },
     // TASK-040B (OPS-004) — the real `/ready` probe: DB `SELECT 1`, Redis PING, outbox pending-row
     // depth. Every check is OMITTED (reports "ok") when its dependency isn't configured, matching
     // today's boot posture — a slice/test/no-Redis boot still serves. `outboxDepthThreshold` reads
@@ -8736,6 +8738,26 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       jobId: M36_DELIVERY_PLATFORM_JOB_ID,
       reason: "M36 §4.4 send_* delivery sweep (active-org enumeration)",
     });
+    // WP 4.7: an out-of-band alert whose base URL is unusable ships with generic wording and NO link.
+    // Warn at boot in production-like envs, and log (reason code + channel only, no content) each generic fallback.
+    if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "staging") {
+      let baseUrlUsable = false;
+      try {
+        baseUrlUsable = /^https?:$/.test(new URL(webAppBaseUrl ?? "").protocol);
+      } catch {
+        baseUrlUsable = false;
+      }
+      if (!baseUrlUsable)
+        app.log.warn(
+          "WEB_APP_URL / BETTER_AUTH_URL is empty or not a valid http(s) URL: out-of-band alerts will ship without a link",
+        );
+    }
+    setOutOfBandFallbackObserver((event) =>
+      app.log.warn(
+        { reason: event.reason, channel: event.channel },
+        "M36 out-of-band alert rendered with generic wording (unproven or wrong-channel notification)",
+      ),
+    );
     const m36DeliveryWorkers = registerM36DeliveryWorkers({
       connection: queueConnection,
       store: createDrizzleDeliveryDispatchStore(dbHandle.db, m36OutboxPublisher),
@@ -11504,7 +11526,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         httpServer: app.server,
         pubClient,
         subClient,
-        trustedOrigins: resolveTrustedOrigins(),
+        // Native Socket.IO may omit Origin, but a supplied Origin is checked only against browser
+        // HTTP(S) origins. Authentication below remains mandatory in either case.
+        trustedOrigins: resolveWebTrustedOrigins(),
         // Behind a trusted proxy the socket address is the proxy: key on the entry that proxy appended, but only when
         // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
         clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),

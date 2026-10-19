@@ -242,6 +242,40 @@ export interface EvvEventDto {
   readonly supersededByEventId: EvvEventId | null;
 }
 
+/** V2 offline-sync evidence. A network exchange remains at-least-once; this is the server proof per capture. */
+export type EvvOfflineSyncStatus = "applied" | "already_applied" | "rejected" | "retryable";
+
+export interface EvvOfflineSyncAppliedDto {
+  readonly localId: string;
+  readonly status: "applied" | "already_applied";
+  readonly eventId: string;
+  readonly kind: EvvEventKind;
+  readonly capturedAt: string;
+  readonly gpsQuality: EvvEventGpsQuality;
+  readonly geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+  readonly visitStateAfterEvent: string | null;
+}
+
+export interface EvvOfflineSyncFailureDto {
+  readonly localId: string;
+  readonly status: "rejected" | "retryable";
+  /** Stable, coordinate-free machine code. */
+  readonly code: string;
+  readonly correlationId: string;
+}
+
+export type EvvOfflineSyncResultDto = EvvOfflineSyncAppliedDto | EvvOfflineSyncFailureDto;
+
+export interface EvvOfflineSyncResponseDto {
+  readonly results: readonly EvvOfflineSyncResultDto[];
+  readonly summary: {
+    readonly applied: number;
+    readonly alreadyApplied: number;
+    readonly rejected: number;
+    readonly retryable: number;
+  };
+}
+
 /** §4.3 — the EVV bracket M8 reads for encounter authoring + sign ("is the visit EVV-bracketed"). */
 export interface EvvBracketDto {
   readonly visitId: VisitId;

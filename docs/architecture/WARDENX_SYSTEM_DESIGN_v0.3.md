@@ -21,8 +21,8 @@
 ```mermaid
 flowchart TB
   subgraph clients["Clients"]
-    web["Web (apps/web)<br/>Vite + react-router (ADR-0035)"]
-    mobile["Mobile<br/>Capacitor wrap of apps/web (ADR-0035)"]
+    web["Web (apps/web)<br/>Vite + react-router"]
+    mobile["Mobile<br/>Separate React Native/Expo app (ADR-0069)"]
     admin["Admin (apps/admin)<br/>WardenX ops console"]
     portal["Portal (apps/portal)<br/>Patient/Caregiver PWA"]
   end
@@ -269,8 +269,8 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  participant C as Clinician (Capacitor app)
-  participant CAP as Capacitor Geolocation
+  participant C as Clinician (Expo/RN app)
+  participant CAP as Native geolocation adapter
   participant B as Backend
   participant DB as PostgreSQL
   participant S as Socket.IO
@@ -941,8 +941,8 @@ Capacity planning by tenant: heavy local-AI tenant projected against ml-worker c
 
 1. User submits credentials (or passkey) to Better Auth
 2. Better Auth issues a session record in PostgreSQL with `(user_id, organization_id, expires_at)`
-3. Session ID stored in HttpOnly Secure SameSite=Strict cookie (web) or Capacitor SecureStore (mobile)
-4. Subsequent requests carry the cookie / bearer token
+3. Better Auth stores the web session in its HttpOnly cookie; the Expo client persists the same Better Auth cookie material through SecureStore
+4. Subsequent native REST requests explicitly carry the Better Auth `Cookie` header; protected mutations also carry WardenX's exact `wardenx_csrf` cookie and `X-CSRF-Token` value
 5. Backend middleware resolves session → loads `(user_id, organization_id, membership_roles, location_memberships)` into request context
 
 ### 5.2 Identity Context (per request)
@@ -990,14 +990,17 @@ async function withOrgContext<T>(ctx: RequestContext, fn: () => Promise<T>): Pro
 
 `SET LOCAL` scopes to the transaction; RLS policies read `current_setting('app.org_id')`. If a query runs outside a transaction or without context set, RLS denies access (default DENY).
 
-### 5.4 Mobile (Capacitor) Auth
+### 5.4 Mobile (React Native/Expo) Auth
 
-Capacitor mobile app uses the same Better Auth session model but:
-- Session token stored in Capacitor SecureStore (Keychain on iOS, EncryptedSharedPreferences on Android)
-- Biometric unlock gate on app launch
-- App-level idle timer (15 min) independent of session expiry — re-prompts for biometric or password
-- 8-hour absolute session timeout same as web
-- Offline mode: app holds a short-lived signed offline ticket (cryptographically tied to session) that lets the user view cached patient records and draft encounters; sync requires online + valid session
+The separate mobile application uses the same Better Auth instance and `/api/auth/*` routes as the web clients:
+
+- `@better-auth/expo/client` persists Better Auth cookie material with Expo SecureStore. There is no WardenX bearer token or second session store.
+- `MOBILE_AUTH_TRUSTED_ORIGINS` contains reviewed, exact native callback schemes. Browser CORS and WebAuthn expected origins remain exact HTTP(S) origins from `TRUSTED_ORIGINS`.
+- An authenticated `GET /api/v1/auth/csrf` returns a non-cacheable double-submit nonce and emits `wardenx_csrf`; native code sends that exact value in both the `Cookie` and `X-CSRF-Token` headers for every protected mutation.
+- Organization selection remains one-shot. The client cannot change tenant, role, permissions, or rooms with a local identifier or request header.
+- Server session classes, password-change requirements, MFA enrolment, idle/absolute expiry, revocation, and step-up remain authoritative. A biometric app lock is an additional device control to validate in PR C.
+- Browser WebAuthn/passkeys remain supported. Native passkey enrolment is not considered available until association files and device testing prove it; TOTP and backup codes are the required fallback.
+- Offline PHI, EVV queues, native push, attestation, pinning, screenshot controls, and device integrity are later security work. No offline authentication ticket is issued by this design.
 
 ### 5.5 Cross-Module Identity (Worker Calls)
 
@@ -1329,13 +1332,13 @@ Each Python worker runs N instances (N = 1 in dev, 2-4 in production per worker 
 | Encounter note (heavy HearthNote UI) | 2 sec | 4 sec |
 | Reporting dashboard | 2 sec | 5 sec |
 
-### 9.3 Mobile App (Capacitor) Targets
+### 9.3 Mobile App (React Native/Expo) Targets
 
 - Cold launch to login screen: 2 sec
 - Login to dashboard: 3 sec
 - Encounter note open and ready to chart: 2 sec
 - EVV check-in tap-to-confirmation: 1 sec
-- Offline mode: full encounter flow available without round-trip
+- Offline clinical operation is a future target and requires its own encrypted persistence and reconciliation contract
 
 ### 9.4 Socket.IO Delivery Latency
 

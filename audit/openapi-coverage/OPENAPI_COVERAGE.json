@@ -1,22 +1,22 @@
 {
   "totals": {
-    "routes": 1664,
-    "enriched": 1664,
+    "routes": 1666,
+    "enriched": 1666,
     "deficit": 0,
-    "mutating": 949,
+    "mutating": 950,
     "mutatingNoBody": 1,
-    "gets": 670,
+    "gets": 671,
     "getsNoResponse": 8
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 53,
-      "enriched": 53,
+      "routes": 54,
+      "enriched": 54,
       "deficit": 0,
       "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
@@ -171,10 +171,10 @@
     },
     {
       "module": "18-evv",
-      "routes": 25,
-      "enriched": 25,
+      "routes": 26,
+      "enriched": 26,
       "deficit": 0,
-      "mutating": 15,
+      "mutating": 16,
       "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0

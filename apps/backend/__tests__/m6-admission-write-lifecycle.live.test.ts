@@ -278,10 +278,28 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     const norRes = await svc.acknowledgeNor(
       ORG_A,
       admissionId,
-      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      {
+        deliveryMethod: "electronic_witnessed",
+        acknowledgedByRole: "patient",
+        acknowledgedAt: "2026-04-15T10:30:00.000Z",
+        acknowledgedByName: "Pat Patient",
+      },
       USER,
     );
     expect(norRes.state).toBe("notice_of_rights_acknowledged");
+    const norPersisted = await admin.query(
+      "SELECT acknowledged_at::text, acknowledged_at_instant, acknowledged_by_name FROM notice_of_rights_acknowledgment WHERE admission_id=$1",
+      [admissionId],
+    );
+    expect(norPersisted.rows[0]).toMatchObject({
+      acknowledged_at_instant: new Date("2026-04-15T10:30:00.000Z"),
+      acknowledged_by_name: "Pat Patient",
+    });
+    expect(await svc.getNor(ORG_A, admissionId)).toMatchObject({
+      acknowledgedAtInstant: "2026-04-15T10:30:00.000Z",
+      acknowledgedByName: "Pat Patient",
+    });
+    expect(await svc.getNor(ORG_B, admissionId)).toBeNull();
     const norWin = await admin.query(
       "SELECT status FROM compliance_window WHERE admission_id=$1 AND window_kind='notice_of_rights'",
       [admissionId],

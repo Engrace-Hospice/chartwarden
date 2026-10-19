@@ -71,6 +71,10 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.5 turns a failed out-of-band route to the assignee of an acknowledgment request into an early escalation or failed_unreachable (never a receipt)",
   "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts":
     "WP 4.5 the in-app alert and ops notice for an acknowledgment request nobody could be reached for (never a receipt)",
+  "packages/messaging/src/resolution/notification-policy.ts":
+    "WP 4.6 the channel floor of the alerts that tell the assignee of an acknowledgment request (the class names and the m36.ack.* event names); it labels no delivery, open or read",
+  "apps/backend/src/modules/36-messaging/notification-policy-ports.ts":
+    "WP 4.6 the feature-flag gate of the m36.ack.* alerts (the ack_requests flag key and event names); it labels no delivery, open or read",
   "packages/messaging/src/jobs/queues.ts":
     "WP 4.4 names the two escalation queues of the acknowledgment-request aggregate (ack_escalation_timer / _sweep)",
   "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",

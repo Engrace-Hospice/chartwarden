@@ -49,6 +49,7 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
+const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const OTHER = "44444444-4444-4444-4444-444444444444";
 const MD = "55555555-5555-5555-5555-555555555555";
@@ -214,9 +215,25 @@ describe.skipIf(!DB_URL)(
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",
+        windowStart: daysFromNow(-50),
+        windowEnd: daysFromNow(-20),
         actor: SYSTEM_F2F_ACTOR,
       });
       expect(f2f.state).toBe("scheduled");
+      const scheduled = await admin.query(
+        "SELECT requested_window_start::text, requested_window_end::text, authoritative_window_start::text, authoritative_window_end::text FROM face_to_face_encounter WHERE id=$1",
+        [f2f.id],
+      );
+      expect(scheduled.rows[0]).toMatchObject({
+        requested_window_start: daysFromNow(-50),
+        requested_window_end: daysFromNow(-20),
+      });
+      expect(scheduled.rows[0].authoritative_window_start).not.toBe(daysFromNow(-50));
+      expect(await svc.getF2f(ORG_A, f2f.id)).toMatchObject({
+        requestedWindowStart: daysFromNow(-50),
+        authoritativeWindowStart: scheduled.rows[0].authoritative_window_start,
+      });
+      expect(await svc.getF2f(ORG_B, f2f.id)).toBeNull();
       const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
       expect(done.state).toBe("completed");
       const row = await admin.query(

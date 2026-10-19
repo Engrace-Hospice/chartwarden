@@ -398,7 +398,7 @@ contract), so `openapi.json`/the client are unchanged.
 > the only enforcement point (out-of-scope resources 404, never 403; SUD-flagged packet blocks redacted at the
 > SQL-filter level server-side per §7.2/W-SUD-01). The decision-recording panel (quorum gauge + non-quorate
 > refusal), attendance tracker, action-item assignment, adjourn control (D13 fresh step-up), build-packets, and
-> the minutes amendment-request write surfaces — plus the Socket.IO real-time propagation and the Capacitor
+> the minutes amendment-request write surfaces — plus the Socket.IO real-time propagation and the Expo/RN
 > Mobile Live variant — fill in as their write paths harden. The M22 minutes/packet PDF render and the M28 FHIR
 > `CareTeam`/`Encounter` projection are deferred (Wave F/H handshakes).
 
@@ -415,7 +415,7 @@ contract), so `openapi.json`/the client are unchanged.
 > `recurring_visit.read` / `time_off.read_team` / `visit.read` / `visit.read_metrics`); the SERVER stays the only
 > enforcement point (out-of-scope visits 404, never 403; the §4.7 pre-schedule ABAC + RLS narrow every read). The
 > drag-drop reschedule, publish-all, create/discontinue-recurring, approve/deny-time-off, availability editor, and
-> the OSRM map (polyline) write/visual surfaces — plus the Capacitor mobile Today/Map variants and the M31 portal
+> the OSRM map (polyline) write/visual surfaces — plus the Expo/RN mobile Today/Map variants and the M31 portal
 > upcoming-visit view — fill in as those write paths / Phase-2 modules land (`scheduling.route_optimization` OFF).
 
 > ²³ **EVV (M18) now LIVE — read surfaces (Track B, M18-T07, ADR-0030).** Built under
@@ -637,7 +637,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > route and §4.1.1 forbids a total count on a PHI list, because a count is an enumeration oracle) and it
 > NAMES the six §5.1 metrics it will not approximate — hospitalization avoidance, visit conversion,
 > late-checkout conversion, calls per clinician, AI-suggestion acceptance and SLA attainment; and the §5.2
-> Capacitor variants (push, Do-Not-Disturb bypass, one-tap dialling) plus the §5.3 portal care-log stay
+> Expo/RN variants (push, Do-Not-Disturb bypass, one-tap dialling) plus the §5.3 portal care-log stay
 > forward-seams owned by the native shell (ADR-0035) and M31 respectively.
 >
 > **"Unknown" is a third banner state, not a rounding of "off".** `/me/oncall` answers "am I on call?" from
@@ -717,7 +717,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > outstanding obligation with no button, because §4.1 publishes no route for it and one person posting
 > another's acknowledgment is precisely what §6 forbids; §8.7's "who has read my coordinates" list is named
 > as a gap on the consent page rather than rendered empty; the polygon editor takes lon,lat rings as text
-> and validates closure and the ≥4-point floor client-side and server-side; and the §5.2 Capacitor
+> and validates closure and the ≥4-point floor client-side and server-side; and the §5.2 Expo/RN
 > capabilities — the always-on-top FAB, the SQLCipher offline queue, background sync and the D5 biometric
 > verdict — stay owned by the native shell (ADR-0035), with `/me/safety` stating plainly that a web cancel
 > sends no biometric token and will therefore be recorded as attempted-and-rejected on a tenant that

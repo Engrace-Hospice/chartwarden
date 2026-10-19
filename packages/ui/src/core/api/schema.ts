@@ -3876,6 +3876,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce */
+        get: operations["getApiV1AuthCsrf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/memberships": {
         parameters: {
             query?: never;
@@ -9753,8 +9770,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Batch offline-sync of capture events (idempotent on device+localId) */
+        /** Legacy offline-sync (array response; durable only when localId is supplied) */
         post: operations["postApiV1EvvOfflinesync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evv/offline-sync/v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Durable per-capture offline EVV reconciliation (at-least-once transport) */
+        post: operations["postApiV1EvvOfflinesyncV2"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31674,6 +31708,11 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            sequenceNumber?: number;
+                            expectedStart?: string | null;
+                            effectiveAt?: string | null;
+                            scheduledEndAt?: string | null;
+                            actualEndAt?: string | null;
                         }[];
                     };
                 };
@@ -31908,6 +31947,11 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        acknowledgedAt?: string | null;
+                        acknowledgedAtInstant?: string | null;
+                        acknowledgedByName?: string | null;
+                        acknowledgedByRole?: string;
+                        deliveryMethod?: string;
                     };
                 };
             };
@@ -35696,6 +35740,30 @@ export interface operations {
                     "application/json": {
                         passwordChangeRequired: boolean;
                         reason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuthCsrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
                     };
                 };
             };
@@ -47460,6 +47528,20 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        hospiceMedicalDirectorId?: string;
+                        attendingPhysicianId?: string | null;
+                        terminalDiagnosisIcd10?: string | null;
+                        secondaryDiagnoses?: string[];
+                        prognosisStatement?: string | null;
+                        narrative?: string | null;
+                        clinicalFindings?: {
+                            [key: string]: unknown;
+                        } | null;
+                        hospiceMdSignedAt?: string | null;
+                        attendingMdSignedAt?: string | null;
+                        periodStart?: string | null;
+                        periodEnd?: string | null;
                     };
                 };
             };
@@ -50396,6 +50478,17 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        effectiveDate?: string | null;
+                        primaryDiagnosisIcd10?: string | null;
+                        electedProviderEntityId?: string | null;
+                        electedAttendingPhysicianId?: string | null;
+                        waiverAcknowledged?: boolean | null;
+                        stateAddendum?: {
+                            [key: string]: unknown;
+                        };
+                        signerKind?: string;
+                        signedAt?: string | null;
                     };
                 };
             };
@@ -53196,6 +53289,105 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1EvvOfflinesyncV2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    events: (({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_in";
+                        serviceTypeCode: string;
+                    }) | ({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_out";
+                    }))[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: ({
+                            /** Format: uuid */
+                            localId: string;
+                            status: "applied" | "already_applied";
+                            /** Format: uuid */
+                            eventId: string;
+                            kind: "check_in" | "check_out";
+                            /** Format: date-time */
+                            capturedAt: string;
+                            gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                            geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                            visitStateAfterEvent: string | null;
+                        } | {
+                            /** Format: uuid */
+                            localId: string;
+                            status: "rejected" | "retryable";
+                            code: string;
+                            correlationId: string;
+                        })[];
+                        summary: {
+                            applied: number;
+                            alreadyApplied: number;
+                            rejected: number;
+                            retryable: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1EvvVisitsByVisitIdBracket: {
         parameters: {
             query?: never;
@@ -53287,6 +53479,18 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        scheduledClinicianId?: string;
+                        clinicianRole?: string;
+                        scheduledDate?: string | null;
+                        encounterDate?: string | null;
+                        requestedWindowStart?: string | null;
+                        requestedWindowEnd?: string | null;
+                        authoritativeWindowStart?: string | null;
+                        authoritativeWindowEnd?: string | null;
+                        withinWindow?: boolean | null;
+                        windowOverride?: boolean;
+                        attestationSignedAt?: string | null;
                     };
                 };
             };
@@ -75467,7 +75671,16 @@ export interface operations {
                             version: number;
                         } | null;
                         periods: {
-                            [key: string]: unknown;
+                            id: string;
+                            sequenceNumber: number;
+                            periodKind: string;
+                            effectiveAt: string | null;
+                            scheduledEndAt: string | null;
+                            actualEndAt: string | null;
+                            status: string;
+                            electionStatement: unknown;
+                            cti: unknown;
+                            faceToFace: unknown;
                         }[];
                         complianceWindows: {
                             id: string;

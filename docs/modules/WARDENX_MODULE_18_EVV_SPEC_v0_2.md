@@ -1795,6 +1795,13 @@ All structural and policy decisions for Module 18 are resolved at lock time. The
 
 After applying: `bun run arch:fitness` is green (dependency-cruiser boundary check + `check-table-ownership`). The seam registry validates at boot: `M18` publishes the **six** canonical reader seams — `EvvBracketResolver`, `EvvComplianceReader`, `EvvAggregatorReferenceReader`, `EvvLocationProvider`, `EvvMetricsProvider`, `EvvVerificationProvider` (the portal "Nurse arrived at HH:MM" surface is `EvvVerificationProvider.arrivalEventForVisit`, not a separate `PortalEvvReader` — M18-F09 / ADR-0022 reconciles the count to six); consumes `PatientAddressReader` (from M5), `VisitReader` (from M17), `DeviceAttestationReader` (from M2), `EncounterSignedConsumer` (from M8 — registered as consumer not provider), `PolicyReader` (from M2 / M3 tenant-policy infrastructure).
 
+# PR E.1 addendum — durable offline capture reconciliation
+
+The normative offline contract and short storage/security decision are in
+[EVV offline sync v2](../mobile/evv-offline-sync-contract.md). Migration 1121 adds the non-partitioned,
+append-only `evv_offline_capture_receipt`, whose global uniqueness closes the gap left by monthly `evv_event`
+leaf indexes. Existing `local_id IS NULL` records remain historical and non-deduplicable.
+
 -----
 
 **End of Module 18 — Electronic Visit Verification Specification v0.2 (Locked)**
