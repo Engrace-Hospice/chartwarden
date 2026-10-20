@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 185,
+  "totalStaticWebScreens": 186,
   "e2eReachedCount": 19,
-  "axeReachedCount": 175,
+  "axeReachedCount": 176,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -755,6 +755,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "messaging.retention",
+      "module": "36-messaging",
+      "path": "/messaging/governance/retention",
+      "permission": "messaging.retention.manage",
+      "e2eReached": false,
+      "axeReached": true
     },
     {
       "id": "messaging.session-governance",
@@ -2255,6 +2263,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
+    },
+    {
+      "id": "messaging.retention",
+      "module": "36-messaging",
+      "path": "/messaging/governance/retention",
+      "permission": "messaging.retention.manage",
+      "e2eReached": false,
+      "axeReached": true
     },
     {
       "id": "messaging.session-governance",
