@@ -196,4 +196,76 @@ describe("RoleHome operational dashboard", () => {
     await waitFor(() => expect(screen.getByText(/referral awaiting triage/i)).toBeTruthy());
     expect(screen.getByText(/Some dashboard sections could not be loaded: safety/i)).toBeTruthy();
   });
+
+  it("does not call HOPE or out-of-scope IDG schedules for a caseload-scoped actor", async () => {
+    const client = clientFor({
+      "/api/v1/locations": {
+        items: [
+          { id: "loc-a", name: "A", status: "active" },
+          { id: "loc-b", name: "B", status: "active" },
+        ],
+      },
+    });
+    renderHome(
+      {
+        ...adminSession,
+        permissions: ["hope.timepoint.read", "idg.read"],
+        roles: ["rn"],
+        isAdmin: false,
+        orgWidePatientScope: false,
+        locationIds: ["loc-a"],
+      },
+      client,
+    );
+
+    await waitFor(() =>
+      expect(client.GET).toHaveBeenCalledWith(
+        "/api/v1/idg/schedule",
+        expect.objectContaining({
+          params: { query: expect.objectContaining({ location: "loc-a" }) },
+        }),
+      ),
+    );
+    const paths = (client.GET as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(paths).not.toContain("/api/v1/hope/schedules");
+    const locs = (client.GET as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => c[0] === "/api/v1/idg/schedule")
+      .map((c) => c[1].params.query.location);
+    expect(locs).toEqual(["loc-a"]);
+  });
+
+  it("calls HOPE and asks IDG for every location for an org-wide-scope actor", async () => {
+    const client = clientFor({
+      "/api/v1/locations": {
+        items: [
+          { id: "loc-a", name: "A", status: "active" },
+          { id: "loc-b", name: "B", status: "active" },
+        ],
+      },
+    });
+    renderHome(
+      {
+        ...adminSession,
+        permissions: ["hope.timepoint.read", "idg.read"],
+        roles: ["director_of_nursing"],
+        isAdmin: false,
+        orgWidePatientScope: true,
+        locationIds: ["loc-a"],
+      },
+      client,
+    );
+
+    await waitFor(() => {
+      const calls = (client.GET as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls.filter((c) => c[0] === "/api/v1/idg/schedule")).toHaveLength(2);
+    });
+    const calls = (client.GET as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.map((c) => c[0])).toContain("/api/v1/hope/schedules");
+    expect(
+      calls
+        .filter((c) => c[0] === "/api/v1/idg/schedule")
+        .map((c) => c[1].params.query.location)
+        .sort(),
+    ).toEqual(["loc-a", "loc-b"]);
+  });
 });

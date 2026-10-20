@@ -12,9 +12,13 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientIdentity, PatientLifecycleStatus } from "@wardenx/types";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
-import { type CareTeamStore, PRIMARY_RN_ASSIGNMENT_ROLE } from "./care-team-provider";
+import {
+  ADMITTING_STAFF_ASSIGNMENT_ROLE,
+  type CareTeamStore,
+  PRIMARY_RN_ASSIGNMENT_ROLE,
+} from "./care-team-provider";
 import type { CaseloadStore } from "./caseload-provider";
 import type { PatientMutatorStore } from "./patient-mutator";
 import type { PatientReaderStore } from "./patient-reader";
@@ -499,6 +503,9 @@ export function createDrizzleCareTeamStore(db: DbClient): CareTeamStore {
               eq(PA.organizationId, organizationId),
               eq(PA.patientId, patientId),
               isNull(PA.unassignedAt),
+              // `admitting_staff` is an access grant only (migration 1137), never a care-team member: it
+              // must not join the care-team channel on the next M36 sync.
+              ne(PA.role, ADMITTING_STAFF_ASSIGNMENT_ROLE),
             ),
           );
         return rows.map((r) => r.clinicianUserId);

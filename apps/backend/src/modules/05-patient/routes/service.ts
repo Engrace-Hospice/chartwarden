@@ -155,6 +155,11 @@ export interface AssignmentView {
   readonly current: boolean; // unassignedAt IS NULL
 }
 
+/** A care-team roster row: the assignment plus the clinician's display name (null when it cannot be resolved). */
+export interface CareTeamAssignmentView extends AssignmentView {
+  readonly displayName: string | null;
+}
+
 export interface CreatePatientAssignmentInput {
   readonly clinicianMembershipId: string;
   readonly role: string;
@@ -195,7 +200,7 @@ export interface EmergencyContactView {
  * involvements + the emergency contacts. All three are M5-owned reads scoped by RLS to app.org_id.
  */
 export interface CareTeamView {
-  readonly assignments: readonly AssignmentView[];
+  readonly assignments: readonly CareTeamAssignmentView[];
   readonly caregivers: readonly CaregiverView[];
   readonly emergencyContacts: readonly EmergencyContactView[];
 }

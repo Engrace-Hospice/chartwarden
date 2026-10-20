@@ -22,6 +22,7 @@ import {
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
 import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 import type { ElectionAddendumService } from "./election-addendum/service";
+import { mapMalformedIdTo404 } from "./malformed-id-guard";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
@@ -73,25 +74,31 @@ export function mountAdmissionRoutes(
 ): void {
   // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
   const physicianAuthority = createDbPhysicianAuthority(db);
-  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db), physicianAuthority });
-  if (electionAddendum) _registerM6AddendumRoutes(app, { service: electionAddendum });
+  _registerM6Abac({
+    resolver: mapMalformedIdTo404(createDbAdmissionAbacResolver(db)),
+    physicianAuthority,
+  });
+  if (electionAddendum)
+    _registerM6AddendumRoutes(app, { service: mapMalformedIdTo404(electionAddendum) });
   _registerM6Routes(app, {
-    service: createDbAdmissionRouteService(
-      db,
-      outbox,
-      ipuBedAssignmentReader,
-      providerEntityOrgCheck,
-      providerEntityLocations,
-      dpoaConsentCheck(),
-      f2fClinicianRoles,
-      f2fSignedNotes,
-      physicianAuthority,
+    service: mapMalformedIdTo404(
+      createDbAdmissionRouteService(
+        db,
+        outbox,
+        ipuBedAssignmentReader,
+        providerEntityOrgCheck,
+        providerEntityLocations,
+        dpoaConsentCheck(),
+        f2fClinicianRoles,
+        f2fSignedNotes,
+        physicianAuthority,
+      ),
     ),
     // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
     // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
-    dischargeDetails: createDbDischargeDetailsService(db, outbox),
+    dischargeDetails: mapMalformedIdTo404(createDbDischargeDetailsService(db, outbox)),
     dischargeWorklist: createDbDischargeWorklistService(db),
-    readmission: createDbReadmissionService(db, priorElectionClosure),
+    readmission: mapMalformedIdTo404(createDbReadmissionService(db, priorElectionClosure)),
   });
 }
 

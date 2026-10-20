@@ -639,6 +639,8 @@ export const patientAssignmentRole = pgEnum("patient_assignment_role", [
   "md",
   "volunteer",
   "bereavement",
+  // Non-clinical: the actor who created the patient from a referral (migration 1137).
+  "admitting_staff",
 ]);
 
 /** `patient_match_review_status` — soft-duplicate review queue state (§3.2, §7.3). */

@@ -3,7 +3,8 @@
 import { Type } from "@sinclair/typebox";
 import { schema } from "@wardenx/db";
 
-const ROLES = schema.patientAssignments.role.enumValues;
+// `admitting_staff` is the system-issued access grant (create-patient); it is never assigned by hand.
+const ROLES = schema.patientAssignments.role.enumValues.filter((r) => r !== "admitting_staff");
 
 export const AssignmentParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),

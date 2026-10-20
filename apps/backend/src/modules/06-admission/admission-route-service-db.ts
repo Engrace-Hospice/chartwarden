@@ -11,10 +11,12 @@
 // executes the §2.5 declarative effects (windows open/close, LOC + election-period end cascades), and
 // emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
+
 import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
+  ConflictError,
   type PatientAdmissionClearance,
   type PatientAdmissionClearanceReader,
   type PatientIntakeResolver,
@@ -45,6 +47,7 @@ import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reade
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
+import type { ActorSite } from "./actor-site";
 import { createDocumentReaderEvidenceValidator } from "./admission-document-validator";
 import {
   type AdmissionEvidenceDocumentValidator,
@@ -124,6 +127,7 @@ import {
   resolvePeriodF2fWindowStart,
   startRecertPeriodInTx,
 } from "./recert-period-activation";
+import { referralPatientFields } from "./referral-patient-fields";
 import {
   type RenderBuildCtx,
   type RenderSourcesPort,
@@ -555,6 +559,11 @@ function toReferralReadView(
 }
 
 const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
+/** Create-patient hit `patient_identifier_mbi_unique`: says nothing about WHO the existing patient is. */
+const duplicatePatientMbi = (): ConflictError =>
+  new ConflictError(
+    "A patient with this Medicare number already exists in your organization. This may be a possible duplicate patient; review the referral and match the existing patient instead of creating a new one.",
+  );
 
 /**
  * §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). The two 42 CFR
@@ -2726,7 +2735,11 @@ export function createDbAdmissionRouteService(
           payload:
             outcome === "eligible"
               ? { referralId: id, outcome }
-              : { referralId: id, reason: "ineligible" },
+              : {
+                  referralId: id,
+                  reason: "ineligible",
+                  ...(await referralPatientFields(tx, id, cur.patientId)),
+                },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -2900,7 +2913,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
+    async createReferralPatient(organizationId, id, ifVersion, actorUserId, actorSite) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -2917,13 +2930,28 @@ export function createDbAdmissionRouteService(
             ],
           );
         }
-        const patient = await patientResolver().createPatientFromIntake({
-          organizationId,
-          patientNameAtReceipt: cur.patientNameAtReceipt,
-          patientDobAtReceipt: cur.patientDobAtReceipt,
-          medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
-          administrativeSex: cur.sexAssignedAtBirth ?? "U",
-        });
+        // The actor who creates the patient is put on its caseload (M5, same transaction as the patient
+        // insert; the referral update below is a separate outer transaction, so a failure there leaves an
+        // orphan patient and a retry gets the 409 duplicate message against it) so they can open the chart
+        // and admission they just made. A duplicate MBI in this org is a conflict, never a 500; the
+        // raw error carries bound parameters (PHI) and is neither logged nor returned.
+        const patient = await patientResolver()
+          .createPatientFromIntake({
+            organizationId,
+            patientNameAtReceipt: cur.patientNameAtReceipt,
+            patientDobAtReceipt: cur.patientDobAtReceipt,
+            medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
+            administrativeSex: cur.sexAssignedAtBirth ?? "U",
+            ...(actorUserId ? { createdByUserId: actorUserId } : {}),
+            // The creator's single default site, so a site-scoped supervisor/clinician at that site can open the
+            // admission. M5's activation consumer later overwrites it with the admission's own siting.
+            ...(actorSite
+              ? { providerEntityId: actorSite.providerEntityId, locationId: actorSite.locationId }
+              : {}),
+          })
+          .catch((err: unknown) => {
+            throw mapUniqueViolation(err, { patient_identifier_mbi_unique: duplicatePatientMbi });
+          });
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -3189,7 +3217,11 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.referral.declined",
-          payload: { referralId: id, reason },
+          payload: {
+            referralId: id,
+            reason,
+            ...(await referralPatientFields(tx, id, cur.patientId)),
+          },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -3437,7 +3469,7 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.referral.duplicate",
-          payload: { referralId: id },
+          payload: { referralId: id, ...(await referralPatientFields(tx, id, cur.patientId)) },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -3449,7 +3481,9 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status === "converted")
+        // Only an open referral withdraws (the same four states the HL7 withdrawal path guards): a repeat withdraw
+        // would re-emit `m6.referral.withdrawn`, and declined / duplicate / converted referrals are already closed.
+        if (!["received", "under_review", "pending_information", "qualified"].includes(cur.status))
           throw new InvalidReferralStateError(id, cur.status, "withdraw");
         const r = firstOrThrow(
           await tx
@@ -3481,6 +3515,27 @@ export function createDbAdmissionRouteService(
             reason: reason ?? null,
           },
         );
+        // M5 ends the creator's access grant on the patient (the catalogued event had no manual emit site).
+        const [received] = await tx
+          .select({ receivedAt: REF.receivedAt })
+          .from(REF)
+          .where(eq(REF.id, id))
+          .limit(1);
+        const withdrawnAt = now();
+        await outbox.publish(tx, {
+          eventName: "m6.referral.withdrawn",
+          payload: {
+            referralId: id,
+            organizationId,
+            withdrawnVia: "manual",
+            originalReferralReceivedAt: (received?.receivedAt ?? withdrawnAt).toISOString(),
+            withdrawnAt: withdrawnAt.toISOString(),
+            ...(await referralPatientFields(tx, id, cur.patientId)),
+          },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

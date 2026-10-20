@@ -345,6 +345,7 @@ import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope"
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
+  M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
@@ -356,6 +357,7 @@ import {
   buildM5ExtractionWritebackConsumer,
   buildM5GeocodeAddressConsumer,
   buildM5IntakeSudPrivacyConsumer,
+  buildM5ReferralClosedConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
@@ -382,13 +384,16 @@ import {
   patientIsDeceasedForOrg,
   patientNameFragmentsPageForOrg,
   rebuildPrivacySnapshotsForOrg,
+  registerAdmittingGrantExpiryWorker,
   registerAmendmentSlaWorker,
   registerPatientErasers,
   registerPatientSeams,
   registerSnapshotRebuildWorker,
   resolveGeocoder,
+  scheduleAdmittingGrantExpiry,
   scheduleAmendmentSla,
   scheduleSnapshotRebuild,
+  wireAdmittingGrantExpiryTenancy,
   wireAmendmentSlaTenancy,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
@@ -2326,6 +2331,7 @@ export function wireModuleSeams(
   registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
   registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
+  wireAdmittingGrantExpiryTenancy(); // M5 — the admitting-grant expiry sweep's org enumeration
   wireAmendmentSlaTenancy(); // GAP-118 — M5 §4.5 amendment SLA scan's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
@@ -9282,11 +9288,33 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         reason: "M5 §4.5 amendment SLA scan fan-out",
       }),
     });
-    attachDlqAlertsToAll([m5SnapshotRebuildWorker, m5AmendmentSlaWorker], "m5");
+    // Backstop: end `admitting_staff` access grants still open after 14 days (the event hooks are primary).
+    const m5AdmittingGrantExpiryWorker = registerAdmittingGrantExpiryWorker(queueConnection, {
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
+        reason: "M5 admitting-grant expiry sweep fan-out",
+      }),
+    });
+    attachDlqAlertsToAll(
+      [m5SnapshotRebuildWorker, m5AmendmentSlaWorker, m5AdmittingGrantExpiryWorker],
+      "m5",
+    );
     app.addHook("onClose", async () => {
       await m5SnapshotRebuildWorker.close();
       await m5AmendmentSlaWorker.close();
+      await m5AdmittingGrantExpiryWorker.close();
     });
+    try {
+      const m5AdmittingGrantExpiryQueue = await scheduleAdmittingGrantExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m5AdmittingGrantExpiryQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M5 admitting-grant expiry schedule registration failed");
+    }
     try {
       const m5AmendmentSlaQueue = await scheduleAmendmentSla(queueConnection);
       app.addHook("onClose", async () => {
@@ -10582,6 +10610,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // §2.4.1 — a LIVE discharge (revocation, transfer out, moved, no longer terminal, for cause,
           // other) moves the chart `active/on_hold → discharged`; a death is the death cascade's.
           buildM5AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // The creator's `admitting_staff` access grant ends when its referral is declined / duplicate / withdrawn.
+          buildM5ReferralClosedConsumer({ db: dbHandle.db }),
           // GAP-118 — M5's own `geocode_address` job as the consumer of `m5.patient.address_changed`. The vendor
           // is NOT bound (a geocode sends a patient's home address to a third party: no vendor / BAA / key exists),
           // so `resolveGeocoder` returns the fail-closed port unless GEOCODER_VENDOR + GEOCODER_API_KEY +

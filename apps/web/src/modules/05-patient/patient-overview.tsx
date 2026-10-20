@@ -27,6 +27,7 @@ import { type JSX, type ReactNode, useEffect, useMemo, useRef, useState } from "
 
 import { Link } from "react-router-dom";
 
+import { isCareTeamRole } from "../../shell/care-team-roles";
 import {
   ChartBanner,
   fmtDate,
@@ -106,6 +107,9 @@ interface Assignment {
   assignedAt: string;
 
   current: boolean;
+
+  // Resolved server-side, so a viewer without member.manage (no staff roster) still sees a name.
+  displayName?: string | null;
 }
 
 interface EmergencyContact {
@@ -283,6 +287,9 @@ async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promi
 export function usePatientChartData(patient: PatientSummary, refreshKey = 0): PatientChartData {
   const client: Client = useApiClient();
 
+  // The staff roster read is gated by `member.manage`; without it the request only 403s.
+  const canListMembers = useSession()?.permissions?.includes("member.manage") ?? false;
+
   const [data, setData] = useState<PatientChartData>({});
 
   const alive = useRef(true);
@@ -328,28 +335,30 @@ export function usePatientChartData(patient: PatientSummary, refreshKey = 0): Pa
     ).then((r) =>
       merge({
         careTeam: {
-          assignments: (r?.assignments ?? []).filter((a) => a.current),
+          assignments: (r?.assignments ?? []).filter((a) => a.current && isCareTeamRole(a.role)),
 
           emergencyContacts: r?.emergencyContacts ?? [],
         },
       }),
     );
 
-    void settle<{ members: Member[] }>(
-      client.GET("/api/v1/orgs/{id}/members", {
-        params: { path: { id: patient.organizationId }, query: {} },
-      }),
-    ).then((r) => {
-      const map = new Map<string, Member>();
+    if (canListMembers) {
+      void settle<{ members: Member[] }>(
+        client.GET("/api/v1/orgs/{id}/members", {
+          params: { path: { id: patient.organizationId }, query: {} },
+        }),
+      ).then((r) => {
+        const map = new Map<string, Member>();
 
-      for (const m of r?.members ?? []) {
-        map.set(m.userId, m);
+        for (const m of r?.members ?? []) {
+          map.set(m.userId, m);
 
-        map.set(m.membershipId, m);
-      }
+          map.set(m.membershipId, m);
+        }
 
-      merge({ members: map });
-    });
+        merge({ members: map });
+      });
+    }
 
     void settle<{ problems?: Problem[] }>(
       client.GET("/api/v1/patients/{patientId}/care-plan", {
@@ -410,7 +419,7 @@ export function usePatientChartData(patient: PatientSummary, refreshKey = 0): Pa
     return () => {
       alive.current = false;
     };
-  }, [client, patient.id, patient.organizationId, refreshKey]);
+  }, [client, patient.id, patient.organizationId, refreshKey, canListMembers]);
 
   return data;
 }
@@ -535,7 +544,9 @@ export function Avatar({
 export function memberName(data: PatientChartData, id: string): string | null {
   const m = data.members?.get(id);
 
-  return m ? (m.displayName ?? m.email ?? null) : null;
+  const assigned = data.careTeam?.assignments.find((a) => a.clinicianUserId === id)?.displayName;
+
+  return m?.displayName ?? assigned ?? m?.email ?? null;
 }
 
 function currentAddress(addresses: Address[] | undefined): Address | null {
@@ -1111,7 +1122,7 @@ function CareTeamPanel({
 
             // row leads with the role and says when it was assigned, never a placeholder name.
 
-            const name = m?.displayName ?? m?.email ?? null;
+            const name = m?.displayName ?? a.displayName ?? m?.email ?? null;
 
             return (
               <li

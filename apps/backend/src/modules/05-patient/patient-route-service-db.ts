@@ -15,7 +15,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
-import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   assertAdmitDemographicsStorable,
   insertAdmitContactDetails,
@@ -55,6 +55,7 @@ import type {
   PatientView,
   PrivacyFlagsView,
 } from "./routes/service";
+import { ADMITTING_STAFF_ASSIGNMENT_ROLE } from "./seams/care-team-provider";
 
 const ID = schema.patientIdentifiers;
 const ADDR = schema.patientAddresses;
@@ -67,6 +68,7 @@ const CG = schema.caregivers;
 const EC = schema.emergencyContacts;
 const PFS = schema.patientPrivacyFlagSnapshots;
 const MEM = schema.memberships;
+const USR = schema.users;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
 
 const P = schema.patients;
@@ -715,9 +717,27 @@ export function createDbPatientRouteService(
           unassignedAt: ASSIGN.unassignedAt,
         })
         .from(ASSIGN)
-        .where(eq(ASSIGN.patientId, patientId))
+        // `admitting_staff` is an access grant, not a care-team member: kept off the displayed roster.
+        .where(
+          and(eq(ASSIGN.patientId, patientId), ne(ASSIGN.role, ADMITTING_STAFF_ASSIGNMENT_ROLE)),
+        )
         // active first (unassigned_at NULLS FIRST via the boolean), then newest assignment.
         .orderBy(asc(ASSIGN.unassignedAt), desc(ASSIGN.assignedAt));
+
+      // Names come through the IN-ORG membership (`user` is not RLS'd): suspended members are included so past
+      // assignments still resolve; a user with no membership here resolves to null. Display name only.
+      const clinicianIds = [...new Set(assignmentRows.map((r) => r.clinicianUserId))];
+      const nameRows =
+        clinicianIds.length === 0
+          ? []
+          : await tx
+              .select({ userId: MEM.userId, name: USR.name })
+              .from(MEM)
+              .innerJoin(USR, eq(USR.id, MEM.userId))
+              .where(
+                and(eq(MEM.organizationId, organizationId), inArray(MEM.userId, clinicianIds)),
+              );
+      const nameByUser = new Map(nameRows.map((r) => [r.userId, r.name]));
 
       const caregiverRows = await tx
         .select({
@@ -756,6 +776,7 @@ export function createDbPatientRouteService(
         assignments: assignmentRows.map((r) => ({
           id: r.id,
           clinicianUserId: r.clinicianUserId,
+          displayName: nameByUser.get(r.clinicianUserId)?.trim() || null,
           role: r.role,
           assignedAt: r.assignedAt,
           unassignedAt: r.unassignedAt ?? null,
