@@ -324,6 +324,8 @@ export function createDrizzleMessagingEraseStore(
       await preflightAttachmentRemoval(orgId);
       await blockNewUploads(orgId);
       await assertUploadUrlsExpired(orgId);
+      // The URL-expiry wait can be long: look again right before the irreversible object destruction (a hold applied meanwhile).
+      await assertNoActiveMessageHold(orgId);
       await destroyAllAttachmentObjects(orgId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         // Last look, inside this transaction: a row with an object that appeared after the final pass would be removed
