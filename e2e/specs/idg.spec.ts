@@ -107,7 +107,8 @@ test.describe("IDG", () => {
     await page.getByRole("button", { name: "Adjourn" }).click();
     const dialog = page.getByRole("dialog", { name: "Adjourn the meeting" });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Adjourn" }).click();
+    await dialog.getByRole("checkbox").check(); // the dialog now asks for an attestation first
+    await dialog.getByRole("button", { name: "Finalize & Adjourn" }).click();
     await expect(dialog.getByRole("alert")).toContainText("fresh re-authentication", {
       timeout: 15_000,
     });
@@ -129,7 +130,8 @@ test.describe("IDG", () => {
     await page.getByRole("button", { name: "Adjourn" }).click();
     const secondDialog = page.getByRole("dialog", { name: "Adjourn the meeting" });
     await expect(secondDialog).toBeVisible();
-    await secondDialog.getByRole("button", { name: "Adjourn" }).click();
+    await secondDialog.getByRole("checkbox").check(); // the dialog now asks for an attestation first
+    await secondDialog.getByRole("button", { name: "Finalize & Adjourn" }).click();
     // The dialog closes only on a committed write; a refusal keeps it open carrying the server's copy.
     await expect(secondDialog).toBeHidden({ timeout: 20_000 });
 
@@ -140,7 +142,7 @@ test.describe("IDG", () => {
       timeout: 15_000,
     });
     // …and the commit point is not offered twice: `adjourned` is terminal.
-    await expect(page.getByRole("button", { name: "Adjourn" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Adjourn" })).toHaveCount(0); // no longer rendered once adjourned
   });
 
   test("the IDG schedule is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

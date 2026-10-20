@@ -9,8 +9,8 @@ import { DEMO_ORG_NAME, type DemoAccount } from "./credentials";
 /** Signs in as `account`, binds the shared demo org, and waits for the shell to land on Home. */
 export async function signInAs(page: Page, account: DemoAccount): Promise<void> {
   await page.goto("/login");
-  await page.getByPlaceholder("you@agency.org").fill(account.email);
-  await page.getByPlaceholder("••••••••••").fill(account.password);
+  await page.getByLabel("Username or Email").fill(account.email);
+  await page.getByLabel("Password", { exact: true }).fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/login/organization");
   await page.getByRole("button", { name: new RegExp(DEMO_ORG_NAME) }).click();
