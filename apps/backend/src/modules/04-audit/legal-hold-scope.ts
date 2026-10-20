@@ -7,6 +7,7 @@
 // narrower selector this reader can honour), and an org-wide hold blocks EVERY retention purge in the org. Only
 // a hold that names patients scopes down to them. `dateRange`/`resourceKinds` are deliberately ignored — a
 // retention job that mis-scoped a hold would destroy held records, so over-blocking is the safe error.
+import { isMessagingOnlyCriteria } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
@@ -23,6 +24,8 @@ export function legalHoldScopeOf(criteriaRows: readonly unknown[]): ActiveLegalH
   let orgWide = false;
   const patientIds = new Set<string>();
   for (const criteria of criteriaRows) {
+    // A messaging-only hold (channelIds/userIds, ADR-0086 (proposed)) protects messages, not patient records.
+    if (isMessagingOnlyCriteria(criteria)) continue;
     const ids =
       criteria && typeof criteria === "object"
         ? (criteria as { patientIds?: unknown }).patientIds

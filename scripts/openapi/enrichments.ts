@@ -6806,12 +6806,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M4ELegalHoldListResponseSchema,
   },
   "POST /api/v1/legal-holds": {
-    summary: "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+    summary:
+      "Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds)",
     body: M4ECreateLegalHoldBodySchema,
     response: M4ECreateLegalHoldResponseSchema,
   },
   "POST /api/v1/legal-holds/:id/release": {
-    summary: "Release a legal hold (§10.6)",
+    summary: "Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED)",
     body: M4EReleaseLegalHoldBodySchema,
     response: M4EReleaseLegalHoldResponseSchema,
   },

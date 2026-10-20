@@ -20,6 +20,18 @@ export interface LegalHoldCriteriaShape {
   readonly patientIds?: readonly string[];
   readonly dateRange?: { readonly from: string; readonly to: string };
   readonly resourceKinds?: readonly string[];
+  /** Messaging selectors (ADR-0086 (proposed), WP 5.6): hold these M36 channels / these users' messages. They name
+   *  no `audit_event` row, so a hold carrying ONLY these (plus, optionally, a dateRange) covers no audit group. */
+  readonly channelIds?: readonly string[];
+  readonly userIds?: readonly string[];
+}
+
+/** True when a hold names messaging selectors and NO audit selector (`patientIds`/`resourceKinds`): it protects
+ *  messages only, so it neither covers an audit row-group nor reads as org-wide to a non-messaging reader. */
+export function isMessagingOnlyCriteria(criteria: unknown): boolean {
+  const c = (criteria ?? {}) as LegalHoldCriteriaShape;
+  const messaging = (c.channelIds?.length ?? 0) > 0 || (c.userIds?.length ?? 0) > 0;
+  return messaging && (c.patientIds?.length ?? 0) === 0 && (c.resourceKinds?.length ?? 0) === 0;
 }
 
 const toMs = (iso: string): number => Date.parse(iso);
@@ -38,6 +50,7 @@ export function holdCoversGroup(criteria: unknown, input: EraseInput): boolean {
   const hasKinds = (c.resourceKinds?.length ?? 0) > 0;
   const hasRange = c.dateRange !== undefined && c.dateRange !== null;
   if (!hasPatients && !hasKinds && !hasRange) return false;
+  if (isMessagingOnlyCriteria(c)) return false;
 
   if (hasPatients) {
     const listed = c.patientIds as readonly string[];

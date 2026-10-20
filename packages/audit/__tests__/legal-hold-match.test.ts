@@ -8,6 +8,7 @@ import {
   eraseAuditRows,
   firstCoveringHold,
   holdCoversGroup,
+  isMessagingOnlyCriteria,
   widenSpan,
 } from "../src";
 import { createInMemoryEraserPorts } from "../src/lifecycle/ports";
@@ -90,6 +91,29 @@ describe("firstCoveringHold + the eraser", () => {
       rowsErased: 1,
     });
     expect(erasedCalls()).toBe(1);
+  });
+});
+
+describe("messaging selectors (ADR-0086 proposed, WP 5.6)", () => {
+  const CH = ["44444444-4444-4444-8444-444444444444"];
+  it("a channelIds-only or userIds-only hold covers no audit group, even with a dateRange", () => {
+    const range = { from: "2026-03-01T00:00:00Z", to: "2026-03-31T00:00:00Z" };
+    expect(holdCoversGroup({ channelIds: CH }, group())).toBe(false);
+    expect(holdCoversGroup({ userIds: CH, dateRange: range }, group())).toBe(false);
+  });
+  it("a hold that also names a patient still scopes by that patient", () => {
+    expect(
+      holdCoversGroup({ channelIds: CH, patientIds: [PATIENT] }, group({ patientId: PATIENT })),
+    ).toBe(true);
+    expect(
+      holdCoversGroup({ channelIds: CH, patientIds: [OTHER] }, group({ patientId: PATIENT })),
+    ).toBe(false);
+  });
+  it("isMessagingOnlyCriteria is false for audit selectors, empty and malformed criteria", () => {
+    expect(isMessagingOnlyCriteria({ channelIds: CH })).toBe(true);
+    expect(isMessagingOnlyCriteria({ channelIds: CH, resourceKinds: ["x"] })).toBe(false);
+    expect(isMessagingOnlyCriteria({ channelIds: [] })).toBe(false);
+    expect(isMessagingOnlyCriteria(null)).toBe(false);
   });
 });
 

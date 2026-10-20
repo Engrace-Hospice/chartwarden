@@ -147580,6 +147580,20 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              "channelIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "userIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
                               }
                             }
                           },
@@ -147655,7 +147669,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+        "summary": "Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds)",
         "parameters": [],
         "responses": {
           "200": {
@@ -147737,6 +147751,20 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "channelIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "userIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
                       }
                     }
                   },
@@ -147757,7 +147785,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Release a legal hold (§10.6)",
+        "summary": "Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED)",
         "parameters": [
           {
             "name": "id",

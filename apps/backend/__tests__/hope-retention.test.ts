@@ -100,4 +100,14 @@ describe("legalHoldScopeOf — conservative M4 hold projection", () => {
     expect(legalHoldScopeOf([{ patientIds: [] }]).orgWide).toBe(true);
     expect(legalHoldScopeOf([null]).orgWide).toBe(true);
   });
+  it("does not read a messaging-only (channelIds/userIds) hold as org-wide or as a patient hold", () => {
+    const id = "44444444-4444-4444-8444-444444444444";
+    expect(legalHoldScopeOf([{ channelIds: [id] }, { userIds: [id], dateRange: {} }])).toEqual({
+      orgWide: false,
+      patientIds: new Set(),
+    });
+    expect(legalHoldScopeOf([{ channelIds: [id], patientIds: ["p"] }]).patientIds).toEqual(
+      new Set(["p"]),
+    );
+  });
 });

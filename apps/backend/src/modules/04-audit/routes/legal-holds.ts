@@ -15,17 +15,23 @@ import {
   type AuditContext,
   type AuditQuery,
   MAX_PAGE_LIMIT,
-  audit,
   decodeCursor,
   encodeCursor,
+  isMessagingOnlyCriteria,
   resolveLimit,
 } from "@wardenx/audit";
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  type M4OutboxPort,
+  applyLegalHoldInTx,
+  hasSelector,
+  releaseLegalHoldInTx,
+} from "../messaging-hold-workflow";
 import {
   type CreateLegalHoldBody,
   CreateLegalHoldBodySchema,
@@ -40,21 +46,7 @@ import {
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-/** A transactional-outbox emission (mirrors the `WriteOutboxPort` shape every other module binds). */
-export interface M4OutboxEmission {
-  readonly eventName: string;
-  readonly payload: Record<string, unknown>;
-  readonly organizationId: string;
-  readonly aggregateKind: string;
-  readonly aggregateId: string;
-}
-
-/** The composition root's transactional-outbox port, pinned to callerModule `m4` (optional — a hold
- *  still lands with the mutation committed when unbound; only the `m4.legal_hold.*` notification is
- *  skipped, mirroring the "best-effort" posture every other module's outbox port documents). */
-export interface M4OutboxPort {
-  publish(tx: DbClient, emission: M4OutboxEmission): Promise<void>;
-}
+export type { M4OutboxEmission, M4OutboxPort } from "../messaging-hold-workflow";
 
 /** The injection surface for the legal-holds routes. */
 export interface LegalHoldsRouteDeps {
@@ -94,6 +86,9 @@ function auditContextFor(request: FastifyRequest): AuditContext {
 
 const legalHoldRead = requirePermission("legalhold.read") as PreHandler;
 const legalHoldManage = requirePermission("legalhold.manage") as PreHandler;
+// A hold freezes retention and its release unfreezes destruction, so both need a fresh step-up (WP 5.6, ADR-0086
+// (proposed)): the M36 messaging routes already do, and M4's own create/release must not be the bypass.
+const legalHoldStepUp = requireStepUp("legalhold.manage") as PreHandler;
 
 /** Bounded scan cap (§ real-count honesty): a hold's match count is a REAL query result, never an
  *  estimate, but an org-wide criteria with no patient filter must not turn one request into an
@@ -118,6 +113,9 @@ async function countMatchingEvents(
   orgId: string,
   criteria: LegalHoldCriteria,
 ): Promise<number> {
+  // A messaging-only hold (ADR-0086 (proposed)) names no audit_event row; counting "everything in the date range"
+  // would report the whole audit log as held.
+  if (isMessagingOnlyCriteria(criteria)) return 0;
   const from = criteria.dateRange?.from;
   const to = criteria.dateRange?.to;
 
@@ -163,15 +161,6 @@ function toLegalHoldView(row: typeof HOLD.$inferSelect) {
   };
 }
 
-/** True when `criteria` names at least one selector (§ POST body validation — 422 EMPTY_CRITERIA). */
-function hasSelector(criteria: LegalHoldCriteria): boolean {
-  return (
-    (criteria.patientIds?.length ?? 0) > 0 ||
-    criteria.dateRange !== undefined ||
-    (criteria.resourceKinds?.length ?? 0) > 0
-  );
-}
-
 /**
  * Mount the §4.2 legal-hold routes: list, apply, release. Behind `legalhold.read`/`legalhold.manage`
  * (M4 spec §4.5); the compliance-lifecycle event is audited at `compliance` retention (§7) and, when
@@ -210,63 +199,48 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
     });
   });
 
-  app.post("/api/v1/legal-holds", { preHandler: [legalHoldManage] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
-    if (!hasSelector(body.criteria)) {
-      throw new WardenXError(
-        "EMPTY_CRITERIA",
-        "legal hold criteria must specify at least one of patientIds, dateRange, or resourceKinds",
-        422,
+  app.post(
+    "/api/v1/legal-holds",
+    { preHandler: [legalHoldManage, legalHoldStepUp] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
+      if (!hasSelector(body.criteria)) {
+        throw new WardenXError(
+          "EMPTY_CRITERIA",
+          "legal hold criteria must specify at least one of patientIds, dateRange, resourceKinds, channelIds, or userIds",
+          422,
+        );
+      }
+      const matchedRecordCount = await countMatchingEvents(
+        deps.query,
+        organizationId,
+        body.criteria,
       );
-    }
-    const matchedRecordCount = await countMatchingEvents(deps.query, organizationId, body.criteria);
-    // Explicit `Tx = DbClient` (the M30/M34 `withOrgContext<DbClient, T>` precedent,
-    // apps/backend/src/bootstrap/outbox-persister.ts's `OutboxTx` comment) so `tx` is directly
-    // assignable to both `AuditExecutor` and the outbox port's `tx: DbClient` — no cast needed.
-    const result = await withOrgContext<DbClient, typeof HOLD.$inferSelect>(
-      deps.db,
-      { organizationId, userId },
-      async (tx) => {
-        const [row] = await tx
-          .insert(HOLD)
-          .values({
+      // Explicit `Tx = DbClient` (the M30/M34 `withOrgContext<DbClient, T>` precedent,
+      // apps/backend/src/bootstrap/outbox-persister.ts's `OutboxTx` comment) so `tx` is directly
+      // assignable to both `AuditExecutor` and the outbox port's `tx: DbClient` — no cast needed.
+      const result = await withOrgContext<DbClient, typeof HOLD.$inferSelect>(
+        deps.db,
+        { organizationId, userId },
+        (tx) =>
+          applyLegalHoldInTx(tx, deps, auditContextFor(request), {
             organizationId,
+            userId,
             name: body.name,
             criteria: body.criteria,
             reason: body.reason,
-            appliedBy: userId,
-          })
-          .returning();
-        if (!row) throw new Error("legal_hold insert returned no row");
-        await audit(tx, auditContextFor(request), {
-          eventType: "data.legal_hold_applied",
-          resourceKind: "legal_hold",
-          resourceId: row.id,
-          outcome: "success",
-          severity: "warn",
-          retentionClass: "compliance",
-          context: { name: body.name, matchedRecordCount, reason: body.reason },
-        });
-        if (deps.outbox) {
-          await deps.outbox.publish(tx, {
-            eventName: "m4.legal_hold.applied",
-            payload: { holdId: row.id, matched: matchedRecordCount, reason: body.reason },
-            organizationId,
-            aggregateKind: "legal_hold",
-            aggregateId: row.id,
-          });
-        }
-        return row;
-      },
-    );
-    reply.code(201);
-    return { legalHoldId: result.id, matchedRecordCount };
-  });
+            matchedRecordCount,
+          }),
+      );
+      reply.code(201);
+      return { legalHoldId: result.id, matchedRecordCount };
+    },
+  );
 
   app.post(
     "/api/v1/legal-holds/:id/release",
-    { preHandler: [legalHoldManage] },
+    { preHandler: [legalHoldManage, legalHoldStepUp] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(LegalHoldIdParamsSchema, request.params);
@@ -274,46 +248,13 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       return withOrgContext<DbClient, { released: true; restoredRecordCount: number }>(
         deps.db,
         { organizationId, userId },
-        async (tx) => {
-          const existing = await tx
-            .select()
-            .from(HOLD)
-            .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.id, id)))
-            .limit(1);
-          const hold = existing[0];
-          if (!hold) throw new NotFoundError("legal_hold", id);
-          if (hold.status === "released") {
-            throw new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
-          }
-          const restoredRecordCount = await countMatchingEvents(
-            deps.query,
+        (tx) =>
+          releaseLegalHoldInTx(tx, deps, auditContextFor(request), {
             organizationId,
-            hold.criteria as LegalHoldCriteria,
-          );
-          await tx
-            .update(HOLD)
-            .set({ status: "released", releasedAt: new Date() })
-            .where(eq(HOLD.id, id));
-          await audit(tx, auditContextFor(request), {
-            eventType: "data.legal_hold_released",
-            resourceKind: "legal_hold",
-            resourceId: id,
-            outcome: "success",
-            severity: "warn",
-            retentionClass: "compliance",
-            context: { reason: body.reason, restoredRecordCount },
-          });
-          if (deps.outbox) {
-            await deps.outbox.publish(tx, {
-              eventName: "m4.legal_hold.released",
-              payload: { holdId: id, matched: restoredRecordCount, reason: body.reason },
-              organizationId,
-              aggregateKind: "legal_hold",
-              aggregateId: id,
-            });
-          }
-          return { released: true as const, restoredRecordCount };
-        },
+            holdId: id,
+            reason: body.reason,
+            countRestored: (criteria) => countMatchingEvents(deps.query, organizationId, criteria),
+          }),
       );
     },
   );
