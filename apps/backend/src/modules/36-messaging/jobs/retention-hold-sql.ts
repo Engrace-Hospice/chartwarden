@@ -81,6 +81,37 @@ export function overlayHeldPredicate(holds: readonly ActiveMessageHold[]): SQL {
       AND l.legal_hold_id IN (${uuidList(holds.map((h) => h.id))}))`;
 }
 
+/** The org's ACTIVE holds with their live criteria (read in the caller's tenant tx; org-filtered in addition to RLS). */
+export async function activeLiveHolds(
+  tx: DbClient,
+  organizationId: string,
+): Promise<readonly ActiveMessageHold[]> {
+  const active = await tx
+    .select({ id: schema.legalHolds.id, criteria: schema.legalHolds.criteria })
+    .from(schema.legalHolds)
+    .where(
+      and(
+        eq(schema.legalHolds.organizationId, organizationId),
+        eq(schema.legalHolds.status, "active"),
+      ),
+    );
+  return active.map((h) => ({ id: h.id, criteria: h.criteria as MessageHoldCriteria }));
+}
+
+/**
+ * SQL boolean over an attachment-style outer row: its message `messageIdExpr` (in org `orgIdExpr`) is covered by one of `holds`
+ * (live criteria, so it also covers messages the overlay has not materialised yet). `false` when there are no holds.
+ */
+export function messageHeldByAnyPredicate(
+  holds: readonly ActiveMessageHold[],
+  orgIdExpr: SQL,
+  messageIdExpr: SQL,
+): SQL {
+  if (holds.length === 0) return sql`false`;
+  return sql`EXISTS (SELECT 1 FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
+    WHERE m.organization_id = ${orgIdExpr} AND m.id = ${messageIdExpr} AND ${anyHoldPredicate(holds)})`;
+}
+
 /**
  * Is message `messageId` covered by an ACTIVE hold right now, judged on the live criteria (not the overlay, which lags until the next
  * scan)? Runs in the caller's tenant transaction; org-filtered in addition to RLS. The overlay trigger (migration 1138) stays the
@@ -95,17 +126,8 @@ export async function isMessageHeldNow(
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${messagingHoldLockName(organizationId)}, 0))`,
   );
-  const active = await tx
-    .select({ id: schema.legalHolds.id, criteria: schema.legalHolds.criteria })
-    .from(schema.legalHolds)
-    .where(
-      and(
-        eq(schema.legalHolds.organizationId, organizationId),
-        eq(schema.legalHolds.status, "active"),
-      ),
-    );
-  if (active.length === 0) return false;
-  const holds = active.map((h) => ({ id: h.id, criteria: h.criteria as MessageHoldCriteria }));
+  const holds = await activeLiveHolds(tx, organizationId);
+  if (holds.length === 0) return false;
   const res = await tx.execute<{ held: boolean }>(
     sql`SELECT true AS held FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
          WHERE m.organization_id = ${organizationId}::uuid AND m.id = ${messageId}::uuid AND ${anyHoldPredicate(holds)}
