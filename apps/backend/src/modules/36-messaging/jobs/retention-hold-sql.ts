@@ -4,6 +4,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // `messageHeldBy` in @wardenx/messaging; the live suite proves the two agree. Aliases: m = message, c = its channel.
 // Every subquery is filtered by organization_id. Ids reach SQL only as bound uuid params.
 import type { MessageHoldCriteria } from "@wardenx/messaging";
+import { messagingHoldLockName } from "@wardenx/types";
 import { type SQL, and, eq, sql } from "drizzle-orm";
 
 /** The M4 seam the scan needs, injected at the composition root (M36 imports nothing from M4). */
@@ -90,6 +91,10 @@ export async function isMessageHeldNow(
   organizationId: string,
   messageId: string,
 ): Promise<boolean> {
+  // Shared: edits do not block each other, but a hold apply (exclusive) waits for this edit's commit, so a hold placed mid-edit cannot slip past the check.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${messagingHoldLockName(organizationId)}, 0))`,
+  );
   const active = await tx
     .select({ id: schema.legalHolds.id, criteria: schema.legalHolds.criteria })
     .from(schema.legalHolds)

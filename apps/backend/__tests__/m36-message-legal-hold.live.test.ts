@@ -20,6 +20,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyLegalHoldInTx } from "../src/modules/04-audit/messaging-hold-workflow";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
+import { isMessageHeldNow } from "../src/modules/36-messaging/jobs/retention-hold-sql";
 import { type LiveKit, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -384,6 +385,59 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     } finally {
       await eraserTx.end();
     }
+  });
+
+  it("EDIT RACE (barriered): a hold apply waits for an in-flight edit-path hold check (shared hold lock), then commits", async () => {
+    await setHoldStatus("released");
+    const m = await mkMessage();
+    let releaseEdit: () => void = () => {};
+    const editMayCommit = new Promise<void>((r) => {
+      releaseEdit = r;
+    });
+    let checkDone: () => void = () => {};
+    const checked = new Promise<void>((r) => {
+      checkDone = r;
+    });
+    // The edit tx runs the hold check (taking the shared lock), then stays open until released.
+    const editing = withOrgContext(
+      kit.handle.db as never,
+      { organizationId: ORG_A, userId: author },
+      async (tx) => {
+        const held = await isMessageHeldNow(tx as never, ORG_A, m);
+        checkDone();
+        await editMayCommit;
+        return held;
+      },
+    );
+    await checked;
+    const applying = withOrgContext(
+      kit.handle.db as never,
+      { organizationId: ORG_A, userId: author },
+      (tx) =>
+        applyLegalHoldInTx(
+          tx as never,
+          {},
+          { organizationId: ORG_A, userId: author, correlationId: "wp56-edit-race" },
+          {
+            organizationId: ORG_A,
+            userId: author,
+            name: "wp56-edit-race",
+            criteria: { channelIds: [channel] },
+            reason: "apply must wait for the edit",
+            matchedRecordCount: 0,
+          },
+        ),
+    );
+    try {
+      expect(await stillPending(applying), "apply must wait for the in-flight edit").toBe(true);
+    } finally {
+      releaseEdit();
+    }
+    expect(await editing).toBe(false);
+    const row = (await applying) as { id: string };
+    await kit.one("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [
+      row.id,
+    ]);
   });
 
   it("registers messaging.retention.manage in the permission table (compliance category)", async () => {
