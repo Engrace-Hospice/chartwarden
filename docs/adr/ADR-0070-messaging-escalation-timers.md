@@ -1,7 +1,7 @@
 # ADR-0070 — Escalation timers: the database decides what is due, a delayed BullMQ job per (request, tier, window) and a per-minute sweeper only wake it, and the escalation is ONE guarded write; with no router bound nothing is invented, the request stays open and visible
 
 - **Status:** **Accepted** (2026-10-15; decisions closed in the WP 4.4 blueprint). **Every per-tier window, the placeholder role key, the "one assignee per tier" reading and the record cadence below are PROVISIONAL: no clinical-lead sign-off is recorded** (`docs/messaging-hub/brief-clinical-lead-signoff.md`, section 6). The escalation ACTION ships behind the ops flag `messaging.escalation_timers`, default off.
-- **Amended by [ADR-0083](ADR-0083-messaging-audited-thread-read-for-escalated-assignee.md) (proposed, not accepted) for accepted limit (i) only:** with its flag on, the walk would choose a qualified next-tier user who cannot view the channel and grant them that one thread; until it is accepted and built, limit (i) stands as written.
+- **Amended by [ADR-0084](ADR-0084-messaging-audited-thread-read-for-escalated-assignee.md) (proposed, not accepted) for accepted limit (i) only:** with its flag on, the walk would choose a qualified next-tier user who cannot view the channel and grant them that one thread; until it is accepted and built, limit (i) stands as written.
 - **Date:** 2026-10-15
 - **Phase:** Messaging Hub Phase 4 (WP 4.4, Durable timers and backup routing).
 - **Implements:** [ADR-0057](ADR-0057-escalation-ownership-m19-m36.md) decision 4 ("timers stay in M36") and the fall-back note of item 11 (record the resolved tier and assignee on the request; never re-derive ownership from a clock).

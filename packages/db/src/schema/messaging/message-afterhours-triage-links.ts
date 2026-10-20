@@ -1,5 +1,5 @@
 // M36 WP 4.13 slice S1 (ADR-0082 decision 7) - the link between an after-hours send and the M19 triage call it asked for. See migration
-// 1130: org RLS (FORCEd), a UNIQUE message and source event, an update guard that lets only triage_call_id and outcome move, once.
+// 1131: org RLS (FORCEd), a UNIQUE message and source event, an update guard that lets only triage_call_id and outcome move, once.
 // Ids, one closed outcome and instants only. No FK to M19 (M36 never references M19 tables) and none to the purged outbox row.
 import { sql } from "drizzle-orm";
 import { check, foreignKey, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";

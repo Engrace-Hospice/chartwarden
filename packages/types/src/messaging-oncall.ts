@@ -131,7 +131,7 @@ export const AFTERHOURS_TRIAGE_REQUIRED_FLAG_KEYS = [
   "messaging.sbar",
 ] as const;
 
-/** What M19 answered for a request (closed list; the CHECK in migration 1130 mirrors it). `triage_call_id` exists for the first two. */
+/** What M19 answered for a request (closed list; the CHECK in migration 1131 mirrors it). `triage_call_id` exists for the first two. */
 export const AFTERHOURS_TRIAGE_OUTCOMES = ["opened", "coalesced", "no_coverage"] as const;
 export type AfterHoursTriageOutcome = (typeof AFTERHOURS_TRIAGE_OUTCOMES)[number];
 

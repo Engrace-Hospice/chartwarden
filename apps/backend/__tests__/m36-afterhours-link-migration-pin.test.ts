@@ -1,4 +1,4 @@
-// ADR-0082 slice S1 - migration 1130, the Drizzle schema, the manifest and the @wardenx/types constants agree. The structural promises
+// ADR-0082 slice S1 - migration 1131, the Drizzle schema, the manifest and the @wardenx/types constants agree. The structural promises
 // (FORCEd org RLS, UNIQUE message, the once-only update guard, no M19 FK, index-covered FKs) are asserted on the SQL text; the live
 // suite proves the same rules against a real database as wardenx_app.
 import { readFileSync } from "node:fs";
@@ -17,11 +17,11 @@ import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
-const sql = read("packages/db/migrations/1130_m36_afterhours_triage_link.sql");
+const sql = read("packages/db/migrations/1131_m36_afterhours_triage_link.sql");
 const flat = sql.replace(/\s+/g, " ");
 const T = '"message_afterhours_triage_link"';
 
-describe("migration 1130 message_afterhours_triage_link", () => {
+describe("migration 1131 message_afterhours_triage_link", () => {
   it("has exactly the frozen columns", () => {
     const cols = getTableConfig(schema.messageAfterhoursTriageLinks).columns.map((c) => c.name);
     expect(cols).toEqual([

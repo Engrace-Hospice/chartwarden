@@ -8,7 +8,7 @@
 --   * source_outbox_event_id is UNIQUE: one decision per request event (org-scoped read keeps it tenant-safe; the id is deployment-unique);
 --   * triage_call_id is set only for opened / coalesced (CHECK), no FK (the call may later be erased; this row carries ids only);
 --   * ids, one closed outcome and an instant only: no text, no patient id, no name.
--- Isolation: org policy on organization_id (ADR-0010; the 1130 shape), ENABLE + FORCE; the app role may SELECT and INSERT, never UPDATE or DELETE.
+-- Isolation: org policy on organization_id (ADR-0010; the 1131 shape), ENABLE + FORCE; the app role may SELECT and INSERT, never UPDATE or DELETE.
 CREATE TABLE "triage_afterhours_decision" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,

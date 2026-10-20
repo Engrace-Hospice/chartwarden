@@ -6,7 +6,7 @@
 //
 // REDELIVERY. The relay's receipt is written AFTER `handle` in a separate transaction (at-least-once), so a
 // crash in between redelivers. `opened` is guarded by `triage_call_source_dedupe_uq`; `coalesced` and
-// `no_coverage` write no call row, so the guard for them is `triage_afterhours_decision` (migration 1132): one
+// `no_coverage` write no call row, so the guard for them is `triage_afterhours_decision` (migration 1133): one
 // row per source event, written in the SAME transaction as the decision and its outcome event (M19 may not
 // read `outbox_event`). A replay that finds it does nothing: the original outcome stands, nothing is
 // republished and no second `coverage_gap` is emitted, even if the world has since changed. Replays are

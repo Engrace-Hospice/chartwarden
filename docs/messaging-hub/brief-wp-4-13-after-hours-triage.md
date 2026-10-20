@@ -54,6 +54,6 @@ M19's triage deadlines, escalation rungs and rules do not change. Where a messag
 
 ## What happens with the answers
 
-Accepted answers are recorded as decided, with the decider's role and date, in ADR-0082 (status moves from Proposed once accepted), the decision sheet and [`brief-m19-owner.md`](./brief-m19-owner.md). A rejected default becomes a work item. After that the build is a set of small slices (S1 to S6, the ladder L1 to L3, the thread read G1 to G3), all switched off by default (listed in ADR-0082 and ADR-0083). Related sign-offs: [`brief-clinical-lead-signoff.md`](./brief-clinical-lead-signoff.md) (acknowledgment deadlines, D4 and D7).
+Accepted answers are recorded as decided, with the decider's role and date, in ADR-0082 (status moves from Proposed once accepted), the decision sheet and [`brief-m19-owner.md`](./brief-m19-owner.md). A rejected default becomes a work item. After that the build is a set of small slices (S1 to S6, the ladder L1 to L3, the thread read G1 to G3), all switched off by default (listed in ADR-0082 and ADR-0084). Related sign-offs: [`brief-clinical-lead-signoff.md`](./brief-clinical-lead-signoff.md) (acknowledgment deadlines, D4 and D7).
 
 References: [`04-phases-4-to-6.md`](./04-phases-4-to-6.md) (row 4.13), [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md) §5 (4.12) and §9, [ADR-0057](../adr/ADR-0057-escalation-ownership-m19-m36.md), [ADR-0070](../adr/ADR-0070-messaging-escalation-timers.md), [ADR-0081](../adr/ADR-0081-messaging-role-send.md).

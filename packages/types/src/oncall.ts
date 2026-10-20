@@ -233,7 +233,7 @@ export type TriageEscalationState = "open" | "acknowledged" | "resolved";
 
 // ── §3.3 owned tables + the §3.6 audit denylist / retention class (M4 trigger arguments for M19-T02) ──
 
-/** The twelve tables M19 owns (the twelfth, `triage_afterhours_decision`, is ADR-0082 slice S2, migration 1132) per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
+/** The twelve tables M19 owns (the twelfth, `triage_afterhours_decision`, is ADR-0082 slice S2, migration 1133) per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
  *  predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`, and neither mentions
  *  `on_call_roster_sync_queue` (F-165, #248 — the §4.8 `m19.shift-sync.debounced` debounce table); the
  *  manifest wins. */
