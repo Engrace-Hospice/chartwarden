@@ -27,8 +27,10 @@ const rls = readFileSync(join(MIGRATIONS, "0108_oncall_m19_rls_audit_triggers.sq
 /** The original ten M19-T01 tables migrations 0107/0108 created — `on_call_roster_sync_queue`
  *  (F-165, #248) is a later addition (migration 0256, its own separate trigger) this file's
  *  0107/0108-scoped checks below cannot see. */
+type LaterM19Table = "on_call_roster_sync_queue" | "triage_afterhours_decision";
 const M19_T01_TABLE_NAMES = M19_TABLE_NAMES.filter(
-  (t): t is Exclude<M19TableName, "on_call_roster_sync_queue"> => t !== "on_call_roster_sync_queue",
+  (t): t is Exclude<M19TableName, LaterM19Table> =>
+    t !== "on_call_roster_sync_queue" && t !== "triage_afterhours_decision",
 );
 
 /** The §3.2 Phase-A enum types, incl. the `paper_origin` value M19-T01 added to make §2.7 implementable. */
@@ -51,7 +53,7 @@ const M19_ENUM_TYPES = [
 /** The trigger function name 0108 generates per table (abbreviated where the 63-char limit bites).
  *  `on_call_roster_sync_queue` (F-165, #248) is excluded — it's a later addition (migration 0256), whose
  *  own trigger this file's `tables`/`rls` reads (pinned to 0107/0108) cannot see. */
-const AUDIT_FN: Record<Exclude<M19TableName, "on_call_roster_sync_queue">, string> = {
+const AUDIT_FN: Record<Exclude<M19TableName, LaterM19Table>, string> = {
   tenant_oncall_policy: "audit_phi_write_tenant_oncall_policy",
   external_triage_vendor: "audit_phi_write_external_triage_vendor",
   on_call_shift: "audit_phi_write_on_call_shift",

@@ -9,6 +9,7 @@ const signInEmail = vi.fn();
 const signInUsername = vi.fn();
 const signInPasskey = vi.fn();
 const signOut = vi.fn(async () => ({ error: null }));
+const getSession = vi.fn();
 
 vi.mock("../auth-client", () => ({
   authClient: {
@@ -18,9 +19,14 @@ vi.mock("../auth-client", () => ({
       passkey: (...args: unknown[]) => signInPasskey(...args),
     },
     signOut: () => signOut(),
+    getSession: () => getSession(),
   },
 }));
 
+import {
+  rememberPendingNotificationLink,
+  takePendingNotificationLink,
+} from "../../../shell/pending-deep-link";
 import { RequiredPasswordChange } from "../required-password-change";
 import { SignIn } from "../sign-in";
 
@@ -135,5 +141,40 @@ describe("mandatory password change", () => {
       body: { currentPassword: "Temporary#123", newPassword: "A-New-Password#456" },
     });
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes a pending notification link when no change is required, and consumes it once", async () => {
+    window.sessionStorage.clear();
+    rememberPendingNotificationLink("/n/abc-123");
+    getSession.mockResolvedValue({ data: { session: { activeOrganizationId: "o-1" } } });
+    render(
+      <MemoryRouter initialEntries={["/login/change-password"]}>
+        <ApiClientProvider client={authClientFor({ passwordChangeRequired: false })}>
+          <Routes>
+            <Route path="/login/change-password" element={<RequiredPasswordChange />} />
+            <Route path="/n/:id" element={<p>landing page</p>} />
+            <Route path="/" element={<p>home page</p>} />
+          </Routes>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("landing page");
+    expect(takePendingNotificationLink()).toBeNull();
+  });
+
+  it("goes home when nothing is pending", async () => {
+    window.sessionStorage.clear();
+    getSession.mockResolvedValue({ data: { session: { activeOrganizationId: "o-1" } } });
+    render(
+      <MemoryRouter initialEntries={["/login/change-password"]}>
+        <ApiClientProvider client={authClientFor({ passwordChangeRequired: false })}>
+          <Routes>
+            <Route path="/login/change-password" element={<RequiredPasswordChange />} />
+            <Route path="/" element={<p>home page</p>} />
+          </Routes>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("home page");
   });
 });

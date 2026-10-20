@@ -141,9 +141,8 @@
   white-space: nowrap;
 }
 
-/* Composer action: sits in the first column beside the attach and template controls. */
-.wx-message-composer > .wx-poll-create {
-  grid-column: 1;
+/* Composer action: one of the tools in the row under the input. */
+.wx-composer-tools > .wx-poll-create {
   display: grid;
   justify-items: start;
   gap: 0.25rem;

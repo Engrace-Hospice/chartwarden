@@ -36,6 +36,12 @@ export interface AlertEmitter {
     resolvedRecipientCount: number;
     /** F-199 — the alert's occurrence count AFTER this emit; present only when `countRepeats` was set. */
     occurrences?: number;
+    /**
+     * ADR-0079 — how many out-of-band (non in-app) deliveries this emit PLANNED, across all recipients. 0 means the alert reaches
+     * the in-app inbox only (no verified endpoint, policy flag off, or the rule is in-app only); a caller that promised a page
+     * uses it to degrade visibly. Planned is not delivered: the dispatcher can still fail the row (no vendor transport today).
+     */
+    outOfBandPlanned?: number;
   }>;
 }
 

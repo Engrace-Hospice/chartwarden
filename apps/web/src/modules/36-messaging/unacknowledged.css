@@ -1,0 +1,133 @@
+/* M36 WP 4.9 - the supervisor's unacknowledged queue: a flat list on the shared kit's tokens. */
+.wx-queue {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-queue-rows {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-queue-row {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-queue-row:last-child {
+  border-bottom: none;
+}
+
+.wx-queue-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-queue-tag {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-queue-line,
+.wx-queue-note {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-queue-restricted {
+  font-style: normal;
+}
+
+.wx-queue-summary {
+  display: block;
+  min-height: 1.25rem;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.wx-queue-link {
+  justify-self: start;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.wx-queue-link:focus-visible,
+.wx-queue-toggle button:focus-visible,
+.wx-queue-overdue:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-queue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wx-queue-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.wx-queue-toggle button,
+.wx-queue-overdue {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.wx-queue-toggle button[aria-pressed="true"],
+.wx-queue-overdue[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-tint);
+  font-weight: 600;
+}
+
+.wx-queue-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  color: var(--color-error-pill-fg);
+  font-size: 0.875rem;
+}
+
+.wx-queue-more {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
+
+.wx-queue:focus-visible,
+.wx-queue-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

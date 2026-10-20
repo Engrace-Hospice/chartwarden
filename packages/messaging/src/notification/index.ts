@@ -7,6 +7,12 @@
 export {
   sanitizeForOutOfBand,
   sanitizeForEmergencyContactCall,
+  renderOutOfBand,
+  setOutOfBandFallbackObserver,
+  type OutOfBandFallbackEvent,
+  type OutOfBandFallbackReason,
+  OUT_OF_BAND_CHANNELS,
+  type RenderedOutOfBand,
   type Alert,
   type Message,
   type SanitizedNotification,

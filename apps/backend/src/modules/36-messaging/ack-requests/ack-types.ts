@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-types.ts - WP 4.2 (ADR-0069): the row shapes and the storage port of the
 // acknowledgment-request aggregate. The service owns the rules; a store only reads and writes rows inside one transaction
 // (the DB trigger is the backstop for the state machine). Ids, enums and instants only.
-import type { AckClass, AckEventType, AckStatus } from "@wardenx/types";
+import type { AckClass, AckEventType, AckStatus, AckSupervisorReasonCode } from "@wardenx/types";
 
 export interface AckRow {
   readonly id: string;
@@ -23,6 +23,10 @@ export interface AckRow {
   readonly resolvedByUserId: string | null;
   readonly cancelledAt: Date | null;
   readonly version: number;
+  /** ADR-0081: the role the sender addressed, null when a person was named. Fixed once set. */
+  readonly addressedRole?: string | null;
+  /** Last write (the instant a `failed_unreachable` request became so, while it stays so). Optional: older fixtures omit it. */
+  readonly updatedAt?: Date;
 }
 
 export interface NewAckRequest {
@@ -35,6 +39,8 @@ export interface NewAckRequest {
   readonly assignedUserId: string;
   readonly requestedAt: Date;
   readonly deadlineAt: Date;
+  /** ADR-0081: set only by a role-based send. */
+  readonly addressedRole?: string | undefined;
 }
 
 /** The columns a transition may change (everything else is immutable; the DB trigger refuses the rest). */
@@ -63,6 +69,8 @@ export interface NewAckEvent {
   readonly previousAssignedUserId: string | null;
   readonly tier: number;
   readonly at: Date;
+  /** ADR-0078: set only on a SUPERVISOR's `reassigned` event (a fixed non-clinical code). */
+  readonly reasonCode?: AckSupervisorReasonCode | null;
 }
 
 export interface AckEventRow {
@@ -76,6 +84,7 @@ export interface AckEventRow {
   readonly previousAssignedUserId: string | null;
   readonly tier: number;
   readonly createdAt: Date;
+  readonly reasonCode?: string | null;
 }
 
 /** The WP 4.4 timer's one status write: hand an unacknowledged request to the next tier's user and start that tier's window. */
@@ -121,6 +130,11 @@ export interface AckTx {
   /** Applies the patch only if the stored version is `expectedVersion` (then bumps it); else throws AckStaleError. */
   update(id: string, expectedVersion: number, patch: AckPatch): Promise<AckRow>;
   insertEvent(event: NewAckEvent): Promise<void>;
+  /**
+   * ADR-0078: marks THIS transaction as a supervisor reassign (a transaction-local setting the update guard of migration 1126 reads).
+   * Call it immediately before the reassign `update`; it grants nothing the guard's other rules do not also allow.
+   */
+  allowSupervisorReassign(): Promise<void>;
   /** WP 4.4: applies an escalation only if the stored version is `expectedVersion`; else throws AckStaleError. */
   escalate(id: string, expectedVersion: number, escalation: AckEscalation): Promise<AckRow>;
   /**
@@ -135,6 +149,12 @@ export interface AckTx {
    * ones whose unroutable backoff has not elapsed (decided in the query, so backed-off rows never consume the batch).
    */
   listDue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
+  /**
+   * ADR-0079 (G-5): `failed_unreachable` requests whose deadline is at or before `asOf`, oldest deadline first. The deadline timer does
+   * not watch these (nothing can escalate them), so the unreachable watch reads them to keep them in front of supervisors. Bounded in
+   * SQL to rows whose anchor, `greatest(deadline_at, updated_at)`, is after `since`, so rows past the end of their schedule never take a batch slot.
+   */
+  listUnreachableOverdue(asOf: Date, limit: number, since: Date): Promise<readonly AckRow[]>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
   /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */
   listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;

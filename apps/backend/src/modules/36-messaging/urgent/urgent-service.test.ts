@@ -310,6 +310,29 @@ describe("the response tracker hook (WP 4.2)", () => {
     expect(calls).toEqual([]);
   });
 
+  it("a role send needs tracking: refused with 503 and nothing stored while it is off (ADR-0081)", async () => {
+    const { service, sends } = setup({ tracker: tracker(async () => false) });
+    expect(await code(service.send(actor, input({ roleAddressed: "rn" }), noLinks))).toBe(
+      "503:ROLE_SEND_UNAVAILABLE",
+    );
+    expect(sends).toHaveLength(0);
+  });
+
+  it("stores the role on the request, and a REPLAY of a committed role send still answers after tracking was turned off", async () => {
+    const calls: unknown[][] = [];
+    let on = true;
+    const { service, sends } = setup({
+      tracker: tracker(async () => on, calls),
+    });
+    const first = await service.send(actor, input({ roleAddressed: "rn" }), noLinks);
+    expect(first.created).toBe(true);
+    expect(calls[0]?.[1]).toMatchObject({ assigneeUserId: RN, addressedRole: "rn" });
+    on = false;
+    const again = await service.send(actor, input({ roleAddressed: "rn" }), noLinks);
+    expect(again).toMatchObject({ created: false, message_id: first.message_id });
+    expect(sends).toHaveLength(1);
+  });
+
   it("fails the send when its flag cannot be read (never silently untracked)", async () => {
     const { service, sends } = setup({
       tracker: tracker(async () => Promise.reject(new Error("flags down"))),

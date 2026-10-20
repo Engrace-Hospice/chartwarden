@@ -71,7 +71,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     // WP 4.1: the named recipient of an urgent clinical message is told, in-app only, with generic text (no patient, no
-    // name, no message). This is NOT a page and NOT an acknowledgment request (WP 4.2 - 4.4); per-urgency channel policy is 4.6.
+    // name, no message). This is NOT a page and NOT an acknowledgment request (WP 4.2 - 4.4). WP 4.6 (ADR-0073) adds this alert's out-of-band routes in CODE (the platform floor, behind `messaging.notification_policy`); the rule itself stays in-app only.
     resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
@@ -94,8 +94,20 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    // WP 4.2: the NEW assignee of a reassigned request is told, in-app only, with generic text. Out-of-band delivery is WP 4.6.
+    // WP 4.2: the NEW assignee of a reassigned request is told, in-app only, with generic text. Out-of-band routes come from the WP 4.6 policy in code (ADR-0073), not from this rule.
     resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.supervisor_reassigned",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // ADR-0078: a supervisor moved a waiting request; the previous assignee and the sender are told, in-app only, with generic text. NOT a
+    // designated safety route (the new assignee's alert is the m36.ack.reassigned one) and never out-of-band.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
     enabled: true,
@@ -128,9 +140,37 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    // WP 4.4: no further tier exists; the sender, the assignee and the supervisor audience (role keys copied from
-    // m36.medication_question.unrouted; tenants re-aim it through the alert-rule admin) are told it is still open.
-    resolverArgs: { roleKeys: ["clinical_supervisor", "don"], userIdPaths: ["recipientUserIds"] },
+    // WP 4.4: no further tier exists; the sender and the assignee are told it is still open. The supervisor audience is told by
+    // m36.ack.supervisor_attention (ADR-0079), not by this rule, so a supervisor gets one alert per event, not two.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.failed_unreachable",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.5: every out-of-band route to the assignee failed and no further tier could be reached. The sender and the assignee are
+    // told it is still open and that nobody is known to have been reached. The supervisor audience is told by
+    // m36.ack.supervisor_attention (ADR-0079).
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.supervisor_attention",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // ADR-0079 (G-3/G-5): a request no human is known to be handling (ladder exhausted, router unavailable, unreachable, or unreachable
+    // and still unwatched) is raised to the supervisor audience (role keys copied from m36.medication_question.unrouted; tenants
+    // re-aim it through the alert-rule admin; NOT pinned). In-app always; with `messaging.notification_policy` + `messaging.ack_requests`
+    // on, the platform floor of the request's class adds an out-of-band page to each supervisor's VERIFIED endpoint (SUPERVISOR_PAGE_EVENT_TYPES).
+    // Fixed generic text; no vendor transport exists, so a planned page can still fail (the ops notice says so).
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
     channelsOverride: ["in_app"],
     systemLocked: false,
     enabled: true,
@@ -276,6 +316,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     // WP 2.6: only the SENDER of the scheduled message is told, and only in-app with generic text (no channel/patient).
     resolverArgs: { roleKeys: [], userIdPaths: ["senderUserId"] },
     channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.reminder.due",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 4.10 (ADR-0077): only the person who set the reminder is told, with fixed generic text and an in-app link. No override, so the
+    // user's own routing map decides any out-of-band copy, and that copy is the sanitiser's fixed generic line with an opaque link.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: null,
     systemLocked: false,
     enabled: true,
   },

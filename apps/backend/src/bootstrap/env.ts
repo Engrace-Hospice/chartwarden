@@ -97,7 +97,46 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "BETTER_AUTH_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// origin"),
   },
-  { key: "TRUSTED_ORIGINS" },
+  {
+    key: "TRUSTED_ORIGINS",
+    rule: (value) => {
+      for (const origin of value.split(",").map((entry) => entry.trim())) {
+        try {
+          const parsed = new URL(origin);
+          if (
+            (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+            parsed.username !== "" ||
+            parsed.password !== "" ||
+            parsed.pathname !== "/" ||
+            parsed.search !== "" ||
+            parsed.hash !== "" ||
+            origin.replace(/\/$/, "") !== parsed.origin
+          ) {
+            return "must contain exact HTTP(S) origins without paths, credentials or wildcards";
+          }
+        } catch {
+          return "must contain exact HTTP(S) origins without paths, credentials or wildcards";
+        }
+      }
+      return null;
+    },
+  },
+  {
+    key: "MOBILE_AUTH_TRUSTED_ORIGINS",
+    when: (env) => Boolean(env.MOBILE_AUTH_TRUSTED_ORIGINS?.trim()),
+    rule: (value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .every(
+          (origin) =>
+            /^[a-z][a-z0-9+.-]*:\/\/$/i.test(origin) &&
+            !/^https?:/i.test(origin) &&
+            !/^exp:/i.test(origin),
+        )
+        ? null
+        : "must contain exact custom schemes such as wardenx://; exp://, HTTP(S), paths and wildcards are forbidden",
+  },
   {
     // M24 §8.7 — the master KEK for state trading-partner secrets (client secret / SFTP key). Required in
     // production: without it a credential write fails closed, so Medicaid submission could never be
@@ -125,6 +164,12 @@ const REQUIREMENTS: readonly Requirement[] = [
     // TASK-008/SEC-001 — the §7.4 witness-attestation HMAC secret (M13 emar-route-service-db.ts). Raw
     // HMAC key material (not base64), so the length rule mirrors BETTER_AUTH_SECRET, not the base64 KEKs.
     key: "M13_WITNESS_SIGNING_KEY",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    // M18 offline-capture canonical payload HMAC. Keep this key for at least the receipt lifetime;
+    // replacing it in place would make comparison of historical replays impossible.
+    key: "EVV_OFFLINE_FINGERPRINT_KEY",
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
   },
   {

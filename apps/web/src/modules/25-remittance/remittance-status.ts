@@ -51,6 +51,7 @@ export const APPEAL_STATE_TONE: Record<string, StatusTone> = {
   submitted: "progress",
   under_review: "progress",
   decided: "success",
+  escalated: "progress", // a late QIC reconsideration moved to OMHA (milestone 4)
   withdrawn: "neutral",
   closed: "neutral",
 };
@@ -73,6 +74,36 @@ export const REOPENING_STATE_TONE: Record<string, StatusTone> = {
   decided: "success",
   withdrawn: "neutral",
   closed: "neutral",
+};
+
+/** submission_attempt status → tone (milestone 6a). needs_manual is "proof missing": it must read as needing attention. */
+export const SUBMISSION_STATUS_TONE: Record<string, StatusTone> = {
+  prepared: "progress",
+  queued: "progress",
+  sending: "progress",
+  sent: "progress",
+  acknowledged: "success",
+  needs_manual: "warning",
+  failed: "error",
+  cancelled: "neutral",
+};
+
+/** tpe_program state → tone (milestone 5). Referred is the bad outcome; compliant is relief. */
+export const TPE_PROGRAM_STATE_TONE: Record<string, StatusTone> = {
+  active: "progress",
+  compliant: "success",
+  referred: "error",
+  closed: "neutral",
+};
+
+/** Advisory TPE referral risk → tone (milestone 5). Not a CMS determination; unknown is inert. */
+export const TPE_RISK_TONE: Record<string, StatusTone> = {
+  relief: "success",
+  low: "success",
+  unknown: "neutral",
+  elevated: "warning",
+  high: "error",
+  referred: "error",
 };
 
 /** The path a denial takes → tone. Undetermined is inert: the denial stays appealable exactly as before. */

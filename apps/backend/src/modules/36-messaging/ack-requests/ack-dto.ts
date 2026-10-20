@@ -1,6 +1,11 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-dto.ts - WP 4.2: row -> wire shape (snake_case, ISO instants).
 import { viewerActionsFor } from "@wardenx/messaging";
-import type { AckEscalationNote, AckEventDto, AckRequestDto } from "@wardenx/types";
+import {
+  type AckEscalationNote,
+  type AckEventDto,
+  type AckRequestDto,
+  toAckAddressedRole,
+} from "@wardenx/types";
 import type { AckEventRow, AckRow } from "./ack-types";
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -17,6 +22,7 @@ export function toAckRequestDto(
     channel_id: row.channelId,
     patient_id: row.patientId,
     ack_class: row.ackClass,
+    addressed_role: toAckAddressedRole(row.addressedRole),
     status: row.status,
     requester_user_id: row.requesterUserId,
     assigned_user_id: row.assignedUserId,
@@ -55,6 +61,7 @@ export function toAckEventDto(e: AckEventRow): AckEventDto {
     assigned_user_id: e.assignedUserId,
     previous_assigned_user_id: e.previousAssignedUserId,
     tier: e.tier,
+    reason_code: (e.reasonCode ?? null) as AckEventDto["reason_code"],
     created_at: e.createdAt.toISOString(),
   };
 }

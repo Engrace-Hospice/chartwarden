@@ -479,6 +479,8 @@ export interface CtiDraftInput {
 export interface NorAcknowledgeInput {
   readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
   readonly acknowledgedByRole: "patient" | "legal_representative";
+  readonly acknowledgedAt?: string;
+  readonly acknowledgedByName?: string;
 }
 /**
  * GAP-022 — who is scheduling. `user` = a human session: the performer role is DERIVED from the
@@ -500,6 +502,8 @@ export interface F2fScheduleInput {
   readonly actor: F2fScheduleActor;
   /** Org-local F2F date (§7.4 W-F2F-01) — validated against the server-computed recert window. */
   readonly scheduledDate?: LocalDate;
+  readonly windowStart?: LocalDate;
+  readonly windowEnd?: LocalDate;
 }
 export interface DischargeInput {
   readonly reason: DischargeReason;
@@ -764,6 +768,8 @@ export interface PatientElectionCertificationView {
  * non-null — was never sited by ANY code path, breaking that seam for every admission in every org.
  */
 export interface ElectionStatementDraftInput {
+  readonly effectiveDate?: LocalDate;
+  readonly primaryDiagnosisIcd10?: string;
   /** The hospice the patient elects (§418.24(b)) — also sites `admission.provider_entity_id`. */
   readonly electedProviderEntityId: string;
   /** The attending physician the patient designates; absent when they name none. */
@@ -1284,12 +1290,15 @@ interface Rec {
   admissionSourceCode?: string | null;
   terminalDiagnosisIcd10?: string;
   secondaryDiagnoses?: readonly string[];
+  prognosisStatement?: string | null;
+  clinicalFindings?: Record<string, unknown> | null;
   scheduledClinicianId?: string;
   // §418.24 election-statement content (#44) — persisted rather than discarded. `signerKind` is
   // NOT redeclared here: Rec already carries it for the revocation facts below, and the election
   // statement's signer uses the same "patient" | "representative" column vocabulary.
   curativeCareAcknowledgment?: boolean;
   stateAddendum?: Record<string, unknown>;
+  effectiveDate?: string | null;
   patientNameAtSigning?: string;
   // intake/wizard linkage (§7.1/§7.2) — referral idempotency + the period-1 activation bundle
   externalReferralId?: string;
@@ -1322,6 +1331,11 @@ interface Rec {
   electionPeriodId?: string;
   sequence?: number;
   primaryDiagnosisIcd10?: string;
+  scheduledDate?: LocalDate | null;
+  requestedWindowStart?: LocalDate | null;
+  requestedWindowEnd?: LocalDate | null;
+  authoritativeWindowStart?: LocalDate | null;
+  authoritativeWindowEnd?: LocalDate | null;
   // recert/F2F linkage (§7.3/§7.4) — the period start date drives the D4 deadline + F2F window math
   periodStartDate?: LocalDate;
   // discharge linkage (§6.3/§7.6) — for-cause stays active until cosign (D11); opt-out gates W-DC-01
@@ -1331,6 +1345,8 @@ interface Rec {
   // NOR acknowledgment facts (TASK-034) — what was actually submitted, not a hardcoded default.
   deliveryMethod?: NorAcknowledgeInput["deliveryMethod"];
   acknowledgedByRole?: NorAcknowledgeInput["acknowledgedByRole"];
+  acknowledgedAtInstant?: string | null;
+  acknowledgedByName?: string | null;
   // transfer facts (§4.2.7 routes 37/38) — the counterparty hospice identity + narrative, what was
   // actually submitted rather than silently dropped.
   direction?: "in" | "out";
@@ -2486,6 +2502,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         // #44 — the slice mirrors the Drizzle service's persisted shape so a test written against
         // one is meaningful against the other.
         providerEntityId: input.electedProviderEntityId,
+        effectiveDate: input.effectiveDate ?? null,
+        primaryDiagnosisIcd10: input.primaryDiagnosisIcd10,
         attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
         curativeCareAcknowledgment: input.waiverAcknowledged,
         stateAddendum: input.stateAddendum === undefined ? {} : { text: input.stateAddendum },
@@ -2495,7 +2513,19 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
     async getElectionStatement(organizationId, id) {
       const rec = get(organizationId, id, "election_statement");
-      return rec ? summary(rec) : null;
+      return rec
+        ? {
+            ...summary(rec),
+            electionPeriodId: rec.electionPeriodId,
+            effectiveDate: rec.effectiveDate,
+            primaryDiagnosisIcd10: rec.primaryDiagnosisIcd10 ?? null,
+            electedProviderEntityId: rec.providerEntityId,
+            electedAttendingPhysicianId: rec.attendingPhysicianId,
+            waiverAcknowledged: rec.curativeCareAcknowledgment,
+            stateAddendum: rec.stateAddendum,
+            signerKind: rec.signerKind,
+          }
+        : null;
     },
     async signElection(organizationId, id, ifVersion, actorUserId, input) {
       void actorUserId;
@@ -2514,7 +2544,14 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (!get(organizationId, admissionId, "admission")) return null;
       return listOfKind(organizationId, "election_period")
         .filter((r) => r.admissionId === admissionId)
-        .map(summary);
+        .map((r) => ({
+          ...summary(r),
+          sequenceNumber: r.sequence,
+          expectedStart: r.periodStartDate ?? null,
+          effectiveAt: r.periodStartDate ?? null,
+          scheduledEndAt: null,
+          actualEndAt: null,
+        }));
     },
     async createElectionPeriod(organizationId, admissionId) {
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
@@ -2541,6 +2578,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
         secondaryDiagnoses: input.secondaryDiagnoses ?? [],
+        prognosisStatement: input.prognosisStatement,
+        clinicalFindings: input.clinicalFindings,
         narrative: input.narrative,
         // §7.3 — carry the period sequence + start date so the recert sign can advance the period
         // (W-CTI-03) and mark-late can compute the D4 written-cert deadline off the period start.
@@ -2552,7 +2591,19 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
     async getCti(organizationId, id) {
       const rec = get(organizationId, id, "cti");
-      return rec ? summary(rec) : null;
+      return rec
+        ? {
+            ...summary(rec),
+            electionPeriodId: rec.electionPeriodId,
+            hospiceMedicalDirectorId: rec.hospiceMedicalDirectorId,
+            attendingPhysicianId: rec.attendingPhysicianId,
+            terminalDiagnosisIcd10: rec.terminalDiagnosisIcd10,
+            secondaryDiagnoses: rec.secondaryDiagnoses,
+            prognosisStatement: rec.prognosisStatement,
+            narrative: rec.narrative,
+            clinicalFindings: rec.clinicalFindings,
+          }
+        : null;
     },
     async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId, input = {}) {
       void actorUserId;
@@ -2646,13 +2697,33 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         electionPeriodId: input.electionPeriodId,
         scheduledClinicianId: input.scheduledClinicianId,
         periodStartDate: period?.periodStartDate,
+        scheduledDate: input.scheduledDate ?? null,
+        requestedWindowStart: input.windowStart ?? null,
+        requestedWindowEnd: input.windowEnd ?? null,
+        authoritativeWindowStart: period?.periodStartDate
+          ? computeF2fWindow(period.periodStartDate, orgTimeZone).windowStart
+          : null,
+        authoritativeWindowEnd: period?.periodStartDate
+          ? computeF2fWindow(period.periodStartDate, orgTimeZone).windowEnd
+          : null,
       });
       events.push("m6.f2f.scheduled");
       return summary(rec);
     },
     async getF2f(organizationId, id) {
       const rec = get(organizationId, id, "f2f");
-      return rec ? summary(rec) : null;
+      return rec
+        ? {
+            ...summary(rec),
+            electionPeriodId: rec.electionPeriodId,
+            scheduledClinicianId: rec.scheduledClinicianId,
+            scheduledDate: rec.scheduledDate,
+            requestedWindowStart: rec.requestedWindowStart,
+            requestedWindowEnd: rec.requestedWindowEnd,
+            authoritativeWindowStart: rec.authoritativeWindowStart,
+            authoritativeWindowEnd: rec.authoritativeWindowEnd,
+          }
+        : null;
     },
     async completeF2f(organizationId, id, ifVersion, encounterDate, modality) {
       void encounterDate;
@@ -3082,6 +3153,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         patientId: adm.patientId,
         deliveryMethod: input.deliveryMethod,
         acknowledgedByRole: input.acknowledgedByRole,
+        acknowledgedAtInstant: input.acknowledgedAt ?? null,
+        acknowledgedByName: input.acknowledgedByName ?? null,
       });
       events.push("m6.nor.acknowledged");
       // W-AD-04: acknowledging the NOR closes its open compliance window (admission.recompute_windows).
@@ -3098,7 +3171,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async getNor(organizationId, admissionId) {
       if (!get(organizationId, admissionId, "admission")) return null;
       const rec = listOfKind(organizationId, "nor").find((r) => r.admissionId === admissionId);
-      return rec ? summary(rec) : null;
+      return rec
+        ? {
+            ...summary(rec),
+            acknowledgedAtInstant: rec.acknowledgedAtInstant,
+            acknowledgedByName: rec.acknowledgedByName,
+            acknowledgedByRole: rec.acknowledgedByRole,
+            deliveryMethod: rec.deliveryMethod,
+          }
+        : null;
     },
 
     async listComplianceWindowsForAdmission(organizationId, admissionId) {

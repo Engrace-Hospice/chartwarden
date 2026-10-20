@@ -61,6 +61,8 @@ interface SetupOptions {
   readonly router?: EscalationRouter;
   readonly enabled?: boolean;
   readonly qualified?: (userId: string) => boolean;
+  /** Whether the candidate can view the request's channel (default: everyone can). */
+  readonly canView?: (userId: string) => boolean | Promise<boolean>;
   readonly row?: Partial<AckRow>;
 }
 
@@ -83,6 +85,7 @@ function setup(opts: SetupOptions = {}) {
     isEnabled: async () => opts.enabled ?? true,
     router,
     stillQualified: async (_o, userId) => (opts.qualified ? opts.qualified(userId) : true),
+    canViewChannel: async (_o, userId) => (opts.canView ? opts.canView(userId) : true),
     outbox: {
       async publish(_tx, e) {
         published.push({ eventName: e.eventName, payload: e.payload });
@@ -426,12 +429,90 @@ describe("escalation service", () => {
       stillQualified: async () => {
         throw new Error("lookup failed");
       },
+      canViewChannel: async () => true,
       outbox: undefined,
       now: () => base.clock.now,
     });
 
     await expect(service.processDue(ORG, base.row.id)).rejects.toThrow("lookup failed");
     expect(base.store.events).toHaveLength(0);
+  });
+
+  describe("a next-tier candidate must be able to view the request's channel", () => {
+    it("skips a non-viewer to the next user of the same tier", async () => {
+      const ctx = setup({
+        answers: { 1: resolved(1, [TIER1_A, TIER1_B], null) },
+        canView: (u) => u !== TIER1_A,
+      });
+
+      const outcome = await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 1, assignedUserId: TIER1_B });
+    });
+
+    it("skips a tier whose only people cannot view to the router's next tier", async () => {
+      const ctx = setup({
+        answers: { 1: resolved(1, [TIER1_A], 2), 2: resolved(2, [TIER2], null) },
+        canView: (u) => u === TIER2,
+      });
+
+      const outcome = await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 2, assignedUserId: TIER2 });
+    });
+
+    it("ends in ladder_exhausted and leaves the assignee alone when nobody can view", async () => {
+      const ctx = setup({
+        answers: { 1: resolved(1, [TIER1_A, TIER1_B], 2), 2: resolved(2, [TIER2], null) },
+        canView: () => false,
+      });
+
+      const outcome = await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(outcome).toEqual({ kind: "not_routed", reason: "ladder_exhausted", recorded: true });
+      expect(stored(ctx).assignedUserId).toBe(ASSIGNEE);
+      expect(stored(ctx).currentTier).toBe(0);
+      expect(ctx.store.events.map((e) => e.eventType)).toEqual(["ladder_exhausted"]);
+    });
+
+    it("still takes a qualified viewer first, and still skips the sender and the assignee", async () => {
+      const ctx = setup({
+        answers: { 1: resolved(1, [REQUESTER, ASSIGNEE, TIER1_A, TIER1_B], null) },
+      });
+
+      const outcome = await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", assignedUserId: TIER1_A });
+    });
+
+    it("does not ask the view check about the sender, the assignee or an unqualified user", async () => {
+      const asked: string[] = [];
+      const ctx = setup({
+        answers: { 1: resolved(1, [REQUESTER, ASSIGNEE, TIER1_A, TIER1_B], null) },
+        qualified: (u) => u !== TIER1_A,
+        canView: (u) => {
+          asked.push(u);
+          return true;
+        },
+      });
+
+      await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(asked).toEqual([TIER1_B]);
+    });
+
+    it("lets a view-check failure propagate and writes nothing", async () => {
+      const ctx = setup({
+        answers: { 1: resolved(1, [TIER1_A, TIER1_B], null) },
+        canView: () => {
+          throw new Error("seam unavailable");
+        },
+      });
+
+      await expect(ctx.service.processDue(ORG, ctx.row.id)).rejects.toThrow("seam unavailable");
+      expect(ctx.store.events).toHaveLength(0);
+      expect(stored(ctx)).toEqual(ctx.row);
+    });
   });
 
   describe("sweep", () => {
@@ -475,6 +556,7 @@ describe("escalation service", () => {
           },
         },
         stillQualified: async () => true,
+        canViewChannel: async () => true,
         outbox: undefined,
         now: () => ctx.clock.now,
         onError: (c) => errors.push(c.requestId),

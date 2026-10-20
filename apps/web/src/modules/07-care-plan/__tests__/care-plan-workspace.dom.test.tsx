@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -260,11 +260,13 @@ function renderWorkspace(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/care-plan"]}>
       <ApiClientProvider client={client}>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route path="/patients/:patientId/care-plan" element={<CarePlanView />} />
-          </Routes>
-        </SessionProvider>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route path="/patients/:patientId/care-plan" element={<CarePlanView />} />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
       </ApiClientProvider>
     </MemoryRouter>,
   );
@@ -492,14 +494,16 @@ describe("M7 Care Plan version history", () => {
     render(
       <MemoryRouter initialEntries={["/care-plans/plan-1/versions/legacy-version"]}>
         <ApiClientProvider client={client}>
-          <SessionProvider session={session}>
-            <Routes>
-              <Route
-                path="/care-plans/:planId/versions/:versionId"
-                element={<CarePlanVersionHistory />}
-              />
-            </Routes>
-          </SessionProvider>
+          <ToastProvider>
+            <SessionProvider session={session}>
+              <Routes>
+                <Route
+                  path="/care-plans/:planId/versions/:versionId"
+                  element={<CarePlanVersionHistory />}
+                />
+              </Routes>
+            </SessionProvider>
+          </ToastProvider>
         </ApiClientProvider>
       </MemoryRouter>,
     );

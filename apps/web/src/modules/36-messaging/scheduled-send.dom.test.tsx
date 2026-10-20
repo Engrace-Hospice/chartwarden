@@ -53,6 +53,27 @@ const blocked = {
   blockedReason: "not_member" as const,
 };
 
+describe("ScheduleSendButton inside the composer form", () => {
+  it("portals the dialog out of the composer form so Enter in the date input cannot send the draft", async () => {
+    const onComposerSubmit = vi.fn((event: { preventDefault: () => void }) =>
+      event.preventDefault(),
+    );
+    render(
+      provide(
+        api({}),
+        <form className="wx-message-composer" onSubmit={onComposerSubmit}>
+          <ScheduleSendButton channelId={CH} text="hello" onScheduled={() => {}} />
+        </form>,
+      ),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /schedule send/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.closest("form.wx-message-composer")).toBeNull();
+    await userEvent.type(within(dialog).getByLabelText(/send at/i), "{Enter}");
+    expect(onComposerSubmit).not.toHaveBeenCalled();
+  });
+});
+
 describe("ScheduleSendButton", () => {
   it("is at least 44px tall through the Button size (inline styles beat any stylesheet rule)", () => {
     render(

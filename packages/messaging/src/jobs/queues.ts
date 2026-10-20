@@ -31,7 +31,7 @@ export interface QueueParameters {
   readonly idempotency: string;
 }
 
-/** The §4.4 queue names (WP 1.5 added `attachment_scan`, WP 2.6 `scheduled_send`, WP 3.5 `handoff_expiry`, WP 4.4 the two ack-escalation queues). */
+/** The §4.4 queue names (WP 1.5 added `attachment_scan`, WP 2.6 `scheduled_send`, WP 3.5 `handoff_expiry`, WP 4.4 the two ack-escalation queues, WP 4.10 `reminder_sweep`). */
 export const MESSAGING_QUEUES = {
   fanOut: "messaging.fan_out",
   sendInApp: "messaging.send_in_app",
@@ -50,6 +50,7 @@ export const MESSAGING_QUEUES = {
   handoffExpiry: "messaging.handoff_expiry",
   ackEscalationTimer: "messaging.ack_escalation_timer",
   ackEscalationSweep: "messaging.ack_escalation_sweep",
+  reminderSweep: "messaging.reminder_sweep",
 } as const;
 
 /** A queue name from the catalog. */
@@ -244,6 +245,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "requestId; each due request is locked FOR UPDATE and re-checked (waiting, past its deadline, same version) in its own transaction",
   },
+  // WP 4.10 (ADR-0077): every minute, raises the alert of each due reminder and deletes the row. The alert's correlation id is the
+  // reminder id, so a retry, an overlapping tick or a second worker is absorbed by the emitter. Concurrency 1: one sweeper; a missed
+  // tick is made up by the next. A tenant with the flag off is skipped (rows wait).
+  "messaging.reminder_sweep": {
+    name: "messaging.reminder_sweep",
+    priority: 6,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.reminder_sweep.dlq",
+    idempotency:
+      "reminder id; the alert correlation id `reminder:<id>` is unique per organisation, and the row is deleted only after the alert is raised",
+  },
 };
 
 /** The repeat cadences for the scheduled jobs (UTC cron). Event-triggered queues have no entry. */
@@ -268,4 +282,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   handoffExpiry: "* * * * *",
   /** ack_escalation_sweep: every minute (escalates the requests that passed their deadline and re-asks the ones that could not be routed). */
   ackEscalationSweep: "* * * * *",
+  /** reminder_sweep: every minute (raises the alert of each reminder that came due). */
+  reminderSweep: "* * * * *",
 } as const;

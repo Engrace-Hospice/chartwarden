@@ -31,10 +31,29 @@ export {
 
 export {
   planFanOut,
+  planFanOutDetailed,
   type AlertContext,
   type PlannedDelivery,
   type FanOutInput,
+  type FanOutPolicy,
+  type FanOutResult,
+  type PolicyTrailEntry,
 } from "./fan-out";
+
+export {
+  DESIGNATED_EVENT_TYPES,
+  SUPERVISOR_PAGE_EVENT_TYPES,
+  PLATFORM_CHANNEL_FLOOR,
+  SNOOZABLE_EVENT_TYPES,
+  isSnoozableEvent,
+  decideChannels,
+  designatedClassOf,
+  type ChannelDecision,
+  type PolicyAckClass,
+  type PolicyInput,
+  type PolicyReason,
+  type ShiftState,
+} from "./notification-policy";
 
 export {
   computeOutcome,

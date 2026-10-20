@@ -15,6 +15,7 @@ import { Modal } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { clearAllDrafts } from "../../shell/ceremony-drafts";
+import { clearPendingNotificationLink } from "../../shell/pending-deep-link";
 import { authClient } from "./auth-client";
 
 const IDLE_MS = SESSION_POLICY.screenLockSec * 1000;
@@ -107,6 +108,7 @@ export function ScreenLock(): JSX.Element | null {
     if (refreshed.data?.user.id !== identity.userId) {
       await authClient.signOut().catch(() => undefined);
       clearAllDrafts();
+      clearPendingNotificationLink();
       window.location.assign("/login");
       return;
     }

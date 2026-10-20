@@ -230,6 +230,30 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    it("GET /auth/csrf returns the exact minted nonce only to an authenticated session", async () => {
+      const { app } = makeServer({ seed });
+      const authenticated = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/csrf",
+        headers: { "x-test-user": "user_rn" },
+      });
+      expect(authenticated.statusCode).toBe(200);
+      const token = authenticated.json().token as string;
+      expect(token).toMatch(/^[a-f0-9]{64}$/);
+      expect(authenticated.headers["cache-control"]).toBe("no-store, max-age=0");
+      const setCookies = Array.isArray(authenticated.headers["set-cookie"])
+        ? authenticated.headers["set-cookie"]
+        : [authenticated.headers["set-cookie"]];
+      expect(setCookies.some((cookie) => String(cookie).startsWith(`wardenx_csrf=${token};`))).toBe(
+        true,
+      );
+
+      const anonymous = await app.inject({ method: "GET", url: "/api/v1/auth/csrf" });
+      expect(anonymous.statusCode).toBe(401);
+      expect(anonymous.body).not.toContain("token");
+      await app.close();
+    });
+
     it("unauthenticated → 401 envelope", async () => {
       const { app } = makeServer({ seed });
       const res = await app.inject({ method: "GET", url: "/api/v1/auth/memberships" });

@@ -13,7 +13,17 @@ import { sql } from "drizzle-orm";
 // FKs. claim_id (M23), appeal_packet_document_id (M22), prior_tier_appeal_case_id (self, logical to
 // avoid a self-FK ordering constraint), actor_membership_id (core) are LOGICAL uuid FKs.
 // appeal_narrative / mac_reference_numbers / event_payload are audit-denylisted (§3.6).
-import { date, index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { denialCase } from "./denial";
 import {
@@ -51,6 +61,20 @@ export const appealCase = pgTable(
     appealPacketDocumentId: uuid("appeal_packet_document_id"), // M22 back-ref
     appealNarrative: jsonb("appeal_narrative"), // denylisted in audit (§3.6)
     macReferenceNumbers: jsonb("mac_reference_numbers"),
+    // Milestone 4 (migration 1117) - QIC reconsideration only (CHECK-guarded: NULL / default on every other tier).
+    // The documentation the redetermination notice named as missing (audit-scrubbed), or the attestation it named none.
+    citedEvidence: jsonb("cited_evidence"),
+    citedEvidenceNone: boolean("cited_evidence_none").notNull().default(false),
+    // The date the QIC received the request; its 60-day decision clock is derived from it on read.
+    qicReceivedOn: date("qic_received_on"),
+    qicClockExtensions: jsonb("qic_clock_extensions").notNull().default([]), // append-only [{days, recordedAt}]
+    // The OMHA escalation request (made outside WardenX), frozen once recorded, and the date the QIC forwarded the case.
+    escalationRequestedAt: timestamp("escalation_requested_at", { withTimezone: true }),
+    escalationChannel: text("escalation_channel"),
+    escalationConfirmationRef: text("escalation_confirmation_ref"), // audit-scrubbed
+    escalationConfirmedOn: date("escalation_confirmed_on"),
+    // True on the ALJ case an escalation opens (filed by the QIC's forwarding: no filing deadline of its own).
+    filedByEscalation: boolean("filed_by_escalation").notNull().default(false),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

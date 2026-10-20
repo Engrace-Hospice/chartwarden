@@ -1919,6 +1919,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.tpe",
+      "path": "/remittance/tpe",
+      "permission": "tpe.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.taxonomy",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read"
@@ -2239,6 +2247,54 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.unacknowledged",
+      "path": "/messaging/unacknowledged",
+      "permission": "messaging.review"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.preferences",
+      "path": "/messaging/preferences",
+      "permission": "messaging.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.on-call",
+      "path": "/messaging/on-call",
+      "permission": "messaging.oncall.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.devices",
+      "path": "/messaging/devices",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.session-governance",
+      "path": "/messaging/governance/sessions",
+      "permission": "messaging.sessions.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.offboarding",
+      "path": "/messaging/governance/offboarding/:userId",
+      "permission": "messaging.offboarding.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"
@@ -2250,6 +2306,14 @@
       "id": "messaging.global-search-settings",
       "path": "/messaging/search-settings",
       "permission": "messaging.global_search.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.notification-landing",
+      "path": "/n/:id",
+      "permission": "(none)"
     },
     {
       "app": "web",

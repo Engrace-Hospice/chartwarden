@@ -127,11 +127,15 @@ export * from "./messaging/sbar-policy";
 export * from "./messaging/communication-tasks";
 export * from "./messaging/clinical-handoffs";
 export * from "./messaging/message-acknowledgments";
+export * from "./messaging/message-thread-access-grants";
 export * from "./messaging/review-items";
 export * from "./messaging/chart-promotion-requests";
 export * from "./messaging/message-revisions";
 export * from "./messaging/message-drafts";
 export * from "./messaging/scheduled-messages";
+export * from "./messaging/message-afterhours-triage-links";
+export * from "./messaging/message-snoozes";
+export * from "./messaging/message-reminders";
 export * from "./messaging/message-attachments";
 export * from "./messaging/attachment-access-events";
 export * from "./messaging/messaging-erase-blocks";
@@ -494,14 +498,16 @@ export * from "./scheduling/membership-credentials";
 export * from "./scheduling/oncall-rotation";
 
 // ---------------------------------------------------------------------------
-// M18 owns 6 tables (M18-T02, §3.3): evv_event (the §2.2.1 D2 append-only discrete check-in/check-out ledger
+// M18 owns 8 tables: the original seven M18 tables plus evv_offline_capture_receipt (PR E.1), the
+// non-partitioned durable idempotency ledger spanning every evv_event partition. evv_event is the §2.2.1 D2
+// append-only discrete check-in/check-out ledger
 // — one row per capture; the visit-level bracket state is M17's domain, derived from these) + evv_geofence_
 // evaluation (the D3 per-event geofence calculation record) + evv_geofence_policy (the D3 three-layer policy:
 // platform floor → tenant default → per-address override) + evv_device (the D8 per-clinician device-
 // registration lifecycle) + evv_missing_resolution (the D6 missing-EVV resolution machine — documented_missing
 // is never a Medicare claim gate, ADR-0008) + evv_aggregator_submission (the D7 per-state aggregator submission
 // machine). Only evv_event is PHI-bearing by the three-column rule (it carries patient_id) → it gets
-// provider_entity_id + location_id NOT NULL; the other five are org-scoped (joinable to PHI only via
+// provider_entity_id + location_id NOT NULL; the other seven are org-scoped (joinable to PHI only via
 // visit_id/evv_event_id) or tenant-config (geofence_policy) / membership-scoped (device). evv_event is
 // PARTITION BY RANGE (event_at) monthly (D12, `evv_record` 7-year retention) — the Drizzle shape is logical
 // (composite PK incl. the partition key); the PARTITION BY + the per-LEAF partial-UNIQUE backstops (active-
@@ -509,7 +515,8 @@ export * from "./scheduling/oncall-rotation";
 // append-only immutability trigger (§3.2 Phase C) land in the RLS migration (0047). Cross-module refs (M5
 // patient / patient_address, M17 visit, M8 encounter, M2 device_attestation / step_up_session) are plain uuid
 // app-validated (M18 dependsOn [17]); only the tenancy spine + membership carry SQL FKs. RLS + grants + M4
-// write-audit triggers (GPS coords + free-text reasons denylisted, §3.6) land in M18-T02 (0047).
+// write-audit triggers (GPS coords + free-text reasons denylisted, §3.6) land in M18-T02 (0047); the receipt's
+// RLS, append-only guard, scrubbed audit and grants land additively in migration 1121.
 export * from "./evv/evv-event";
 export * from "./evv/evv-geofence-evaluation";
 export * from "./evv/evv-geofence-policy";
@@ -517,6 +524,7 @@ export * from "./evv/evv-device";
 export * from "./evv/evv-missing-resolution";
 export * from "./evv/evv-aggregator-submission";
 export * from "./evv/evv-visit-registrations";
+export * from "./evv/evv-offline-capture-receipt";
 // M22 Document Management (M22-T02, §3.3): 17 tables. `document` + `intake_upload_batch` are PHI-bearing by
 // the three-column rule (they carry patient_id → provider_entity_id + location_id present, nullable as the
 // org-level-entity carve-out); the rest are org-scoped (joining to PHI via document/batch) except

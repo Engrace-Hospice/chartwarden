@@ -39,6 +39,9 @@ import {
 } from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
+const uuidString = Type.String({
+  pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+});
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
 const handoffCause = Type.Union(HANDOFF_UNACCEPTED_CAUSES.map((cause) => Type.Literal(cause)));
@@ -117,9 +120,13 @@ const ACK_EVENT_ENTRIES = [
   ),
   ackEntry(
     "m36.ack.reassigned",
-    "A request moved to a new assignee; the window restarted, the original request time was kept (WP 4.2). M36 tells the new assignee in-app.",
+    "A request moved to a new assignee; the window restarted, the original request time was kept (WP 4.2). M36 tells the new assignee in-app. When `supervisorReassign` is true a supervisor with `messaging.review` moved it (ADR-0078): M36 also tells the previous assignee and the sender in-app, generically; `actorUserId` is the supervisor.",
     ["m36"],
-    { previousAssignedUserId: id },
+    {
+      previousAssignedUserId: id,
+      supervisorReassign: Type.Optional(Type.Literal(true)),
+      requesterUserId: Type.Optional(id),
+    },
   ),
   ackEntry(
     "m36.ack.resolved",
@@ -157,6 +164,12 @@ const ACK_EVENT_ENTRIES = [
       occurrence: Type.Integer({ minimum: 1 }),
       typeOccurrence: Type.Integer({ minimum: 1 }),
     },
+  ),
+  // WP 4.5 (ADR-0071): written by the delivery-failure handler (actorUserId null). Ids only.
+  ackEntry(
+    "m36.ack.failed_unreachable",
+    "Every out-of-band delivery route to the assignee failed and no further tier could be reached, so nobody is known to have been reached (WP 4.5, ADR-0071). The request stays open and can still be acknowledged, reassigned or resolved by a person. M36 tells the supervisor audience, the sender and the assignee in-app, generically, and raises an ops notice. Not a page, not the emergency path.",
+    ["m36"],
   ),
 ];
 
@@ -418,6 +431,23 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
   },
   ...ACK_EVENT_ENTRIES,
   {
+    eventName: "m36.afterhours_triage.requested",
+    moduleOwner: "m36",
+    description:
+      "An after-hours role send asked M19 to open (or join) a triage call for a patient (ADR-0082, PROPOSED, flag-off). Id-only: the message, its acknowledgment request, the patient and one instant - no text, no name, no body. Published in the urgent send's own transaction; the organization comes from the envelope. M19 replies with m19.afterhours_triage.outcome.",
+    payloadSchema: Type.Object(
+      {
+        messageId: uuidString,
+        requestId: uuidString,
+        patientId: uuidString,
+        occurredAt: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m19"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.promotion.requested",
     moduleOwner: "m36",
     description:
@@ -512,7 +542,9 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     // (operational surfacing only, no ledger effect) and this event still has no real producer (see
     // this file's header) — binding it does not make a delivery observable yet, it only makes the
     // catalog/binding agreement true instead of false.
-    declaredConsumers: ["m19", "m20", "m26"],
+    // WP 4.5 (ADR-0071) — m36 ADDED: a failed route to an acknowledgment request's assignee is handled by
+    // `outbox-consumers/ack-delivery-failure.ts` (only for the alert types that carry a request).
+    declaredConsumers: ["m19", "m20", "m26", "m36"],
     isOutboxOnly: true,
   },
 ];

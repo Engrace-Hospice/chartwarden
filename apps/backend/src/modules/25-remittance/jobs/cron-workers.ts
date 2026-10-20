@@ -17,12 +17,14 @@ import {
   runAppealDeadlineWatch,
   runDenialAging,
 } from "./m25-jobs";
+import { type QicOverdueStore, runQicOverdueWatch } from "./qic-overdue";
 import {
   type M25CronQueueName,
   M25_CRON_QUEUES,
   M25_JOB_SCHEDULES,
   M25_QUEUE_PARAMS,
 } from "./queues";
+import { type SubmissionProofStore, runSubmissionProofWatch } from "./submission-proof-watch";
 
 /** The §4.9 M36 typed-alert dispatcher (alerts ship as defs + fire through M36). */
 export interface WorkerAlertPort {
@@ -178,10 +180,77 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           }));
         },
       };
+      // Milestone 4: a QIC reconsideration past its recorded decision date with no escalation requested.
+      const qicStore: QicOverdueStore = {
+        async overdueCandidates() {
+          const rows = await tx
+            .select({
+              id: AC.id,
+              receivedOn: AC.qicReceivedOn,
+              extensions: AC.qicClockExtensions,
+              escalationRequestedAt: AC.escalationRequestedAt,
+            })
+            .from(AC)
+            .where(
+              sql`${AC.tier} = 'reconsideration' AND ${AC.state} = 'under_review' AND ${AC.qicReceivedOn} IS NOT NULL`,
+            )
+            .limit(100000);
+          return rows.flatMap((r) =>
+            r.receivedOn === null
+              ? []
+              : [
+                  {
+                    id: r.id,
+                    receivedOn: r.receivedOn,
+                    extensions: Array.isArray(r.extensions)
+                      ? (r.extensions as { days: number; recordedAt: string }[])
+                      : [],
+                    escalationRequested: r.escalationRequestedAt !== null,
+                  },
+                ],
+          );
+        },
+      };
+      // Milestone 6a: a filing whose receipt was never recorded (attempt still needs_manual) past the threshold.
+      const SA = schema.submissionAttempt;
+      const proofStore: SubmissionProofStore = {
+        async needsManualAttempts() {
+          const rows = await tx
+            .select({
+              id: SA.id,
+              adrCaseId: SA.adrCaseId,
+              appealCaseId: SA.appealCaseId,
+              reopeningCaseId: SA.reopeningCaseId,
+              createdAt: SA.createdAt,
+              adrState: schema.adrCase.state,
+              appealState: AC.state,
+              reopeningState: schema.reopeningCase.state,
+            })
+            .from(SA)
+            .leftJoin(schema.adrCase, eq(schema.adrCase.id, SA.adrCaseId))
+            .leftJoin(AC, eq(AC.id, SA.appealCaseId))
+            .leftJoin(schema.reopeningCase, eq(schema.reopeningCase.id, SA.reopeningCaseId))
+            .where(sql`${SA.status} = 'needs_manual'`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            subjectKind: r.adrCaseId
+              ? ("adr" as const)
+              : r.reopeningCaseId
+                ? ("reopening" as const)
+                : ("appeal" as const),
+            subjectId: r.adrCaseId ?? r.reopeningCaseId ?? r.appealCaseId ?? "",
+            subjectState: r.adrState ?? r.reopeningState ?? r.appealState ?? "",
+            createdAt: r.createdAt.toISOString(),
+          }));
+        },
+      };
       const result = {
         alerts: [
           ...(await runAppealDeadlineWatch(store, now)).alerts,
           ...(await runAdrDeadlineWatch(adrStore, now)).alerts,
+          ...(await runQicOverdueWatch(qicStore, now)).alerts,
+          ...(await runSubmissionProofWatch(proofStore, now)).alerts,
         ],
       };
       for (const a of result.alerts) {

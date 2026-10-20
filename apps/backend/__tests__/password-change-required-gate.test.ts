@@ -70,6 +70,7 @@ describe("PASSWORD_CHANGE_REQUIRED authenticate boundary", () => {
   it.each([
     ["GET", "/api/auth/get-session"],
     ["POST", "/api/auth/sign-out"],
+    ["GET", "/api/v1/auth/csrf"],
     ["GET", "/api/v1/auth/credential-status"],
     ["POST", "/api/v1/auth/password/complete-required-change"],
   ])("allows only the exact limited-session route %s %s", async (method, url) => {
@@ -79,7 +80,9 @@ describe("PASSWORD_CHANGE_REQUIRED authenticate boundary", () => {
   });
 
   it("does not let a passkey/old org-bound session bypass the global state", async () => {
-    await expect(hook(true, actor.organizationId)(request("GET", "/api/v1/patients"))).rejects.toMatchObject({
+    await expect(
+      hook(true, actor.organizationId)(request("GET", "/api/v1/patients")),
+    ).rejects.toMatchObject({
       code: "PASSWORD_CHANGE_REQUIRED",
     });
   });

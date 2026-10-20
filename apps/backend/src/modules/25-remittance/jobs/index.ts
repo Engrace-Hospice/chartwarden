@@ -3,6 +3,8 @@
 // (cron-workers.ts). The composition root imports the build/register/schedule trio; the pure handlers stay
 // importable without bullmq (the unit tests exercise them directly).
 export * from "./m25-jobs";
+export * from "./qic-overdue";
+export * from "./submission-proof-watch";
 export * from "./queues";
 export {
   type M25WorkerDeps,

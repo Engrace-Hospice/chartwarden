@@ -2,7 +2,7 @@
 // row is an access grant for whoever created the patient from a referral, not an IDG discipline, so it
 // must not appear there.
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
@@ -62,11 +62,13 @@ describe("PatientIdgHistory team", () => {
         client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
       >
         <SessionProvider session={session}>
-          <MemoryRouter initialEntries={[`/patients/${PATIENT}/idg`]}>
-            <Routes>
-              <Route path="/patients/:patientId/idg" element={<PatientIdgHistory />} />
-            </Routes>
-          </MemoryRouter>
+          <ToastProvider>
+            <MemoryRouter initialEntries={[`/patients/${PATIENT}/idg`]}>
+              <Routes>
+                <Route path="/patients/:patientId/idg" element={<PatientIdgHistory />} />
+              </Routes>
+            </MemoryRouter>
+          </ToastProvider>
         </SessionProvider>
       </ApiClientProvider>,
     );

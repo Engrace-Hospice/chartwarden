@@ -2984,6 +2984,7 @@ export const triageCallInboundChannel = pgEnum("triage_call_inbound_channel", [
   "inbound_visit_failure",
   "inbound_evv_anomaly",
   "inbound_alert_failure",
+  "inbound_afterhours_request",
 ]);
 
 /**
@@ -3003,6 +3004,7 @@ export const triageCallSource = pgEnum("triage_call_source", [
   "geofence_anomaly",
   "m36_delivery_failure",
   "paper_origin",
+  "m36_afterhours_request",
 ]);
 
 /** `triage_disposition` — D6. The enumerable commitment that ends the call and that every downstream

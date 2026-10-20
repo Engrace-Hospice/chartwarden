@@ -35,6 +35,7 @@ import {
   withdrawReopening,
 } from "./remittance-api";
 import { REOPENING_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { SubmissionPanel } from "./submission-panel";
 
 /** Keyed on the DENIAL id so the denial worklist can reopen the right panel after a step-up round trip. */
 export const REOPENING_DRAFT_ACTION = "m25-reopening";
@@ -329,6 +330,10 @@ export function ReopeningPanel({
             Close reopening
           </Button>
         </ButtonRow>
+      ) : null}
+
+      {detail.state !== "draft" && detail.state !== "withdrawn" ? (
+        <SubmissionPanel key={reopeningId} kind="reopening" subjectId={reopeningId} />
       ) : null}
 
       {live ? (

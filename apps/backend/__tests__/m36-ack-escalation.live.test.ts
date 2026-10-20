@@ -122,6 +122,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
   let rn2: string;
   let tier1: string;
   let tier2: string;
+  /** Qualified (keys, urgent.receive) but NOT a member of the care-team channel. */
+  let outsider: string;
   let orgBUser: string;
   let channel: string;
   let careTeam: string[] = [];
@@ -272,6 +274,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       outbox: catalogOutbox() as never,
       router,
       stillQualified: ack.stillQualified,
+      canViewChannel: kit.service.canViewChannel,
       now: () => clock.now,
       ...(timers ? { timers } : {}),
     });
@@ -283,6 +286,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
     rn2 = await seed("rn2", ORG_A, RECEIVE_KEYS);
     tier1 = await seed("tier1", ORG_A, RECEIVE_KEYS);
     tier2 = await seed("tier2", ORG_A, RECEIVE_KEYS);
+    outsider = await seed("outsider", ORG_A, RECEIVE_KEYS);
     orgBUser = await seed("orgb", ORG_B, [...SEND_KEYS, ...RECEIVE_KEYS]);
     channel = await mkChannel(kit, "care_team", PATIENT, [nurse, rn, rn2, tier1, tier2]);
     careTeam = [nurse, rn, rn2, tier1, tier2];
@@ -501,6 +505,48 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       expect(routerScopes).toEqual([ORG_A]);
     });
 
+    it("3b. a qualified next-tier user who is not in the channel is skipped: the walk goes to the member behind them, who can act", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      ladder[1] = (asOf) => resolved(1, [outsider, tier1], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 1, assignedUserId: tier1 });
+      expect((await row(id)).assigned_user_id).toBe(tier1);
+      expect((await acknowledge(tier1, id)).statusCode).toBe(200);
+    });
+
+    it("3c. when the only next-tier user is not in the channel the ladder is exhausted: the request stays with its assignee, who can still act", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      const before = await row(id);
+      ladder[1] = (asOf) => resolved(1, [outsider], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toEqual({ kind: "not_routed", reason: "ladder_exhausted", recorded: true });
+      expect(await row(id)).toEqual(before);
+      expect(await countEvents(id, "escalated")).toBe(0);
+      expect(await countEvents(id, "ladder_exhausted")).toBe(1);
+      expect(await outboxNames(id)).toContain("m36.ack.ladder_exhausted");
+      expect((await acknowledge(rn, id)).statusCode).toBe(200);
+    });
+
+    it("3d. a tier of non-members is skipped to the router's next tier", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      ladder[1] = (asOf) => resolved(1, [outsider], 2, asOf);
+      ladder[2] = (asOf) => resolved(2, [tier2], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 2, assignedUserId: tier2 });
+    });
+
     it("4. the tier's clinician can acknowledge the escalated request, the one who did not act can no longer", async () => {
       resetCase();
       const { id } = await freshRequest();
@@ -701,10 +747,14 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
             return { alertId: "a", resolvedRecipientCount: 1 };
           },
         } as unknown as AlertEmitter,
+        opsNotice: () => undefined,
         messaging: kit.service,
         readRequest: escalation.readRequest,
         stillQualified: ack.stillQualified,
       });
+      // ADR-0079: the first unroutable record also raises the supervisor attention alert; this test is about the parties' alerts.
+      const partyAlerts = () =>
+        emitted.filter((a) => a.eventType !== "m36.ack.supervisor_attention");
       const outboxEvent = async (id: string, name: string) => {
         const [r] = await kit.one<{ id: string; payload: Record<string, unknown> }>(
           "SELECT id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2 ORDER BY created_at DESC LIMIT 1",
@@ -718,23 +768,23 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       ladder[1] = (asOf) => resolved(1, [tier1], null, asOf);
       await escalation.service.processDue(ORG_A, escalatedReq.id);
       await consumer.handle(await outboxEvent(escalatedReq.id, "m36.ack.escalated"));
-      expect(emitted).toHaveLength(1);
+      expect(partyAlerts()).toHaveLength(1);
       expect(emitted[0]?.payload).toMatchObject({ recipientUserId: tier1, channelId: channel });
       // Acknowledged since: the same event now tells nobody.
       expect((await acknowledge(tier1, escalatedReq.id)).statusCode).toBe(200);
       await consumer.handle(await outboxEvent(escalatedReq.id, "m36.ack.escalated"));
-      expect(emitted).toHaveLength(1);
+      expect(partyAlerts()).toHaveLength(1);
       // Not routed: the sender and the assignee are told; once the request closes, a redelivery tells nobody.
       ladder = {};
       const stuck = await freshRequest();
       await makeDue(stuck.id);
       await escalation.service.processDue(ORG_A, stuck.id);
       await consumer.handle(await outboxEvent(stuck.id, "m36.ack.route_unavailable"));
-      expect(emitted).toHaveLength(2);
-      expect(emitted[1]?.payload).toMatchObject({ recipientUserIds: [nurse, rn] });
+      expect(partyAlerts()).toHaveLength(2);
+      expect(partyAlerts()[1]?.payload).toMatchObject({ recipientUserIds: [nurse, rn] });
       expect((await acknowledge(rn, stuck.id)).statusCode).toBe(200);
       await consumer.handle(await outboxEvent(stuck.id, "m36.ack.route_unavailable"));
-      expect(emitted).toHaveLength(2);
+      expect(partyAlerts()).toHaveLength(2);
     });
 
     it("10. the database refuses a person's escalation, a cross-tenant or sender recipient, and a window that does not start now", async () => {
@@ -1142,6 +1192,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
           },
         },
         stillQualified: ack.stillQualified,
+        canViewChannel: kit.service.canViewChannel,
         outbox: undefined,
         now: () => clock.now,
       });

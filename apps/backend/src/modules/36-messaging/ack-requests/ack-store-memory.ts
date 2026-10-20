@@ -61,6 +61,7 @@ export function createMemoryAckStore(): MemoryAckStore {
         channelId: n.channelId,
         patientId: n.patientId,
         ackClass: n.ackClass,
+        addressedRole: n.addressedRole ?? null,
         status: "pending",
         requesterUserId: n.requesterUserId,
         assignedUserId: n.assignedUserId,
@@ -83,11 +84,11 @@ export function createMemoryAckStore(): MemoryAckStore {
       if (!cur || cur.organizationId !== orgId || cur.version !== expectedVersion) {
         throw new AckStaleError();
       }
-      const { updatedAt: _updatedAt, ...columns } = patch;
-      const next: AckRow = { ...cur, ...columns, version: expectedVersion + 1 };
+      const next: AckRow = { ...cur, ...patch, version: expectedVersion + 1 };
       requests.set(id, next);
       return next;
     },
+    async allowSupervisorReassign() {},
     async insertEvent(e) {
       events.push({ ...e, id: nextId() });
     },
@@ -149,6 +150,18 @@ export function createMemoryAckStore(): MemoryAckStore {
         .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);
     },
+    async listUnreachableOverdue(asOf, limit, since) {
+      return [...requests.values()]
+        .filter(
+          (r) =>
+            r.organizationId === orgId &&
+            r.status === "failed_unreachable" &&
+            r.deadlineAt.getTime() <= asOf.getTime() &&
+            Math.max(r.deadlineAt.getTime(), r.updatedAt?.getTime() ?? 0) > since.getTime(),
+        )
+        .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
     async listEvents(requestId) {
       return events
         .filter((e) => e.requestId === requestId && e.organizationId === orgId)
@@ -164,6 +177,7 @@ export function createMemoryAckStore(): MemoryAckStore {
             previousAssignedUserId: e.previousAssignedUserId,
             tier: e.tier,
             createdAt: e.at,
+            reasonCode: e.reasonCode ?? null,
           }),
         );
     },

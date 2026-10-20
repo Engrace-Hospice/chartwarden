@@ -94,14 +94,15 @@ describe("M36 read-audit declarations", () => {
     expect(blocks.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("every emission config is a list read or names a resource id (a param, or a payload path for a POST that creates or answers the resource); every waiver has a reason", () => {
+  it("every emission config is a list read or names a resource id (a param, a payload path for a POST that creates or answers the resource, or the patient via patientIdParam/patientIdQueryParam); every waiver has a reason", () => {
     for (const { file, body } of blocks) {
       if (/\bnone:/.test(body)) {
         expect(body, `${file}: empty waiver`).toMatch(/none:\s*\n?\s*"[^"]{10,}/);
         continue;
       }
+      // patientIdParam / patientIdQueryParam also resolve a resource id: a single read with no resourceIdParam is accounted against the patient (read-audit.ts).
       expect(body, `${file}: ${body.trim()}`).toMatch(
-        /\blist:\s*true|\bresourceIdParam:\s*"\w+"|\b(?:resourceId|patientId)PayloadPath:\s*"[\w.]+"/,
+        /\blist:\s*true|\bresourceIdParam:\s*"\w+"|\bpatientId(?:Query)?Param:\s*"\w+"|\b(?:resourceId|patientId)PayloadPath:\s*"[\w.]+"/,
       );
     }
   });

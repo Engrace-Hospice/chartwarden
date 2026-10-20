@@ -671,7 +671,7 @@ For external clinical/regulatory collaborators (Module 7.6 External Collaborator
 
 - HttpOnly cookies prevent JS access
 - No `localStorage` or `sessionStorage` for session tokens
-- Mobile: tokens in Capacitor SecureStore (iOS Keychain / Android EncryptedSharedPreferences)
+- Mobile target: Better Auth cookie material in Expo SecureStore (iOS Keychain / Android Keystore-backed storage as provided by the reviewed platform implementation)
 - Server-side session revocation always available
 
 -----
@@ -1178,7 +1178,7 @@ Content-Security-Policy: default-src 'self';
 
 - **Never** store session tokens in `localStorage` or `sessionStorage`
 - Lint rule blocks usage for security purposes
-- Capacitor mobile: tokens in SecureStore only
+- React Native/Expo mobile target: Better Auth cookie material in SecureStore only
 
 ### 9.7 API Security
 
@@ -1348,11 +1348,13 @@ For each production VM:
 
 -----
 
-## 12. Mobile Device Security (Capacitor)
+## 12. Mobile Device Security (React Native/Expo)
 
 ### 12.1 Mobile Architecture Recap
 
-Mobile is a Capacitor wrap of `apps/web` (ADR-0035 — there is no separate `apps/mobile` app), delivered as native iOS and Android shells via App Store / Google Play (or MDM for enterprise distribution). Used by clinical and field staff. Stores temporary clinical data offline.
+The product direction is a separate React Native/Expo application in the `wardenx-mobile` repository (ADR-0072, pending formal architecture ratification). It uses the same Better Auth service, WardenX API authorization, RBAC/ABAC, and RLS controls. The native renderer does not import DOM components from `apps/web`.
+
+The controls below are release requirements, not evidence of implementation. PR B proves the backend auth, origin, cookie, CSRF, and Socket.IO contracts only. SecureStore transport, biometric lock, screenshot handling, jailbreak/root response, encrypted offline data, attestation, certificate pinning, MDM, and native push still require implementation and device evidence in their assigned mobile lots.
 
 ### 12.2 Device Posture Requirements
 
@@ -1368,8 +1370,8 @@ For app to function, device must meet:
 
 #### 12.3.1 Local Data Encryption
 
-- Session token, refresh token, biometric-unlock secret → **SecureStore** (iOS Keychain hardware-backed where available; Android EncryptedSharedPreferences backed by Keystore)
-- Encounter drafts (when offline) → encrypted SQLite via Capacitor SQLite plugin with sqlcipher
+- Better Auth cookie material and any biometric-unlock secret → **Expo SecureStore**; PR C must validate OS accessibility settings, backup behavior, migration, and purge on supported devices
+- Encounter drafts (when offline) → a reviewed encrypted SQLite/SQLCipher-compatible React Native adapter; no adapter is selected or implemented by PR B
 - Cached patient context → encrypted SQLite, evicted on logout
 - Photos awaiting upload → encrypted in app sandbox; uploaded then deleted
 
@@ -1395,7 +1397,7 @@ For app to function, device must meet:
 #### 12.3.5 Certificate Pinning
 
 - Backend API endpoints pinned to specific certificate or CA
-- Pinning enforced via Capacitor Network plugin custom config
+- Pinning requires a reviewed native network implementation compatible with Expo development builds; PR B does not select or prove one
 - Pinning updates when certs rotate (coordinated deploy)
 
 #### 12.3.6 Anti-Tampering
@@ -1409,7 +1411,7 @@ For app to function, device must meet:
 App refuses to run on compromised devices:
 
 ```typescript
-// Pseudocode for detection (Capacitor + RootBeer-equivalent / IOSSecuritySuite)
+// Pseudocode only; PR C/later security work must select and prove the RN-native implementation.
 async function deviceIntegrityCheck() {
   if (await isJailbroken()) {
     showBlockingScreen('This app cannot run on jailbroken devices for patient safety.')
@@ -1959,7 +1961,7 @@ HITRUST is a longer-term aspiration (Phase 4+). Current alignment with key contr
 |§4 Cryptographic Standards  |Annually + on standards revisions (NIST, etc.)                    |
 |§5-§9 Application controls  |On significant arch change; otherwise annually                    |
 |§10-§11 Infrastructure      |Annually + on infrastructure change                               |
-|§12 Mobile                  |On Capacitor/iOS/Android major version changes; otherwise annually|
+|§12 Mobile                  |On React Native/Expo/iOS/Android major version changes; otherwise annually|
 |§14 Vulnerability Management|Quarterly                                                         |
 |§15-§16 Testing/IR          |Post-incident; otherwise annually                                 |
 |§20 Compliance Mappings     |On regulation change; otherwise annually                          |

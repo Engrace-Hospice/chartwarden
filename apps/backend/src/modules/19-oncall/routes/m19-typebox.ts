@@ -107,6 +107,7 @@ export const InboundChannel = Type.Union([
   Type.Literal("inbound_visit_failure"),
   Type.Literal("inbound_evv_anomaly"),
   Type.Literal("inbound_alert_failure"),
+  Type.Literal("inbound_afterhours_request"),
 ]);
 
 /** `m19_triage_call_caller_kind`. */
@@ -813,6 +814,7 @@ const TriageCallSourceEnum = Type.Union([
   Type.Literal("geofence_anomaly"),
   Type.Literal("m36_delivery_failure"),
   Type.Literal("paper_origin"),
+  Type.Literal("m36_afterhours_request"),
 ]);
 const EscalationStateEnum = Type.Union([
   Type.Literal("open"),

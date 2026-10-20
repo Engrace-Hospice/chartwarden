@@ -2,6 +2,10 @@ import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  clearPendingNotificationLink,
+  takePendingNotificationLink,
+} from "../../shell/pending-deep-link";
 import { authClient } from "./auth-client";
 import { BrandLockup } from "./brand-lockup";
 
@@ -26,9 +30,13 @@ export function RequiredPasswordChange(): JSX.Element {
       }
       if (!data.passwordChangeRequired) {
         void authClient.getSession().then(({ data: sessionData }) => {
-          navigate(sessionData?.session?.activeOrganizationId ? "/" : "/login/organization", {
-            replace: true,
-          });
+          // WP 4.8: a notification link opened before sign-in finishes here too (the stash is read once, so it cannot linger).
+          navigate(
+            sessionData?.session?.activeOrganizationId
+              ? (takePendingNotificationLink() ?? "/")
+              : "/login/organization",
+            { replace: true },
+          );
         });
         return;
       }
@@ -85,6 +93,7 @@ export function RequiredPasswordChange(): JSX.Element {
     setNewPassword("");
     setConfirmPassword("");
     await authClient.signOut().catch(() => undefined);
+    clearPendingNotificationLink();
     navigate("/login", { replace: true });
   }
 

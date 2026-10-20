@@ -60,6 +60,7 @@ import {
   CollaboratorInviteRequestSchema as M2CollaboratorInviteRequestSchema,
   CollaboratorInviteResponseSchema as M2CollaboratorInviteResponseSchema,
   CredentialStatusResponseSchema as M2CredentialStatusResponseSchema,
+  CsrfBootstrapResponseSchema as M2CsrfBootstrapResponseSchema,
   ElevatedApprovalGrantRequestSchema as M2ElevatedApprovalGrantRequestSchema,
   ElevatedApprovalGrantSchema as M2ElevatedApprovalGrantSchema,
   ElevatedApprovalRevokeRequestSchema as M2ElevatedApprovalRevokeRequestSchema,
@@ -126,6 +127,7 @@ import {
   AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
+  CtiDetailResponseSchema,
   CtiDraftSchema,
   CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
@@ -136,12 +138,15 @@ import {
   DischargeDeclineSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
+  ElectionPeriodListResponseSchema,
   ElectionPeriodPatchSchema,
   ElectionSignSchema,
+  ElectionStatementDetailResponseSchema,
   ElectionStatementDraftSchema,
   ElectionVoidSchema,
   F2fAttestSchema,
   F2fCompleteSchema,
+  F2fDetailResponseSchema,
   F2fOverrideWindowSchema,
   F2fScheduleSchema,
   LocChangeSchema,
@@ -158,6 +163,7 @@ import {
   SummaryPageResponseSchema as M6SummaryPageResponseSchema,
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
   NorAcknowledgeSchema,
+  NorDetailResponseSchema,
   PatientElectionCertificationResponseSchema,
   PhysicianSignerListResponseSchema,
   ReferralAcceptResponseSchema,
@@ -565,6 +571,15 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
+import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
   ReopeningCreateRequestSchema as M25ReopeningCreateRequestSchema,
@@ -578,6 +593,28 @@ import {
   RouteRulePageSchema as M25RouteRulePageSchema,
   RouteRuleRequestSchema as M25RouteRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
+import {
+  SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
+  SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
+  SubmissionReceiptResultSchema as M25SubmissionReceiptResultSchema,
+  SubmissionVersionedResultSchema as M25SubmissionVersionedResultSchema,
+  SubmissionViewSchema as M25SubmissionViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/submission.routes";
+import {
+  TpeClaimRequestSchema as M25TpeClaimRequestSchema,
+  TpeEducationRequestSchema as M25TpeEducationRequestSchema,
+  TpeOutcomeRequestSchema as M25TpeOutcomeRequestSchema,
+  TpeProgramCreateRequestSchema as M25TpeProgramCreateRequestSchema,
+  TpeProgramDetailSchema as M25TpeProgramDetailSchema,
+  TpeProgramListQuerySchema as M25TpeProgramListQuerySchema,
+  TpeProgramPageSchema as M25TpeProgramPageSchema,
+  TpeResultsRequestSchema as M25TpeResultsRequestSchema,
+  TpeRoundCreateRequestSchema as M25TpeRoundCreateRequestSchema,
+  TpeRoundCreatedSchema as M25TpeRoundCreatedSchema,
+  TpeRulePageSchema as M25TpeRulePageSchema,
+  TpeRuleRequestSchema as M25TpeRuleRequestSchema,
+  TpeVersionedResultSchema as M25TpeVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/tpe.routes";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
   AcceptProposalBody as M28AcceptProposalBody,
@@ -1286,16 +1323,21 @@ import {
   AckChannelListResponseSchema as M36AckChannelListResponseSchema,
   AckCreateResponseSchema as M36AckCreateResponseSchema,
   AckDetailResponseSchema as M36AckDetailResponseSchema,
+  AckReassignCandidatesResponseSchema as M36AckReassignCandidatesResponseSchema,
   AckRequestResponseSchema as M36AckRequestResponseSchema,
+  AckSupervisorReassignResponseSchema as M36AckSupervisorReassignResponseSchema,
   CreateAckBodySchema as M36CreateAckBodySchema,
   EmptyAckBodySchema as M36EmptyAckBodySchema,
   ReassignAckBodySchema as M36ReassignAckBodySchema,
+  SupervisorReassignBodySchema as M36SupervisorReassignBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/ack-typebox";
 import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
+// M36 WP 4.8 deep-link resolver.
+import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
   DraftQuerySchema as M36DraftQuerySchema,
   DraftResponseSchema as M36DraftResponseSchema,
@@ -1378,6 +1420,13 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+// M36 WP 5.9 workforce offboarding (ADR-0084, PROPOSED).
+import { OffboardingResponseSchema as M36OffboardingResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/offboarding-typebox";
+// M36 WP 4.12 on-call directory.
+import {
+  OnCallCoverageQuerySchema as M36OnCallCoverageQuerySchema,
+  OnCallCoverageResponseSchema as M36OnCallCoverageResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/oncall-typebox";
 import { PatientContextResponseSchema as M36PatientContextResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/patient-context-typebox";
 import {
   CreatePollBodySchema as M36CreatePollBodySchema,
@@ -1408,6 +1457,13 @@ import {
   ReviewItemResponseSchema as M36ReviewItemResponseSchema,
   ReviewListResponseSchema as M36ReviewListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/review-typebox";
+// M36 role-based send (ADR-0081, PROPOSED).
+import {
+  RoleSendResolutionQuerySchema as M36RoleSendResolutionQuerySchema,
+  RoleSendResolutionResponseSchema as M36RoleSendResolutionResponseSchema,
+  RoleSendResponseSchema as M36RoleSendResponseSchema,
+  SendRoleMessageBodySchema as M36SendRoleMessageBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/role-send-typebox";
 // M36 WP 3.3 SBAR policy.
 import {
   PutSbarPolicyBodySchema as M36PutSbarPolicyBodySchema,
@@ -1425,6 +1481,21 @@ import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
+// M36 WP 5.5 device and session manager (ADR-0083, PROPOSED).
+import {
+  DeviceListResponseSchema as M36DeviceListResponseSchema,
+  DeviceRevokeResponseSchema as M36DeviceRevokeResponseSchema,
+  SessionAdminListQuerySchema as M36SessionAdminListQuerySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/session-device-typebox";
+// M36 WP 4.10 snooze and reminders.
+import {
+  ClearedResponseSchema as M36ClearedResponseSchema,
+  ReminderBodySchema as M36ReminderBodySchema,
+  ReminderListResponseSchema as M36ReminderListResponseSchema,
+  ReminderResponseSchema as M36ReminderResponseSchema,
+  SnoozeBodySchema as M36SnoozeBodySchema,
+  SnoozeResponseSchema as M36SnoozeResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/snooze-reminder-typebox";
 // M36 WP 3.4 communication tasks.
 import {
   CloseTaskBodySchema as M36CloseTaskBodySchema,
@@ -1445,6 +1516,11 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 4.9 supervisor unacknowledged queue.
+import {
+  UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
+  UnacknowledgedResponseSchema as M36UnacknowledgedResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox";
 // M36 WP 4.1 urgent clinical message.
 import {
   SendUrgentMessageBodySchema as M36SendUrgentMessageBodySchema,
@@ -1960,10 +2036,12 @@ import {
   EvvMetricsView as M18EvvMetricsView,
   EvvMissingResolutionListResponse as M18EvvMissingResolutionListResponse,
   EvvMissingResolutionView as M18EvvMissingResolutionView,
+  EvvOfflineSyncV2Response as M18EvvOfflineSyncV2Response,
   MembershipIdQuery as M18MembershipIdQuery,
   MetricsQuery as M18MetricsQuery,
   MissingResolutionListQuery as M18MissingResolutionListQuery,
   OfflineSyncRequest as M18OfflineSyncRequest,
+  OfflineSyncV2Request as M18OfflineSyncV2Request,
   RejectDeviceRequest as M18RejectDeviceRequest,
   ResubmitSubmissionRequest as M18ResubmitSubmissionRequest,
   RetireDeviceRequest as M18RetireDeviceRequest,
@@ -4213,7 +4291,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/election-statements/:id": {
     summary: "One election statement's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: ElectionStatementDetailResponseSchema,
   },
   "POST /api/v1/election-statements/:id/sign": {
     summary: "Sign the election statement",
@@ -4286,7 +4364,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
-    response: M6SummaryItemsResponseSchema,
+    response: ElectionPeriodListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/admissions": {
     summary:
@@ -4318,7 +4396,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/cti/:id": {
     summary: "One CTI's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: CtiDetailResponseSchema,
   },
   "POST /api/v1/cti/:id/sign-hospice-md": {
     summary: "Hospice medical director signs the CTI",
@@ -4340,7 +4418,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/face-to-face/:id": {
     summary: "One F2F encounter's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: F2fDetailResponseSchema,
   },
   "POST /api/v1/face-to-face/:id/complete": {
     summary: "Mark the F2F encounter completed",
@@ -4453,7 +4531,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/nor": {
     summary: "The admission's notice-of-rights acknowledgment",
-    response: M6SummaryRowResponseSchema,
+    response: NorDetailResponseSchema,
   },
   // Compliance windows (routes 43–46)
   "GET /api/v1/admissions/:id/compliance-windows": {
@@ -5907,9 +5985,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvCheckResultView,
   },
   "POST /api/v1/evv/offline-sync": {
-    summary: "Batch offline-sync of capture events (idempotent on device+localId)",
+    summary: "Legacy offline-sync (array response; durable only when localId is supplied)",
     body: M18OfflineSyncRequest,
     response: M18EvvCheckResultListResponse,
+  },
+  "POST /api/v1/evv/offline-sync/v2": {
+    summary: "Durable per-capture offline EVV reconciliation (at-least-once transport)",
+    body: M18OfflineSyncV2Request,
+    response: M18EvvOfflineSyncV2Response,
   },
   "POST /api/v1/evv/events/:eventId/correct": {
     summary: "Correction-of-record (Clinical Supervisor+, fresh step-up)",
@@ -6357,6 +6440,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/auth/context": {
     summary: "App-shell identity/role/permission projection (FB-T15)",
     response: M2AuthContextResponseSchema,
+  },
+  "GET /api/v1/auth/csrf": {
+    summary: "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+    response: M2CsrfBootstrapResponseSchema,
   },
   "GET /api/v1/auth/credential-status": {
     summary: "Read the authenticated identity's authoritative password-rotation state",
@@ -8236,6 +8323,57 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Close a decided reopening (If-Match)",
     response: M25ReopeningVersionedResultSchema,
   },
+  "GET /api/v1/adrs/:id/submission": {
+    summary:
+      "Submission attempts of this ADR response: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/adrs/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/adrs/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
+  },
+  "GET /api/v1/appeals/:id/submission": {
+    summary:
+      "Submission attempts of this appeal or QIC request: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/appeals/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/appeals/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
+  },
+  "GET /api/v1/reopenings/:id/submission": {
+    summary:
+      "Submission attempts of this reopening request: status, proof missing, guided checklist and adapter availability",
+    response: M25SubmissionViewSchema,
+  },
+  "POST /api/v1/reopenings/:id/submission-receipt": {
+    summary:
+      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+    body: M25SubmissionReceiptRequestSchema,
+    response: M25SubmissionReceiptResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/submission-cancel": {
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
+    body: M25SubmissionCancelRequestSchema,
+    response: M25SubmissionVersionedResultSchema,
+  },
   "GET /api/v1/denials/:id/route": {
     summary:
       "Which path a denial takes (appeal, reopening or undetermined) and the routing rule that decided",
@@ -8254,6 +8392,98 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create or update a denial routing rule",
     body: M25RouteRuleRequestSchema,
     response: M25ReopeningVersionedResultSchema,
+  },
+
+  // ── tpe.routes.ts (hospice ADR/TPE/QIC PRD, milestone 5) ────────────────────────────────────────
+  "GET /api/v1/tpe-programs": {
+    summary:
+      "TPE programs with current round, the MAC's rate against the threshold, next round and advisory risk",
+    query: M25TpeProgramListQuerySchema,
+    response: M25TpeProgramPageSchema,
+  },
+  "GET /api/v1/tpe-programs/:id": {
+    summary: "TPE program detail: rounds, sampled claims with their ADR state, warnings, outcome",
+    response: M25TpeProgramDetailSchema,
+  },
+  "POST /api/v1/tpe-programs": {
+    summary: "Open a TPE program for a provider entity and MAC (one active program per pair)",
+    body: M25TpeProgramCreateRequestSchema,
+    response: M25TpeVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/tpe-programs/:id/rounds": {
+    summary:
+      "Start the next TPE round (max 3; the previous round needs results); an interval under 45 days is a warning (If-Match on the program)",
+    body: M25TpeRoundCreateRequestSchema,
+    response: M25TpeRoundCreatedSchema,
+    status: 201,
+  },
+  "PUT /api/v1/tpe-rounds/:id/results": {
+    summary:
+      "Record the MAC's results letter for a round; the threshold in force is snapshotted on first record (If-Match)",
+    body: M25TpeResultsRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "PUT /api/v1/tpe-rounds/:id/education": {
+    summary: "Record (or clear) the education date and note for a round (If-Match)",
+    body: M25TpeEducationRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "PUT /api/v1/tpe-rounds/:id/claims/:claimId": {
+    summary:
+      "Add or update a sampled claim of a round: its ADR link and result (If-Match on the round)",
+    body: M25TpeClaimRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "POST /api/v1/tpe-programs/:id/outcome": {
+    summary:
+      "Record the program outcome from the CMS / MAC letter: relief (compliant) or referral with its types (If-Match)",
+    body: M25TpeOutcomeRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "POST /api/v1/tpe-programs/:id/close": {
+    summary: "Close a TPE program; a closed program is frozen by the database (If-Match)",
+    response: M25TpeVersionedResultSchema,
+  },
+  "GET /api/v1/tpe-rules": {
+    summary: "The organization's per-MAC TPE exit thresholds (none are seeded)",
+    response: M25TpeRulePageSchema,
+  },
+  "PUT /api/v1/tpe-rules": {
+    summary: "Create or update a per-MAC TPE exit threshold with its source and verification day",
+    body: M25TpeRuleRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+
+  // ── qic.routes.ts (hospice ADR/TPE/QIC PRD, milestone 4) ────────────────────────────────────────
+  "GET /api/v1/appeals/:id/qic": {
+    summary:
+      "QIC reconsideration view: cited evidence, the 60-day decision clock with its derivation, and escalation state",
+    response: M25QicViewSchema,
+  },
+  "PATCH /api/v1/appeals/:id/cited-evidence": {
+    summary:
+      "Set the documentation the redetermination notice named as missing, or attest it named none (draft only; If-Match)",
+    body: M25CitedEvidenceRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "PATCH /api/v1/appeals/:id/qic-clock": {
+    summary:
+      "Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match)",
+    body: M25QicClockRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/request-escalation": {
+    summary:
+      "Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
+    body: M25EscalationRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/confirm-escalation": {
+    summary:
+      "Confirm the QIC forwarded the case to OMHA: the reconsideration becomes escalated and an ALJ case opens (If-Match)",
+    body: M25EscalationConfirmRequestSchema,
+    response: M25QicEscalationConfirmedSchema,
   },
 
   // ── appeals.routes.ts (§4.1 routes 19-26) ─────────────────────────────────────────────────────
@@ -9547,10 +9777,75 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36UrgentMessageResponseSchema,
     status: 201,
   },
+  "GET /api/v1/messaging/channels/:id/role-send/resolution": {
+    summary:
+      "Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids, display names and `rank`, the router's explicit primary or backup, primaries listed first, to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient",
+    query: M36RoleSendResolutionQuerySchema,
+    response: M36RoleSendResolutionResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/role-send": {
+    summary:
+      "Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SendRoleMessageBodySchema,
+    response: M36RoleSendResponseSchema,
+    status: 201,
+  },
   "GET /api/v1/messaging/channels/:id/urgent-messages/options": {
     summary:
       "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
     response: M36UrgentMessageOptionsResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/unacknowledged": {
+    summary:
+      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+    query: M36UnacknowledgedQuerySchema,
+    response: M36UnacknowledgedResponseSchema,
+  },
+  "GET /api/v1/messaging/oncall/coverage": {
+    summary:
+      "Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage)",
+    query: M36OnCallCoverageQuerySchema,
+    response: M36OnCallCoverageResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "The caller's own snooze of a conversation, and whether it can be snoozed now (WP 4.10, ADR-0077; messaging.read; 404 while the tenant flag `messaging.notification_policy` is off or the conversation is not visible). `snoozable` is false while the caller is the sender or the assignee of an OPEN acknowledgment request in it; a snooze such a request voids is reported as not snoozed. Read-audited against the channel",
+    response: M36SnoozeResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "Snooze a conversation's NON-URGENT out-of-band notices (push / SMS / email) for 5 minutes to 24 hours (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key). It never hides anything in the app and never quiets an urgent or acknowledgment-bound alert. 409 SNOOZE_URGENT_NOT_ALLOWED while the caller is the sender or the assignee of an open acknowledgment request in the conversation; 422 SNOOZE_DURATION_INVALID outside the bounds; one 404 while the flag is off or the conversation is not visible. Re-snoozing replaces the window",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SnoozeBodySchema,
+    response: M36SnoozeResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/snooze": {
+    summary:
+      "End the caller's snooze of a conversation (idempotent; cleared=false when none was set)",
+    response: M36ClearedResponseSchema,
+  },
+  "GET /api/v1/messaging/reminders": {
+    summary:
+      "The caller's own pending message reminders, soonest first, with the per-user cap (WP 4.10, ADR-0077; messaging.read). Ids and instants only. Read-audited (a list)",
+    response: M36ReminderListResponseSchema,
+  },
+  "PUT /api/v1/messaging/messages/:id/reminder": {
+    summary:
+      "Remind the caller of a NON-URGENT message at an instant 1 minute to 30 days ahead (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key; one reminder per message, setting again replaces the time). At most 25 pending: 409 REMINDER_LIMIT_REACHED. 409 REMINDER_URGENT_NOT_ALLOWED for an urgent message or one with an open acknowledgment request; 422 REMINDER_TIME_INVALID for a time without an offset or outside the bounds; one 404 while the flag is off or the message is missing, deleted or not visible. The reminder arrives as an alert with fixed generic text and a link, never the message",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36ReminderBodySchema,
+    response: M36ReminderResponseSchema,
+  },
+  "DELETE /api/v1/messaging/messages/:id/reminder": {
+    summary:
+      "Cancel the caller's reminder on a message (idempotent; cleared=false when none was set)",
+    response: M36ClearedResponseSchema,
+  },
+  "GET /api/v1/messaging/deliveries/:id/target": {
+    summary:
+      "Resolve the opaque id of an out-of-band link (`{origin}/n/{id}`) to its in-app target (WP 4.8, ADR-0075; messaging.read). The id is not an access grant: the delivery must be the CALLER's own, in the caller's organisation, the message must still exist in that channel and the caller must still be able to see the channel. A missing, malformed, someone else's, other-tenant, no-longer-visible or deleted target is one identical 404 (the id is never echoed). Returns three ids only (channel, message, and the open acknowledgment request on it, if any), no patient and no text. Read-only: opening a link never acknowledges anything. Read-audited against the delivery",
+    response: M36DeliveryTargetResponseSchema,
   },
   "POST /api/v1/messaging/escalations": {
     summary:
@@ -9581,6 +9876,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Move a request to another qualified colleague (WP 4.2; messaging.read, rate limited like create). Only the current assignee may at any open state (no qualification check, so a hand-off never strands the item); the requester may only until the request is taken (403 ACK_NOT_ASSIGNEE once acknowledged) and must still hold messaging.urgent.send. The new assignee passes the same checks as at create and differs from the current one and the requester (422 ACK_ASSIGNEE_INVALID otherwise, 403 ACK_NOT_PARTY for anyone else). The window restarts for the new assignee (status back to pending, new default deadline) and `requested_at` is kept. A repeat by the same actor is 200 changed:false. 409 once resolved or cancelled. Read-audited",
     body: M36ReassignAckBodySchema,
     response: M36AckRequestResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/:id/reassign-candidates": {
+    summary:
+      "Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50; rate limited like reassign. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only",
+    response: M36AckReassignCandidatesResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates": {
+    summary:
+      "The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. A supervisor the Part 2 gate walls off from the patient gets an EMPTY list (the care team is never named to them). Rate limited like reassign. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only",
+    response: M36AckReassignCandidatesResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations/:id/supervisor-reassign": {
+    summary:
+      "A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SupervisorReassignBodySchema,
+    response: M36AckSupervisorReassignResponseSchema,
   },
   "POST /api/v1/messaging/escalations/:id/resolve": {
     summary:
@@ -9804,6 +10116,41 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36DeliveryEndpointResponseSchema,
   },
   "DELETE /api/v1/notifications/endpoints/:id": { summary: "Remove a delivery endpoint (204)" },
+
+  // device and session manager (WP 5.5, ADR-0083 PROPOSED)
+  "GET /api/v1/devices": {
+    summary:
+      "The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached",
+    response: M36DeviceListResponseSchema,
+  },
+  "DELETE /api/v1/devices/:id": {
+    summary:
+      "Revoke one of the caller's own sessions, in one transaction: the session is deleted (its next REST call is 401 and a socket handshake with it is refused), every endpoint linked to it is expired, and an `m36.session.revoked` audit row is written; then the session's live sockets are closed on every api node. `current:true` means the caller revoked the session making this request and must sign in again. A session that is not the caller's, an unknown id and one already revoked are the same 404 (no existence oracle; a repeat is a 404). If closing the sockets fails the revoke still stands and the realtime re-check ends the socket within a minute",
+    response: M36DeviceRevokeResponseSchema,
+  },
+  "GET /api/v1/messaging/governance/sessions": {
+    summary:
+      "Security officer: another user's staff sessions bound to the officer's organisation (messaging.sessions.manage). Same fields as GET /devices. A user with no sessions in this organisation, an unknown user and another tenant's user are all an empty list (never an error, never another tenant's data). Audited as m36.session.admin_listed. Not cached",
+    query: M36SessionAdminListQuerySchema,
+    response: M36DeviceListResponseSchema,
+  },
+  "DELETE /api/v1/messaging/governance/sessions/:id": {
+    summary:
+      "Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404",
+    response: M36DeviceRevokeResponseSchema,
+  },
+
+  // workforce offboarding (WP 5.9, ADR-0084 PROPOSED)
+  "GET /api/v1/messaging/governance/offboarding/:userId": {
+    summary:
+      "Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached",
+    response: M36OffboardingResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/offboarding/:userId/execute": {
+    summary:
+      "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
+    response: M36OffboardingResponseSchema,
+  },
 
   // alerts (§4.2)
   "GET /api/v1/alerts/inbox": {

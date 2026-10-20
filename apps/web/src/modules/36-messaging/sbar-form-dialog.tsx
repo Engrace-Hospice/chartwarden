@@ -7,6 +7,7 @@ import { validateSbar } from "@wardenx/types";
 import { Button, Modal } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   SBAR_DEFAULT_HINTS,
   SBAR_EMERGENCY_NOTE,
@@ -106,7 +107,10 @@ export function SbarFormDialog({
     onChange({ ...values, sections: { ...values.sections, [key]: text } });
   };
 
-  return (
+  // Portalled to <body>: the composer's own <form> contains this component, and a form nested in a form is invalid
+  // HTML (the browser can submit the outer one, reloading the page). The submit also stops here so React's tree-wide
+  // bubbling never reaches the composer's send handler.
+  return createPortal(
     <Modal open onClose={sending ? undefined : onCancel} ariaLabel="SBAR message" width="40rem">
       <form
         ref={formRef}
@@ -114,6 +118,7 @@ export function SbarFormDialog({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           submit();
         }}
         onKeyDown={onKeyDown}
@@ -194,6 +199,7 @@ export function SbarFormDialog({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }

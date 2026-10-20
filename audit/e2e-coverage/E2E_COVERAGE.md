@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 179 statically-routable `web` screen(s) — 19/179 E2E-reached, 170/179 axe-reached.
+**Coverage:** 185 statically-routable `web` screen(s) — 19/185 E2E-reached, 175/185 axe-reached.
 
 ## Zero E2E coverage
 
@@ -101,8 +101,13 @@
 | `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
 | `messaging.staff` | 36-messaging | `/messaging` | messaging.read |
+| `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
+| `messaging.session-governance` | 36-messaging | `/messaging/governance/sessions` | messaging.sessions.manage |
+| `messaging.on-call` | 36-messaging | `/messaging/on-call` | messaging.oncall.read |
+| `messaging.preferences` | 36-messaging | `/messaging/preferences` | messaging.read |
 | `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |
 | `messaging.global-search-settings` | 36-messaging | `/messaging/search-settings` | messaging.global_search.manage |
+| `messaging.unacknowledged` | 36-messaging | `/messaging/unacknowledged` | messaging.review |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `orders.held-transmissions` | 11-orders | `/orders/held-transmissions` | orders.transmission.view_held |
 | `orders.results-review` | 11-orders | `/orders/results-pending-review` | orders.read |
@@ -122,6 +127,7 @@
 | `remittance.appeals` | 25-remittance | `/remittance/appeals` | appeal.read |
 | `remittance.denials` | 25-remittance | `/remittance/denials` | denial.worklist.read |
 | `remittance.taxonomy` | 25-remittance | `/remittance/taxonomy` | taxonomy.read |
+| `remittance.tpe` | 25-remittance | `/remittance/tpe` | tpe.read |
 | `reporting.admin` | 33-reporting | `/reports/admin` | report.admin.mv_list |
 | `reporting.schedules` | 33-reporting | `/reports/schedules` | report.schedule.list |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
@@ -180,6 +186,7 @@
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
 | `identity.passkey-enrolment` | 02-identity | `/login/passkey` | (none) |
+| `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
 

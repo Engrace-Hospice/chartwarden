@@ -4,7 +4,7 @@
 // user (FK); cross-module refs (M5 patient, M39 representative consent, M22 document) are plain uuid
 // app-validated; the admission FK is intra-M6. One acknowledgment per admission (unique). RLS + the
 // M4 write-audit trigger land in M6-T03 (§3.6–3.7).
-import { bigint, date, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, date, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { businessRule } from "../../business-rules";
 import { electionSignerKind, norAcknowledgmentMethod } from "../../enums";
 import { locations } from "../locations";
@@ -39,6 +39,8 @@ export const noticeOfRightsAcknowledgments = pgTable(
     signerKind: electionSignerKind("signer_kind").notNull(),
     representativeConsentId: uuid("representative_consent_id"), // M39 consent (app-validated)
     acknowledgedAt: date("acknowledged_at").notNull(),
+    acknowledgedAtInstant: timestamp("acknowledged_at_instant", { withTimezone: true }),
+    acknowledgedByName: text("acknowledged_by_name"),
     acknowledgmentMethod: norAcknowledgmentMethod("acknowledgment_method").notNull(),
     witnessUserId: uuid("witness_user_id").references(() => users.id, { onDelete: "set null" }),
     documentId: uuid("document_id"), // M22 document (app-validated)

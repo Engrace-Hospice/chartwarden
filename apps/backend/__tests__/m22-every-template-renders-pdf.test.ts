@@ -286,6 +286,16 @@ describe("appeal_packet (GAP-036)", () => {
       facts({
         tier: "reconsideration",
         lateGoodCause: { justification: "The MAC notice was misdelivered." },
+        reconsideration: {
+          redeterminationMacName: "Example MAC",
+          redeterminationNoticeDate: "2026-02-01",
+          redeterminationNoticeDocumentId: DOC_B,
+          citedEvidence: [
+            { label: "Face-to-face note", documentId: DOC_A, notAvailableReason: null },
+          ],
+          citedEvidenceNone: false,
+          evidencePreclusionAcknowledged: false,
+        },
       }),
     );
     const bytes = renderPdfForTemplate(
@@ -298,6 +308,10 @@ describe("appeal_packet (GAP-036)", () => {
     expect(text).toContain("The patient was certified terminally ill");
     expect(text).toContain("good cause");
     expect(text).toContain("The MAC notice was misdelivered.");
+    // the QIC request elements: MAC, notice, cited evidence, fill-in identity cells
+    expect(text).toContain("Example MAC");
+    expect(text).toContain("Face-to-face note");
+    expect(text).toContain("Medicare number");
     // the as-submitted claim: control number, type of bill, lines with revenue code / HCPCS / units / charge
     expect(text).toContain("CCN-2026-0042");
     expect(text).toContain("811");

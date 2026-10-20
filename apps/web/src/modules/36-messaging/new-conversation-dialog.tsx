@@ -1,3 +1,4 @@
+import { formatMrn } from "@wardenx/types";
 import { Button, EmptyState, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
@@ -249,7 +250,7 @@ export function NewConversationDialog({
                   : (item as PatientSearchResult).displayName;
                 const detail = isStaff
                   ? (item as DmStaffMember).roles.join(" · ") || "Staff member"
-                  : `MRN ${(item as PatientSearchResult).medicalRecordNumber}`;
+                  : formatMrn((item as PatientSearchResult).medicalRecordNumber);
                 const isSelected = isStaff
                   ? selectedStaff?.userId === id
                   : selectedPatient?.patientId === id;

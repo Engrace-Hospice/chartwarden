@@ -25,6 +25,7 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { useNeedsResponse } from "./needs-response-control";
 import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
@@ -60,6 +61,10 @@ export interface ConversationThreadProps {
   onMessageSent: () => void;
   onAccessRevoked: (channelId: string) => void;
   anchorMessageId?: string | null;
+  /** WP 4.8: set only by a notification link (never a search hit): that message's acknowledgment card takes focus once. */
+  landOnMessageId?: string | null;
+  /** Called once the linked request card has taken focus, so the parent stops asking for it (a remount must not land again). */
+  onLanded?: () => void;
   /** Changes when a realtime hint (or a socket reconnect) says this channel has news: read the latest now. */
   liveToken?: number;
   /** While the socket is up, polling is only a safety net and runs slowly. */
@@ -99,6 +104,8 @@ function ConversationThreadView({
   onMessageSent,
   onAccessRevoked,
   anchorMessageId = null,
+  landOnMessageId = null,
+  onLanded,
   liveToken = 0,
   realtimeConnected = false,
   liveHint = null,
@@ -238,7 +245,9 @@ function ConversationThreadView({
     if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
   }, []);
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
+  const needsResponse = useNeedsResponse(channel.channelId, channel.kind);
   const { send, sending, sendError, sbarIssues, clearSendError, resetSender } = useMessageSender({
+    needsResponse: needsResponse.forSend,
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
     draft,
@@ -445,7 +454,6 @@ function ConversationThreadView({
     setLoadError(null);
     setLoadCorrelationId(null);
     setRefreshError(false);
-    setContextOpen(false);
     panelReset();
     jumpReset();
     setNewMessageCount(0);
@@ -463,6 +471,14 @@ function ConversationThreadView({
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
   }, [loadLatest, resetSender, resetMention, jumpReset, panelReset, clearDraftLinks]);
+
+  // The patient-context panel closes on a channel switch and ONLY then. It used to be reset by the effect above, which
+  // re-runs whenever any of its callback dependencies changes identity (e.g. the API client after a token refresh), so
+  // a toggle could be undone by an unrelated re-run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the channel on purpose
+  useEffect(() => {
+    setContextOpen(false);
+  }, [channel.channelId]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -631,6 +647,8 @@ function ConversationThreadView({
           channelId={channel.channelId}
           enabled={channel.kind === "care_team" && Boolean(channel.subjectId)}
           refreshKey={messages ? (messages.at(-1)?.messageId ?? "") : null}
+          landOnMessageId={landOnMessageId}
+          onLanded={onLanded}
         >
           <MessageTimeline
             timelineRef={timelineRef}
@@ -738,6 +756,7 @@ function ConversationThreadView({
         removeDraftLink={draftLinks.remove}
         uploads={uploads}
         sending={sending}
+        needsResponse={needsResponse}
         send={send}
         sendError={sendError}
         clearSendError={clearSendError}

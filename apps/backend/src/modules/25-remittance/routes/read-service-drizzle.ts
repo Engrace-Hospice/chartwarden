@@ -431,6 +431,7 @@ export function buildDrizzleM25ReadService(
       presumedReceiptOn: derived?.presumedReceiptOn ?? null,
       windowDays: derived?.windowDays ?? null,
       lastFilingDay: derived?.lastFilingDay ?? null,
+      filedByEscalation: r.filedByEscalation,
       version: r.version,
     };
   }

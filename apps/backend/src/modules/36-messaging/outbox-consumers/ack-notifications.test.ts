@@ -68,7 +68,15 @@ describe("M36 acknowledgment-request notifications consumer", () => {
       payload: { recipientUserId: "u-2", message: ACK_NOTIFICATION_TEXT.requested },
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
-      ["channelId", "deepLink", "message", "messageId", "recipientUserId"].sort(),
+      [
+        "ackClass",
+        "channelId",
+        "deepLink",
+        "message",
+        "messageId",
+        "recipientUserId",
+        "sourceAggregateId",
+      ].sort(),
     );
   });
 
@@ -164,5 +172,91 @@ describe("M36 acknowledgment-request notifications consumer", () => {
     await expect(
       consumer.handle(event("m36.ack.requested", { requestVersion: "1" })),
     ).rejects.toThrow(/missing requestVersion/);
+  });
+});
+
+describe("ADR-0078: a supervisor's reassign also tells the previous assignee and the sender", () => {
+  const supervised = {
+    actorUserId: "sup-1",
+    previousAssignedUserId: "u-0",
+    requesterUserId: "u-1",
+    supervisorReassign: true,
+    requestVersion: 3,
+  };
+
+  it("emits the new assignee's alert as usual plus ONE generic in-app notice for the previous assignee and the sender", async () => {
+    const { emit, consumer } = setup();
+
+    await consumer.handle(event("m36.ack.reassigned", supervised));
+
+    expect(emit).toHaveBeenCalledTimes(2);
+    const notice = emit.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((a) => a.eventType === "m36.ack.supervisor_reassigned");
+    expect(notice).toMatchObject({
+      severity: "warn",
+      correlationId: "ack-sup:r-1:3",
+      payload: {
+        recipientUserIds: ["u-0", "u-1"],
+        message: ACK_NOTIFICATION_TEXT.supervisorReassigned,
+      },
+    });
+    expect(Object.keys(notice?.payload as object).sort()).toEqual(
+      ["channelId", "deepLink", "message", "messageId", "recipientUserIds"].sort(),
+    );
+    const own = emit.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((a) => a.eventType === "m36.ack.reassigned");
+    expect(own).toMatchObject({ payload: { recipientUserId: "u-2" } });
+  });
+
+  it("never names the supervisor, a reason or a person in the text", async () => {
+    const { emit, consumer } = setup();
+
+    await consumer.handle(event("m36.ack.reassigned", supervised));
+
+    const text = JSON.stringify(emit.mock.calls);
+    expect(text).not.toContain("sup-1");
+    expect(ACK_NOTIFICATION_TEXT.supervisorReassigned).not.toMatch(/reason|unreachable|workload/i);
+  });
+
+  it("leaves the supervisor out when they were the previous assignee or the sender, and skips people who cannot see the channel", async () => {
+    const { emit, consumer } = setup({
+      canView: async () => false,
+    });
+
+    await consumer.handle(
+      event("m36.ack.reassigned", { ...supervised, previousAssignedUserId: "sup-1" }),
+    );
+
+    // Nobody can see the channel: no notice at all, and the new assignee is skipped too (existing rule).
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("sends no notice for a reassign made by the sender or the assignee", async () => {
+    const { emit, consumer } = setup();
+
+    await consumer.handle(
+      event("m36.ack.reassigned", { previousAssignedUserId: "u-0", requesterUserId: "u-1" }),
+    );
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect((emit.mock.calls[0]?.[1] as Record<string, unknown>).eventType).toBe(
+      "m36.ack.reassigned",
+    );
+  });
+
+  it("tells nobody when the event is stale (the request moved on) or the new assignee is no longer qualified or cannot see it", async () => {
+    for (const over of [
+      { open: async () => false },
+      { qualified: async () => false },
+      { canView: async () => false },
+    ]) {
+      const { emit, consumer } = setup(over);
+
+      await consumer.handle(event("m36.ack.reassigned", supervised));
+
+      expect(emit).not.toHaveBeenCalled();
+    }
   });
 });

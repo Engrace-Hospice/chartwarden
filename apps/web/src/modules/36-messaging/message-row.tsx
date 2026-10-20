@@ -6,6 +6,7 @@ import { AckForMessage } from "./ack-request-card";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import { MessagePromotionButton } from "./message-promotion-button";
+import { MessageReminderButton } from "./message-reminder-button";
 import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
@@ -258,6 +259,13 @@ function MessageRowImpl({
                 channelId={message.channelId}
                 messageId={message.messageId}
                 meId={meId}
+              />
+            ) : null}
+            {/* WP 4.10: a reminder is for a non-urgent message only; an urgent or important one offers none. */}
+            {!deleted && canAnnotate && !message.urgency ? (
+              <MessageReminderButton
+                messageId={message.messageId}
+                authorName={message.authorDisplayName}
               />
             ) : null}
             {!deleted && canAnnotate && patientLinked ? (

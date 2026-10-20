@@ -67,6 +67,17 @@ export {
   createInMemoryOncallSeamStore,
 } from "./store";
 export { buildDrizzleOncallSeamStore } from "./store-drizzle";
+export {
+  ESCALATION_DISCIPLINE_BY_ROLE,
+  type EscalationRouterReads,
+  createEscalationRouter,
+} from "./escalation-router";
+export {
+  buildDrizzleEscalationRouterReads,
+  createAllowlistedEscalationRouter,
+  parseEscalationRouterOrgs,
+  registerEscalationRouterForAllowlist,
+} from "./escalation-router-binding";
 // F-218/F-219 — the one org-explicit GIP-proposal read M14 (flagged events) and M37 (intake worklist) share.
 export {
   GIP_PROPOSALS_MAX_ROWS,

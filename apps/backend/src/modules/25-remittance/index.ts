@@ -46,7 +46,10 @@ export {
   type TerminologyLookupPort,
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
+  buildDrizzleQicService,
+  buildDrizzleSubmissionService,
   buildDrizzleReopeningService,
+  buildDrizzleTpeService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
 } from "./routes/index";

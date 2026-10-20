@@ -45,6 +45,14 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.2 wraps the timeline in the acknowledgment-request loader for a patient care-team conversation (one import and one element)",
   "apps/web/src/modules/36-messaging/ack-request-card.tsx":
     "WP 4.2 web: the acknowledgment-request card (taking responsibility is an explicit button; opening or reading sends nothing)",
+  "apps/web/src/modules/36-messaging/needs-response-control.tsx":
+    "G2 web: the Needs a response composer control; it names the ack feature flag and its key, and its wording says opening or reading is not taking responsibility",
+  "apps/web/src/modules/36-messaging/ack-reassign-wording.ts":
+    "ADR-0078 web: the reassign dialogs' words; they say a supervisor reassign acknowledges nothing and that only the new person takes responsibility",
+  "apps/web/src/modules/36-messaging/ack-reassign-dialog.tsx":
+    "ADR-0078 web: the reassign dialog of the acknowledgment-request card and the supervisor queue (it acknowledges nothing)",
+  "apps/web/src/modules/36-messaging/use-ack-reassign.ts":
+    "ADR-0078 web: the candidate read and the reassign call of the acknowledgment-request card and the supervisor queue (acknowledges nothing)",
   "apps/web/src/modules/36-messaging/ack-wording.ts":
     "WP 4.2 web: every word the acknowledgment-request card shows (provisional, pending clinical-lead review)",
   "apps/web/src/modules/36-messaging/use-ack-requests.ts":
@@ -67,9 +75,49 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.4 the in-app alerts of an escalated or unrouted acknowledgment request (never a receipt)",
   "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts":
     "WP 4.4 arms the escalation timer of an acknowledgment request (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-delivery-failure.ts":
+    "WP 4.5 turns a failed out-of-band route to the assignee of an acknowledgment request into an early escalation or failed_unreachable (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts":
+    "WP 4.5 the in-app alert and ops notice for an acknowledgment request nobody could be reached for (never a receipt)",
+  "packages/messaging/src/resolution/notification-policy.ts":
+    "WP 4.6 the channel floor of the alerts that tell the assignee of an acknowledgment request (the class names and the m36.ack.* event names); it labels no delivery, open or read",
+  "apps/backend/src/modules/36-messaging/notification-policy-ports.ts":
+    "WP 4.6 the feature-flag gate of the m36.ack.* alerts (the ack_requests flag key and event names); it labels no delivery, open or read",
   "packages/messaging/src/jobs/queues.ts":
     "WP 4.4 names the two escalation queues of the acknowledgment-request aggregate (ack_escalation_timer / _sweep)",
   "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",
+  "apps/backend/src/modules/36-messaging/delivery-target/delivery-target-service.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/delivery-target-routes.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/delivery-target-typebox.ts":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/notification-landing.tsx":
+    "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/screens.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/unacknowledged-queue.tsx":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/unacknowledged-wording.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/use-unacknowledged-queue.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/snooze-reminder-routes.ts":
+    "WP 4.10 (ADR-0077) snooze and reminders: it names the acknowledgment request ONLY to refuse a snooze or a reminder where one is open (a read of its existence, never a receipt, never a write)",
+  "packages/messaging/src/seams/alert-emitter-impl.ts":
+    "WP 4.10 (ADR-0077) the snooze lookup port's comment: a snooze never applies where an acknowledgment request is open (a read of its existence, never a receipt)",
+  "apps/web/src/modules/36-messaging/snooze-control.tsx":
+    "WP 4.10 (ADR-0077) the header snooze control: it explains that a conversation with an acknowledgment request cannot be snoozed (words only, no receipt)",
+  "apps/backend/src/modules/36-messaging/routes/offboarding-routes.ts":
+    "WP 5.9 (ADR-0084) workforce offboarding: the execute route names the supervisor-reassign keys it calls through (a comment); it acknowledges nothing",
+  "apps/web/src/modules/36-messaging/offboarding-wording.ts":
+    "WP 5.9 (ADR-0084) the offboarding checklist's words: requests waiting on a departed person; nothing is acknowledged here",
+  "apps/web/src/modules/36-messaging/offboarding-workflow.tsx":
+    "WP 5.9 (ADR-0084) the offboarding checklist: it links an unmoved request to the supervisors' queue and acknowledges nothing",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };
@@ -85,8 +133,16 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
   "packages/messaging/src/ack-requests/":
     "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate (and WP 4.4's timer rules)",
+  "apps/backend/src/modules/36-messaging/ack-delivery-failure/":
+    "WP 4.5 what happens to an acknowledgment request when every route to its assignee failed: a failed delivery is never an acknowledgment, it is the opposite",
+  "apps/backend/src/modules/36-messaging/snooze-reminders/":
+    "WP 4.10 (ADR-0077) snooze and reminders: they READ whether an acknowledgment request is open (to refuse a snooze or a reminder) and never write one or label anything acknowledged",
+  "apps/backend/src/modules/36-messaging/oncall-directory/":
+    "WP 4.12 (ADR-0080) the read-only on-call directory: it imports the escalation router guard from the ack-escalation directory and never writes or labels an acknowledgment",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
+  "apps/backend/src/modules/36-messaging/offboarding/":
+    "WP 5.9 (ADR-0084) workforce offboarding: it moves the waiting acknowledgment requests of a departed person through the supervisor reassign and counts the acknowledged ones; it acknowledges nothing and labels no receipt",
 };
 
 /** The schema owns the retired column; the test files below pin that it stays NULL. */

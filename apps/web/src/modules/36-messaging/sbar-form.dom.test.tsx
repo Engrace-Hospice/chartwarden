@@ -3,6 +3,7 @@
 // errors mapped to sections, and the text kept when the form is cancelled.
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   renderHook,
@@ -238,7 +239,7 @@ describe("SBAR form", () => {
     expect(
       (within(dialog).getByRole("radio", { name: "Routine" }) as HTMLInputElement).checked,
     ).toBe(true);
-    document.body.innerHTML = "";
+    cleanup();
     mount({ kind: "on_call" });
     dialog = await openForm();
     expect(

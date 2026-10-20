@@ -249,7 +249,16 @@ export type {
 } from "./seams";
 
 // ── M36-T06 PHI sanitization wrapper (§4.7) — the only path to out-of-band channels ───────
-export { sanitizeForOutOfBand, sanitizeForEmergencyContactCall } from "./notification";
+export {
+  sanitizeForOutOfBand,
+  sanitizeForEmergencyContactCall,
+  renderOutOfBand,
+  setOutOfBandFallbackObserver,
+  OUT_OF_BAND_CHANNELS,
+  type RenderedOutOfBand,
+  type OutOfBandFallbackEvent,
+  type OutOfBandFallbackReason,
+} from "./notification";
 export type {
   Alert,
   Message,
@@ -367,6 +376,15 @@ export {
   suppressedByQuietHours,
   // fan-out planner + outcome roll-up (§2.4.3, §2.4.4)
   planFanOut,
+  planFanOutDetailed,
+  // WP 4.6 notification policy (ADR-0073)
+  DESIGNATED_EVENT_TYPES,
+  SUPERVISOR_PAGE_EVENT_TYPES,
+  SNOOZABLE_EVENT_TYPES,
+  isSnoozableEvent,
+  PLATFORM_CHANNEL_FLOOR,
+  decideChannels,
+  designatedClassOf,
   computeOutcome,
   // F-109 — the live-delivery-set roll-up `computeOutcome` never had a caller for.
   rollUpAlertOutcome,
@@ -384,6 +402,14 @@ export type {
   AlertContext,
   PlannedDelivery,
   FanOutInput,
+  FanOutPolicy,
+  FanOutResult,
+  PolicyTrailEntry,
+  ChannelDecision,
+  PolicyAckClass,
+  PolicyInput,
+  PolicyReason,
+  ShiftState,
   DeliverySettlement,
   DeliveryRollupRow,
 } from "./resolution";

@@ -31,6 +31,9 @@ import type { ModuleEventContribution } from "@wardenx/types";
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
+const uuid = Type.String({
+  pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+});
 const nullableStr = Type.Union([Type.String(), Type.Null()]);
 
 /** The §4.10-equivalent payload base every `m19.triage_call.*` event carries (`callEventBase` in
@@ -261,6 +264,26 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // GAP-057 — also published by the §4.8 Tier-1 `coverage-gap-watchdog.cron` (`jobs/coverage-gap-watchdog.ts`);
     // M36's `outbox-consumers/oncall-alerts.ts` is the bound consumer (was a seam-only m36).
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.afterhours_triage.outcome",
+    moduleOwner: "m19",
+    description:
+      "ADR-0082 slice S2 - M19's id-only answer to `m36.afterhours_triage.requested`, published by `consumers/bindings.ts` in the same transaction as the decision (`opened` with the new call, `coalesced` with the call joined, `no_coverage` alongside `m19.oncall_shift.coverage_gap`). Always sent, so M36 never waits on silence. Carries no patient, message or call content.",
+    payloadSchema: Type.Object(
+      {
+        sourceOutboxEventId: uuid,
+        triageCallId: Type.Union([uuid, Type.Null()]),
+        outcome: Type.Union([
+          Type.Literal("opened"),
+          Type.Literal("coalesced"),
+          Type.Literal("no_coverage"),
+        ]),
+      },
+      { additionalProperties: false },
+    ),
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },

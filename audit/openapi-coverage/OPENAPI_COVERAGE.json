@@ -1,22 +1,22 @@
 {
   "totals": {
-    "routes": 1640,
-    "enriched": 1640,
+    "routes": 1687,
+    "enriched": 1687,
     "deficit": 0,
-    "mutating": 931,
+    "mutating": 955,
     "mutatingNoBody": 1,
-    "gets": 664,
+    "gets": 683,
     "getsNoResponse": 8
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 53,
-      "enriched": 53,
+      "routes": 54,
+      "enriched": 54,
       "deficit": 0,
       "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
@@ -171,10 +171,10 @@
     },
     {
       "module": "18-evv",
-      "routes": 25,
-      "enriched": 25,
+      "routes": 26,
+      "enriched": 26,
       "deficit": 0,
-      "mutating": 15,
+      "mutating": 16,
       "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 57,
-      "enriched": 57,
+      "routes": 82,
+      "enriched": 82,
       "deficit": 0,
-      "mutating": 36,
+      "mutating": 54,
       "mutatingNoBody": 0,
-      "gets": 20,
+      "gets": 27,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 113,
-      "enriched": 113,
+      "routes": 133,
+      "enriched": 133,
       "deficit": 0,
-      "mutating": 57,
+      "mutating": 62,
       "mutatingNoBody": 0,
-      "gets": 44,
+      "gets": 55,
       "getsNoResponse": 0
     },
     {

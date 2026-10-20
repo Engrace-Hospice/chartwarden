@@ -35,6 +35,7 @@ import type {
 } from "@wardenx/messaging";
 import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createRoleSendService } from "../oncall-directory/role-send-service";
 import { resolveRichWrite } from "../rich-body-codec";
 import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
@@ -44,6 +45,11 @@ import {
   registerClinicalLinkRoutes,
   validateRichBodyLinks,
 } from "./clinical-link-routes";
+import {
+  DISABLED_DELIVERY_TARGET,
+  type DeliveryTargetRouteDeps,
+  registerDeliveryTargetRoutes,
+} from "./delivery-target-routes";
 import { DISABLED_HANDOFFS, type HandoffRouteDeps, registerHandoffRoutes } from "./handoff-routes";
 import {
   DISABLED_IDG_DISCUSSIONS,
@@ -81,6 +87,7 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { DISABLED_ONCALL, type OnCallRouteDeps, registerOnCallRoutes } from "./oncall-routes";
 import { registerPatientContextRoutes, seamPatientContextPorts } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import {
@@ -90,6 +97,7 @@ import {
 } from "./promotion-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import { DISABLED_REVIEW, type ReviewRouteDeps, registerReviewRoutes } from "./review-routes";
+import { DISABLED_ROLE_SEND, registerRoleSendRoutes } from "./role-send-routes";
 import {
   DISABLED_SBAR,
   type SbarRouteDeps,
@@ -97,7 +105,17 @@ import {
   registerSbarRoutes,
 } from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
+import {
+  DISABLED_SNOOZE_REMINDER,
+  type SnoozeReminderRouteDeps,
+  registerSnoozeReminderRoutes,
+} from "./snooze-reminder-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
+import {
+  DISABLED_UNACKNOWLEDGED,
+  type UnacknowledgedRouteDeps,
+  registerUnacknowledgedRoutes,
+} from "./unacknowledged-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -136,6 +154,14 @@ export interface MessagingRouteDeps {
   urgent?: UrgentRouteDeps;
   /** WP 4.2: the acknowledgment-request aggregate (service + limiter). Omitted => every route is the uniform 404. */
   ackRequests?: AckRouteDeps;
+  /** WP 4.9: the supervisor's unacknowledged queue (read-only). Omitted => an empty queue. */
+  unacknowledged?: UnacknowledgedRouteDeps;
+  /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
+  snoozeReminders?: SnoozeReminderRouteDeps;
+  /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
+  oncall?: OnCallRouteDeps;
+  /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
+  deliveryTarget?: DeliveryTargetRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
   idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
@@ -435,6 +461,46 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     viewChannel: VIEW_CHANNEL,
     send: SEND,
     requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+  });
+
+  // --- WP 4.9: the supervisor's unacknowledged-urgent queue (registered beside the ack routes; the static path wins over `/escalations/:id`) ---
+  registerUnacknowledgedRoutes(app, deps.unacknowledged ?? DISABLED_UNACKNOWLEDGED, {
+    read: READ,
+  });
+
+  // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
+  registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });
+
+  // --- ADR-0081 (PROPOSED): role-based send over the urgent service and the same guarded router; flag-gated in the service ---
+  registerRoleSendRoutes(
+    app,
+    deps.oncall?.roleSend && deps.urgent
+      ? {
+          service: createRoleSendService({ ...deps.oncall.roleSend, urgent: deps.urgent.service }),
+          patientExists: deps.oncall.patientExists,
+          ...(deps.urgent.rateLimit ? { rateLimit: deps.urgent.rateLimit } : {}),
+        }
+      : DISABLED_ROLE_SEND,
+    {
+      read: READ,
+      viewChannel: VIEW_CHANNEL,
+      send: SEND,
+      sendToChannel: SEND_TO_CHANNEL,
+      requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+      validateLinks: (request, richBody) =>
+        validateRichBodyLinks(request, clinicalLinkDeps, richBody),
+    },
+  );
+
+  // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---
+  registerSnoozeReminderRoutes(app, deps.snoozeReminders ?? DISABLED_SNOOZE_REMINDER, {
+    read: READ,
+    requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+  });
+
+  // --- WP 4.8: the deep-link landing (an opaque delivery id -> channel + message + ack request, for the signed-in recipient only) ---
+  registerDeliveryTargetRoutes(app, deps.deliveryTarget ?? DISABLED_DELIVERY_TARGET, {
+    read: READ,
   });
 
   // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---
@@ -794,9 +860,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(RegisterEndpointBodySchema, request.body);
+      // WP 5.5: link the endpoint to the session that registers it, so revoking that session expires it. Server-side context only.
+      const sessionId = request.context.attributes?.sessionId;
       const result = await service.registerEndpoint(organizationId, userId, {
         channel: body.channel,
         target: body.target,
+        ...(typeof sessionId === "string" && sessionId !== "" ? { sessionId } : {}),
       });
       return reply.code(201).send(result);
     },

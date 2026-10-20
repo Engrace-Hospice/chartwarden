@@ -20,8 +20,15 @@ import { MentionMenu, mentionOptionId } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
 import { channelLabel } from "./messaging-utils";
+import {
+  NEEDS_RESPONSE_PICKER_ID,
+  type NeedsResponse,
+  NeedsResponseControl,
+  needsRecipient,
+} from "./needs-response-control";
 import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PollCreateButton } from "./poll-create-button";
+import { RoleSendButton } from "./role-send-button";
 import { SbarFormDialog } from "./sbar-form-dialog";
 import { sbarAllowedInChannel, sbarOfferedInChannel } from "./sbar-utils";
 import { ScheduleSendButton } from "./schedule-send-button";
@@ -59,6 +66,8 @@ export interface ThreadComposerProps {
   linkCandidateSource?: ClinicalLinkCandidateSource;
   uploads: AttachmentUploads;
   sending: boolean;
+  /** G2: the "Needs a response" control's state (owned by the thread because the sender reads it). */
+  needsResponse: NeedsResponse;
   send: (event?: FormEvent) => Promise<void>;
   sendError: string | null;
   clearSendError: () => void;
@@ -99,6 +108,7 @@ export function ThreadComposer({
   linkCandidateSource,
   uploads,
   sending,
+  needsResponse,
   send,
   sendError,
   clearSendError,
@@ -261,70 +271,80 @@ export function ThreadComposer({
         />
         <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
-        <ClinicalLinkPicker
-          picker={linkPicker}
-          links={draftLinks}
-          disabled={sending}
-          onAdd={(link) => {
-            linkChosenRef.current = true;
-            addDraftLink(link);
-          }}
-          onClosed={restoreComposerFocus}
-        />
-        <TemplatePicker
-          disabled={sending}
-          onInsert={onInsertSavedReply}
-          onClosed={() => textareaRef.current?.focus()}
-          toggleRef={pickerToggleRef}
-          onOpened={() => {
-            if (policyState.status === "transient") policyState.reload();
-          }}
-          {...(sbarOffered
-            ? {
-                onChooseSbar: () => {
+        <div className="wx-composer-tools">
+          <ClinicalLinkPicker
+            picker={linkPicker}
+            links={draftLinks}
+            disabled={sending}
+            onAdd={(link) => {
+              linkChosenRef.current = true;
+              addDraftLink(link);
+            }}
+            onClosed={restoreComposerFocus}
+          />
+          <TemplatePicker
+            disabled={sending}
+            onInsert={onInsertSavedReply}
+            onClosed={() => textareaRef.current?.focus()}
+            toggleRef={pickerToggleRef}
+            onOpened={() => {
+              if (policyState.status === "transient") policyState.reload();
+            }}
+            {...(sbarOffered
+              ? {
+                  onChooseSbar: () => {
+                    clearSendError();
+                    sbar.show();
+                  },
+                }
+              : {})}
+          />
+          {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
+            <span className="wx-sbar-draft-note">
+              <Glyph name="file-text" size={14} />
+              <output aria-label={sbarNote}>{sbarNote}</output>
+              <Button
+                type="button"
+                tone="secondary"
+                disabled={sending}
+                aria-label="Open SBAR draft"
+                onClick={() => {
                   clearSendError();
                   sbar.show();
-                },
-              }
-            : {})}
-        />
-        {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
-          <span className="wx-sbar-draft-note">
-            <Glyph name="file-text" size={14} />
-            <output aria-label={sbarNote}>{sbarNote}</output>
-            <Button
-              type="button"
-              tone="secondary"
-              disabled={sending}
-              aria-label="Open SBAR draft"
-              onClick={() => {
-                clearSendError();
-                sbar.show();
-              }}
-            >
-              Open
-            </Button>
-          </span>
-        ) : null}
-        <PollCreateButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onCreated={onPollCreated}
-        />
-        <MedicationQuestionButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onSent={onPollCreated}
-        />
-        <UrgentMessageButton
-          channelId={channel.channelId}
-          kind={channel.kind}
-          disabled={sending}
-          onThreadChanged={onPollCreated}
-          statusResetKey={draft}
-        />
+                }}
+              >
+                Open
+              </Button>
+            </span>
+          ) : null}
+          <PollCreateButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onCreated={onPollCreated}
+          />
+          <MedicationQuestionButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onSent={onPollCreated}
+          />
+          <UrgentMessageButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onThreadChanged={onPollCreated}
+            statusResetKey={draft}
+          />
+          <RoleSendButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onThreadChanged={onPollCreated}
+            statusResetKey={draft}
+          />
+        </div>
+        <NeedsResponseControl state={needsResponse} disabled={sending} />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}
           canAdd={canAddMention}
@@ -343,11 +363,20 @@ export function ThreadComposer({
           type="submit"
           size="lg"
           disabled={
-            sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+            sending ||
+            (!draft.trim() && uploads.sendableIds.length === 0) ||
+            uploads.blocksSend ||
+            needsRecipient(needsResponse)
           }
           loading={sending}
           aria-label="Send"
-          aria-describedby={sendHint ? "messaging-send-hint" : undefined}
+          aria-describedby={
+            needsRecipient(needsResponse)
+              ? NEEDS_RESPONSE_PICKER_ID
+              : sendHint
+                ? "messaging-send-hint"
+                : undefined
+          }
         >
           <Glyph name="send" size={16} /> <span>Send</span>
         </Button>

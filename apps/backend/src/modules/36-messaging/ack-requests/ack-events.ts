@@ -14,6 +14,8 @@ export const M36_ACK_CANCELLED = "m36.ack.cancelled";
 export const M36_ACK_ESCALATED = "m36.ack.escalated";
 export const M36_ACK_ROUTE_UNAVAILABLE = "m36.ack.route_unavailable";
 export const M36_ACK_LADDER_EXHAUSTED = "m36.ack.ladder_exhausted";
+// WP 4.5 (ADR-0071): written by the delivery-failure handler, never by a person.
+export const M36_ACK_FAILED_UNREACHABLE = "m36.ack.failed_unreachable";
 
 export type AckEventName =
   | typeof M36_ACK_REQUESTED
@@ -23,7 +25,8 @@ export type AckEventName =
   | typeof M36_ACK_CANCELLED
   | typeof M36_ACK_ESCALATED
   | typeof M36_ACK_ROUTE_UNAVAILABLE
-  | typeof M36_ACK_LADDER_EXHAUSTED;
+  | typeof M36_ACK_LADDER_EXHAUSTED
+  | typeof M36_ACK_FAILED_UNREACHABLE;
 
 export interface AckEventFacts {
   readonly orgId: string;
@@ -36,6 +39,10 @@ export interface AckEventFacts {
   readonly actorUserId: string | null;
   readonly version: number;
   readonly previousAssignedUserId?: string;
+  /** ADR-0078 (`reassigned` only): a SUPERVISOR moved it. The notification consumer then also tells the previous assignee and the sender. */
+  readonly supervisorReassign?: boolean;
+  /** ADR-0078 (supervisor `reassigned` only): the sender, so the consumer can tell them without a second read. An id, never a name. */
+  readonly requesterUserId?: string;
   /** WP 4.4: the router tier the request was escalated to, or the tier that could not be reached. */
   readonly tier?: number;
   /** WP 4.4 (`route_unavailable` / `ladder_exhausted`): which such record this is for the request's current window (1-based). */
@@ -59,6 +66,8 @@ export function ackEventPayload(f: AckEventFacts): Record<string, unknown> {
     requestVersion: f.version,
     at: f.at.toISOString(),
     ...(f.previousAssignedUserId ? { previousAssignedUserId: f.previousAssignedUserId } : {}),
+    ...(f.supervisorReassign ? { supervisorReassign: true } : {}),
+    ...(f.requesterUserId ? { requesterUserId: f.requesterUserId } : {}),
     ...(f.tier !== undefined ? { tier: f.tier } : {}),
     ...(f.occurrence !== undefined ? { occurrence: f.occurrence } : {}),
     ...(f.typeOccurrence !== undefined ? { typeOccurrence: f.typeOccurrence } : {}),

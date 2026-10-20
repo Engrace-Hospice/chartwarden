@@ -15,6 +15,13 @@
 
 import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 import {
+  type PolicyAckClass,
+  type PolicyReason,
+  type ShiftState,
+  decideChannels,
+  isSnoozableEvent,
+} from "./notification-policy";
+import {
   FLOOR_CHANNEL,
   type RecipientPreferences,
   isVacationActive,
@@ -42,6 +49,27 @@ export interface PlannedDelivery {
   // Denormalized alert facts (§3.6 M36-F06d) — immutable on the row.
   readonly alertCategory: AlertCategory;
   readonly alertSeverity: AlertSeverity;
+  /** WP 4.6: the policy reason code of a suppressed row (persisted as `fail_reason`); absent on every other row. */
+  readonly reason?: PolicyReason;
+}
+
+/** WP 4.6: the notification policy inputs (ADR-0073). Absent = the engine exactly as before. */
+export interface FanOutPolicy {
+  /** Null = not a designated safety-critical route. */
+  readonly ackClass: PolicyAckClass | null;
+  readonly classDefaulted?: boolean;
+  /** Channels with a verified endpoint, per recipient user id. A user absent from the map has none. */
+  readonly verifiedChannels: ReadonlyMap<string, ReadonlySet<NotificationChannel>>;
+  /** Shift state per user; absent = `unknown` for everyone (fail-safe: unknown never suppresses). */
+  readonly shiftFor?: (userId: string) => ShiftState;
+}
+
+/** One explained policy decision (ids and codes only, no PHI) — stored on the alert payload of a designated route. */
+export interface PolicyTrailEntry {
+  readonly recipientUserId: string;
+  readonly channel: NotificationChannel;
+  readonly decision: "planned" | "suppressed" | "omitted";
+  readonly reasons: readonly PolicyReason[];
 }
 
 export interface FanOutInput {
@@ -55,6 +83,13 @@ export interface FanOutInput {
   readonly preferences: ReadonlyMap<string, RecipientPreferences>;
   /** Evaluation time (quiet-hours / vacation are time-relative). Explicit for determinism. */
   readonly at: Date;
+  readonly policy?: FanOutPolicy;
+  /**
+   * WP 4.10 (ADR-0077): recipients with an ACTIVE conversation snooze for this alert's conversation. It quiets only the
+   * out-of-band rows of an allowlisted non-urgent alert (`isSnoozableEvent`); the in-app row is always planned, and a designated
+   * route ignores it by construction.
+   */
+  readonly snoozedUserIds?: ReadonlySet<string>;
 }
 
 /** The voice channel is SOS-only (§2.5): permitted solely for a critical field-safety alert. */
@@ -67,12 +102,14 @@ function voiceAllowed(alert: AlertContext): boolean {
  *  the alert qualifies (§2.5). Deduped, order-preserving. */
 function outOfBandChannelsFor(
   input: FanOutInput,
-  prefs: RecipientPreferences,
+  prefs: RecipientPreferences | undefined,
 ): NotificationChannel[] {
   const base =
     input.channelsOverride !== null
       ? input.channelsOverride.filter((c) => c !== FLOOR_CHANNEL)
-      : preferredOutOfBandChannels(prefs, input.alert.category, input.alert.severity);
+      : prefs === undefined
+        ? []
+        : preferredOutOfBandChannels(prefs, input.alert.category, input.alert.severity);
 
   const allowVoice = voiceAllowed(input.alert);
   const seen = new Set<NotificationChannel>();
@@ -90,20 +127,31 @@ function denorm(alert: AlertContext) {
   return { alertCategory: alert.category, alertSeverity: alert.severity } as const;
 }
 
+/** The planned rows plus the explained policy decisions of a designated route (empty for any other alert). */
+export interface FanOutResult {
+  readonly plan: PlannedDelivery[];
+  readonly trail: PolicyTrailEntry[];
+}
+
 /**
  * Plan every `notification_delivery` row for an alert (§2.4.4). For each resolved recipient:
  *   • always an `in_app` row (`pending`) — the floor (§2.1.1), never suppressed/forwarded;
- *   • each out-of-band channel either `pending`, `skipped_quiet_hours` (below the override floor
- *     inside a quiet window, §2.5), or — when the recipient is on vacation (§2.6) — a `forwarded`
- *     row for the original PLUS a `pending`/`skipped_quiet_hours` row for the backup (single hop).
+ *   • each out-of-band channel the notification policy (./notification-policy) decides on: `pending`, or
+ *     `skipped_quiet_hours` (below the override floor inside a quiet window or off shift, §2.5), or — when the
+ *     recipient is on vacation (§2.6) — a `forwarded` row for the original PLUS a `pending`/`skipped_quiet_hours`
+ *     row for the backup (single hop). A DESIGNATED safety-critical route (WP 4.6) is never suppressed and never
+ *     forwarded: the named assignee is the only target.
  *
- * A recipient with no preferences entry gets only the in-app floor (safe default: the always-on
- * channel, no out-of-band guesses). Forwarding is bounded to one hop (§7.6): a backup is never
- * itself re-forwarded.
+ * A recipient with no preferences entry gets only the in-app floor — except on a designated route, where the platform
+ * floor applies to their verified endpoints. Forwarding is bounded to one hop (§7.6).
  */
-export function planFanOut(input: FanOutInput): PlannedDelivery[] {
+export function planFanOutDetailed(input: FanOutInput): FanOutResult {
   const plan: PlannedDelivery[] = [];
+  const trail: PolicyTrailEntry[] = [];
   const d = denorm(input.alert);
+  const policy = input.policy;
+  const designated = policy !== undefined && policy.ackClass !== null;
+  const snoozeApplies = !designated && isSnoozableEvent(input.alert.eventType);
 
   for (const userId of input.recipientUserIds) {
     // 1. The in-app floor — unconditional, to the original recipient.
@@ -116,13 +164,39 @@ export function planFanOut(input: FanOutInput): PlannedDelivery[] {
     });
 
     const prefs = input.preferences.get(userId);
-    if (prefs === undefined) continue; // floor-only default
+    if (prefs === undefined && !designated) continue; // floor-only default
 
-    const channels = outOfBandChannelsFor(input, prefs);
-    const onVacation = isVacationActive(prefs, input.at);
+    const decisions = decideChannels({
+      category: input.alert.category,
+      severity: input.alert.severity,
+      ackClass: policy?.ackClass ?? null,
+      classDefaulted: policy?.classDefaulted ?? false,
+      baseChannels: outOfBandChannelsFor(input, prefs),
+      verifiedChannels: policy?.verifiedChannels.get(userId),
+      prefs,
+      shift: policy?.shiftFor?.(userId) ?? "unknown",
+      at: input.at,
+    });
+    const onVacation = !designated && prefs !== undefined && isVacationActive(prefs, input.at);
+    // A snoozed recipient's out-of-band rows are skipped (the in-app floor above is untouched). Vacation forwarding wins: the
+    // backup is a different person with their own snooze state, which this recipient's snooze does not speak for.
+    const snoozed = snoozeApplies && !onVacation && input.snoozedUserIds?.has(userId) === true;
 
-    for (const channel of channels) {
-      if (onVacation) {
+    for (const { channel, decision, reasons } of decisions) {
+      if (designated) {
+        trail.push({ recipientUserId: userId, channel, decision, reasons });
+        if (decision === "planned") {
+          plan.push({
+            recipientUserId: userId,
+            forwardedFromUserId: null,
+            channel,
+            status: "pending",
+            ...d,
+          });
+        }
+        continue;
+      }
+      if (onVacation && prefs !== undefined) {
         // Record the original's redirect, then plan the backup's delivery (single hop).
         plan.push({
           recipientUserId: userId,
@@ -134,19 +208,34 @@ export function planFanOut(input: FanOutInput): PlannedDelivery[] {
         plan.push(planBackupDelivery(input, prefs, userId, channel, d));
         continue;
       }
+      if (snoozed) {
+        plan.push({
+          recipientUserId: userId,
+          forwardedFromUserId: null,
+          channel,
+          status: "skipped_quiet_hours",
+          reason: "snoozed",
+          ...d,
+        });
+        continue;
+      }
       plan.push({
         recipientUserId: userId,
         forwardedFromUserId: null,
         channel,
-        status: suppressedByQuietHours(prefs, input.alert.severity, input.at)
-          ? "skipped_quiet_hours"
-          : "pending",
+        status: decision === "suppressed" ? "skipped_quiet_hours" : "pending",
+        ...(decision === "suppressed" ? { reason: reasons[0] ?? ("quiet_hours" as const) } : {}),
         ...d,
       });
     }
   }
 
-  return plan;
+  return { plan, trail };
+}
+
+/** {@link planFanOutDetailed} without the trail (the M20 engine's original surface). */
+export function planFanOut(input: FanOutInput): PlannedDelivery[] {
+  return planFanOutDetailed(input).plan;
 }
 
 /** The backup's out-of-band delivery when the original is on vacation. The backup's OWN quiet
@@ -169,6 +258,7 @@ function planBackupDelivery(
     forwardedFromUserId: originalUserId,
     channel,
     status: skipped ? "skipped_quiet_hours" : "pending",
+    ...(skipped ? { reason: "quiet_hours" as const } : {}),
     ...d,
   };
 }

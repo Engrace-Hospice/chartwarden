@@ -29,7 +29,7 @@ import {
   registerIdentityAuth,
   resolveActorPermissions,
   resolveMfaEnforcement,
-  resolveTrustedOrigins,
+  resolveWebTrustedOrigins,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
@@ -49,6 +49,7 @@ import {
   accountRoom,
   computeRoomSet,
   createAlertPayloadRegistry,
+  setOutOfBandFallbackObserver,
   userRoom,
 } from "@wardenx/messaging";
 import {
@@ -83,6 +84,12 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
+import {
+  createAckQueueNoticeEvaluator,
+  registerAckQueueMetrics,
+  sampleAckQueue,
+} from "./bootstrap/ack-queue-metrics";
+import { startAckQueueWatchdog } from "./bootstrap/ack-queue-watchdog";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
   bindPlatformStaffToOrg,
@@ -113,6 +120,7 @@ import {
   assertProductionEnv,
   buildServer,
   createSessionAuthenticate,
+  escalationRouterDenyStub,
   getSeam,
   integrationEnabled,
   noteInMemoryBinding,
@@ -155,6 +163,7 @@ import {
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
 import {
   buildMembershipUserResolver,
   buildOrgAdminCountReader,
@@ -270,7 +279,10 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
-import { buildAckRateLimit } from "./bootstrap/plugins/ack-rate-limit";
+import {
+  ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
+  buildAckRateLimit,
+} from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
@@ -278,6 +290,7 @@ import {
   createRealtimeEmitter,
   createRealtimeTelemetry,
   realtimeClientKey,
+  sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -779,6 +792,8 @@ import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-p
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
+  buildAfterHoursRequestedConsumer,
+  buildDrizzleEscalationRouterReads,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
@@ -793,6 +808,7 @@ import {
   gipProposalsForOrg,
   idgTriageCarePlanChangesForOrg,
   mountM19Routes,
+  registerEscalationRouterForAllowlist,
   registerM19CronWorkers,
   registerM19Tier1CronWorkers,
   registerM19TriageCronWorkers,
@@ -1060,7 +1076,10 @@ import {
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzleQicService,
   buildDrizzleReopeningService,
+  buildDrizzleSubmissionService,
+  buildDrizzleTpeService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
   buildM23ClaimRejectedConsumer,
@@ -1411,6 +1430,7 @@ import {
   registerM35Workers,
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
+import { createDeliveryRouteReader } from "./modules/36-messaging/ack-delivery-failure/delivery-route-reader-db";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import {
   invalidateMessageBodyKeys,
@@ -1429,6 +1449,7 @@ import { createNameExclusions } from "./modules/36-messaging/global-search/name-
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
+  M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
@@ -1443,14 +1464,17 @@ import {
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
   buildMedicationQuestionDeps,
+  buildOnCallDirectoryDeps,
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
   buildSbarDeps,
+  buildSnoozeReminderBinding,
   buildTaskDeps,
   buildUrgentDeps,
   createAttachmentService,
   createBullmqTimerPort,
+  createDbAckQueueStatsReader,
   createDbMessagingProvider,
   createDbMessagingRouteService,
   createDlqAuditRecorder,
@@ -1463,6 +1487,7 @@ import {
   createRealtimeAuditWriter,
   createScheduledSendDispatcher,
   createSosContactCaller,
+  createUnreachableWatch,
   getEscalationRouter,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -1471,6 +1496,7 @@ import {
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
+  registerM36ReminderSweepWorker,
   registerM36ScheduledSendWorker,
   registerMessagingErasers,
   registerMessagingSeams,
@@ -1479,6 +1505,7 @@ import {
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
+  scheduleM36ReminderSweepJobs,
   scheduleM36ScheduledSendJobs,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
@@ -1495,9 +1522,11 @@ import {
   buildM36AccessRevocationPlatformConsumer,
   combineReassignments,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
+import { buildM36AckDeliveryFailureConsumer } from "./modules/36-messaging/outbox-consumers/ack-delivery-failure";
 import { buildM36AckEscalationNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-escalation-notifications";
 import { buildM36AckNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-notifications";
 import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-consumers/ack-timer-arming";
+import { buildM36AckUnreachableNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-unreachable-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
@@ -1666,6 +1695,8 @@ export function wireModuleSeams(
     caseloadShiftCacheRedis?: Redis | null;
     /** WP 3.7 - the ONE message-body cipher the messaging provider and the chart-promotion snapshot reader share. */
     messageBodyCipher?: ReturnType<typeof createMessageBodyCipher>;
+    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootWardenX` can stay quiet about the deny-stub. */
+    onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
   } = {},
@@ -1712,6 +1743,8 @@ export function wireModuleSeams(
           // GAP-057 — M34's two recipient resolvers are registered onto the emitter's registry here (M36
           // cannot import M34); without this every rule naming them would throw/never deliver.
           emitter: createDrizzleAlertEmitter(deps.db, {
+            // WP 4.6 (ADR-0073): the notification policy's flag gate (default off per tenant).
+            flags: createDrizzleFeatureFlagReader(deps.db),
             extendResolvers: m34ResolverExtension(
               createDrizzleM34AlertResolverPorts(deps.db, {
                 roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),
@@ -2009,7 +2042,26 @@ export function wireModuleSeams(
   // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
-  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  const oncallSeamStore = deps.db ? buildDrizzleOncallSeamStore(deps.db) : undefined;
+  if (oncallSeamStore) registerOncallSeams({ store: oncallSeamStore });
+  // ADR-0057 item 12 - the real M19 EscalationRouter (tier 1 only), UNBOUND unless `ESCALATION_ROUTER_ORGS` names orgs. Other orgs keep the
+  // deny-stub's exact answer; with the variable empty nothing is registered and behaviour is identical to before.
+  let m19RouterBoundOrgCount = 0;
+  if (deps.db && oncallSeamStore) {
+    m19RouterBoundOrgCount = registerEscalationRouterForAllowlist({
+      store: oncallSeamStore,
+      reads: buildDrizzleEscalationRouterReads({
+        db: deps.db,
+        patientReader: () => getSeam("PatientReader"),
+        siteReader: buildFoundationSiteReader(),
+        listProviderEntityIds: buildOrgProviderEntityLister(deps.db),
+      }),
+      fallback: escalationRouterDenyStub,
+      allowlistRaw: process.env.ESCALATION_ROUTER_ORGS,
+      warn: (message) => console.warn(message),
+    }).size;
+  }
+  deps.onEscalationRouterBound?.(m19RouterBoundOrgCount);
   // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
   // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
   // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
@@ -3208,6 +3260,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // boots the same composition root (seams, tenancy, key ring) but, like `api`, constructs NO BullMQ workers / crons / outbox
   // dispatcher — it only binds the feed listeners and serves /health on `LISTENER_HEALTH_PORT`.
   const listenerProcess = requestedRole === "listener";
+  // Set by wireModuleSeams (via buildServer's registerModuleSeams) and read by the M36 EscalationRouter boot probe below.
+  let m19RouterBoundOrgCount = 0;
   const role: Exclude<ProcessRole, "listener"> = listenerProcess ? "api" : requestedRole;
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
@@ -4311,20 +4365,36 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m36AckTimerQueue = queueConnection
     ? new Queue(MESSAGING_QUEUES.ackEscalationTimer, { connection: queueConnection })
     : undefined;
-  const m36AckEscalation = m36Ack
-    ? buildEscalationBinding({
+  // WP 4.10 (ADR-0077) - snooze (non-urgent out-of-band notices only) and reminders. ONE binding for the routes and the minute sweep; off
+  // unless the tenant flag `messaging.notification_policy` is on. A snooze never quiets an urgent or acknowledgment-bound alert.
+  const m36SnoozeReminders = dbHandle
+    ? buildSnoozeReminderBinding({
+        db: dbHandle.db,
         flags: featureFlagReader,
-        store: m36Ack.store,
-        outbox: m36OutboxPublisher,
-        router: {
-          resolveTier: (orgId, request) => getEscalationRouter().resolveTier(orgId, request),
-        },
-        stillQualified: m36Ack.stillQualified,
-        ...(m36AckTimerQueue ? { timers: createBullmqTimerPort(m36AckTimerQueue) } : {}),
-        // Ids and the error class only: a database error can carry statement parameters. Swapped for the app logger below.
-        onError: (context, err) => m36AckEscalationError(context, err),
+        messaging: createDbMessagingRouteService(dbHandle.db),
       })
     : undefined;
+  // The walk skips a candidate who cannot view the channel (ADR-0070 limit i). A consent-seam outage must retry the tick, not read as
+  // "cannot view" (which would skip the user and could end the ladder), so this one instance throws on it.
+  const m36EscalationCanView = dbHandle
+    ? createDbMessagingRouteService(dbHandle.db, { throwOnSeamUnavailable: true }).canViewChannel
+    : undefined;
+  const m36AckEscalation =
+    m36Ack && m36EscalationCanView
+      ? buildEscalationBinding({
+          flags: featureFlagReader,
+          store: m36Ack.store,
+          outbox: m36OutboxPublisher,
+          router: {
+            resolveTier: (orgId, request) => getEscalationRouter().resolveTier(orgId, request),
+          },
+          stillQualified: m36Ack.stillQualified,
+          canViewChannel: m36EscalationCanView,
+          ...(m36AckTimerQueue ? { timers: createBullmqTimerPort(m36AckTimerQueue) } : {}),
+          // Ids and the error class only: a database error can carry statement parameters. Swapped for the app logger below.
+          onError: (context, err) => m36AckEscalationError(context, err),
+        })
+      : undefined;
   // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
   // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
   // escalate or acknowledge (WP 4.2 - 4.4).
@@ -4383,14 +4453,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
-    ...(rateLimitStore || rateLimitTiers
-      ? {
-          security: {
-            ...(rateLimitStore ? { rateLimitStore } : {}),
-            ...(rateLimitTiers ? { rateLimitTiers } : {}),
-          },
-        }
-      : {}),
+    security: {
+      // CORS is a browser HTTP concern. Native callback schemes are trusted only inside Better Auth
+      // and must never become Access-Control-Allow-Origin values.
+      corsAllowOrigins: resolveWebTrustedOrigins(),
+      ...(rateLimitStore ? { rateLimitStore } : {}),
+      ...(rateLimitTiers ? { rateLimitTiers } : {}),
+    },
     // TASK-040B (OPS-004) — the real `/ready` probe: DB `SELECT 1`, Redis PING, outbox pending-row
     // depth. Every check is OMITTED (reports "ok") when its dependency isn't configured, matching
     // today's boot posture — a slice/test/no-Redis boot still serves. `outboxDepthThreshold` reads
@@ -4850,6 +4919,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
+            // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
+            // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
+            sessionDevices: {
+              ...(realtimeEmitter
+                ? {
+                    disconnectSession: (sessionId: string) =>
+                      realtimeEmitter.disconnectRoom(sessionRoom(sessionId)),
+                  }
+                : {}),
+              warn: (event, context) => app.log.warn(context, event),
+            },
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
@@ -4899,13 +4979,43 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                     service: m36Ack.service,
                     // Fail-closed per-user / per-org / per-pair limiter on create and reassign; per replica on the in-memory store.
                     rateLimit: buildAckRateLimit(rateLimitStore ?? createInMemoryRateLimitStore()),
+                    // ADR-0078: the picker reads have their own buckets.
+                    candidatesRateLimit: buildAckRateLimit(
+                      rateLimitStore ?? createInMemoryRateLimitStore(),
+                      { keyPrefix: ACK_PICKER_RATE_LIMIT_KEY_PREFIX },
+                    ),
                   },
                 }
+              : {}),
+            // WP 4.10 - snooze and reminders; off unless the tenant flag `messaging.notification_policy` is on.
+            ...(m36SnoozeReminders
+              ? { snoozeReminders: { service: m36SnoozeReminders.service } }
               : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
             idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 4.12 - on-call directory (read-only); off unless the tenant flag `messaging.oncall_directory` is on.
+            oncall: buildOnCallDirectoryDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 5.9 (ADR-0084) - workforce offboarding: preview and run the offboarding of a departed user. Always on (a security control).
+            // It calls the sweeps the deactivation event already runs, the ADR-0078 supervisor reassign and the ADR-0083 session revoke.
+            ...(m36Ack && m36Tasks && m36Handoffs
+              ? {
+                  offboarding: {
+                    ack: m36Ack.service,
+                    attention: {
+                      alerts: getSeam("AlertEmitter") as AlertEmitter,
+                      opsNotice: (notice) => m36AckOpsNotice(notice),
+                    },
+                    endMemberships: (orgId: string, userId: string) =>
+                      endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+                    reassignTasks: m36Tasks.reassignForLeaver,
+                    resolveHandoffs: m36Handoffs.reassignForLeaver,
+                    warn: (event: string, context: Record<string, string>) =>
+                      app.log.warn(context, event),
+                  },
+                }
+              : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5389,6 +5499,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // Milestone 3: which path a denial takes (appeal vs. MAC reopening) and the reopening aggregate.
             reopeningService: buildDrizzleReopeningService(dbHandle.db),
             denialRouteService: buildDrizzleDenialRouteService(dbHandle.db),
+            // Milestone 5: the TPE program tracker (programs, rounds, sampled claims, per-MAC thresholds).
+            tpeService: buildDrizzleTpeService(dbHandle.db, {
+              providerEntityExists: async (tx, organizationId, providerEntityId) =>
+                (await buildFoundationSiteReader().providerEntityIdentifiers(
+                  tx as never,
+                  organizationId,
+                  providerEntityId,
+                )) !== null,
+            }),
+            // Milestone 4: QIC reconsideration evidence + decision clock, and the OMHA escalation.
+            qicService: buildDrizzleQicService(dbHandle.db, {
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
+            // Milestone 6a: submission attempts and receipts. Guided manual only: nothing is transmitted; the
+            // esMD / fax adapters are unbound shells. The receipt document is validated through M22 / M23's seams.
+            submissionService: buildDrizzleSubmissionService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+            }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -5935,6 +6064,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       : undefined,
     registerModuleSeams: () =>
       wireModuleSeams({
+        onEscalationRouterBound: (count) => {
+          m19RouterBoundOrgCount = count;
+        },
         sessionContextStore: dbHandle
           ? createDbSessionContextStore(
               dbHandle.db,
@@ -6025,6 +6157,55 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     });
   };
   registerGeocodeCoverageMetrics(metricsRegistry, geocodeCoverageSampler);
+  // M36 WP 4.9 (ADR-0076) — overdue count and acknowledgment latency of the unacknowledged queue. Aggregated over the active orgs
+  // (audited platform read of the org list only; the figures are counts under each org's RLS); -1 when it cannot be measured.
+  // ADR-0079: the stalled-escalation figure is measured only for tenants with `messaging.escalation_timers` on.
+  const ackQueueSampler = async () => {
+    if (!dbHandle || !platformDbHandle) return null;
+    const activeOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
+      reason: "M36 WP 4.9 ack-queue gauges: active-org list",
+    });
+    const statsForOrg = createDbAckQueueStatsReader(dbHandle.db, {
+      ...(m36AckEscalation ? { isEscalationEnabled: m36AckEscalation.isEnabled } : {}),
+    });
+    return sampleAckQueue({
+      listOrgs: () => activeOrgs.listActiveOrgs(),
+      statsForOrg: (organizationId) => statsForOrg(organizationId, new Date()),
+    });
+  };
+  const ackQueueGuardedSampler = registerAckQueueMetrics(metricsRegistry, ackQueueSampler);
+  // ADR-0079 (G-4) — ops notice claims shared across workers (Valkey `SET NX PX`; per process when Valkey is absent or errors), the one
+  // ops sink for M36's ack notices, and the stalled-escalation watchdog: a plain timer in every process, independent of BullMQ, because
+  // the per-org notices run INSIDE the sweep and cannot report that the sweep is not running.
+  const m36OpsClaimsRedis = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2_000,
+        retryStrategy: (times) => Math.min(times * 200, 2_000),
+      })
+    : undefined;
+  m36OpsClaimsRedis?.on("error", () => {});
+  const m36OpsNoticeClaims = createOpsNoticeClaims(m36OpsClaimsRedis);
+  const m36AckOpsNotice = buildPlatformOpsNoticeSink({
+    webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+    log: (m) => app.log.warn(m),
+  });
+  if (dbHandle && platformDbHandle) {
+    const stopAckQueueWatchdog = startAckQueueWatchdog({
+      sample: ackQueueGuardedSampler,
+      claims: m36OpsNoticeClaims,
+      notify: m36AckOpsNotice,
+    });
+    app.addHook("onClose", async () => {
+      stopAckQueueWatchdog();
+      m36OpsClaimsRedis?.disconnect();
+    });
+  }
   if (dbHandle) {
     void warnOnGeocodeCoverageGap(geocodeCoverageSampler, {
       warn: (fields, message) => app.log.warn(fields, message),
@@ -6123,7 +6304,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         asOf: new Date().toISOString(),
       })
       .then((answer) => {
-        if (answer.source === "deny_stub") {
+        // The probe asks about a nil org, which is never allowlisted: with orgs bound it would always read "deny-stub" and contradict the bound-for-N warning.
+        if (answer.source === "deny_stub" && m19RouterBoundOrgCount === 0) {
           app.log.warn(
             "M36 EscalationRouter is the deny-stub (no M19 router is bound): unacknowledged requests cannot be escalated to a tier; they stay open with their assignee and the sender is told",
           );
@@ -8717,6 +8899,26 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       jobId: M36_DELIVERY_PLATFORM_JOB_ID,
       reason: "M36 §4.4 send_* delivery sweep (active-org enumeration)",
     });
+    // WP 4.7: an out-of-band alert whose base URL is unusable ships with generic wording and NO link.
+    // Warn at boot in production-like envs, and log (reason code + channel only, no content) each generic fallback.
+    if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "staging") {
+      let baseUrlUsable = false;
+      try {
+        baseUrlUsable = /^https?:$/.test(new URL(webAppBaseUrl ?? "").protocol);
+      } catch {
+        baseUrlUsable = false;
+      }
+      if (!baseUrlUsable)
+        app.log.warn(
+          "WEB_APP_URL / BETTER_AUTH_URL is empty or not a valid http(s) URL: out-of-band alerts will ship without a link",
+        );
+    }
+    setOutOfBandFallbackObserver((event) =>
+      app.log.warn(
+        { reason: event.reason, channel: event.channel },
+        "M36 out-of-band alert rendered with generic wording (unproven or wrong-channel notification)",
+      ),
+    );
     const m36DeliveryWorkers = registerM36DeliveryWorkers({
       connection: queueConnection,
       store: createDrizzleDeliveryDispatchStore(dbHandle.db, m36OutboxPublisher),
@@ -8902,6 +9104,46 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       );
     }
 
+    // ── M36 WP 4.10 — `messaging.reminder_sweep` (every minute): raises the alert of each reminder that came due and deletes the row.
+    // A tenant with `messaging.notification_policy` off is skipped (its reminders wait). Active-org fan-out needs the platform pool.
+    if (platformDbHandle && m36SnoozeReminders) {
+      const m36ReminderOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 4.10 reminder_sweep active-org fan-out",
+      });
+      const m36ReminderWorkers = registerM36ReminderSweepWorker({
+        connection: queueConnection,
+        sweep: m36SnoozeReminders.sweep(getSeam("AlertEmitter") as AlertEmitter, (event) =>
+          app.log.warn(event, "M36 reminder dropped without a recipient"),
+        ),
+        activeOrgs: m36ReminderOrgs,
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 reminder sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36ReminderWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36ReminderWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36ReminderQueues = await scheduleM36ReminderSweepJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36ReminderQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 reminder-sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 reminders disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; reminders stay pending",
+      );
+    }
+
     // ── M36 WP 4.4 — durable escalation timers. `messaging.ack_escalation_timer` runs the delayed job armed per (request,
     // tier, window); `messaging.ack_escalation_sweep` (every minute) finds the requests the DATABASE says are past their
     // deadline whether or not a job exists (a flushed Redis, a lost job, a request nobody could route yet). Both run the same
@@ -8919,6 +9161,34 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         service: m36AckEscalation.service,
         activeOrgs: m36AckEscalationOrgs,
         recordDlq: createDlqAuditRecorder(dbHandle.db),
+        // WP 4.9 (ADR-0076): the threshold notice (log line + optional OPS_ALERT_WEBHOOK_URL) per organisation per tick.
+        observeOrg: createAckQueueNoticeEvaluator({
+          statsForOrg: (organizationId) =>
+            createDbAckQueueStatsReader(dbHandle.db, {
+              isEscalationEnabled: m36AckEscalation.isEnabled,
+            })(organizationId, new Date()),
+          notify: m36AckOpsNotice,
+          claims: m36OpsNoticeClaims,
+        }),
+        // ADR-0079 (G-5): keeps failed_unreachable requests in front of the supervisors (bounded, backed-off, once per stage fleet-wide).
+        ...(m36Ack
+          ? {
+              watchUnreachable: createUnreachableWatch({
+                store: m36Ack.store,
+                isEnabled: m36AckEscalation.isEnabled,
+                claims: m36OpsNoticeClaims,
+                attention: {
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  opsNotice: m36AckOpsNotice,
+                },
+                onError: (context, err) =>
+                  app.log.error(
+                    { ...context, reason: err instanceof Error ? err.name : "unknown" },
+                    "M36 unreachable watch error",
+                  ),
+              }).watch,
+            }
+          : {}),
         // Ids and the error class only: a database error can carry statement parameters.
         onError: (context, err) =>
           app.log.error(
@@ -10146,9 +10416,39 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ? [
                 buildM36AckEscalationNotificationsConsumer({
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  opsNotice: m36AckOpsNotice,
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   readRequest: m36AckEscalation.readRequest,
                   stillQualified: m36Ack.stillQualified,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.5 (ADR-0071) - when EVERY out-of-band route to a request's assignee has failed, try the next tier now or mark the
+          // request failed_unreachable (same flag and guarded router as the timer; with the flag off the request is left as it is).
+          ...(m36AckEscalation
+            ? [
+                buildM36AckDeliveryFailureConsumer({
+                  readRoutes: createDeliveryRouteReader(
+                    dbHandle.db,
+                    m36AckEscalation.windowStartOfMessage,
+                  ),
+                  service: m36AckEscalation.deliveryFailure,
+                  opsNotice: m36AckOpsNotice,
+                  warn: (message, context) => app.log.warn(context, message),
+                  info: (message, context) => app.log.info(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.5 - a request nobody could be reached for is never silent: the supervisor audience, the sender and the assignee get a
+          // generic in-app alert, and the ops notice sink (log line plus OPS_ALERT_WEBHOOK_URL) is raised.
+          ...(m36Ack && m36AckEscalation
+            ? [
+                buildM36AckUnreachableNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  messaging: createDbMessagingRouteService(dbHandle.db),
+                  readRequest: m36AckEscalation.readRequest,
+                  opsNotice: m36AckOpsNotice,
                   warn: (message, context) => app.log.warn(context, message),
                 }),
               ]
@@ -10487,6 +10787,21 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
             // which M36 resolves through its seam. Binding one here and not there would give the same
             // alert two carriers with different retry semantics.
+          }),
+          // ADR-0082 - `m36.afterhours_triage.requested`: M36 asks for a triage call by id; M19 decides and
+          // always answers. The same patient reads the tier-1 router uses (patient-in-org + provider entity),
+          // over the M5 PatientReader seam resolved lazily. Flag-off: M36 publishes nothing.
+          buildAfterHoursRequestedConsumer({
+            db: dbHandle.db,
+            ports: m19TriggerPorts,
+            deliveryPorts: m19TriggerPorts,
+            outbox: m19OutboxPublisher,
+            afterHoursReads: buildDrizzleEscalationRouterReads({
+              db: dbHandle.db,
+              patientReader: () => getPatientReader(),
+              siteReader: buildFoundationSiteReader(),
+              listProviderEntityIds: buildOrgProviderEntityLister(dbHandle.db),
+            }),
           }),
           // §4.5 path 1 / §4.8 `m19.shift-sync.debounced` (m19 `handlers-unbound` group, #248; F-155's own
           // finding, now built). Bumps the org's `on_call_roster_sync_queue` debounce window forward; the
@@ -11478,7 +11793,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         httpServer: app.server,
         pubClient,
         subClient,
-        trustedOrigins: resolveTrustedOrigins(),
+        // Native Socket.IO may omit Origin, but a supplied Origin is checked only against browser
+        // HTTP(S) origins. Authentication below remains mandatory in either case.
+        trustedOrigins: resolveWebTrustedOrigins(),
         // Behind a trusted proxy the socket address is the proxy: key on the entry that proxy appended, but only when
         // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
         clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),
@@ -11608,6 +11925,8 @@ function bindCallerModule(
       readonly organizationId: string | null;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      /** Optional caller-chosen `outbox_event.id` (see {@link OutboxPublishInput.eventId}). */
+      readonly eventId?: string;
     },
   ): Promise<void>;
 } {

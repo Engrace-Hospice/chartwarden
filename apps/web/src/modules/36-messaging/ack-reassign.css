@@ -1,0 +1,71 @@
+/* M36 ADR-0078 - the reassign dialogs (card and supervisor). Tokens from the shared kit only. */
+.wx-reassign-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-reassign-form h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.wx-reassign-notice,
+.wx-reassign-hint,
+.wx-reassign-error {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.wx-reassign-notice {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low, var(--color-surface-lowest));
+  color: var(--color-on-surface);
+}
+
+.wx-reassign-hint {
+  color: var(--color-on-surface-variant);
+}
+
+.wx-reassign-error {
+  color: var(--color-error-pill-fg);
+}
+
+.wx-reassign-form fieldset {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+}
+
+.wx-reassign-form fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+
+.wx-reassign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wx-reassign-actions [aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+/* Read by a screen reader (the colleague count); nothing to see. */
+.wx-reassign-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

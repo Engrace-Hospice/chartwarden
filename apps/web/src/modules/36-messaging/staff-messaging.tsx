@@ -150,6 +150,9 @@ function OrganizationStaffMessaging({
     inboxHeadingRef.current?.focus();
   }, [accessEnded, activeId]);
   const threadHeadingRef = useRef<HTMLHeadingElement>(null);
+  // WP 4.8: the message whose request card a notification link already focused. The thread remounts on every channel switch
+  // while ?messageId= stays in the URL; without this, coming back to the channel would pull focus to the card again.
+  const landedMessageId = useRef<string | null>(null);
   const pickConversation = useFocusThreadAfterPick({
     activeId,
     narrow,
@@ -206,6 +209,9 @@ function OrganizationStaffMessaging({
             ) {
               return requestedChannelId;
             }
+            // A requested conversation that is not in the list (revoked, archived) must not fall back to
+            // list[0]: that is another patient's thread.
+            if (requestedChannelId) return null;
             return narrow ? null : (list[0]?.channelId ?? null);
           });
           return true;
@@ -497,6 +503,16 @@ function OrganizationStaffMessaging({
                     ? requestedMessageId
                     : null
               }
+              landOnMessageId={
+                !searchAnchor &&
+                activeChannel.channelId === requestedChannelId &&
+                requestedMessageId !== landedMessageId.current
+                  ? requestedMessageId
+                  : null
+              }
+              onLanded={() => {
+                landedMessageId.current = requestedMessageId;
+              }}
             />
           ) : (
             <div className="wx-messaging-no-selection">
@@ -510,7 +526,13 @@ function OrganizationStaffMessaging({
               ) : (
                 <EmptyState
                   title="Select a conversation"
-                  description="Choose a secure conversation from the inbox to view its messages."
+                  description={
+                    requestedChannelId &&
+                    channels !== null &&
+                    !channels.some((c) => c.channelId === requestedChannelId)
+                      ? "This conversation is not available."
+                      : "Choose a secure conversation from the inbox to view its messages."
+                  }
                 />
               )}
             </div>

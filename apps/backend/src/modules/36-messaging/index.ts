@@ -49,6 +49,8 @@ export {
   getMessagingProvider,
   getEscalationRouter,
 } from "./seams";
+// WP 4.9 (ADR-0076) — the per-organisation numbers behind the ops gauges and threshold notice (counts only).
+export { createDbAckQueueStatsReader } from "./ack-requests/ack-queue-stats-db";
 // §8.1.2 / #205 — M36's one cross-module outbox event. See events-by-m36.ts's header for why it
 // has no producer yet.
 export { M36_OUTBOX_EVENTS } from "./events-by-m36";
@@ -142,10 +144,16 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
+import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
+import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
+import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
+import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from "./delivery-target/delivery-target-reader-db";
+import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
 import {
@@ -155,8 +163,14 @@ import {
 import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
 import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/binding";
+import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import {
+  type OffboardingBindingInput as _OffboardingBindingInput,
+  buildOffboardingService as _buildOffboardingService,
+} from "./offboarding/binding";
+import type { buildOnCallDirectoryDeps as _buildOnCallDirectoryDeps } from "./oncall-directory/binding";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
 import {
@@ -173,16 +187,23 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerOffboardingRoutes as _registerOffboardingRoutes } from "./routes/offboarding-routes";
 import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
 import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
+import { registerSessionDeviceRoutes as _registerSessionDeviceRoutes } from "./routes/session-device-routes";
+import type { SnoozeReminderRouteDeps as _SnoozeReminderRouteDeps } from "./routes/snooze-reminder-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
 import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
+import {
+  type SessionDeviceBindingInput as _SessionDeviceBindingInput,
+  buildSessionDeviceService as _buildSessionDeviceService,
+} from "./session-devices/binding";
 import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
 /**
@@ -223,10 +244,22 @@ export function mountMessagingRoutes(
     urgent?: _UrgentRouteDeps;
     /** WP 4.2: acknowledgment requests (service + limiter). Omitted => every route is the uniform 404. */
     ackRequests?: _AckRouteDeps;
+    /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
+    snoozeReminders?: _SnoozeReminderRouteDeps;
+    /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
+    oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
     idgDiscussions?: ReturnType<typeof _buildIdgDiscussionDeps>;
+    /** WP 5.5 (ADR-0083): the device and session manager; `disconnectSession` closes a session's sockets on every api node. Always mounted. */
+    sessionDevices?: Pick<_SessionDeviceBindingInput, "disconnectSession" | "warn">;
+    /**
+     * WP 5.9 (ADR-0084): workforce offboarding. The composition root supplies the sweeps the deactivation event already runs and the ack
+     * service / alert emitter of the supervisor reassign; the session revoke is the WP 5.5 service built here. Omitted => not mounted
+     * (no database or no acknowledgment binding).
+     */
+    offboarding?: Omit<_OffboardingBindingInput, "db" | "sessionDevices">;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -250,6 +283,23 @@ export function mountMessagingRoutes(
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
+    ...(opts.snoozeReminders ? { snoozeReminders: opts.snoozeReminders } : {}),
+    ...(opts.oncall ? { oncall: opts.oncall } : {}),
+    // WP 4.9: the supervisor's unacknowledged queue (read-only; self-contained over `db`, no flag: with no requests it is empty).
+    unacknowledged: {
+      service: _createUnacknowledgedService({
+        read: _createDbUnacknowledgedReader(db),
+        canViewChannel: service.canViewChannel,
+        displayName: _createMentionActorNameResolver(db),
+      }),
+    },
+    deliveryTarget: {
+      service: _createDeliveryTargetService({
+        read: _createDbDeliveryTargetReader(db),
+        messaging: service,
+        openRequestId: _createOpenRequestLookup(_createDbAckStore(db)),
+      }),
+    },
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
@@ -297,6 +347,19 @@ export function mountMessagingRoutes(
       }),
     }),
   });
+  // WP 5.5 (ADR-0083) - list/revoke staff sessions (self-service and the security officer's variant). No tenant flag: a security control.
+  const sessionDeviceService = _buildSessionDeviceService({ db, ...(opts.sessionDevices ?? {}) });
+  _registerSessionDeviceRoutes(app, { service: sessionDeviceService });
+  // WP 5.9 (ADR-0084) - preview and run the offboarding of a departed user; reuses the session revoke above. No tenant flag: a security control.
+  if (opts.offboarding) {
+    _registerOffboardingRoutes(app, {
+      service: _buildOffboardingService({
+        db,
+        sessionDevices: sessionDeviceService,
+        ...opts.offboarding,
+      }),
+    });
+  }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -313,8 +376,15 @@ export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";
+// WP 4.10 (ADR-0077): snooze and reminders.
+export { buildSnoozeReminderBinding } from "./snooze-reminders/binding";
+export {
+  registerM36ReminderSweepWorker,
+  scheduleM36ReminderSweepJobs,
+} from "./snooze-reminders/reminder-sweep-worker";
 // WP 4.4 (ADR-0070): the escalation timers - binding, BullMQ timer port and workers, and the DLQ audit recorder.
 export { buildEscalationBinding } from "./ack-escalation/binding";
+export { createUnreachableWatch } from "./ack-escalation/unreachable-watch";
 export { createDlqAuditRecorder } from "./ack-escalation/dlq-audit";
 export { createBullmqTimerPort } from "./ack-escalation/escalation-timers";
 export {
@@ -323,6 +393,7 @@ export {
 } from "./ack-escalation/escalation-worker";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
+export { buildOnCallDirectoryDeps } from "./oncall-directory/binding";
 export {
   type M36HandoffExpiryWorkerDeps,
   handoffExpiryTick,
@@ -372,6 +443,7 @@ export {
 } from "./delivery/webhook-mount";
 export {
   M36_DELIVERY_PLATFORM_JOB_ID,
+  M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
   wireM36DeliveryTenancy,
 } from "./delivery/wiring";

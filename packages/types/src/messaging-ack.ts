@@ -116,6 +116,7 @@ export const ACK_ERROR_CODES = [
   "ACK_MESSAGE_NOT_EDITABLE",
   "ACK_MESSAGE_HAS_OPEN_REQUEST",
   "ACK_UNAVAILABLE",
+  "ACK_SUPERVISOR_REASSIGN_LIMIT",
 ] as const;
 export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 
@@ -127,12 +128,23 @@ export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 export const ACK_ESCALATION_NOTES = ["route_unavailable", "ladder_exhausted"] as const;
 export type AckEscalationNote = (typeof ACK_ESCALATION_NOTES)[number];
 
+/**
+ * ADR-0081 (migration 1129): the ROLE a role-based send addressed, a closed set (same as the on-call directory roles); null when a person
+ * was named. Fixed once set. A value outside the set (cannot happen: CHECK) reads as null.
+ */
+export const ACK_ADDRESSED_ROLES = ["rn", "physician"] as const;
+export type AckAddressedRole = (typeof ACK_ADDRESSED_ROLES)[number];
+export const toAckAddressedRole = (v: string | null | undefined): AckAddressedRole | null =>
+  ACK_ADDRESSED_ROLES.find((r) => r === v) ?? null;
+
 export interface AckRequestDto {
   readonly id: string;
   readonly message_id: string;
   readonly channel_id: string;
   readonly patient_id: string;
   readonly ack_class: AckClass;
+  /** ADR-0081: the role the sender addressed, null when a person was named. */
+  readonly addressed_role: AckAddressedRole | null;
   readonly status: AckStatus;
   readonly requester_user_id: string;
   readonly assigned_user_id: string;
@@ -170,6 +182,8 @@ export interface AckEventDto {
   readonly assigned_user_id: string | null;
   readonly previous_assigned_user_id: string | null;
   readonly tier: number;
+  /** ADR-0078: why a SUPERVISOR moved the request (a fixed non-clinical code); null for every other event. */
+  readonly reason_code: AckSupervisorReasonCode | null;
   readonly created_at: string;
 }
 
@@ -186,4 +200,125 @@ export interface AckRequestDetailResponse {
 
 export interface AckChannelListResponse {
   readonly requests: readonly AckRequestDto[];
+}
+
+/**
+ * Ops flag (default off, absent = off) for WP 4.6 (ADR-0073). Gates the notification policy's OUT-OF-BAND routes for the designated
+ * safety-critical alerts (urgent_sent, ack.requested / reassigned / escalated). It must be on TOGETHER WITH the flag of the event's own
+ * family (`messaging.urgent_clinical` for urgent_sent, `messaging.ack_requests` for ack.*); with it off the seeded in-app-only rules apply.
+ */
+export const NOTIFICATION_POLICY_FLAG_KEY = "messaging.notification_policy";
+
+// ---- WP 4.9 (ADR-0076): the supervisor's unacknowledged-urgent queue -------------------------------------------------------------
+// A read-only list of every request in the organisation that still waits for a human: `pending`, `escalated` or `failed_unreachable`
+// (an `acknowledged` request is open but has an owner; a `resolved` / `cancelled` one is closed). The only filters narrow by a field
+// every row shows (`status`, `overdue`); a request whose thread the viewer cannot open is still listed, as a `restricted` row with no ids.
+
+/** The statuses the queue lists: still waiting for a human. */
+export const ACK_QUEUE_STATUSES = [
+  "pending",
+  "escalated",
+  "failed_unreachable",
+] as const satisfies readonly AckStatus[];
+export type AckQueueStatus = (typeof ACK_QUEUE_STATUSES)[number];
+
+export const ACK_QUEUE_LIMIT_DEFAULT = 50;
+export const ACK_QUEUE_LIMIT_MAX = 100;
+
+export interface AckQueueItemDto {
+  /** True when the viewer cannot open the request's channel (not a member, or a Part 2 patient they are not released to): the ids below are withheld. */
+  readonly restricted: boolean;
+  /** Null on a restricted row (it names no request, channel, message or patient). */
+  readonly id: string | null;
+  readonly channel_id: string | null;
+  readonly message_id: string | null;
+  /** Id only, for the read-audit accounting; the screen never shows it. Null on a restricted row. */
+  readonly patient_id: string | null;
+  readonly ack_class: AckClass;
+  /** ADR-0081: the role the sender addressed, null when a person was named. Kept on a restricted row like `ack_class` (non-patient, OPEN for compliance). */
+  readonly addressed_role: AckAddressedRole | null;
+  readonly status: AckQueueStatus;
+  /** Null on a restricted row; the display name stays so the supervisor can chase the assignee. */
+  readonly assigned_user_id: string | null;
+  readonly assigned_display_name: string | null;
+  readonly requested_at: string;
+  readonly deadline_at: string;
+  /** Past the deadline of the current window. */
+  readonly overdue: boolean;
+  /** Whole seconds past the deadline; 0 when not overdue. */
+  readonly overdue_seconds: number;
+  readonly current_tier: number;
+  /** WP 4.4: why an overdue request has not moved on. */
+  readonly escalation_note: AckEscalationNote | null;
+  /** WP 4.5: every route failed (`failed_unreachable`). */
+  readonly delivery_failed: boolean;
+  /**
+   * ADR-0078 (G-7): the sender's display name, kept on a restricted row exactly like the assignee's (the same disclosure class, OPEN for
+   * compliance review). Null when it cannot be resolved. No requester id is ever returned.
+   */
+  readonly requester_display_name: string | null;
+  /**
+   * ADR-0078 (G-2): the opaque handle the supervisor reassign acts on - the request's own id, also on a RESTRICTED row (whose `id` stays
+   * null). It opens nothing: every route that reads a request, a thread or a patient still answers 404 to a viewer who cannot see the channel.
+   */
+  readonly request_ref: string;
+}
+
+export interface AckQueueCounts {
+  /** Every waiting request in the organisation, whatever the filters (restricted ones included). */
+  readonly unfiltered: number;
+  /** How many the active filters match; equals `unfiltered` with none. */
+  readonly matching: number;
+  readonly overdue: number;
+  readonly failed_unreachable: number;
+}
+
+export interface AckQueueResponse {
+  readonly items: readonly AckQueueItemDto[];
+  readonly next_cursor: string | null;
+  /** The id of the first request this page shows in full (null when it shows none): the resource the read-audit row is recorded against. */
+  readonly audit_request_id: string | null;
+  /** True when `next_cursor` is null: this page is the end of the matching list. */
+  readonly complete: boolean;
+  /** True when a status or overdue filter was applied. */
+  readonly filtered: boolean;
+  readonly counts: AckQueueCounts;
+}
+
+// ---- ADR-0078: reassign from the card (G-6) and the supervisor reassign (G-2) -------------------------------------------------------
+// A colleague picker returns ONLY eligible people (a care-team member who can see the channel, holds `messaging.urgent.receive`, passes the
+// Part 2 gate, is not the sender and not the current assignee): ids and display names, nothing else. The supervisor reassign moves a
+// waiting request to such a colleague with a REQUIRED reason from a fixed, non-clinical set (no free text); it never reads the conversation,
+// never acknowledges and never touches an acknowledged, resolved or cancelled request.
+
+export const ACK_SUPERVISOR_REASON_CODES = [
+  "assignee_unreachable",
+  "assignee_unable_to_sign_in",
+  "assignee_off_shift",
+  "coverage_change",
+  "workload",
+  "other_operational",
+] as const;
+export type AckSupervisorReasonCode = (typeof ACK_SUPERVISOR_REASON_CODES)[number];
+
+/** The most colleagues a picker lists (the care team is bounded long before this). */
+export const ACK_REASSIGN_CANDIDATE_CAP = 50;
+
+export interface AckReassignCandidate {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
+
+export interface AckReassignCandidatesResponse {
+  readonly candidates: readonly AckReassignCandidate[];
+}
+
+/** Deliberately carries no channel, message or patient id: the supervisor may not be entitled to any of them. */
+export interface AckSupervisorReassignResponse {
+  readonly request_ref: string;
+  readonly status: "pending";
+  readonly assigned_user_id: string;
+  readonly deadline_at: string;
+  /** False when the call was an idempotent repeat of the supervisor's own reassign: nothing was written. */
+  readonly changed: boolean;
 }

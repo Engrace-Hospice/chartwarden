@@ -163,12 +163,19 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       // The route validated seven fields and forwarded ONE. Every column below was NULL on every
       // row ever written, because the handler passed `electionPeriodId` alone.
       const { admissionId, periodId } = await admitFor(randomUUID());
+      const periodBefore = await admin.query(
+        "SELECT effective_at FROM election_period WHERE id=$1",
+        [periodId],
+      );
       const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, {
         ...DRAFT,
+        effectiveDate: "2026-04-15",
+        primaryDiagnosisIcd10: "C34.90",
         stateAddendum: "Oregon addendum text",
       });
       const { rows } = await admin.query(
-        `SELECT provider_entity_id, attending_physician_id, curative_care_acknowledgment, state_addendum
+        `SELECT provider_entity_id, attending_physician_id, curative_care_acknowledgment, state_addendum,
+                declared_effective_date::text, primary_diagnosis_icd10_at_election
            FROM election_statement WHERE id = $1`,
         [es.id],
       );
@@ -177,7 +184,19 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
         attending_physician_id: ATTENDING,
         curative_care_acknowledgment: true,
         state_addendum: { text: "Oregon addendum text" },
+        declared_effective_date: "2026-04-15",
+        primary_diagnosis_icd10_at_election: "C34.90",
       });
+      expect(await svc.getElectionStatement(ORG_A, es.id)).toMatchObject({
+        effectiveDate: "2026-04-15",
+        primaryDiagnosisIcd10: "C34.90",
+      });
+      expect(await svc.getElectionStatement(ORG_B, es.id)).toBeNull();
+      const periodAfter = await admin.query(
+        "SELECT effective_at FROM election_period WHERE id=$1",
+        [periodId],
+      );
+      expect(periodAfter.rows[0].effective_at).toEqual(periodBefore.rows[0].effective_at);
     });
 
     it("records a declined waiver as declined, rather than stamping true at signing", async () => {
@@ -302,6 +321,19 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       USER,
     );
     expect(cti.state).toBe("drafted");
+    const persisted = await admin.query(
+      "SELECT prognosis_statement, clinical_findings FROM certification_of_terminal_illness WHERE id=$1",
+      [cti.id],
+    );
+    expect(persisted.rows[0]).toMatchObject({
+      prognosis_statement: CTI_CLINICAL.prognosisStatement,
+      clinical_findings: CTI_CLINICAL.clinicalFindings,
+    });
+    expect(await svc.getCti(ORG_A, cti.id)).toMatchObject({
+      prognosisStatement: CTI_CLINICAL.prognosisStatement,
+      clinicalFindings: CTI_CLINICAL.clinicalFindings,
+    });
+    expect(await svc.getCti(ORG_B, cti.id)).toBeNull();
     const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     expect(signed.state).toBe("signed");
   });

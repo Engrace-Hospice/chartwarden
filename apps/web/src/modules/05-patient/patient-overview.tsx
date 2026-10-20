@@ -29,6 +29,10 @@ import { Link } from "react-router-dom";
 
 import { isCareTeamRole } from "../../shell/care-team-roles";
 import {
+  PatientConversationLink,
+  useOpenPatientConversation,
+} from "../../shell/open-patient-conversation";
+import {
   ChartBanner,
   fmtDate,
   maskTail,
@@ -677,6 +681,9 @@ function ChartActions({
 }): JSX.Element {
   const [open, setOpen] = useState(false);
 
+  // Hoisted above the menu so closing it never cancels a pending request.
+  const conversation = useOpenPatientConversation(patientId);
+
   const ref = useRef<HTMLDivElement>(null);
 
   // The kit Button does not forward a ref, so Escape finds the trigger inside the container to hand focus back to it.
@@ -697,6 +704,8 @@ function ChartActions({
     label: string;
 
     to: string;
+
+    conversation?: boolean;
 
     disabled?: boolean;
 
@@ -762,7 +771,7 @@ function ChartActions({
       to: `/patients/${patientId}/discipline-plans`,
     },
 
-    { label: "Message care team", to: "/messaging" },
+    { label: "Message care team", to: "/messaging", conversation: true },
   ];
 
   return (
@@ -786,6 +795,16 @@ function ChartActions({
                 >
                   {it.label} — {it.hint}
                 </span>
+              ) : it.conversation ? (
+                // The menu stays open until the page navigates, so a failure keeps its focus and the toast is visible.
+                <PatientConversationLink
+                  key={it.to}
+                  patientId={patientId}
+                  conversation={conversation}
+                  className="wx-actor-menu-item"
+                >
+                  {it.label}
+                </PatientConversationLink>
               ) : (
                 <Link
                   key={it.to}
@@ -1088,6 +1107,8 @@ function CareTeamPanel({
 }): JSX.Element {
   const team = data.careTeam?.assignments;
 
+  const conversation = useOpenPatientConversation(patientId);
+
   return (
     <Panel
       title="Care Team"
@@ -1162,9 +1183,13 @@ function CareTeamPanel({
                     </a>
                   ) : null}
 
-                  <Link to="/messaging" aria-label={`Message ${name ?? roleLabel(a.role)}`}>
+                  <PatientConversationLink
+                    patientId={patientId}
+                    conversation={conversation}
+                    aria-label={`Message ${name ?? roleLabel(a.role)}`}
+                  >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
-                  </Link>
+                  </PatientConversationLink>
                 </span>
               </li>
             );
@@ -1552,6 +1577,8 @@ export function OverviewRail({
 
   data: PatientChartData;
 }): JSX.Element {
+  const conversation = useOpenPatientConversation(patientId);
+
   const windows = (data.election?.complianceWindows ?? []).filter((w) => w.status === "open");
 
   const flags = data.privacy?.flags ?? [];
@@ -1562,7 +1589,7 @@ export function OverviewRail({
   const privacyTo = session?.permissions?.includes("privacy.admin")
     ? `/patients/${patientId}/privacy`
     : `/patients/${patientId}?view=privacy`;
-  const links: { label: string; icon: GlyphName; to: string }[] = [
+  const links: { label: string; icon: GlyphName; to: string; conversation?: boolean }[] = [
     {
       label: "Election & Certification",
 
@@ -1611,7 +1638,7 @@ export function OverviewRail({
       to: `/patients/${patientId}/documents`,
     },
 
-    { label: "Send Message", icon: "message-square", to: "/messaging" },
+    { label: "Send Message", icon: "message-square", to: "/messaging", conversation: true },
 
     {
       label: "Coverage / Payers",
@@ -1692,15 +1719,26 @@ export function OverviewRail({
         <ul className="wx-rail-links">
           {links.map((l) => (
             <li key={l.label}>
-              <Link to={l.to}>
-                <span style={{ color: t.primary }}>
-                  <Glyph name={l.icon} size={17} strokeWidth={1.75} />
-                </span>
+              {(() => {
+                const body = (
+                  <>
+                    <span style={{ color: t.primary }}>
+                      <Glyph name={l.icon} size={17} strokeWidth={1.75} />
+                    </span>
 
-                <span style={{ flex: 1 }}>{l.label}</span>
+                    <span style={{ flex: 1 }}>{l.label}</span>
 
-                <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
-              </Link>
+                    <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+                  </>
+                );
+                return l.conversation ? (
+                  <PatientConversationLink patientId={patientId} conversation={conversation}>
+                    {body}
+                  </PatientConversationLink>
+                ) : (
+                  <Link to={l.to}>{body}</Link>
+                );
+              })()}
             </li>
           ))}
         </ul>

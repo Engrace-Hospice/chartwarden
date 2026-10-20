@@ -35,6 +35,13 @@ import {
   ReasonField,
 } from "./action-ui";
 import {
+  EMPTY_RECONSIDERATION_SUBMIT,
+  ReconsiderationSubmitFields,
+  type ReconsiderationSubmitState,
+  reconsiderationSubmitBlocked,
+} from "./qic-evidence-editor";
+import { QicPanel } from "./qic-panel";
+import {
   type AppealAction,
   type AppealDetail,
   type AppealOutcome,
@@ -45,12 +52,14 @@ import {
   runAppealAction,
 } from "./remittance-api";
 import { APPEAL_OUTCOME_TONE, APPEAL_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { SubmissionPanel } from "./submission-panel";
 
 const ACTIONS_BY_STATE: Record<string, readonly AppealAction["kind"][]> = {
   draft: ["attach", "submit", "withdraw"],
   submitted: ["ack", "withdraw"],
   under_review: ["decide", "withdraw"],
   decided: ["close"],
+  escalated: ["close"],
 };
 
 const LABEL: Record<AppealAction["kind"], string> = {
@@ -110,6 +119,7 @@ interface AppealDraft {
   readonly decidedAt: string;
   readonly letterDate?: string;
   readonly macRefs: string;
+  readonly recon?: ReconsiderationSubmitState;
 }
 
 export const APPEAL_DRAFT_ACTION = "m25-appeal";
@@ -137,6 +147,10 @@ export function AppealDetailPanel({
   // The date printed on the decision letter starts the next tier's clock, so it is never pre-filled.
   const [letterDate, setLetterDate] = useState(restored?.letterDate ?? "");
   const [macRefs, setMacRefs] = useState(restored?.macRefs ?? "");
+  // Milestone 4: what only a QIC reconsideration adds to the submit form.
+  const [recon, setRecon] = useState<ReconsiderationSubmitState>(
+    restored?.recon ?? EMPTY_RECONSIDERATION_SUBMIT,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -165,9 +179,11 @@ export function AppealDetailPanel({
     setMacRefs("");
     setDecidedAt(nowLocal());
     setLetterDate("");
+    setRecon(EMPTY_RECONSIDERATION_SUBMIT);
     setError(null);
   }
 
+  const isReconsideration = appeal?.tier === "reconsideration";
   const submitIds = splitIds(documentIds);
   const mac = parseMacRefs(macRefs);
   const decidedIso =
@@ -181,7 +197,8 @@ export function AppealDetailPanel({
         return (
           narrative.trim().length < MIN_APPEAL_NARRATIVE ||
           submitIds.length === 0 ||
-          !submitIds.every(isUuid)
+          !submitIds.every(isUuid) ||
+          (isReconsideration && reconsiderationSubmitBlocked(recon))
         );
       case "decide":
         return (
@@ -205,7 +222,18 @@ export function AppealDetailPanel({
       case "attach":
         return { kind, documentId: documentId.trim() };
       case "submit":
-        return { kind, appealNarrative: narrative.trim(), attachedDocumentIds: submitIds };
+        return {
+          kind,
+          appealNarrative: narrative.trim(),
+          attachedDocumentIds: submitIds,
+          ...(isReconsideration
+            ? {
+                redeterminationMacName: recon.macName.trim(),
+                redeterminationNoticeDocumentId: recon.noticeDocumentId.trim(),
+                evidencePreclusionAcknowledged: recon.acknowledged,
+              }
+            : {}),
+        };
       case "decide":
         return decidedIso
           ? {
@@ -244,6 +272,7 @@ export function AppealDetailPanel({
           decidedAt,
           letterDate,
           macRefs,
+          recon,
         });
         navigate(
           `/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
@@ -297,20 +326,27 @@ export function AppealDetailPanel({
                   "—"
                 ),
               ],
-              [
-                "Filing deadline",
-                OPEN_STATES.has(appeal.state) ? (
-                  <CountdownChip key="d" dueAt={appeal.tierDeadlineAt} label="files" />
-                ) : (
-                  new Date(appeal.tierDeadlineAt).toLocaleDateString()
-                ),
-              ],
-              [
-                "Deadline basis",
-                appeal.noticeDatedOn
-                  ? `Notice dated ${appeal.noticeDatedOn}; receipt presumed ${appeal.presumedReceiptOn}; ${appeal.windowDays}-day window; last filing day ${appeal.lastFilingDay}.`
-                  : "Set before notice dates were recorded. Confirm the deadline against the notice.",
-              ],
+              // An ALJ case opened by an escalation was filed by the QIC forwarding it: no filing deadline of its own.
+              appeal.filedByEscalation
+                ? ["Filing deadline", "None: filed by escalation from the QIC reconsideration."]
+                : [
+                    "Filing deadline",
+                    OPEN_STATES.has(appeal.state) ? (
+                      <CountdownChip key="d" dueAt={appeal.tierDeadlineAt} label="files" />
+                    ) : (
+                      new Date(appeal.tierDeadlineAt).toLocaleDateString()
+                    ),
+                  ],
+              ...(appeal.filedByEscalation
+                ? []
+                : ([
+                    [
+                      "Deadline basis",
+                      appeal.noticeDatedOn
+                        ? `Notice dated ${appeal.noticeDatedOn}; receipt presumed ${appeal.presumedReceiptOn}; ${appeal.windowDays}-day window; last filing day ${appeal.lastFilingDay}.`
+                        : "Set before notice dates were recorded. Confirm the deadline against the notice.",
+                    ],
+                  ] as const)),
               ["Packet document", appeal.appealPacketDocumentId ?? "None attached"],
               ["Denial case", appeal.denialCaseId],
             ]}
@@ -325,6 +361,21 @@ export function AppealDetailPanel({
             </ul>
           ) : null}
           <NoticeAlert message={notice} />
+          {appeal.tier === "reconsideration" || appeal.tier === "alj" ? (
+            <QicPanel
+              key={appealId}
+              appealId={appealId}
+              appealState={appeal.state}
+              appealVersion={appeal.version}
+              onChanged={() => {
+                onChanged();
+                void load();
+              }}
+            />
+          ) : null}
+          {appeal.state !== "draft" ? (
+            <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />
+          ) : null}
           {act === null ? (
             <ButtonRow>
               {available.map((kind) => (
@@ -367,6 +418,9 @@ export function AppealDetailPanel({
                     One or more document UUIDs, separated by commas or new lines. Submitting needs a
                     recent step-up verification and is refused after the tier deadline.
                   </Hint>
+                  {isReconsideration ? (
+                    <ReconsiderationSubmitFields value={recon} onChange={setRecon} />
+                  ) : null}
                 </>
               ) : null}
               {act === "decide" ? (

@@ -70,6 +70,7 @@ import {
   NotFoundError,
   ValidationError,
   WardenXError,
+  formatMrn,
   richBodySbar,
 } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -144,6 +145,8 @@ export interface MessagingOutboxPort {
       readonly organizationId: string;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      /** ADR-0082: the caller may choose the outbox event id so it can store it (the port returns void). */
+      readonly eventId?: string;
     },
   ): Promise<void>;
 }
@@ -791,7 +794,7 @@ export function createDbMessagingRouteService(
               kind: "patient" as const,
               entityId: patient.id,
               displayName,
-              detail: `MRN ${patient.mrn}`,
+              detail: formatMrn(patient.mrn),
             });
           }
         }
@@ -2240,20 +2243,32 @@ export function createDbMessagingRouteService(
       }
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const verified = input.channel === "push";
-        const rows = (await tx
-          .insert(DE)
-          .values({
-            userId,
-            channel: input.channel,
-            endpointValue: input.target,
-            verificationStatus: verified ? "verified" : "pending",
-            verifiedAt: verified ? new Date() : null,
-          })
-          .returning({
-            id: DE.id,
-            channel: DE.channel,
-            verificationStatus: DE.verificationStatus,
-          })) as Array<{
+        const insert = tx.insert(DE).values({
+          userId,
+          channel: input.channel,
+          endpointValue: input.target,
+          verificationStatus: verified ? "verified" : "pending",
+          verifiedAt: verified ? new Date() : null,
+          sessionId: input.sessionId ?? null,
+        });
+        // WP 5.5: a browser re-subscribing with the same push endpoint after its session was revoked (the row is `expired`) must re-register
+        // against the NEW session rather than fail on the unique index. Push only (it is browser-verified); sms/email keep the plain insert.
+        const guarded = verified
+          ? insert.onConflictDoUpdate({
+              target: [DE.userId, DE.channel, DE.endpointValue],
+              set: {
+                verificationStatus: "verified",
+                verifiedAt: new Date(),
+                sessionId: sql`excluded.session_id`, // never keep a link to a session that may no longer exist
+                consecutiveFailures: 0,
+              },
+            })
+          : insert;
+        const rows = (await guarded.returning({
+          id: DE.id,
+          channel: DE.channel,
+          verificationStatus: DE.verificationStatus,
+        })) as Array<{
           id: string;
           channel: DeliveryEndpointChannel;
           verificationStatus: DeliveryEndpointVerification;

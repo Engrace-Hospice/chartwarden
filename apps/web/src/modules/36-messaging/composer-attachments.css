@@ -137,6 +137,22 @@
   grid-column: 3;
 }
 
+/* The secondary tools (link, templates, SBAR note, poll, medication question, urgent) share one wrapping row under the
+   input and its hint (rows 2 and 3) instead of auto-placing into the three columns; Schedule sits under Send. */
+.wx-message-composer > .wx-composer-tools {
+  grid-column: 1 / 3;
+  grid-row: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.wx-message-composer > .wx-schedule-send {
+  grid-row: 4;
+}
+
 .wx-message-composer > small {
   grid-row: 3;
 }
@@ -150,6 +166,11 @@
 
 .wx-message-composer > .wx-composer-error {
   grid-row: 5;
+}
+
+/* G2: the "Needs a response" control spans the row under the tools and the error line, wherever the attachment tray is. */
+.wx-message-composer > .wx-needs-response {
+  grid-row: 6;
 }
 
 /* An empty live region stays mounted but takes no flex slot. */

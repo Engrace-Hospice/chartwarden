@@ -34,6 +34,7 @@ import {
 } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { computeRoomSet } from "@wardenx/messaging";
+import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { Redis } from "ioredis";
 import { Client } from "pg";
@@ -53,23 +54,36 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import { guardEscalationRouter } from "../src/modules/36-messaging/ack-escalation/escalation-router-guard";
+import { createDbAckStore } from "../src/modules/36-messaging/ack-requests/ack-store-db";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
+import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
+import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
+import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
+import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
 import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
+import { createDbDeliveryTargetReader } from "../src/modules/36-messaging/delivery-target/delivery-target-reader-db";
+import { createDeliveryTargetService } from "../src/modules/36-messaging/delivery-target/delivery-target-service";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
-import { buildMedicationQuestionDeps } from "../src/modules/36-messaging/medication-questions/deps";
+import {
+  buildMedicationQuestionDeps,
+  createDbChannelFactsLookup,
+} from "../src/modules/36-messaging/medication-questions/deps";
+import { createMentionActorNameResolver } from "../src/modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
   createDbMessagingProvider,
 } from "../src/modules/36-messaging/messaging-provider-db";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
+import { createOnCallCoverageService } from "../src/modules/36-messaging/oncall-directory/oncall-coverage-service";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
 import { buildPromotionDeps } from "../src/modules/36-messaging/promotions/deps";
 import { buildReviewDeps } from "../src/modules/36-messaging/review/deps";
@@ -83,11 +97,15 @@ import {
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
+import { registerOffboardingRoutes } from "../src/modules/36-messaging/routes/offboarding-routes";
 import { registerScheduledSendRoutes } from "../src/modules/36-messaging/routes/scheduled-send-routes";
+import { registerSessionDeviceRoutes } from "../src/modules/36-messaging/routes/session-device-routes";
 import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
+import { createSnoozeReminderService } from "../src/modules/36-messaging/snooze-reminders/snooze-reminder-service";
+import { createDbSnoozeReminderStore } from "../src/modules/36-messaging/snooze-reminders/snooze-reminder-store-db";
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
@@ -113,6 +131,10 @@ const TEMPLATE_SUITE =
   "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
 const GLOBAL_SEARCH_SETTINGS_SUITE =
   "WP 2.7b C4: org-scoped singleton (no id), permission + step-up + cross-tenant isolation are asserted in m36-global-search-settings.live";
+const SESSION_DEVICES_SUITE =
+  "WP 5.5: own-session scope, foreign / other-tenant / repeat revoke is one 404, officer bounded to the organisation: asserted in m36-session-device-controls.live";
+const OFFBOARDING_SUITE =
+  "WP 5.9: foreign / other-tenant / unknown user is one 404 (preview and execute), key + step-up + review key refusals, nothing changes: asserted in m36-workforce-offboarding.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -208,12 +230,35 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels/:id/urgent-messages/options": { kind: "idor" },
   // WP 4.2 acknowledgment requests: the id is a request's (or a channel's / a body message id); every refusal (org B, a non-member,
   // a random id) is the 404 a random id gets and nothing is written (also attacked in m36-ack-requests.live).
+  // WP 4.8 deep link: the id is a delivery's; another user's, another org's and a random id answer identically (also attacked in m36-delivery-target.live).
+  "GET /api/v1/messaging/deliveries/:id/target": { kind: "idor" },
+  // WP 4.10 snooze / reminders: the id is a channel's or a message's; the caller's OWN row is the only thing ever touched, and every
+  // refusal (org B, a non-member, a random id, flag off) is the 404 a random id gets (also attacked in m36-snooze-reminder.live).
+  "GET /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/snooze": { kind: "idor" },
+  "GET /api/v1/messaging/reminders": { kind: "scoped" },
+  "PUT /api/v1/messaging/messages/:id/reminder": { kind: "idor" },
+  "DELETE /api/v1/messaging/messages/:id/reminder": { kind: "idor" },
+  // WP 4.12 on-call directory / ADR-0081 role-based send: the guessable ids are a PATIENT's (query or body) and, for the send, a
+  // channel's. A chart-read gate (patient.read + caseload_or_scope) then an ORG-SCOPED existence check give an org-B caller, and a
+  // missing patient, the one `resource` 404; the two channel routes also stop an in-org non-member at channel visibility (the coverage route takes no channel: its in-org scope is the real caseload_or_scope predicate, stubbed permissive here and proved in m36-oncall-directory.live). patientExists/channelPatient are test-local org-filtered stand-ins for the PatientReader seam. Every refusal is the
+  // answer a random id gets and nothing is written (also attacked in m36-oncall-directory.live / m36-role-send.live).
+  "GET /api/v1/messaging/oncall/coverage": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/role-send/resolution": { kind: "idor" },
+  "POST /api/v1/messaging/channels/:id/role-send": { kind: "idor" },
+  // WP 4.9 supervisor queue: no id to guess - the caller's organisation is the only scope (proved below and in m36-unacknowledged.live).
+  "GET /api/v1/messaging/escalations/unacknowledged": { kind: "scoped" },
   "POST /api/v1/messaging/escalations": { kind: "idor" },
   "GET /api/v1/messaging/escalations/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/escalations": { kind: "idor" },
   "POST /api/v1/messaging/escalations/:id/acknowledge": { kind: "idor" },
   "POST /api/v1/messaging/escalations/:id/reassign": { kind: "idor" },
   "POST /api/v1/messaging/escalations/:id/resolve": { kind: "idor" },
+  // ADR-0078: the card's picker and the supervisor reassign; the id is a request's, every refusal is the 404 a random id gets.
+  "GET /api/v1/messaging/escalations/:id/reassign-candidates": { kind: "idor" },
+  "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates": { kind: "idor" },
+  "POST /api/v1/messaging/escalations/:id/supervisor-reassign": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/medication-questions/options": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
@@ -272,6 +317,24 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: GLOBAL_SEARCH_SETTINGS_SUITE,
   },
+  // WP 5.5 (ADR-0083): a session is acted on by its own owner (or, for the officer, within the officer's organisation); a foreign, other-tenant,
+  // unknown and already-revoked id are one 404, asserted with real Better Auth sessions as wardenx_app in m36-session-device-controls.live.
+  "GET /api/v1/devices": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "DELETE /api/v1/devices/:id": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "GET /api/v1/messaging/governance/sessions": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "DELETE /api/v1/messaging/governance/sessions/:id": {
+    kind: "excluded",
+    reason: SESSION_DEVICES_SUITE,
+  },
+  // WP 5.9 (ADR-0084): the :userId is a departed user in the officer's own organisation; another tenant's and an unknown id are one 404.
+  "GET /api/v1/messaging/governance/offboarding/:userId": {
+    kind: "excluded",
+    reason: OFFBOARDING_SUITE,
+  },
+  "POST /api/v1/messaging/governance/offboarding/:userId/execute": {
+    kind: "excluded",
+    reason: OFFBOARDING_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -299,6 +362,10 @@ const REGISTRAR_FILES = [
   "scheduled-send-typebox.ts", // schemas only
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
+  "oncall-routes.ts", // WP 4.12 on-call directory, mounted by registerMessagingRoutes
+  "oncall-typebox.ts", // schemas only
+  "role-send-routes.ts", // ADR-0081 role-based send, mounted by registerMessagingRoutes
+  "role-send-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
   "reaction-pin-typebox.ts", // schemas only
   "global-search-routes.ts", // WP 2.7b global search (inert until enabled)
@@ -322,6 +389,12 @@ const REGISTRAR_FILES = [
   "medication-question-routes.ts", // WP 3.10 medication questions, mounted by registerMessagingRoutes
   "medication-question-typebox.ts", // schemas only
   "urgent-routes.ts", // WP 4.1 urgent clinical message, mounted by registerMessagingRoutes
+  "delivery-target-routes.ts", // WP 4.8 deep-link resolver, mounted by registerMessagingRoutes
+  "delivery-target-typebox.ts", // schemas only
+  "unacknowledged-routes.ts", // WP 4.9 supervisor unacknowledged queue, mounted by registerMessagingRoutes
+  "snooze-reminder-routes.ts", // WP 4.10 snooze and reminders, mounted by registerMessagingRoutes
+  "snooze-reminder-typebox.ts", // schemas only
+  "unacknowledged-typebox.ts", // schemas only
   "ack-routes.ts", // WP 4.2 acknowledgment requests, mounted by registerMessagingRoutes
   "ack-typebox.ts", // schemas only
   "urgent-typebox.ts", // schemas only
@@ -333,6 +406,10 @@ const REGISTRAR_FILES = [
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
+  "session-device-routes.ts", // WP 5.5 device and session manager (own sessions; officer variant bounded to the organisation)
+  "session-device-typebox.ts", // schemas only
+  "offboarding-routes.ts", // WP 5.9 workforce offboarding (preview and execute; officer bounded to the organisation)
+  "offboarding-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -353,6 +430,8 @@ function registeredRoutes(): string[] {
   registerTemplateRoutes(probe, { service: {} as never });
   registerGlobalSearchSettingsRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
+  registerSessionDeviceRoutes(probe, { service: {} as never });
+  registerOffboardingRoutes(probe, { service: {} as never });
   return [...seen].sort();
 }
 
@@ -378,6 +457,23 @@ function headerAuth(request: FastifyRequest): void {
 const sha256Of = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const VOLATILE_KEYS = new Set(["requestId", "correlationId", "timestamp", "traceId"]);
+/** An on-call router that always resolves tier 1 to these users (the roster is not under test; tenancy is). */
+function coveredBy(...ids: [string, ...string[]]): EscalationRouter {
+  return {
+    resolveTier: async (_org, request) =>
+      ({
+        kind: "resolved",
+        userIds: ids,
+        ranks: ids.map((_, i) => (i === 0 ? "primary" : "backup")),
+        nextTier: null,
+        timeZone: "America/Los_Angeles",
+        tier: request.tier,
+        asOf: request.asOf,
+        source: "m19",
+      }) as EscalationRouteAnswer,
+  };
+}
+
 /** Status + body with ids and per-request fields masked, so a real id and a random id can be compared exactly. */
 function shape(res: { statusCode: number; body: string }): string {
   let body: unknown = res.body;
@@ -498,7 +594,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       route === "POST /api/v1/messaging/announce" ||
       route === "POST /api/v1/messaging/channels/:id/medication-questions" ||
       route === "POST /api/v1/messaging/channels/:id/urgent-messages" ||
-      route === "POST /api/v1/messaging/escalations";
+      route === "POST /api/v1/messaging/channels/:id/role-send" ||
+      route === "POST /api/v1/messaging/escalations" ||
+      route === "PUT /api/v1/messaging/channels/:id/snooze" ||
+      route === "PUT /api/v1/messaging/messages/:id/reminder";
     const res = await app.inject({
       method: method as "GET",
       url: url + query,
@@ -687,6 +786,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               // WP 4.2: EVERY persona also holds messaging.urgent.receive, so the acknowledge / resolve routes are stopped only by
               // tenancy and the assignee rule, never by a missing key.
               "messaging.urgent.receive",
+              // WP 4.12 / ADR-0081: EVERY persona holds both on-call keys, and the org-B reviewer / promoter already hold patient.read (the
+              // scope stub passes patient A for any holder), so only the org-scoped patient check / channel visibility stops them.
+              "messaging.oncall.read",
+              "messaging.oncall.send",
               ...(w === u1 ? ["messaging.review"] : []),
               ...(w === reviewerB ? ["messaging.review", "patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
@@ -786,6 +889,50 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
         careTeamMembers: async () => [],
       }),
+      unacknowledged: {
+        service: createUnacknowledgedService({
+          read: createDbUnacknowledgedReader(handle.db),
+          canViewChannel: service.canViewChannel,
+          displayName: async () => null,
+        }),
+      },
+      oncall: {
+        // The org-scoped existence check under test (the real one is RLS-backstopped; this one filters by org explicitly).
+        patientExists: async (org, id) =>
+          (await admin.query("SELECT 1 FROM patient WHERE organization_id=$1 AND id=$2", [org, id]))
+            .rowCount === 1,
+        service: createOnCallCoverageService({
+          isEnabled: async () => true,
+          router: coveredBy(u2.userId),
+          displayName: async () => null,
+        }),
+        roleSend: {
+          isEnabled: async () => true,
+          router: guardEscalationRouter({
+            resolveTier: (org, req) => coveredBy(u2.userId).resolveTier(org, req),
+          }),
+          displayName: createMentionActorNameResolver(handle.db),
+          channelPatient: async (org, ch) => {
+            const facts = await createDbChannelFactsLookup(handle.db)(org, ch);
+            return facts?.kind === "care_team" ? facts.subjectId : null;
+          },
+          findReplay: createDbRoleReplayLookup(handle.db),
+        },
+      },
+      snoozeReminders: {
+        service: createSnoozeReminderService({
+          isEnabled: async () => true,
+          store: createDbSnoozeReminderStore(handle.db),
+          canViewChannel: service.canViewChannel,
+        }),
+      },
+      deliveryTarget: {
+        service: createDeliveryTargetService({
+          read: createDbDeliveryTargetReader(handle.db),
+          messaging: service,
+          openRequestId: createOpenRequestLookup(createDbAckStore(handle.db)),
+        }),
+      },
       ackRequests: {
         service: buildAckDeps({
           db: handle.db,
@@ -1953,6 +2100,63 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect(sent.statusCode, sent.body).toBe(201);
       expect((await messages()).rows[0].n).toBe(before + 1);
     });
+    it("WP 4.10: snooze and reminder routes touch only the caller's own row; org B and an in-org non-member get a random id's answer and write nothing", async () => {
+      const SNOOZE = "/api/v1/messaging/channels/:id/snooze";
+      const REMINDER = "/api/v1/messaging/messages/:id/reminder";
+      const remindAt = () => new Date(Date.now() + 3_600_000).toISOString();
+      const rows = () =>
+        admin.query(
+          "SELECT (SELECT count(*)::int FROM message_snooze) AS s, (SELECT count(*)::int FROM message_reminder) AS r",
+        );
+      const before = (await rows()).rows[0];
+      for (const attacker of [bUser, adminB, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(`GET ${SNOOZE}`, attacker, { id });
+          await expectNoOracle(`PUT ${SNOOZE}`, attacker, { id }, { duration_minutes: 60 });
+        }
+        await expectNoOracle(
+          `PUT ${REMINDER}`,
+          attacker,
+          { id: msgLocA },
+          { remind_at: remindAt() },
+        );
+        // Withdrawing is a no-op for a stranger: the same answer for a real and a random id, and nothing leaks.
+        for (const [route, real] of [
+          [`DELETE ${SNOOZE}`, locA],
+          [`DELETE ${REMINDER}`, msgLocA],
+        ] as const) {
+          const got = await call(route, attacker, { id: real });
+          const ctl = await call(route, attacker, { id: randomUUID() });
+          expect(got.statusCode, `${attacker.name} ${route}`).toBe(ctl.statusCode);
+          expect(shape(got), `${attacker.name} ${route}`).toBe(shape(ctl));
+          expectNoLeak(got.body, attacker, `${attacker.name} ${route}`);
+        }
+      }
+      expect((await rows()).rows[0]).toEqual(before);
+      // The member's own rows work, and an attacker's list never shows them.
+      expect(
+        (await call(`PUT ${SNOOZE}`, u1, { id: locA }, { duration_minutes: 60 })).statusCode,
+      ).toBe(200);
+      expect(
+        (await call(`PUT ${REMINDER}`, u1, { id: msgLocA }, { remind_at: remindAt() })).statusCode,
+      ).toBe(200);
+      const mine = await call("GET /api/v1/messaging/reminders", u1);
+      expect(mine.json().reminders).toHaveLength(1);
+      for (const attacker of [u2, bUser, outsider]) {
+        const theirs = await call("GET /api/v1/messaging/reminders", attacker);
+        expect(theirs.json().reminders, attacker.name).toEqual([]);
+        expectNoLeak(theirs.body, attacker, `${attacker.name} reminders`);
+      }
+      // A fellow member cannot end or cancel it.
+      expect((await call(`DELETE ${SNOOZE}`, u2, { id: locA })).json()).toEqual({ cleared: false });
+      expect((await call(`DELETE ${REMINDER}`, u2, { id: msgLocA })).json()).toEqual({
+        cleared: false,
+      });
+      expect((await call(`DELETE ${SNOOZE}`, u1, { id: locA })).json()).toEqual({ cleared: true });
+      expect((await call(`DELETE ${REMINDER}`, u1, { id: msgLocA })).json()).toEqual({
+        cleared: true,
+      });
+    });
     it("WP 4.1: org B and an in-org non-member get a random channel's answer for A's care-team urgent message and options, and nothing is written", async () => {
       const sendRoute = "POST /api/v1/messaging/channels/:id/urgent-messages";
       const optionsRoute = "GET /api/v1/messaging/channels/:id/urgent-messages/options";
@@ -2054,11 +2258,176 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         await expectNoOracle("GET /api/v1/messaging/channels/:id/escalations", attacker, {
           id: careTeamA,
         });
+        await expectNoOracle(
+          "GET /api/v1/messaging/escalations/:id/reassign-candidates",
+          attacker,
+          {
+            id,
+          },
+        );
       }
+      // ADR-0078: the org-B holder of messaging.review reaches the service and is stopped by tenancy alone.
+      await expectNoOracle(
+        "GET /api/v1/messaging/escalations/:id/supervisor-reassign-candidates",
+        reviewerB,
+        { id },
+      );
+      await expectNoOracle(
+        "POST /api/v1/messaging/escalations/:id/supervisor-reassign",
+        reviewerB,
+        { id },
+        { assigned_user_id: reviewerB.userId, reason_code: "workload" },
+      );
       expect((await state()).rows[0]).toEqual(before);
       // the assignee, by contrast, really can act: the refusals above were tenancy, not shape.
       const ack = await call("POST /api/v1/messaging/escalations/:id/acknowledge", u2, { id });
       expect(ack.statusCode, ack.body).toBe(200);
+    });
+    it("WP 4.12 / ADR-0081: org B and an in-org non-member get a random id's answer for A's patient and care-team channel on the on-call directory and role-based send, and nothing is written", async () => {
+      const COVERAGE = "GET /api/v1/messaging/oncall/coverage";
+      const RESOLVE = "GET /api/v1/messaging/channels/:id/role-send/resolution";
+      const SEND = "POST /api/v1/messaging/channels/:id/role-send";
+      const para = (value: string) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: value }],
+      });
+      const roleBody = (patientId: string) => ({
+        role: "rn",
+        patient_id: patientId,
+        recipient_user_id: u2.userId,
+        client_message_id: randomUUID(),
+        body_doc: {
+          schemaVersion: 1,
+          doc: {
+            type: "doc",
+            content: [
+              {
+                type: "sbar",
+                urgencyHint: "routine",
+                situation: [para("Uncontrolled pain nine of ten")],
+                background: [para("Day three on service, on morphine")],
+                assessment: [para("Pain is not controlled by the current plan")],
+                recommendation: [para("Please review the plan within the hour")],
+              },
+            ],
+          },
+        },
+      });
+      const qs = (patientId: string) => `?role=rn&patient_id=${patientId}`;
+      const written = () =>
+        admin.query(
+          `SELECT (SELECT count(*)::int FROM message) AS m,
+                  (SELECT count(*)::int FROM message_acknowledgment_request) AS a,
+                  (SELECT count(*)::int FROM outbox_event) AS o,
+                  (SELECT count(*)::int FROM audit_event) AS e`,
+        );
+
+      // Org B's own channel (the channel gates pass there), made before the baseline.
+      const ownB = (await service.openDm(orgB, reviewerB.userId, b2.userId)).channelId;
+      // Positive controls (the attacks below are not vacuous): a care-team member holding the chart scope reads both.
+      const cov = await call(COVERAGE, u1, {}, undefined, {}, qs(patientA));
+      expect(cov.statusCode, cov.body).toBe(200);
+      const res = await call(RESOLVE, u1, { id: careTeamA }, undefined, {}, qs(patientA));
+      expect(res.statusCode, res.body).toBe(200);
+
+      const before = (await written()).rows[0];
+      // 1. The directory names a patient and nothing else: org B (chart-read permission AND scope stub pass) gets a missing patient's 404.
+      for (const attacker of [reviewerB, promoterB]) {
+        attackers.add(attacker.name);
+        const real = await call(COVERAGE, attacker, {}, undefined, {}, qs(patientA));
+        const ctl = await call(COVERAGE, attacker, {}, undefined, {}, qs(randomUUID()));
+        expect(real.statusCode, `${attacker.name} coverage: ${real.body}`).toBe(404);
+        expect(shape(real), `${attacker.name} coverage differs from a missing patient`).toBe(
+          shape(ctl),
+        );
+        expectNoLeak(real.body, attacker, `${attacker.name} coverage`);
+      }
+      // 2. Org B's OWN channel (so the channel gates pass) naming A's patient: the org-scoped existence check alone stops it.
+      const ownReal = await call(RESOLVE, reviewerB, { id: ownB }, undefined, {}, qs(patientA));
+      const ownCtl = await call(RESOLVE, reviewerB, { id: ownB }, undefined, {}, qs(randomUUID()));
+      expect(ownReal.statusCode, `own-channel resolve: ${ownReal.body}`).toBe(404);
+      expect(shape(ownReal)).toBe(shape(ownCtl));
+      const sentReal = await call(SEND, reviewerB, { id: ownB }, roleBody(patientA));
+      const sentCtl = await call(SEND, reviewerB, { id: ownB }, roleBody(randomUUID()));
+      expect(sentReal.statusCode, `own-channel send: ${sentReal.body}`).toBe(404);
+      expect(shape(sentReal)).toBe(shape(sentCtl));
+      // 3. A's care-team channel: org B and the in-org non-member get a random channel's answer.
+      for (const attacker of [bUser, adminB, outsider]) {
+        await expectNoOracle(RESOLVE, attacker, { id: careTeamA }, undefined, qs(patientA));
+        await expectNoOracle(SEND, attacker, { id: careTeamA }, roleBody(patientA));
+      }
+      expect((await written()).rows[0]).toEqual(before);
+    });
+    it("WP 4.8: org B and an in-org non-member get a random id's answer for A's notification link", async () => {
+      const route = "GET /api/v1/messaging/deliveries/:id/target";
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: "please look at this",
+      });
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m36.ack.requested','warn',$2,$3,'pending') RETURNING id`,
+          [
+            orgA,
+            JSON.stringify({ channelId: careTeamA, messageId: sent.messageId }),
+            `wp48-${randomUUID()}`,
+          ],
+        )
+      ).rows[0].id as string;
+      const id = (
+        await admin.query(
+          `INSERT INTO notification_delivery (alert_id, recipient_user_id, alert_category, alert_severity, channel, status)
+           VALUES ($1,$2,'clinical_urgent','warn','push','pending') RETURNING id`,
+          [alert, u2.userId],
+        )
+      ).rows[0].id as string;
+      for (const attacker of [bUser, adminB, outsider, u1]) {
+        await expectNoOracle(route, attacker, { id });
+      }
+      // the recipient, by contrast, really can resolve it: the refusals above were ownership, not shape.
+      const ok = await call(route, u2, { id });
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json()).toEqual({
+        channel_id: careTeamA,
+        message_id: sent.messageId,
+        ack_request_id: null,
+      });
+    });
+    it("WP 4.9: the supervisor queue lists A's waiting request to A's reviewer only; org B's reviewer and every non-reviewer get none of it", async () => {
+      const route = "GET /api/v1/messaging/escalations/unacknowledged";
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: `${SECRET_BODY} queue`,
+      });
+      const requestId = (
+        await admin.query(
+          `INSERT INTO message_acknowledgment_request
+             (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+           VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + interval '60 minutes') RETURNING id`,
+          [orgA, sent.messageId, careTeamA, patientA, u1.userId, u2.userId],
+        )
+      ).rows[0].id as string;
+      // the legitimate reviewer lists it (the attacks are not vacuous): a row is there, restricted or not.
+      const own = await call(route, u1);
+      expect(own.statusCode, own.body).toBe(200);
+      expect(own.json().counts.unfiltered).toBeGreaterThanOrEqual(1);
+      expect(own.body).not.toContain(SECRET_BODY);
+      // org B's reviewer holds the permission and sees only org B's (empty) queue; the rest lack it.
+      for (const attacker of [reviewerB, bUser, adminB, outsider]) {
+        const res = await call(route, attacker);
+        expect(res.statusCode, `${attacker.name}: ${res.body}`).toBe(
+          attacker === reviewerB ? 200 : 403,
+        );
+        if (attacker === reviewerB) {
+          expect(res.json().items).toEqual([]);
+          expect(res.json().counts.unfiltered).toBe(0);
+        }
+        expectNoLeak(res.body, attacker, `${attacker.name} unacknowledged queue`);
+        expect(res.body).not.toContain(requestId);
+      }
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

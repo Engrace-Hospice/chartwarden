@@ -1,5 +1,6 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
+import { formatMrn } from "@wardenx/types";
 import { Glyph } from "@wardenx/ui";
 import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
@@ -7,6 +8,7 @@ import { IdgDiscussionsSection } from "./idg-discussions-section";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
 import { PatientContextTiles } from "./patient-context-tiles";
+import { SnoozeControl } from "./snooze-control";
 
 export interface ThreadHeaderProps {
   channel: ChannelSummary;
@@ -50,13 +52,15 @@ export function ThreadHeader({
         <h2 ref={headingRef} tabIndex={-1}>
           {channel.kind === "care_team" && patient ? `${title} · Care Team` : title}
         </h2>
-        <span>{patient ? `MRN ${patient.mrn}` : subtitle}</span>
+        <span>{patient ? formatMrn(patient.mrn) : subtitle}</span>
       </div>
       {channel.archivedAt ? (
         <span className="wx-messaging-readonly">
           <Glyph name="lock" size={13} /> Archived · read only
         </span>
       ) : null}
+      {/* WP 4.10: pauses non-urgent push / text / email notices for this conversation; shows nothing when the feature is off. */}
+      <SnoozeControl channelId={channel.channelId} />
       {onShowMembers ? (
         <button type="button" className="wx-messaging-context-toggle" onClick={onShowMembers}>
           <Glyph name="users" size={16} />
@@ -129,7 +133,7 @@ export function PatientContextAside({
           <strong>
             {patient.firstName} {patient.lastName}
           </strong>
-          <span>MRN {patient.mrn}</span>
+          <span>{formatMrn(patient.mrn)}</span>
         </div>
       </div>
       <PatientContextTiles patientId={patient.id} />

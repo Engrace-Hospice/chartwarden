@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 179,
+  "totalStaticWebScreens": 185,
   "e2eReachedCount": 19,
-  "axeReachedCount": 170,
+  "axeReachedCount": 175,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -749,6 +749,38 @@
       "axeReached": true
     },
     {
+      "id": "messaging.devices",
+      "module": "36-messaging",
+      "path": "/messaging/devices",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "messaging.session-governance",
+      "module": "36-messaging",
+      "path": "/messaging/governance/sessions",
+      "permission": "messaging.sessions.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.on-call",
+      "module": "36-messaging",
+      "path": "/messaging/on-call",
+      "permission": "messaging.oncall.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.preferences",
+      "module": "36-messaging",
+      "path": "/messaging/preferences",
+      "permission": "messaging.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.saved-replies",
       "module": "36-messaging",
       "path": "/messaging/saved-replies",
@@ -761,6 +793,14 @@
       "module": "36-messaging",
       "path": "/messaging/search-settings",
       "permission": "messaging.global_search.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.unacknowledged",
+      "module": "36-messaging",
+      "path": "/messaging/unacknowledged",
+      "permission": "messaging.review",
       "e2eReached": false,
       "axeReached": true
     },
@@ -913,6 +953,14 @@
       "module": "25-remittance",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.tpe",
+      "module": "25-remittance",
+      "path": "/remittance/tpe",
+      "permission": "tpe.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1338,6 +1386,14 @@
       "id": "identity.passkey-enrolment",
       "module": "02-identity",
       "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "messaging.devices",
+      "module": "36-messaging",
+      "path": "/messaging/devices",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -2193,6 +2249,38 @@
       "axeReached": true
     },
     {
+      "id": "messaging.devices",
+      "module": "36-messaging",
+      "path": "/messaging/devices",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "messaging.session-governance",
+      "module": "36-messaging",
+      "path": "/messaging/governance/sessions",
+      "permission": "messaging.sessions.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.on-call",
+      "module": "36-messaging",
+      "path": "/messaging/on-call",
+      "permission": "messaging.oncall.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.preferences",
+      "module": "36-messaging",
+      "path": "/messaging/preferences",
+      "permission": "messaging.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.saved-replies",
       "module": "36-messaging",
       "path": "/messaging/saved-replies",
@@ -2205,6 +2293,14 @@
       "module": "36-messaging",
       "path": "/messaging/search-settings",
       "permission": "messaging.global_search.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.unacknowledged",
+      "module": "36-messaging",
+      "path": "/messaging/unacknowledged",
+      "permission": "messaging.review",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2389,6 +2485,14 @@
       "module": "25-remittance",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.tpe",
+      "module": "25-remittance",
+      "path": "/remittance/tpe",
+      "permission": "tpe.read",
       "e2eReached": false,
       "axeReached": true
     },

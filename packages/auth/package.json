@@ -9,6 +9,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@better-auth/expo": "1.6.25",
     "@better-auth/passkey": "^1.6.20",
     "@simplewebauthn/server": "^13.3.3",
     "hash-wasm": "^4.12.0"

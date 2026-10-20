@@ -4,6 +4,15 @@
 **Owner:** Fabrice V. Adjam
 **Purpose:** Complete architecture lock for WardenX, a multi-tenant hospice EHR SaaS. This document is the input spec for the Archon workflow engine driving Claude Code. Per-module spec documents (one per module) follow this document and are produced before each module’s build cycle.
 
+## Pending architecture ratification — mobile renderer (2026-10-16)
+
+The fixed product direction is a separately versioned React Native/Expo application in the
+`wardenx-mobile` repository. [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md)
+proposes formal supersession of ADR-0035. Current architecture sections below are aligned to that
+target so backend contracts do not extend the obsolete Capacitor design; historical changelog rows
+remain historical. The ADR status does not claim that owner ratification or native device controls
+have been completed.
+
 ## Document Control — Changes from v0.11 (Phase 0 remediation, 2026-06-11)
 
 Phase 0 of the compliance-audit remediation (`audit/AUDIT_CONSOLIDATED_FINAL.md`). These are the
@@ -283,7 +292,7 @@ Organization (tenant — the WardenX customer)
 > | `apps/web` | **`apps/web`** |
 > | `apps/backend` | **`apps/backend`** |
 > | `packages/saas` | **`packages/saas-tenant-platform`** |
-> | `apps/mobile/` | **Does not exist.** ADR-0035 makes mobile a Capacitor wrap of `apps/web`, not a separate app. |
+> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 proposes the formal supersession of ADR-0035. |
 > | `packages/rules-engine` | **Does not exist.** |
 > | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
 >
@@ -302,7 +311,7 @@ Turborepo + Bun workspaces.
 ```
 wardenx/
 ├── apps/
-│   ├── web/                       # Vite + React + react-router (ADR-0030/0032/0035) — hospice tenant UI; mobile ships as a Capacitor wrap of THIS app (no separate apps/mobile — ADR-0035)
+│   ├── web/                       # Vite + React + react-router (ADR-0030/0032) — hospice tenant web UI
 │   ├── backend/                   # Fastify 5 — main backend
 │   ├── admin/                     # Vite + React — WardenX ops console
 │   └── portal/                    # Vite + React — patient/caregiver portal (PWA)
@@ -366,13 +375,13 @@ wardenx/
 - Recharts for clinical and financial dashboards
 - Better Auth React client
 
-### Mobile (clinical and field roles — Capacitor wrap of `apps/web`; ADR-0035)
+### Mobile (clinical and field roles — separate React Native/Expo application; ADR-0072)
 
-- Capacitor wrapping the as-built Vite/React `apps/web` for native iOS and Android delivery (no separate `apps/mobile` workspace; native capabilities via the `packages/ui/src/core/capabilities` ports)
-- Native plugins: Geolocation (EVV reliability), Camera (wound photos, document capture for DocLens), BiometricAuth (Face ID / Touch ID / Android biometric), PushNotifications (APNs / FCM), Filesystem (offline note draft cache), Network (online/offline state), Device, Haptics
-- Offline-capable for encounter drafting (notes/vitals saved locally; sync on reconnect)
-- Background sync for completed notes upload
-- App store distribution + MDM enterprise distribution support
+- `wardenx-mobile` is a separately versioned repository and application; this monorepo does not contain an `apps/mobile` workspace.
+- The web and native applications are two renderers. Native code does not import DOM components or the web capability adapters. It consumes the versioned OpenAPI artifact and may reuse only renderer-free contracts, types, documented permissions, design tokens, and pure utilities.
+- Both renderers use the single Better Auth service at `/api/auth/*`. Native REST calls present the Better Auth cookie plus WardenX's exact double-submit CSRF token; no parallel bearer/JWT session model exists.
+- Native geolocation, camera, biometric lock, encrypted offline storage, push, device integrity, screenshot policy, certificate pinning, and MDM controls remain separate implementation obligations. ADR-0072 records their evidence status; this architecture does not claim that the Expo app has implemented them.
+- Offline clinical workflows and background sync require dedicated contracts and threat-model review before enablement.
 
 ### Backend
 
@@ -2637,7 +2646,7 @@ Every per-module spec document follows this template. The Module 1 (Foundation) 
 ## 5. Frontend Screens
 - Screen inventory: name, route, primary role, purpose
 - Per-screen: layout sketch, primary actions, real-time event subscriptions, form schemas, accessibility notes (WCAG 2.1 AA)
-- Mobile-specific variants (Capacitor app)
+- Mobile-specific variants (separate React Native/Expo application)
 - Portal variants if applicable
 
 ## 6. Permissions Matrix
@@ -2707,7 +2716,7 @@ These remain genuinely open and need decision before specific modules are spec�
 > records in [`docs/adr/`](../adr/README.md) (`ADR-0001`…): a bare `ADR-003` means row 3 of this
 > table (telehealth vendor — still open), *not* the four-digit `ADR-0003` (room-and-board revenue
 > codes) in `docs/adr/`. When an item here gets decided, it is closed by a four-digit ADR — as already happened
-> for ADR-008 (mobile → **ADR-0035**). Four-digit citations are gate-checked
+> for ADR-008 (mobile → **ADR-0035**, with **ADR-0072** proposed as its supersession). Four-digit citations are gate-checked
 > (`arch:architecture-docs`); short-register references are not, deliberately.
 
 |ADR    |Title                                                                                                                         |Needed before      |
@@ -2719,7 +2728,7 @@ These remain genuinely open and need decision before specific modules are spec�
 |ADR-005|CAHPS Hospice Survey vendor partnership default                                                                               |Module 30 spec     |
 |ADR-006|EPCS enablement timeline (architecture present, certification kickoff date)                                                   |Module 12 spec     |
 |ADR-007|Map / routing provider (Mapbox vs. OSRM self-hosted)                                                                          |Module 17 spec     |
-|ADR-008|Mobile strategy — **RESOLVED v0.7: Capacitor-wrapped native iOS/Android shell for clinical/field roles; PWA for portal users**|Resolved           |
+|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 proposes a separate React Native/Expo app and requires formal ratification**|Ratification pending|
 
 -----
 
@@ -2971,7 +2980,7 @@ Consolidated retention policy across all data classes WardenX stores. Drives aud
 |**Audit log — `audit_event` retention_class=legal_hold**                   |Indefinite until release                                                                                   |N/A                                                                                                          |Same                                                                               |Released to compliance class on legal hold release                  |Warm storage                                                                                           |
 |**Consent records and signed consent PDFs**                                |Lifetime of patient relationship + 6 years (matches clinical record)                                       |Match state clinical record rules                                                                            |Same; tamper-evident metadata                                                      |Same as clinical record                                             |Warm immediately                                                                                       |
 |**Secure messages (Module 36)**                                            |6 years (treated as clinical communication subject to HIPAA)                                               |Match clinical record                                                                                        |Same                                                                               |Partition detach + erase                                            |Hot for 6 months; warm for 5.5 years                                                                   |
-|**Push notification tokens (Capacitor APNs/FCM tokens)**                   |90 days from last successful delivery                                                                      |None                                                                                                         |Per-token encryption                                                               |Direct delete on TTL                                                |Hot only (Valkey)                                                                                      |
+|**Native push notification tokens (future Expo/RN APNs/FCM tokens)**       |90 days from last successful delivery                                                                      |None                                                                                                         |Per-token encryption                                                               |Direct delete on TTL                                                |Hot only (Valkey)                                                                                      |
 |**Sessions**                                                               |15 min idle; 8 hr work-session; 24 hr hard maximum; 5 min UI screen lock (ADR-0004, per §7/§14)            |None                                                                                                         |Per-session token; HMAC-protected                                                  |Direct delete on expiry                                             |Hot only (Valkey)                                                                                      |
 |**Idempotency keys**                                                       |24 hours                                                                                                   |None                                                                                                         |n/a (no PHI in keys)                                                               |TTL expiry                                                          |Hot only (Valkey + PG mirror)                                                                          |
 |**Outbox events**                                                          |30 days post-dispatch                                                                                      |None                                                                                                         |n/a                                                                                |Direct delete                                                       |Hot only (PG)                                                                                          |
@@ -3141,7 +3150,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 ### 25.15 Mobile Considerations
 
-**Pattern:** Mobile (Capacitor) apps assume intermittent connectivity. Draft state cached locally; sync on reconnect. EVV check-in/check-out must work offline — store locally, sync later, server reconciles. Biometric unlock at app launch. App-level idle timer (15 min) re-prompts auth.
+**Target pattern:** The separate React Native/Expo app must assume intermittent connectivity. Any local draft or EVV queue requires encrypted storage, bounded retention, idempotent reconciliation, and explicit conflict handling before release. Biometric app lock and an app-level idle timer are client controls to prove on device; they do not replace the server session timeout or step-up checks.
 
 -----
 

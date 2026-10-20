@@ -53,6 +53,12 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import {
+  type PolicyFlagReader,
+  createPolicyEnabledPort,
+  createVerifiedChannelsPort,
+} from "./notification-policy-ports";
+import { createSnoozedUsersPort } from "./snooze-reminders/snoozed-users-port";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -176,6 +182,8 @@ export function createDrizzleRoleSetMembersReader(
 /** Optional composition-root extensions to the Drizzle {@link AlertEmitterPorts} (GAP-057). */
 export interface DrizzleAlertEmitterOptions {
   readonly extendResolvers?: AlertEmitterPorts["extendResolvers"];
+  /** WP 4.6 (ADR-0073): the M1 feature-flag reader. Absent = the notification policy is off (the seeded in-app-only rules apply). */
+  readonly flags?: PolicyFlagReader;
 }
 
 /** Build the real {@link AlertEmitterPorts} over `db` (GAP-096). */
@@ -365,6 +373,8 @@ export function createDrizzleAlertEmitterPorts(
               alertSeverity: d.alertSeverity,
               channel: d.channel,
               status: d.status,
+              // WP 4.6: a suppressed row says why (a policy reason code, never PHI).
+              ...(d.reason ? { failReason: d.reason } : {}),
             })),
           );
         }
@@ -372,6 +382,10 @@ export function createDrizzleAlertEmitterPorts(
       });
     },
 
+    policyEnabledFor: createPolicyEnabledPort(options.flags),
+    verifiedChannelsFor: createVerifiedChannelsPort(db),
+    // WP 4.10 (ADR-0077): who has quieted this conversation's non-urgent out-of-band notices (empty while the flag is off).
+    snoozedUsersFor: createSnoozedUsersPort(db, options.flags),
     now: () => new Date(),
     ...(options.extendResolvers ? { extendResolvers: options.extendResolvers } : {}),
   };

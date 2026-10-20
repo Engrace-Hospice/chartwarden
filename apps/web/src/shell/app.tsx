@@ -3,7 +3,6 @@ import {
   ApiClientProvider,
   CorrelationIdProvider,
   ErrorBoundary,
-  FeatureFlagProvider,
   LoadingSpinner,
   SystemStatusProvider,
   ToastProvider,
@@ -20,6 +19,7 @@ import {
   Outlet,
   RouterProvider,
   createBrowserRouter,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
@@ -32,7 +32,9 @@ import {
   subscribeGlobalResponseSignal,
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
+import { LiveFeatureFlagProvider } from "./live-feature-flags";
 import { OfflineBanner } from "./offline-banner";
+import { RedirectRememberingLink } from "./redirect-remembering-link";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
 import { ActorSessionProvider, useSessionState } from "./session";
@@ -71,9 +73,13 @@ function newCorrelationId(): string {
  */
 function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
   const { status } = useSessionState();
+  const { pathname } = useLocation();
   const outcome = guardChromedRoute(status);
   if (outcome === "loading") return <LoadingSpinner label="Loading workspace…" />;
-  if (outcome === "redirect") return <Navigate to="/login" replace />;
+  if (outcome === "redirect") {
+    // WP 4.8: a notification link opened signed out finishes after sign-in (only its opaque id is kept).
+    return <RedirectRememberingLink to="/login" pathname={pathname} />;
+  }
   if (outcome === "outage") return <Navigate to="/offline" replace />;
   return <>{children}</>;
 }
@@ -139,7 +145,7 @@ export function AppShell({
   registry,
   client,
   session = null,
-  flags = {},
+  flags,
   systemStatus = [],
   correlationId = newCorrelationId(),
   chromeOverlay,
@@ -193,7 +199,7 @@ export function AppShell({
         <ApiClientProvider client={client}>
           {/* Self-loads the actor's role/membership context (FB-T15) unless one is injected. */}
           <ActorSessionProvider initial={session}>
-            <FeatureFlagProvider flags={flags}>
+            <LiveFeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
                 <ToastProvider>
                   <AlertInboxProvider>
@@ -201,7 +207,7 @@ export function AppShell({
                   </AlertInboxProvider>
                 </ToastProvider>
               </SystemStatusProvider>
-            </FeatureFlagProvider>
+            </LiveFeatureFlagProvider>
           </ActorSessionProvider>
         </ApiClientProvider>
       </CorrelationIdProvider>

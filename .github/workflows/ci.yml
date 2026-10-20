@@ -371,7 +371,10 @@ jobs:
           # open. Live because the D10 redelivery guard is a partial unique index, the coalesce grain is a
           # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
+          # ADR-0057 item 12 - the real tier-1 EscalationRouter as wardenx_app: real shift read, patient/policy/zone reads, two-org isolation, the 2026-11-01 New York repeated hour on absolute instants, back-to-back shifts, pure read.
+          - { name: "M19 Escalation router", scripts: "test:m19:escalation-router:live" }
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
+          - { name: "M19 After-hours request", scripts: "test:m19:afterhours-requested:live" }
           # F-155 (#248): the m19 `handlers-unbound` group's own finding, now built — §4.5 path 1 / §4.8
           # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
           # reset-the-delay debounce is an `ON CONFLICT ... DO UPDATE` against a partial-unique index and
@@ -706,11 +709,15 @@ jobs:
             }
           # M25 denial read `version` -> If-Match transition loop through the real routes + RLS.
           - { name: "M25 denial version", scripts: "test:m25:denial-version:live" }
+          # Milestone 4 - QIC reconsideration evidence guard, 60-day clock and OMHA escalation.
+          - { name: "M25 QIC reconsideration", scripts: "test:m25:qic:live" }
+          # Milestone 6a - submission attempts, receipts and proof-missing (guided manual; nothing is transmitted).
+          - { name: "M25 submission attempts", scripts: "test:m25:submission:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {
               name: "M25 denial-worklist seed consumers",
-              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live test:m25:adr:live test:m25:adr-packet:live test:m25:routing:live",
+              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live test:m25:adr:live test:m25:adr-packet:live test:m25:routing:live test:m25:tpe:live",
             }
           # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
@@ -802,8 +809,31 @@ jobs:
           - { name: "M36 urgency model", scripts: "test:m36:urgency:live" }
           # WP 4.2 - acknowledgment requests: create (important by the author; urgent in the send transaction), replay/conflict, flag off, reads never acknowledge, only the assigned qualified user acknowledges (aide/author/other recipient/outsider/other tenant refuse and write nothing), idempotent repeats, resolve only after acknowledging, reassign restarts the window and keeps requested_at, the DB state machine + immutable columns + deadline max + append-only history, delete cancels (and the DB refuses otherwise), edit lock, actor audit, consumer, tenancy.
           - { name: "M36 acknowledgment requests", scripts: "test:m36:ack-requests:live" }
+          # ADR-0081 (PROPOSED) - role-based send: one urgent message to the confirmed on-call person with the ROLE stored on the request (addressed_role, migration 1129) and the resolved person as the assignee, replay after the roster moved, changed resolution (409), coverage gap and the real deny-stub (422), flag off (404), response tracking off (503), key/patient/tenant refusals - every refusal writes nothing; the role CHECK and immutability trigger; tenancy.
+          - { name: "M36 role-based send", scripts: "test:m36:role-send:live" }
+          # ADR-0082 S1 (PROPOSED) - message_afterhours_triage_link (migration 1132): forced org RLS as wardenx_app, unique message/event, once-only reply columns (app role and superuser), identity fixed, and the caller-chosen outbox event id committed atomically with the link.
+          - { name: "M36 after-hours triage link", scripts: "test:m36:afterhours-link:live" }
+          # ADR-0085 G1 (PROPOSED) - one-thread read grant table (migration 1135): FORCEd RLS as wardenx_app (cross-org reads nothing), insert/revoke-only guard (no other column moves, one revoke, no app DELETE, database-clock granted_at/revoked_at), one live grant per (request, grantee), reason and window CHECKs, expiry judged on now(), audit rows.
+          - { name: "M36 thread access grant", scripts: "test:m36:thread-grant:live" }
+          # ADR-0083 (PROPOSED) / WP 5.5 - session and device controls with REAL Better Auth sessions, the real realtime server and Valkey emitter (which this job provides): a revoked session gets 401 on its next REST call, its socket is closed (re-check set to 10 min, so the close is the revoke's), the endpoint it registered is expired while another session's stays verified, audit row without secrets, foreign / other-tenant / repeat revoke is one 404, officer variant (key, stale step-up refused, other tenant sees nothing), re-register after revoke, current-session revoke, RLS as wardenx_app.
+          - { name: "M36 session and device controls", scripts: "test:m36:session-devices:live" }
+          # ADR-0084 (PROPOSED) / WP 5.9 - workforce offboarding (Workflow F) with REAL Better Auth sessions, the real supervisor reassign, task and handoff sweeps, session revoke and alert emitter: preview changes nothing; execute moves the request an eligible colleague can take (history names officer and reason), leaves the one nobody can take assigned and visible with ONE supervisor alert, surfaces the untracked urgent message, revokes both sessions (next REST call 401) and expires every endpoint, ends memberships, removes scheduled send / reminder / snooze, keeps the draft and past messages, leaves M19 untouched; re-run is a no-op, a step that failed once resumes; no step-up / no key / no review key / other tenant refused (foreign = unknown 404); audit rows carry counts only; RLS as wardenx_app.
+          - { name: "M36 workforce offboarding", scripts: "test:m36:workforce-offboarding:live" }
           # WP 4.4 (ADR-0070) - durable escalation timers: the guarded exactly-once escalation, ack-vs-deadline in both orders, reassign re-arm, delete cancel, tenancy, the DB backstops, and on the Valkey this job provides: a worker killed mid-timer, a duplicate job, a flushed Redis recovered by the sweeper, the DLQ landing and its audit row.
           - { name: "M36 ack escalation timers", scripts: "test:m36:ack-escalation:live" }
+          # WP 4.5 (ADR-0071) - delivery-failure handling: a simulated push+SMS outage through the real delivery settlement and event -> one failed_unreachable (history, audit, id-only event, supervisor alert, ops notice) before the deadline; a bound router escalates now; replay + 8-way concurrency write once; ack vs failure in both orders; flag off, non-assignee, reminder alerts and pre-reassign alerts do nothing; tenant isolation as wardenx_app; the DB refuses a person writing failed_unreachable.
+          - { name: "M36 ack delivery failure", scripts: "test:m36:ack-delivery-failure:live" }
+          - { name: "M36 delivery target (deep link)", scripts: "test:m36:delivery-target:live" }
+          # WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue as wardenx_app: every waiting request listed (pending, escalated, failed_unreachable; acknowledged/resolved/cancelled and other tenants never), filters only narrow, paging reproduces the list at every size incl. shared deadlines, restricted rows carry no ids, 403 without messaging.review, read-audit, read-only, ops stats under RLS.
+          - { name: "M36 unacknowledged queue", scripts: "test:m36:unacknowledged:live" }
+          # ADR-0078 - the card's reassign picker and the supervisor reassign as wardenx_app: eligible-only candidates, a supervisor outside the channel moves pending/escalated/failed_unreachable requests with actor and reason recorded and no ids returned, acknowledged/closed refused, migration-1126 guard backstops, notices, request_ref on restricted queue rows, replay and rate limit.
+          - { name: "M36 supervisor reassign", scripts: "test:m36:ack-supervisor-reassign:live" }
+          # ADR-0079 - unreachable watch (G-5), supervisor page + unpaged notice (G-3), stalled-escalation figure and Valkey notice claim (G-4).
+          - { name: "M36 unreachable watch + supervisor page", scripts: "test:m36:ack-unwatched:live" }
+          # WP 4.6 (ADR-0073) - notification policy: both flags per tenant, routine push skipped in quiet hours while the designated urgent push is planned (trail says bypassed), verified endpoints only, class floor (critical = push + sms), tenant isolation of the endpoint reader as wardenx_app.
+          - { name: "M36 notification policy", scripts: "test:m36:notification-policy:live" }
+          # WP 4.10 (ADR-0077) - snooze and reminders as wardenx_app: owner/tenant isolation of both tables and both SECURITY DEFINER readers, an open acknowledgment request refuses a snooze (route + trigger) and voids one opened earlier, an urgent alert still gets its push while snoozed, a mention is quieted out-of-band only (never in-app), the 24h/30d CHECKs and the 25-reminder cap under concurrency, the reminder sweep (one alert, no body, crash-safe, stale/deleted/flag-off), idempotent retry, audit.
+          - { name: "M36 snooze and reminders", scripts: "test:m36:snooze-reminder:live" }
           # WP 3.5 - handoff lifecycle: the expiry tick with the real dispatcher + AlertEmitter (supervisor role rule, needs_attention fallback), flag-off tenants, lowered policy, offboarding both directions, sockets dropped when resolution fails.
           - { name: "M36 handoff lifecycle", scripts: "test:m36:handoff-lifecycle:live" }
           # WP 3.8 - lifecycle review queue: death/discharge/transfer queue the open care-team tasks (bereavement excluded), nothing deleted (row-count snapshots), supervisor reassign/close with task events + outbox, resolved rows final, closed_elsewhere trigger, audit scrub, Part 2 restricted rows, tenant IDOR.

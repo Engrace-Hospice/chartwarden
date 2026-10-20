@@ -327,9 +327,41 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 4.12 (ADR-0080): read the on-call "who is covering now" directory (names and roles only). Read-only; role-based SEND is a
+  //     separate, undecided change with its own key. Granted by migration 1128 to every role that already holds messaging.read. ---
+  "messaging.oncall.read": {
+    resource: "oncall_directory",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  // --- WP 4.12 follow-on (ADR-0081, PROPOSED): address a ROLE ("message the on-call RN"). It changes who is paged, so it is a key of its
+  //     own and migration 1129 grants it to NO tenant role (full-catalog admin roles receive it); the clinical lead names who may hold it. ---
+  "messaging.oncall.send": {
+    resource: "oncall_role_send",
+    action: "send",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // --- WP 5.5 (ADR-0083, PROPOSED): list and revoke ANOTHER user's sessions in the organisation (security officer). The revoke route also
+  //     demands a fresh step-up; migration 1130 grants it to the full-catalog admin roles only. Self-service needs no key (own sessions only). ---
+  "messaging.sessions.manage": {
+    resource: "session_device",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // --- WP 5.9 (ADR-0084, PROPOSED): preview and run the offboarding of a departed user in the organisation (security officer). The execute
+  //     route also demands a fresh step-up and the supervisor-reassign keys; migration 1131 grants it to the full-catalog admin roles only. ---
+  "messaging.offboarding.manage": {
+    resource: "workforce_offboarding",
     action: "manage",
     category: "admin",
     abac: "none",
@@ -3465,6 +3497,26 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
   },
   "denial_route.manage": {
     resource: "denial_route_rule",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
+  // --- TPE program tracker (milestone 5; granted by migration 1119) ---
+  "tpe.read": {
+    resource: "tpe_program",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "tpe.manage": {
+    resource: "tpe_program",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Edit the organization's per-MAC TPE exit thresholds (no threshold is seeded).
+  "tpe_rule.manage": {
+    resource: "tpe_mac_rule",
     action: "manage",
     category: "billing",
     abac: "none",

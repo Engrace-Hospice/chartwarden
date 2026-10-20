@@ -25,6 +25,13 @@ export const ESCALATION_UNAVAILABLE_REASONS = [
 ] as const;
 export type EscalationUnavailableReason = (typeof ESCALATION_UNAVAILABLE_REASONS)[number];
 
+/**
+ * Whether a covering user holds the PRIMARY or the BACKUP seat of the covering shift (hazard H-02). Explicit, never inferred from the
+ * position in `userIds`.
+ */
+export const ESCALATION_RANKS = ["primary", "backup"] as const;
+export type EscalationRank = (typeof ESCALATION_RANKS)[number];
+
 export interface EscalationRouteRequest {
   readonly patientId: string;
   /** The role the request needs (platform role key); M19 maps it to its ladder. */
@@ -50,10 +57,19 @@ export interface EscalationResolved extends EscalationAnswerBase {
   readonly kind: "resolved";
   /** Users accountable at this tier at `asOf`. Never empty (the type forbids it). Ids only. */
   readonly userIds: readonly [string, ...string[]];
+  /**
+   * OPTIONAL (ADR-0057 item 12, ADR-0081): the explicit rank of `userIds[i]`, same length and order. The order of `userIds` is for the
+   * escalation walk and carries NO rank meaning. A user who is primary on one covering shift and backup on another is `primary`; a
+   * primary seat that does not resolve to an active user leaves the backup a `backup` (nobody is promoted). A router that omits the
+   * field makes no rank claim: consumers label nobody `primary`. A malformed value (other length, unknown word) is dropped by the guard (the answer is otherwise used as is, so a cosmetic field never stops an escalation).
+   */
+  readonly ranks?: readonly EscalationRank[];
   /** `tier + 1` when that tier exists, else null. */
   readonly nextTier: number | null;
   /** The IANA zone of the rotation that produced this answer (the covering rotation). Never the server's. */
   readonly timeZone: string;
+  /** OPTIONAL (WP 4.12, ADR-0080): the instant the covering shift ends, a strict ISO-8601 date-time with offset. A roster that cannot say omits it. */
+  readonly shiftEndsAt?: string;
 }
 
 /** A real answer, and ONLY this: the ladder HAS this tier and nobody covers it at `asOf`. Not "nobody needed". `timeZone` is the

@@ -3,6 +3,7 @@
 export { realtimeClientKey } from "./client-key";
 export { createRealtimeEmitter, type RealtimeEmitterPort } from "./emitter";
 export {
+  sessionRoom,
   startRealtimeServer,
   type RealtimeHandle,
   type RealtimeLog,

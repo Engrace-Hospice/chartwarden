@@ -84,6 +84,7 @@ function kit(): Kit {
       if (knobs.stillQualifiedError) throw new Error("db down");
       return knobs.qualified.has(userId);
     },
+    part2Admitted: async () => true,
     canRaise: async (_o, userId) => {
       if (knobs.canRaiseError) throw new Error("permission store down");
       return knobs.canRaise.has(userId);

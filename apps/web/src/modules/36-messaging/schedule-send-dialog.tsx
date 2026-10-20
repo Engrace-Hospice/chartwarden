@@ -5,6 +5,7 @@
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { type MutableRefObject, useRef, useState } from "react";
 import type { JSX } from "react";
+import { createPortal } from "react-dom";
 import { apiErrorCode } from "./attachment-utils";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
@@ -113,7 +114,9 @@ export function ScheduleSendDialog({
     }
   }
 
-  return (
+  // Portalled to <body>: the composer's own <form> contains this component, and Enter in the date input would
+  // implicitly submit that form and send the draft.
+  return createPortal(
     <Modal
       open={open}
       onClose={submitting ? undefined : onClose}
@@ -177,6 +180,7 @@ export function ScheduleSendDialog({
           </Button>
         </footer>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }

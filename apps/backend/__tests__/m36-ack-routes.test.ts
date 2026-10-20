@@ -41,6 +41,8 @@ const KEYS: Record<string, string[]> = {
   aide: ["messaging.read", "messaging.send", "messaging.urgent.send"],
   plainSender: ["messaging.read", "messaging.send"],
   reader: ["messaging.read"],
+  supervisor: ["messaging.read", "messaging.review"],
+  reviewOnly: ["messaging.review"],
   outsider: [
     "messaging.read",
     "messaging.send",
@@ -56,6 +58,7 @@ const dto = (status = "pending") => ({
   channel_id: CH,
   patient_id: PAT,
   ack_class: "important",
+  addressed_role: "rn",
   status,
   requester_user_id: "nurse",
   assigned_user_id: NURSE2,
@@ -98,6 +101,19 @@ const service: AckService = {
   })) as never,
   reassign: record("reassign", () => ({ request: dto(), changed: true })) as never,
   resolve: record("resolve", () => ({ request: dto("resolved"), changed: true })) as never,
+  reassignCandidates: record("reassignCandidates", () => ({
+    candidates: [{ user_id: NURSE2, display_name: "Ben Nurse" }],
+  })) as never,
+  supervisorReassignCandidates: record("supervisorReassignCandidates", () => ({
+    candidates: [{ user_id: NURSE2, display_name: "Ben Nurse" }],
+  })) as never,
+  supervisorReassign: record("supervisorReassign", () => ({
+    request_ref: REQ,
+    status: "pending",
+    assigned_user_id: NURSE2,
+    deadline_at: "2026-10-15T13:00:00.000Z",
+    changed: true,
+  })) as never,
 };
 
 function headerAuth(request: FastifyRequest): void {
@@ -109,7 +125,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.locationIds = [];
 }
 
-function makeServer(deps: { service: AckService; rateLimit?: Handler } = { service }) {
+function makeServer(
+  deps: { service: AckService; rateLimit?: Handler; candidatesRateLimit?: Handler } = { service },
+) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       Object.entries(KEYS).map(([userId, permissionKeys]) => ({
@@ -430,7 +448,10 @@ describe("GET /escalations/:id and /channels/:id/escalations", () => {
     const res = await get(app, "nurse", `${BASE}/${REQ}`);
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ request: { id: REQ }, events: [] });
+    expect(res.json()).toMatchObject({
+      request: { id: REQ, addressed_role: "rn" },
+      events: [],
+    });
     await app.close();
   });
 
@@ -462,6 +483,206 @@ describe("GET /escalations/:id and /channels/:id/escalations", () => {
   });
 });
 
+describe("ADR-0078 reassign candidates and the supervisor reassign", () => {
+  const SUP = `${BASE}/${REQ}/supervisor-reassign`;
+  const body = (over: Record<string, unknown> = {}) => ({
+    assigned_user_id: NURSE2,
+    reason_code: "assignee_unreachable",
+    ...over,
+  });
+
+  it("serves the party picker to messaging.read with the path id only", async () => {
+    const app = makeServer();
+
+    const res = await get(app, "nurse", `${BASE}/${REQ}/reassign-candidates`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ candidates: [{ user_id: NURSE2, display_name: "Ben Nurse" }] });
+    expect(calls[0]).toEqual({
+      method: "reassignCandidates",
+      args: [{ orgId: ORG, userId: "nurse" }, REQ],
+    });
+    expect((await get(app, "nobody", `${BASE}/${REQ}/reassign-candidates`)).statusCode).toBe(403);
+    expect((await get(app, "nurse", `${BASE}/not-a-uuid/reassign-candidates`)).statusCode).toBe(
+      404,
+    );
+    await app.close();
+  });
+
+  it.each([
+    ["reader", 403],
+    ["nobody", 403],
+    ["reviewOnly", 403],
+    [null, 401],
+  ] as const)(
+    "refuses %s (%s) the supervisor reads and writes before the service",
+    async (user, status) => {
+      const app = makeServer();
+
+      expect((await get(app, user, `${SUP}-candidates`)).statusCode).toBe(status);
+      expect((await post(app, user, SUP, body())).statusCode).toBe(status);
+      expect(calls).toEqual([]);
+      await app.close();
+    },
+  );
+
+  it("lets a supervisor (messaging.read + messaging.review) reach the service with the closed body", async () => {
+    const app = makeServer();
+
+    const res = await post(app, "supervisor", SUP, body());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      request_ref: REQ,
+      status: "pending",
+      assigned_user_id: NURSE2,
+      deadline_at: "2026-10-15T13:00:00.000Z",
+      changed: true,
+    });
+    expect(calls[0]).toEqual({
+      method: "supervisorReassign",
+      args: [{ orgId: ORG, userId: "supervisor" }, REQ, NURSE2, "assignee_unreachable"],
+    });
+    expect((await get(app, "supervisor", `${SUP}-candidates`)).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("never leaks a channel, message or patient id even if the service returned one (closed response schema)", async () => {
+    const leaky: AckService = {
+      ...service,
+      supervisorReassign: (async () => ({
+        request_ref: REQ,
+        status: "pending",
+        assigned_user_id: NURSE2,
+        deadline_at: "2026-10-15T13:00:00.000Z",
+        changed: true,
+        channel_id: CH,
+        message_id: MSG,
+        patient_id: PAT,
+      })) as never,
+    };
+    const app = makeServer({ service: leaky });
+
+    const text = (await post(app, "supervisor", SUP, body())).body;
+
+    for (const forbidden of [CH, MSG, PAT]) expect(text).not.toContain(forbidden);
+    await app.close();
+  });
+
+  it("requires an Idempotency-Key", async () => {
+    const app = makeServer();
+
+    const res = await post(app, "supervisor", SUP, body(), null);
+
+    expect(res.statusCode).toBe(400);
+    expect(code(res)).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("requires a reason from the fixed set and rejects free text and extra keys", async () => {
+    const app = makeServer();
+
+    for (const bad of [
+      { assigned_user_id: NURSE2 },
+      body({ reason_code: undefined }),
+      body({ reason_code: "patient is dying" }),
+      body({ reason_code: "" }),
+      body({ note: "free text" }),
+      body({ status: "acknowledged" }),
+      body({ acknowledge: true }),
+      { reason_code: "workload" },
+      body({ assigned_user_id: "nope" }),
+    ]) {
+      expect((await post(app, "supervisor", SUP, bad)).statusCode).toBe(422);
+    }
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("answers one 404 for a malformed id and maps the service's typed errors onto the envelope", async () => {
+    const app = makeServer();
+
+    expect(
+      (await post(app, "supervisor", `${BASE}/not-a-uuid/supervisor-reassign`, body())).statusCode,
+    ).toBe(404);
+    for (const [errorCode, status] of [
+      ["ACK_ASSIGNEE_INVALID", 422],
+      ["ACK_STATE_INVALID", 409],
+    ] as const) {
+      failWith = new WardenXError(errorCode, "x", status);
+      const res = await post(app, "supervisor", SUP, body());
+      expect(res.statusCode).toBe(status);
+      expect(code(res)).toBe(errorCode);
+    }
+    await app.close();
+  });
+
+  it("runs the limiter after authorisation and before the service", async () => {
+    let limited = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        limited += 1;
+        throw new RateLimitedError();
+      },
+    });
+
+    expect((await post(app, "supervisor", SUP, body())).statusCode).toBe(429);
+    expect(limited).toBe(1);
+    expect((await post(app, "reader", SUP, body())).statusCode).toBe(403);
+    expect(limited).toBe(1);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("rate limits both candidate reads after authorisation and before the service", async () => {
+    let limited = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        limited += 1;
+        throw new RateLimitedError();
+      },
+    });
+
+    expect((await get(app, "nurse", `${BASE}/${REQ}/reassign-candidates`)).statusCode).toBe(429);
+    expect((await get(app, "supervisor", `${SUP}-candidates`)).statusCode).toBe(429);
+    expect((await get(app, "reader", `${SUP}-candidates`)).statusCode).toBe(403);
+    expect(limited).toBe(2);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("gives the candidate reads their own limiter bucket: picker polling never touches the reassign limiter", async () => {
+    let pickerHits = 0;
+    let writeHits = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        writeHits += 1;
+      },
+      candidatesRateLimit: async () => {
+        pickerHits += 1;
+      },
+    });
+
+    await get(app, "nurse", `${BASE}/${REQ}/reassign-candidates`);
+    await get(app, "supervisor", `${SUP}-candidates`);
+    expect([pickerHits, writeHits]).toEqual([2, 0]);
+    await post(app, "supervisor", SUP, body());
+    expect([pickerHits, writeHits]).toEqual([2, 1]);
+    await app.close();
+  });
+
+  it("is the uniform 404 for the unbound default", async () => {
+    const app = makeServer(DISABLED_ACK as never);
+
+    expect((await post(app, "supervisor", SUP, body())).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
 describe("source pins", () => {
   const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
   const src = read("../src/modules/36-messaging/routes/ack-routes.ts");
@@ -471,10 +692,17 @@ describe("source pins", () => {
   });
 
   it("declares auditRead on all six routes, with a patient path wherever the payload carries the request", () => {
-    expect(src.match(/auditRead:/g)).toHaveLength(2 + 4); // two GETs + the PATIENT_AUDIT const users counted below
+    expect(src.match(/auditRead:/g)).toHaveLength(2 + 4 + 2); // two GETs + the PATIENT_AUDIT users + the two candidate reads (ADR-0078)
     expect(src.match(/config: \{ auditRead: PATIENT_AUDIT \}/g)).toHaveLength(4);
     expect(src).toContain('patientIdPayloadPath: "request.patient_id"');
     expect(src).toContain('resourceIdParam: "id"');
+  });
+
+  it("guards the supervisor routes with messaging.review and never with the urgent keys (a supervisor cannot acknowledge)", () => {
+    expect(src).toContain('const REVIEW_PERMISSION = "messaging.review"');
+    expect(src).toMatch(
+      /supervisor-reassign",\s*\{\s*preHandler: \[idParam, guards\.read, review, guards\.requireIdempotencyKey/,
+    );
   });
 
   it("guards create with urgent-send and acknowledge/resolve with urgent-receive", () => {

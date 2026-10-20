@@ -7,6 +7,7 @@
   align-items: center;
   gap: 0.35rem;
   margin-top: 0.2rem;
+  min-height: 1.5rem; /* reserve the row: the hover-only add-reaction / pin controls fade in without moving neighbours */
 }
 
 .wx-reaction-chip,
@@ -93,7 +94,7 @@
   gap: 0.35rem;
   width: max-content;
   min-width: 0;
-  max-width: 16rem;
+  max-width: min(16rem, calc(100vw - 2rem));
   margin: 0;
   padding: 0.5rem;
   border: 1px solid var(--color-card-border);
@@ -104,7 +105,14 @@
 
 .wx-reaction-picker-options {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+/* Own messages sit against the right edge of the pane: open the picker leftwards from its anchor so it stays inside. */
+.wx-message-row.is-mine .wx-reaction-picker {
+  right: 0;
+  left: auto;
 }
 
 .wx-reaction-picker-options button {

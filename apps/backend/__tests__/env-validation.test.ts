@@ -32,6 +32,7 @@ const GOOD: EnvLike = {
   M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64"),
   // TASK-008 — the §7.4 witness-attestation HMAC secret (raw string, not base64).
   M13_WITNESS_SIGNING_KEY: "y".repeat(32),
+  EVV_OFFLINE_FINGERPRINT_KEY: "e".repeat(32),
   // TASK-010 — the remaining Phase 2 (SEC-005/OPS-010) required vars.
   REDIS_URL: "rediss://user:pass@host:6379",
   M23_X12_GATEWAY_URL: "https://x12.wardenx.cloud",
@@ -66,6 +67,26 @@ describe("collectEnvProblems", () => {
 
   it("passes a fully-configured production env", () => {
     expect(collectEnvProblems(GOOD)).toEqual([]);
+  });
+
+  it("validates browser origins separately from exact native callback schemes", () => {
+    expect(
+      collectEnvProblems({
+        ...GOOD,
+        MOBILE_AUTH_TRUSTED_ORIGINS: "wardenx://,wardenx-staging://",
+      }),
+    ).toEqual([]);
+    expect(collectEnvProblems({ ...GOOD, TRUSTED_ORIGINS: "wardenx://" })).toEqual([
+      { key: "TRUSTED_ORIGINS", problem: expect.stringMatching(/HTTP\(S\) origins/) },
+    ]);
+    for (const invalid of ["*", "exp://", "https://app.wardenx.cloud", "wardenx://callback"]) {
+      expect(collectEnvProblems({ ...GOOD, MOBILE_AUTH_TRUSTED_ORIGINS: invalid })).toEqual([
+        {
+          key: "MOBILE_AUTH_TRUSTED_ORIGINS",
+          problem: expect.stringMatching(/exact custom schemes/),
+        },
+      ]);
+    }
   });
 
   it("allows an operator to explicitly disable external M23, M34, and FHIR capabilities", () => {
@@ -153,6 +174,7 @@ describe("collectEnvProblems", () => {
         "TWO_FACTOR_ENCRYPTION_KEY",
         "M24_CREDENTIAL_ENCRYPTION_KEY",
         "M13_WITNESS_SIGNING_KEY",
+        "EVV_OFFLINE_FINGERPRINT_KEY",
         "REDIS_URL",
         "M23_X12_GATEWAY_URL",
         "M23_X12_GATEWAY_TOKEN",

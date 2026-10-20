@@ -121,4 +121,40 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m36.session.revoked", // WP 5.5 (ADR-0083) - a staff session was revoked by its owner or by a security officer
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A staff session was revoked (resource = the session id; actor, targetUserId, byAdmin, current, endpointsExpired). The session row was deleted, its linked push endpoints expired and its sockets closed. Ids and counts only: never the token, the IP address, the user agent or an endpoint value.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.session.admin_listed", // WP 5.5 (ADR-0083) - a security officer listed another user's sessions
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer listed another user's sessions in the organisation (resource = the target user; actor, count). Ids and a count only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.offboarding.viewed", // WP 5.9 (ADR-0084) - a security officer previewed a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer previewed what is left to offboard for a departed user (resource = the target user; actor, per-item state and counts, complete). Ids, fixed keys and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.offboarding.executed", // WP 5.9 (ADR-0084) - a security officer ran a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer ran the offboarding of a departed user (resource = the target user; actor, per-item state, count and acted, complete). Re-runs write a row too (acted 0). Ids, fixed keys and counts only: never a message, a name or a patient.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

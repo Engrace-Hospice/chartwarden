@@ -91,12 +91,12 @@
 | SG-04 | Encryption in transit & at rest | P0 | 1 | GOV | 1.8 | have (DEK envelope); parity audited (WP 1.8; plaintext endpoint/title exceptions recorded in 03) |
 | SG-05 | Attachment malware scanning | P0 | 1 | GOV | 1.5 | new |
 | SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (retention classes; scan scheduled, plan-only; overlay pending) |
-| SG-07 | Workforce offboarding | P0 | 1/5 | GOV | 1.4, 5.9 | new |
+| SG-07 | Workforce offboarding | P0 | 1/5 | GOV | 1.4, 5.9 | built (WP 1.4 event-driven access cut and task/handoff sweeps; ADR-0084, proposed: officer preview and execute; on-call is advisory, second approver and auto-trigger open) |
 | SG-08 | Break-glass access | P1 | 5 | GOV | 5.8 | part (platform pattern) |
 | SG-09 | Secure file access & expiry | P0 | 1 | GOV | 1.5 | new |
 | SG-10 | Data export restrictions | P1 | 5 | GOV | 5.7 | new |
 | SG-11 | Message edit history | P0 | 1 | GOV | 1.3 | new |
-| SG-12 | Session & device controls | P0 | 5 | GOV | 5.5 | part (M2 sessions) |
+| SG-12 | Session & device controls | P0 | 5 | GOV | 5.5 | built (ADR-0083, proposed; list/revoke, socket and endpoint kill; app lock and session policy open for SEC) |
 
 ## Mobile & accessibility (10)
 | ID | Capability | Pri | Ph | Ctx | WP | Status |

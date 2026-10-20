@@ -2,7 +2,14 @@
 // routes. The create body has NO class, deadline, role or status field: the class is derived from the message, the deadline
 // from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { ACK_CLASSES, ACK_ESCALATION_NOTES, ACK_EVENT_TYPES, ACK_STATUSES } from "@wardenx/types";
+import {
+  ACK_ADDRESSED_ROLES,
+  ACK_CLASSES,
+  ACK_ESCALATION_NOTES,
+  ACK_EVENT_TYPES,
+  ACK_STATUSES,
+  ACK_SUPERVISOR_REASON_CODES,
+} from "@wardenx/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });
@@ -21,6 +28,11 @@ export const ReassignAckBodySchema = Type.Object(
   { assigned_user_id: Uuid },
   { additionalProperties: false },
 );
+/** ADR-0078: the supervisor names one colleague and gives a reason from a FIXED set (no free text, no PHI). */
+export const SupervisorReassignBodySchema = Type.Object(
+  { assigned_user_id: Uuid, reason_code: oneOf(ACK_SUPERVISOR_REASON_CODES) },
+  { additionalProperties: false },
+);
 /** Acknowledge and resolve take no input: the actor is the session, the target is the path. */
 export const EmptyAckBodySchema = Type.Object({}, { additionalProperties: false });
 
@@ -30,6 +42,7 @@ const AckRequest = Type.Object({
   channel_id: UuidOut,
   patient_id: UuidOut,
   ack_class: oneOf(ACK_CLASSES),
+  addressed_role: nullable(oneOf(ACK_ADDRESSED_ROLES)),
   status: oneOf(ACK_STATUSES),
   requester_user_id: UuidOut,
   assigned_user_id: UuidOut,
@@ -60,6 +73,7 @@ const AckEvent = Type.Object({
   assigned_user_id: nullable(UuidOut),
   previous_assigned_user_id: nullable(UuidOut),
   tier: Type.Integer(),
+  reason_code: nullable(oneOf(ACK_SUPERVISOR_REASON_CODES)),
   created_at: Type.String({ format: "date-time" }),
 });
 
@@ -77,3 +91,15 @@ export const AckDetailResponseSchema = Type.Object({
   events: Type.Array(AckEvent),
 });
 export const AckChannelListResponseSchema = Type.Object({ requests: Type.Array(AckRequest) });
+
+export const AckReassignCandidatesResponseSchema = Type.Object({
+  candidates: Type.Array(Type.Object({ user_id: UuidOut, display_name: nullable(Type.String()) })),
+});
+/** No channel, message or patient id: a supervisor may not be entitled to any of them. */
+export const AckSupervisorReassignResponseSchema = Type.Object({
+  request_ref: UuidOut,
+  status: Type.Literal("pending"),
+  assigned_user_id: UuidOut,
+  deadline_at: Type.String({ format: "date-time" }),
+  changed: Type.Boolean(),
+});

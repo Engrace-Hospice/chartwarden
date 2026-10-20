@@ -8,7 +8,11 @@ export const M36_DELIVERY_PLATFORM_JOB_ID = "m36.delivery_sweep";
 /** WP 1.9 — the nightly hash_verify / weekly retention_scan active-org fan-out. */
 export const M36_INTEGRITY_PLATFORM_JOB_ID = "m36.integrity_jobs";
 
+/** WP 4.9 (ADR-0076) — the supervisor-queue gauges' active-org list read (a scrape, not a sweep): its own audited job id. */
+export const M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID = "m36.ack_queue_metrics";
+
 export function wireM36DeliveryTenancy(): void {
   registerPlatformJob(M36_DELIVERY_PLATFORM_JOB_ID);
   registerPlatformJob(M36_INTEGRITY_PLATFORM_JOB_ID);
+  registerPlatformJob(M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID);
 }

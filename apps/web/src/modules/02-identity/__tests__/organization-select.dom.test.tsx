@@ -6,7 +6,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberPendingNotificationLink } from "../../../shell/pending-deep-link";
 import { OrganizationSelect } from "../organization-select";
 
 const MEMBERSHIP = {
@@ -69,5 +70,48 @@ describe("OrganizationSelect MFA refusal", () => {
 
     expect(await screen.findByText(/contact your administrator/i)).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+describe("OrganizationSelect finishing a notification link", () => {
+  const assign = vi.fn();
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    assign.mockClear();
+    vi.stubGlobal("location", { ...window.location, assign });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  function renderSelectSucceeding(): void {
+    const client = {
+      GET: vi.fn(async (path: string) =>
+        path.endsWith("/credential-status")
+          ? { data: { passwordChangeRequired: false } }
+          : { data: { memberships: [MEMBERSHIP] } },
+      ),
+      POST: vi.fn(async () => ({ data: {}, error: undefined })),
+    } as unknown as ApiClient;
+    render(
+      <ApiClientProvider client={client}>
+        <OrganizationSelect />
+      </ApiClientProvider>,
+    );
+  }
+
+  it("loads the rebuilt /n/<id> when a link was stashed before sign-in", async () => {
+    rememberPendingNotificationLink("/n/abc-123");
+    renderSelectSucceeding();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Cedar Ridge Hospice/ }));
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/n/abc-123"));
+  });
+
+  it("loads the home page when nothing was stashed", async () => {
+    renderSelectSucceeding();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Cedar Ridge Hospice/ }));
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
   });
 });

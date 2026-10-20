@@ -65,16 +65,32 @@ describe("only an explicit transition writes an acknowledgment", () => {
     expect(readers).not.toMatch(/insertEvent|\.update\(|\.insert\(|publishAckEvent/);
   });
 
-  it("the GET routes call only the two read methods", () => {
+  it("the GET routes call only the read methods (the two lists and the two ADR-0078 candidate reads)", () => {
     const routes = read("apps/backend/src/modules/36-messaging/routes/ack-routes.ts");
     const getBlocks = routes
       .split("app.get(")
       .slice(1)
       .map((b) => b.split("app.post(")[0] ?? "");
-    expect(getBlocks.length).toBe(2);
+    expect(getBlocks.length).toBe(4);
     for (const block of getBlocks) {
-      expect(block).not.toMatch(/service\.(create|acknowledge|reassign|resolve)\(/);
+      expect(block).not.toMatch(
+        /service\.(create|acknowledge|reassign|resolve|supervisorReassign)\(/,
+      );
     }
+  });
+
+  it("the supervisor reassign (ADR-0078) can only move a waiting request back to pending: it never writes acknowledged, resolved or an acknowledgment", () => {
+    const file = read(`${ACK_DIR}/ack-supervisor.ts`);
+    const supervisor = file.slice(file.indexOf("async function reassign("));
+    expect(supervisor.length).toBeGreaterThan(500);
+    expect(supervisor).not.toMatch(/status:\s*"(acknowledged|resolved|cancelled|escalated)"/);
+    expect(supervisor).not.toMatch(
+      /acknowledgedAt:\s*at|acknowledgedByUserId:\s*actor|resolvedAt|M36_ACK_(ACKNOWLEDGED|RESOLVED)/,
+    );
+    expect(supervisor).toContain('status: "pending"');
+    expect(supervisor).toContain("isWaiting(");
+    // It never asks whether the supervisor can see the channel: that is the point, and it must not start reading the thread either.
+    expect(supervisor).not.toMatch(/channelFacts|messageFacts|listForChannel/);
   });
 
   it("the acknowledged status is written in exactly one place: the acknowledge transition", () => {
@@ -98,15 +114,30 @@ describe("only an explicit transition writes an acknowledgment", () => {
       .sort();
     expect(importers).toEqual(
       [
+        // WP 4.5 (ADR-0071): the delivery-failure handler and its two consumers sit beside the aggregate, like the timers.
+        "apps/backend/src/modules/36-messaging/ack-delivery-failure/delivery-failure-service.ts",
+        "apps/backend/src/modules/36-messaging/ack-delivery-failure/route-rules.ts",
+        "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts",
+        // ADR-0081: the role-send binding wires the aggregate's select-only role-replay lookup (the urgent code must not name the request table).
+        "apps/backend/src/modules/36-messaging/oncall-directory/binding.ts",
+        // WP 4.8 (ADR-0075): the deep-link resolver names the open request on a message through the aggregate's own read (a type and a lookup port), never its tables.
+        "apps/backend/src/modules/36-messaging/delivery-target/delivery-target-service.ts",
+        // WP 5.9 (ADR-0084): workforce offboarding calls the aggregate's service (the supervisor reassign) and names its row type/class; it writes nothing itself.
+        "apps/backend/src/modules/36-messaging/offboarding/binding.ts",
+        "apps/backend/src/modules/36-messaging/offboarding/steps-owned-work.ts",
         // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.
         "apps/backend/src/modules/36-messaging/ack-escalation/binding.ts",
         "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",
+        // ADR-0079 (G-5): the unreachable watch reads the aggregate's store port (a list of unreachable requests); it writes nothing.
+        "apps/backend/src/modules/36-messaging/ack-escalation/unreachable-watch.ts",
         "apps/backend/src/modules/36-messaging/index.ts",
         "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts",
         "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+        // WP 4.9 (ADR-0076): the supervisor queue route types its service from the aggregate's directory; the service and reader live inside it.
+        "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts",
         "packages/messaging/src/index.ts",
       ].sort(),
     );
@@ -119,8 +150,18 @@ describe("one writer of the aggregate's tables", () => {
       "packages/db/src/schema/messaging/message-acknowledgments.ts",
       // The audit resource kind of the read audit, a label and not a table access.
       "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+      // WP 4.9: the same label for the supervisor queue's read audit; the route reads through the aggregate's own service, never a table.
+      "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts",
+      // WP 4.10 (ADR-0077): snooze and reminders READ the request table (is a request open for this caller / message?) to refuse a snooze or a
+      // reminder, and the snooze lookup excludes users who hold one. Select only: m36-snooze-reminder.test.ts pins that neither file inserts, updates or deletes it.
+      "apps/backend/src/modules/36-messaging/snooze-reminders/snooze-reminder-store-db.ts",
+      "apps/backend/src/modules/36-messaging/snooze-reminders/snoozed-users-port.ts",
       // WP 4.4: the audit resource kind of a dead timer job's `m36.dlq_job` row, again a label and not a table access.
       "apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts",
+      // WP 5.9 (ADR-0084): offboarding READS the request table (the waiting / acknowledged requests assigned to a departed user, the open ones they
+      // sent, and "urgent message with no request"). Select only: offboarding-static.test.ts pins that it never inserts, updates or deletes it; every
+      // move goes through the aggregate's supervisor reassign.
+      "apps/backend/src/modules/36-messaging/offboarding/steps-owned-work.ts",
     ]);
     const offenders = [
       ...walk(join(ROOT, "apps/backend/src")),

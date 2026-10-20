@@ -2645,6 +2645,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/adrs/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this ADR response: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1AdrsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1AdrsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AdrsByIdSubmissionreceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/adrs/{id}/submit": {
         parameters: {
             query?: never;
@@ -3315,6 +3366,23 @@ export interface paths {
         patch: operations["patchApiV1AppealsByIdAttach"];
         trace?: never;
     };
+    "/api/v1/appeals/{id}/cited-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the documentation the redetermination notice named as missing, or attest it named none (draft only; If-Match) */
+        patch: operations["patchApiV1AppealsByIdCitedevidence"];
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/close": {
         parameters: {
             query?: never;
@@ -3332,6 +3400,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/appeals/{id}/confirm-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the QIC forwarded the case to OMHA: the reconsideration becomes escalated and an ALJ case opens (If-Match) */
+        post: operations["postApiV1AppealsByIdConfirmescalation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/decide": {
         parameters: {
             query?: never;
@@ -3343,6 +3428,108 @@ export interface paths {
         put?: never;
         /** Record the payer's appeal decision (typed outcome, §4.1) */
         post: operations["postApiV1AppealsByIdDecide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/qic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** QIC reconsideration view: cited evidence, the 60-day decision clock with its derivation, and escalation state */
+        get: operations["getApiV1AppealsByIdQic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/qic-clock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match) */
+        patch: operations["patchApiV1AppealsByIdQicclock"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/request-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AppealsByIdRequestescalation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this appeal or QIC request: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1AppealsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1AppealsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AppealsByIdSubmissionreceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3681,6 +3868,23 @@ export interface paths {
         };
         /** Read the authenticated identity's authoritative password-rotation state */
         get: operations["getApiV1AuthCredentialstatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce */
+        get: operations["getApiV1AuthCsrf"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7794,6 +7998,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached */
+        get: operations["getApiV1Devices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke one of the caller's own sessions, in one transaction: the session is deleted (its next REST call is 401 and a socket handshake with it is refused), every endpoint linked to it is expired, and an `m36.session.revoked` audit row is written; then the session's live sockets are closed on every api node. `current:true` means the caller revoked the session making this request and must sign in again. A session that is not the caller's, an unknown id and one already revoked are the same 404 (no existence oracle; a repeat is a 404). If closing the sockets fails the revoke still stands and the realtime re-check ends the socket within a minute */
+        delete: operations["deleteApiV1DevicesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/attestation": {
         parameters: {
             query?: never;
@@ -9566,8 +9804,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Batch offline-sync of capture events (idempotent on device+localId) */
+        /** Legacy offline-sync (array response; durable only when localId is supplied) */
         post: operations["postApiV1EvvOfflinesync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evv/offline-sync/v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Durable per-capture offline EVV reconciliation (at-least-once transport) */
+        post: operations["postApiV1EvvOfflinesyncV2"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13991,6 +14246,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/role-send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient */
+        post: operations["postApiV1MessagingChannelsByIdRolesend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/role-send/resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids, display names and `rank`, the router's explicit primary or backup, primaries listed first, to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient */
+        get: operations["getApiV1MessagingChannelsByIdRolesendResolution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/scheduled-messages": {
         parameters: {
             query?: never;
@@ -14020,6 +14309,25 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own snooze of a conversation, and whether it can be snoozed now (WP 4.10, ADR-0077; messaging.read; 404 while the tenant flag `messaging.notification_policy` is off or the conversation is not visible). `snoozable` is false while the caller is the sender or the assignee of an OPEN acknowledgment request in it; a snooze such a request voids is reported as not snoozed. Read-audited against the channel */
+        get: operations["getApiV1MessagingChannelsByIdSnooze"];
+        /** Snooze a conversation's NON-URGENT out-of-band notices (push / SMS / email) for 5 minutes to 24 hours (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key). It never hides anything in the app and never quiets an urgent or acknowledgment-bound alert. 409 SNOOZE_URGENT_NOT_ALLOWED while the caller is the sender or the assignee of an open acknowledgment request in the conversation; 422 SNOOZE_DURATION_INVALID outside the bounds; one 404 while the flag is off or the conversation is not visible. Re-snoozing replaces the window */
+        put: operations["putApiV1MessagingChannelsByIdSnooze"];
+        post?: never;
+        /** End the caller's snooze of a conversation (idempotent; cleared=false when none was set) */
+        delete: operations["deleteApiV1MessagingChannelsByIdSnooze"];
         options?: never;
         head?: never;
         patch?: never;
@@ -14136,6 +14444,23 @@ export interface paths {
         };
         /** Open a message's clinical link (WP 3.2): READ-THROUGH, GET only. Requires messaging.read and that the caller can view the message's channel, then re-runs the linked record's own permission + scope NOW on the live `linkSummary`. Missing, forbidden, other-tenant, erased and failing sources, a hidden channel and a deleted message are ONE answer, `{state:"unavailable"}`; 404 only when the tenant flag `messaging.clinical_links` is off. `as_of` is when M36 read the source. Read-audited (resource = the link). */
         get: operations["getApiV1MessagingClinicallinksByLinkIdResolve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/deliveries/{id}/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve the opaque id of an out-of-band link (`{origin}/n/{id}`) to its in-app target (WP 4.8, ADR-0075; messaging.read). The id is not an access grant: the delivery must be the CALLER's own, in the caller's organisation, the message must still exist in that channel and the caller must still be able to see the channel. A missing, malformed, someone else's, other-tenant, no-longer-visible or deleted target is one identical 404 (the id is never echoed). Returns three ids only (channel, message, and the open acknowledgment request on it, if any), no patient and no text. Read-only: opening a link never acknowledges anything. Read-audited against the delivery */
+        get: operations["getApiV1MessagingDeliveriesByIdTarget"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14263,6 +14588,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/escalations/{id}/reassign-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who the caller may hand THIS request to (ADR-0078, G-6; messaging.read + the caller can see the channel): care-team colleagues who can see the channel, hold messaging.urgent.receive and pass the Part 2 gate, never the sender or the current assignee; user ids and display names only, up to 50; rate limited like reassign. The same party rules as reassign: 403 ACK_NOT_PARTY for anyone but the sender or the assignee, 403 ACK_NOT_ASSIGNEE once the request is taken and the caller is the sender, 409 ACK_STATE_INVALID when closed, one 404 when missing or the channel is hidden. Read-only */
+        get: operations["getApiV1MessagingEscalationsByIdReassigncandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/escalations/{id}/resolve": {
         parameters: {
             query?: never;
@@ -14274,6 +14616,57 @@ export interface paths {
         put?: never;
         /** Close an acknowledged request (WP 4.2; messaging.read + messaging.urgent.receive). The assigned user only; 409 ACK_NOT_ACKNOWLEDGED before the request has been acknowledged. A repeat is 200 changed:false. Resolving never writes an order or a chart note (those go through their owning modules). Read-audited */
         post: operations["postApiV1MessagingEscalationsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/escalations/{id}/supervisor-reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A supervisor moves a request that still WAITS to an eligible colleague (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403; a required Idempotency-Key; rate limited like reassign). The body is the new assignee and a REQUIRED reason_code from a fixed non-clinical set (assignee_unreachable, assignee_unable_to_sign_in, assignee_off_shift, coverage_change, workload, other_operational); there is no free text. It acts on pending, escalated and failed_unreachable requests only (409 ACK_STATE_INVALID for acknowledged, resolved or cancelled), needs no channel membership, reads no conversation and acknowledges nothing: only the new assignee, signed in as themselves, can take responsibility. The new assignee passes the same checks as a normal reassign and differs from the sender and the current assignee (422 ACK_ASSIGNEE_INVALID, one answer for every reason, including naming the supervisor themselves and a supervisor the Part 2 gate walls off). At most 5 supervisor moves of one request per rolling 24 hours (409 ACK_SUPERVISOR_REASSIGN_LIMIT). The window restarts (status back to pending, new default deadline, tier 0) so the escalation timer is re-armed, the history (`events[].reason_code`) records the supervisor as the actor with the reason, and the previous assignee, the new assignee and the sender are told in-app with generic text. The response names the request by `request_ref` only: no channel, message or patient id. A repeat of the supervisor's own reassign with the same reason is 200 changed:false */
+        post: operations["postApiV1MessagingEscalationsByIdSupervisorreassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/escalations/{id}/supervisor-reassign-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The same list for a supervisor (ADR-0078, G-2; messaging.read + messaging.review, otherwise 403). Works on a request the supervisor cannot open (no channel visibility is needed or checked) and returns user ids and display names of eligible colleagues only: no channel, message or patient id. A supervisor the Part 2 gate walls off from the patient gets an EMPTY list (the care team is never named to them). Rate limited like reassign. 404 when the request is missing or in another organisation; 409 ACK_STATE_INVALID unless the request still waits (pending, escalated or failed_unreachable). Read-only */
+        get: operations["getApiV1MessagingEscalationsByIdSupervisorreassigncandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/escalations/unacknowledged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
+        get: operations["getApiV1MessagingEscalationsUnacknowledged"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14293,6 +14686,74 @@ export interface paths {
         put: operations["putApiV1MessagingGlobalsearchSettings"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/offboarding/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached */
+        get: operations["getApiV1MessagingGovernanceOffboardingByUserId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/offboarding/{userId}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only */
+        post: operations["postApiV1MessagingGovernanceOffboardingByUserIdExecute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security officer: another user's staff sessions bound to the officer's organisation (messaging.sessions.manage). Same fields as GET /devices. A user with no sessions in this organisation, an unknown user and another tenant's user are all an empty list (never an error, never another tenant's data). Audited as m36.session.admin_listed. Not cached */
+        get: operations["getApiV1MessagingGovernanceSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404 */
+        delete: operations["deleteApiV1MessagingGovernanceSessionsById"];
         options?: never;
         head?: never;
         patch?: never;
@@ -14470,6 +14931,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/messages/{id}/reminder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Remind the caller of a NON-URGENT message at an instant 1 minute to 30 days ahead (WP 4.10, ADR-0077; messaging.read; a required Idempotency-Key; one reminder per message, setting again replaces the time). At most 25 pending: 409 REMINDER_LIMIT_REACHED. 409 REMINDER_URGENT_NOT_ALLOWED for an urgent message or one with an open acknowledgment request; 422 REMINDER_TIME_INVALID for a time without an offset or outside the bounds; one 404 while the flag is off or the message is missing, deleted or not visible. The reminder arrives as an alert with fixed generic text and a link, never the message */
+        put: operations["putApiV1MessagingMessagesByIdReminder"];
+        post?: never;
+        /** Cancel the caller's reminder on a message (idempotent; cleared=false when none was set) */
+        delete: operations["deleteApiV1MessagingMessagesByIdReminder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/oncall/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage) */
+        get: operations["getApiV1MessagingOncallCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/patients/{patientId}/care-team-channel": {
         parameters: {
             query?: never;
@@ -14496,6 +14992,23 @@ export interface paths {
         };
         /** Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient. */
         get: operations["getApiV1MessagingPatientsByPatientIdContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own pending message reminders, soonest first, with the per-user cap (WP 4.10, ADR-0077; messaging.read). Ids and instants only. Read-audited (a list) */
+        get: operations["getApiV1MessagingReminders"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20359,6 +20872,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reopenings/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission attempts of this reopening request: status, proof missing, guided checklist and adapter availability */
+        get: operations["getApiV1ReopeningsByIdSubmission"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/submission-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
+        post: operations["postApiV1ReopeningsByIdSubmissioncancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/submission-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1ReopeningsByIdSubmissionreceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reopenings/{id}/submit": {
         parameters: {
             query?: never;
@@ -23222,6 +23786,161 @@ export interface paths {
         put?: never;
         /** Deny PTO (reason) */
         post: operations["postApiV1TimeoffByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TPE programs with current round, the MAC's rate against the threshold, next round and advisory risk */
+        get: operations["getApiV1Tpeprograms"];
+        put?: never;
+        /** Open a TPE program for a provider entity and MAC (one active program per pair) */
+        post: operations["postApiV1Tpeprograms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TPE program detail: rounds, sampled claims with their ADR state, warnings, outcome */
+        get: operations["getApiV1TpeprogramsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a TPE program; a closed program is frozen by the database (If-Match) */
+        post: operations["postApiV1TpeprogramsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the program outcome from the CMS / MAC letter: relief (compliant) or referral with its types (If-Match) */
+        post: operations["postApiV1TpeprogramsByIdOutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start the next TPE round (max 3; the previous round needs results); an interval under 45 days is a warning (If-Match on the program) */
+        post: operations["postApiV1TpeprogramsByIdRounds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/claims/{claimId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add or update a sampled claim of a round: its ADR link and result (If-Match on the round) */
+        put: operations["putApiV1TperoundsByIdClaimsByClaimId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/education": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record (or clear) the education date and note for a round (If-Match) */
+        put: operations["putApiV1TperoundsByIdEducation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the MAC's results letter for a round; the threshold in force is snapshotted on first record (If-Match) */
+        put: operations["putApiV1TperoundsByIdResults"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's per-MAC TPE exit thresholds (none are seeded) */
+        get: operations["getApiV1Tperules"];
+        /** Create or update a per-MAC TPE exit threshold with its source and verification day */
+        put: operations["putApiV1Tperules"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -31298,6 +32017,11 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            sequenceNumber?: number;
+                            expectedStart?: string | null;
+                            effectiveAt?: string | null;
+                            scheduledEndAt?: string | null;
+                            actualEndAt?: string | null;
                         }[];
                     };
                 };
@@ -31532,6 +32256,11 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        acknowledgedAt?: string | null;
+                        acknowledgedAtInstant?: string | null;
+                        acknowledgedByName?: string | null;
+                        acknowledgedByRole?: string;
+                        deliveryMethod?: string;
                     };
                 };
             };
@@ -32187,6 +32916,144 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdrsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
                     };
                 };
             };
@@ -33855,6 +34722,7 @@ export interface operations {
                             presumedReceiptOn: string | null;
                             windowDays: number | null;
                             lastFilingDay: string | null;
+                            filedByEscalation: boolean;
                             version: number;
                         }[];
                         nextCursor: string | null;
@@ -33898,6 +34766,7 @@ export interface operations {
                         presumedReceiptOn: string | null;
                         windowDays: number | null;
                         lastFilingDay: string | null;
+                        filedByEscalation: boolean;
                         version: number;
                         appealPacketDocumentId: string | null;
                         submittedAt: string | null;
@@ -33979,6 +34848,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1AppealsByIdCitedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    items: {
+                        label: string;
+                        documentId: string | null;
+                        notAvailableReason: string | null;
+                    }[];
+                    none: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AppealsByIdClose: {
         parameters: {
             query?: never;
@@ -34000,6 +34907,40 @@ export interface operations {
                         /** Format: uuid */
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdConfirmescalation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    forwardedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        nextAppealCaseId: string;
                     };
                 };
             };
@@ -34048,6 +34989,276 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AppealsByIdQic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        kind: "reconsideration" | "escalated_alj" | "none";
+                        tier: string;
+                        state: string;
+                        version: number;
+                        redeterminationNoticeDate: string | null;
+                        citedEvidence: {
+                            label: string;
+                            documentId: string | null;
+                            notAvailableReason: string | null;
+                        }[];
+                        citedEvidenceNone: boolean;
+                        evidenceEditable: boolean;
+                        clock: {
+                            receivedOn: string;
+                            baseDays: number;
+                            extensionDays: number;
+                            extensions: {
+                                days: number;
+                                recordedAt: string;
+                            }[];
+                            decisionDueOn: string;
+                            decisionDueAt: string;
+                            zone: string;
+                            overdue: boolean;
+                            daysOverdue: number;
+                        } | null;
+                        escalation: {
+                            requestedAt: string;
+                            channel: string;
+                            confirmationRef: string;
+                            confirmedOn: string | null;
+                        } | null;
+                        escalationEligible: boolean;
+                        escalationBlockedReason: string | null;
+                        nextAppealCaseId: string | null;
+                        escalatedFromAppealCaseId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AppealsByIdQicclock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    receivedOn?: string;
+                    extensionDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdRequestescalation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: "qic_portal" | "fax" | "mail" | "other";
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    requestedAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AppealsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AppealsByIdSubmit: {
         parameters: {
             query?: never;
@@ -34064,6 +35275,10 @@ export interface operations {
                     attachedDocumentIds: string[];
                     /** Format: uuid */
                     medicalRecordsBundleDocumentId?: string;
+                    redeterminationMacName?: string;
+                    /** Format: uuid */
+                    redeterminationNoticeDocumentId?: string;
+                    evidencePreclusionAcknowledged?: boolean;
                 };
             };
         };
@@ -34101,6 +35316,10 @@ export interface operations {
                     attachedDocumentIds: string[];
                     /** Format: uuid */
                     medicalRecordsBundleDocumentId?: string;
+                    redeterminationMacName?: string;
+                    /** Format: uuid */
+                    redeterminationNoticeDocumentId?: string;
+                    evidencePreclusionAcknowledged?: boolean;
                     goodCauseJustification: string;
                 };
             };
@@ -34830,6 +36049,30 @@ export interface operations {
                     "application/json": {
                         passwordChangeRequired: boolean;
                         reason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuthCsrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
                     };
                 };
             };
@@ -46594,6 +47837,20 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        hospiceMedicalDirectorId?: string;
+                        attendingPhysicianId?: string | null;
+                        terminalDiagnosisIcd10?: string | null;
+                        secondaryDiagnoses?: string[];
+                        prognosisStatement?: string | null;
+                        narrative?: string | null;
+                        clinicalFindings?: {
+                            [key: string]: unknown;
+                        } | null;
+                        hospiceMdSignedAt?: string | null;
+                        attendingMdSignedAt?: string | null;
+                        periodStart?: string | null;
+                        periodEnd?: string | null;
                     };
                 };
             };
@@ -47408,6 +48665,68 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         status: "held";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        devices: {
+                            id: string;
+                            label: string;
+                            current: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            last_used_at: string;
+                            push_registered: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1DevicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        revoked: true;
+                        current: boolean;
+                        push_endpoints_expired: number;
                     };
                 };
             };
@@ -49530,6 +50849,17 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        effectiveDate?: string | null;
+                        primaryDiagnosisIcd10?: string | null;
+                        electedProviderEntityId?: string | null;
+                        electedAttendingPhysicianId?: string | null;
+                        waiverAcknowledged?: boolean | null;
+                        stateAddendum?: {
+                            [key: string]: unknown;
+                        };
+                        signerKind?: string;
+                        signedAt?: string | null;
                     };
                 };
             };
@@ -52330,6 +53660,105 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1EvvOfflinesyncV2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    events: (({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_in";
+                        serviceTypeCode: string;
+                    }) | ({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_out";
+                    }))[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: ({
+                            /** Format: uuid */
+                            localId: string;
+                            status: "applied" | "already_applied";
+                            /** Format: uuid */
+                            eventId: string;
+                            kind: "check_in" | "check_out";
+                            /** Format: date-time */
+                            capturedAt: string;
+                            gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                            geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                            visitStateAfterEvent: string | null;
+                        } | {
+                            /** Format: uuid */
+                            localId: string;
+                            status: "rejected" | "retryable";
+                            code: string;
+                            correlationId: string;
+                        })[];
+                        summary: {
+                            applied: number;
+                            alreadyApplied: number;
+                            rejected: number;
+                            retryable: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1EvvVisitsByVisitIdBracket: {
         parameters: {
             query?: never;
@@ -52421,6 +53850,18 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        scheduledClinicianId?: string;
+                        clinicianRole?: string;
+                        scheduledDate?: string | null;
+                        encounterDate?: string | null;
+                        requestedWindowStart?: string | null;
+                        requestedWindowEnd?: string | null;
+                        authoritativeWindowStart?: string | null;
+                        authoritativeWindowEnd?: string | null;
+                        withinWindow?: boolean | null;
+                        windowOverride?: boolean;
+                        attestationSignedAt?: string | null;
                     };
                 };
             };
@@ -64333,6 +65774,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -65670,6 +67112,102 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdRolesend: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role: "rn" | "physician";
+                    patient_id: string;
+                    recipient_user_id: string;
+                    body_doc: {
+                        /** @constant */
+                        schemaVersion: 1;
+                        doc: {
+                            /** @constant */
+                            type: "doc";
+                            content: unknown[];
+                        };
+                    };
+                    client_message_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        message_id: string;
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        patient_id: string;
+                        /** Format: uuid */
+                        recipient_user_id: string;
+                        role: "rn" | "physician";
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdRolesendResolution: {
+        parameters: {
+            query: {
+                role: "rn" | "physician";
+                patient_id: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        role: "rn" | "physician";
+                        /** Format: date-time */
+                        as_of: string;
+                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured";
+                        people: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                            rank: "primary" | "backup";
+                        }[];
+                        shift_ends_at: string | null;
+                        time_zone: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingChannelsByIdScheduledmessages: {
         parameters: {
             query?: never;
@@ -65814,6 +67352,97 @@ export interface operations {
                         scanned: number;
                         scanCapped: boolean;
                         patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channel_id: string;
+                        snoozed_until: string | null;
+                        snoozable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    duration_minutes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channel_id: string;
+                        snoozed_until: string | null;
+                        snoozable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdSnooze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cleared: boolean;
                     };
                 };
             };
@@ -66134,6 +67763,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingDeliveriesByIdTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        message_id: string;
+                        ack_request_id: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingDepartmentchannels: {
         parameters: {
             query?: never;
@@ -66264,6 +67923,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -66325,6 +67985,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -66360,6 +68021,7 @@ export interface operations {
                             assigned_user_id: string | null;
                             previous_assigned_user_id: string | null;
                             tier: number;
+                            reason_code: ("assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational") | null;
                             /** Format: date-time */
                             created_at: string;
                         }[];
@@ -66402,6 +68064,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -66468,6 +68131,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -66493,6 +68157,36 @@ export interface operations {
                             };
                         };
                         changed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEscalationsByIdReassigncandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        candidates: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
                     };
                 };
             };
@@ -66532,6 +68226,7 @@ export interface operations {
                             /** Format: uuid */
                             patient_id: string;
                             ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
                             status: "pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable";
                             /** Format: uuid */
                             requester_user_id: string;
@@ -66557,6 +68252,142 @@ export interface operations {
                             };
                         };
                         changed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingEscalationsByIdSupervisorreassign: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assigned_user_id: string;
+                    reason_code: "assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        request_ref: string;
+                        /** @constant */
+                        status: "pending";
+                        /** Format: uuid */
+                        assigned_user_id: string;
+                        /** Format: date-time */
+                        deadline_at: string;
+                        changed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEscalationsByIdSupervisorreassigncandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        candidates: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEscalationsUnacknowledged: {
+        parameters: {
+            query?: {
+                status?: "pending" | "escalated" | "failed_unreachable";
+                overdue?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            restricted: boolean;
+                            id: string | null;
+                            channel_id: string | null;
+                            message_id: string | null;
+                            patient_id: string | null;
+                            ack_class: "important" | "urgent" | "critical_symptom";
+                            addressed_role: ("rn" | "physician") | null;
+                            status: "pending" | "escalated" | "failed_unreachable";
+                            assigned_user_id: string | null;
+                            assigned_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: date-time */
+                            deadline_at: string;
+                            overdue: boolean;
+                            overdue_seconds: number;
+                            current_tier: number;
+                            escalation_note: ("route_unavailable" | "ladder_exhausted") | null;
+                            delivery_failed: boolean;
+                            requester_display_name: string | null;
+                            /** Format: uuid */
+                            request_ref: string;
+                        }[];
+                        next_cursor: string | null;
+                        audit_request_id: string | null;
+                        complete: boolean;
+                        filtered: boolean;
+                        counts: {
+                            unfiltered: number;
+                            matching: number;
+                            overdue: number;
+                            failed_unreachable: number;
+                        };
                     };
                 };
             };
@@ -66668,6 +68499,144 @@ export interface operations {
                             changedAt: string | null;
                             effectiveReady: boolean;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceOffboardingByUserId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user_id: string;
+                        items: {
+                            key: "sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts";
+                            state: "done" | "pending" | "needs_person" | "kept" | "advisory" | "failed";
+                            count: number;
+                            acted: number;
+                            needs_person: number;
+                        }[];
+                        done: number;
+                        total: number;
+                        complete: boolean;
+                        blocked_by: ("sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceOffboardingByUserIdExecute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user_id: string;
+                        items: {
+                            key: "sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts";
+                            state: "done" | "pending" | "needs_person" | "kept" | "advisory" | "failed";
+                            count: number;
+                            acted: number;
+                            needs_person: number;
+                        }[];
+                        done: number;
+                        total: number;
+                        complete: boolean;
+                        blocked_by: ("sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceSessions: {
+        parameters: {
+            query: {
+                user_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        devices: {
+                            id: string;
+                            label: string;
+                            current: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            last_used_at: string;
+                            push_registered: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingGovernanceSessionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        revoked: true;
+                        current: boolean;
+                        push_endpoints_expired: number;
                     };
                 };
             };
@@ -67332,6 +69301,110 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1MessagingMessagesByIdReminder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    remind_at: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channel_id: string;
+                        message_id: string;
+                        remind_at: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingMessagesByIdReminder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingOncallCoverage: {
+        parameters: {
+            query: {
+                role: "rn" | "physician";
+                patient_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        role: "rn" | "physician";
+                        /** Format: date-time */
+                        as_of: string;
+                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured";
+                        tiers: {
+                            tier: number;
+                            state: "covering" | "coverage_gap";
+                            people: {
+                                display_name: string | null;
+                                rank: "primary" | "backup";
+                            }[];
+                            shift_ends_at: string | null;
+                            time_zone: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingPatientsByPatientIdCareteamchannel: {
         parameters: {
             query?: never;
@@ -67457,6 +69530,36 @@ export interface operations {
                                 link: string;
                             };
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reminders: {
+                            id: string;
+                            channel_id: string;
+                            message_id: string;
+                            remind_at: string;
+                        }[];
+                        max_pending: number;
                     };
                 };
             };
@@ -74636,7 +76739,16 @@ export interface operations {
                             version: number;
                         } | null;
                         periods: {
-                            [key: string]: unknown;
+                            id: string;
+                            sequenceNumber: number;
+                            periodKind: string;
+                            effectiveAt: string | null;
+                            scheduledEndAt: string | null;
+                            actualEndAt: string | null;
+                            status: string;
+                            electionStatement: unknown;
+                            cti: unknown;
+                            faceToFace: unknown;
                         }[];
                         complianceWindows: {
                             id: string;
@@ -83707,6 +85819,144 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReopeningsByIdSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subjectKind: string;
+                        subjectId: string;
+                        patientId: string | null;
+                        attempts: {
+                            id: string;
+                            purpose: string;
+                            attemptNo: number;
+                            channel: string | null;
+                            adapter: string;
+                            status: string;
+                            needsManualReason: string | null;
+                            confirmationRef: string | null;
+                            receiptAt: string | null;
+                            receiptDocumentId: string | null;
+                            receiptSource: string | null;
+                            amendments: {
+                                recordedAt: string;
+                                confirmationRef: string;
+                                receiptAt: string;
+                                receiptDocumentId: string | null;
+                            }[];
+                            approvedAt: string | null;
+                            createdAt: string;
+                            version: number;
+                            proofMissing: boolean;
+                        }[];
+                        proofMissing: boolean;
+                        noAttemptRecord: boolean;
+                        adapters: {
+                            kind: string;
+                            mode: string;
+                            bound: boolean;
+                            reason: string;
+                        }[];
+                        checklist: {
+                            key: string;
+                            text: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdSubmissioncancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdSubmissionreceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attemptId: string;
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    receiptAt: string;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        amended: boolean;
                     };
                 };
             };
@@ -93060,6 +95310,453 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Tpeprograms: {
+        parameters: {
+            query?: {
+                state?: string;
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            macName: string;
+                            openedOn: string;
+                            state: string;
+                            outcomeOn: string | null;
+                            reliefUntil: string | null;
+                            referralKinds: string[];
+                            version: number;
+                            maxRounds: number;
+                            roundsRecorded: number;
+                            currentRound: number | null;
+                            latestRound: {
+                                roundNumber: number;
+                                resultsOn: string;
+                                macErrorRatePct: number | null;
+                                macResult: string;
+                            } | null;
+                            threshold: {
+                                pct: number | null;
+                                source: string;
+                                verified: boolean;
+                            };
+                            aboveThreshold: boolean | null;
+                            claimCountRate: {
+                                reviewed: number;
+                                errors: number;
+                                pct: number;
+                            } | null;
+                            nextRoundEarliest: string | null;
+                            risk: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Tpeprograms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    macName: string;
+                    openedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TpeprogramsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        macName: string;
+                        openedOn: string;
+                        state: string;
+                        outcomeOn: string | null;
+                        reliefUntil: string | null;
+                        referralKinds: string[];
+                        version: number;
+                        maxRounds: number;
+                        roundsRecorded: number;
+                        currentRound: number | null;
+                        latestRound: {
+                            roundNumber: number;
+                            resultsOn: string;
+                            macErrorRatePct: number | null;
+                            macResult: string;
+                        } | null;
+                        threshold: {
+                            pct: number | null;
+                            source: string;
+                            verified: boolean;
+                        };
+                        aboveThreshold: boolean | null;
+                        claimCountRate: {
+                            reviewed: number;
+                            errors: number;
+                            pct: number;
+                        } | null;
+                        nextRoundEarliest: string | null;
+                        risk: string;
+                        rounds: {
+                            id: string;
+                            roundNumber: number;
+                            noticeOn: string;
+                            resultsOn: string | null;
+                            macErrorRatePct: number | null;
+                            macResult: string | null;
+                            threshold: {
+                                pct: number | null;
+                                source: string;
+                                verified: boolean;
+                            } | null;
+                            educationOn: string | null;
+                            educationNote: string | null;
+                            claims: {
+                                id: string;
+                                claimId: string;
+                                adrCaseId: string | null;
+                                adrState: string | null;
+                                result: string;
+                            }[];
+                            claimCountRate: {
+                                reviewed: number;
+                                errors: number;
+                                pct: number;
+                            } | null;
+                            warnings: string[];
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdOutcome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "compliant" | "referred";
+                    outcomeOn: string;
+                    reliefUntil?: string | null;
+                    referralKinds?: ("prepay_review" | "extrapolation" | "rac" | "other")[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdRounds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    noticeOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        roundNumber: number;
+                        warnings: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdClaimsByClaimId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    adrCaseId?: string | null;
+                    result?: "pending" | "no_error" | "error";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdEducation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    educationOn: string | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resultsOn: string;
+                    macErrorRatePct: number | null;
+                    macResult: "compliant" | "non_compliant";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Tperules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            macName: string;
+                            exitErrorRatePct: number;
+                            sourceNote: string | null;
+                            verifiedOn: string | null;
+                            effectiveFrom: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1Tperules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    macName: string;
+                    exitErrorRatePct: number;
+                    sourceNote?: string;
+                    verifiedOn?: string;
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1TransfersByIdReceivingcaresetting: {
         parameters: {
             query?: never;
@@ -93137,8 +95834,8 @@ export interface operations {
                             state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                             disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                             callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                            inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                            source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                            inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                            source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                             chiefComplaintSnomed: string | null;
                             openedAt: string;
                             firstResponseAt: string | null;
@@ -93169,7 +95866,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     providerEntityId: string;
-                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                     callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
                     callerDisplayName?: string;
                     callerPhoneE164?: string;
@@ -93236,8 +95933,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -93311,7 +96008,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -93385,8 +96082,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -93460,7 +96157,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -93641,8 +96338,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -93716,7 +96413,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -93791,8 +96488,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -93866,7 +96563,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -93933,8 +96630,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -94008,7 +96705,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -94127,8 +96824,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -94202,7 +96899,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -94275,8 +96972,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -94350,7 +97047,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -94484,8 +97181,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -94559,7 +97256,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -94662,8 +97359,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -94737,7 +97434,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -94825,7 +97522,7 @@ export interface operations {
                     providerEntityId: string;
                     /** Format: date-time */
                     paperOriginalOpenedAt: string;
-                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                     callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
                     /** Format: uuid */
                     patientId?: string;

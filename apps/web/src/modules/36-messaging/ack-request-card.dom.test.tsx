@@ -1,7 +1,15 @@
 // M36 WP 4.2 - the acknowledgment-request card and its loader: text+icon status, buttons only from viewer_actions, one POST per
 // click, indeterminate/definitive failure wording, a late answer for a left channel ignored, a transient load error with retry,
 // and no request at all from opening, reading or focusing.
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { AckRequestDto } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
@@ -28,6 +36,9 @@ import {
   ACK_STATUS_TEXT,
   ACK_TAKE_LABEL,
   ACK_TOO_MANY_TEXT,
+  ACK_UNREACHABLE_NOTICE,
+  ACK_UNREACHABLE_TEXT,
+  ADDRESSED_ROLE_TEXT,
 } from "./ack-wording";
 import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
 
@@ -53,6 +64,7 @@ const request = (over: Partial<AckRequestDto> = {}): AckRequestDto => ({
   channel_id: "c-1",
   patient_id: "p-1",
   ack_class: "important",
+  addressed_role: null,
   status: "pending",
   requester_user_id: "u-1",
   assigned_user_id: "u-2",
@@ -76,6 +88,8 @@ function mount(opts: {
   post?: ReturnType<typeof vi.fn>;
   channelId?: string;
   refreshKey?: string | null;
+  landOnMessageId?: string | null;
+  onLanded?: () => void;
 }) {
   const GET = vi.fn((path: string, init: { params: { path: { id: string } } }) =>
     Promise.resolve(opts.get ? opts.get(path, init.params.path.id) : ok([request()])),
@@ -86,7 +100,13 @@ function mount(opts: {
     <MemoryRouter>
       <ApiClientProvider client={client}>
         <main>
-          <AckRequestsProvider channelId={channelId} enabled refreshKey={refreshKey}>
+          <AckRequestsProvider
+            channelId={channelId}
+            enabled
+            refreshKey={refreshKey}
+            landOnMessageId={opts.landOnMessageId ?? null}
+            onLanded={opts.onLanded}
+          >
             <AckForMessage messageId="m-1" />
           </AckRequestsProvider>
         </main>
@@ -114,22 +134,42 @@ describe("ack request card", () => {
     expect(results.violations).toEqual([]);
   });
 
+  it("names the addressed role in words", async () => {
+    mount({ get: () => ok([request({ addressed_role: "physician" })]) });
+    await takeButton();
+    expect(screen.getByText(ADDRESSED_ROLE_TEXT.physician)).toBeTruthy();
+  });
+
+  it("shows no role line for a request to a named person", async () => {
+    mount({});
+    await takeButton();
+    expect(document.querySelectorAll(".wx-ack-detail")).toHaveLength(1);
+    expect(screen.queryByText(/on-call/)).toBeNull();
+  });
+
+  it("shows no role line, and no empty paragraph, for a role code this client does not know", async () => {
+    mount({ get: () => ok([request({ addressed_role: "chaplain" as never })]) });
+    await takeButton();
+    expect(document.querySelectorAll(".wx-ack-detail")).toHaveLength(1);
+    expect(document.body.textContent).not.toMatch(/undefined|chaplain/);
+  });
+
   it.each([
     [
       "pending",
       { can_acknowledge: false, can_reassign: true, can_resolve: false },
-      [],
+      ["Reassign"],
       /person it was sent to/,
     ],
     [
       "pending",
       { can_acknowledge: true, can_reassign: true, can_resolve: false },
-      [ACK_TAKE_LABEL],
+      [ACK_TAKE_LABEL, "Reassign"],
       /Waiting for you/,
     ],
     [
       "acknowledged",
-      { can_acknowledge: false, can_reassign: true, can_resolve: true },
+      { can_acknowledge: false, can_reassign: false, can_resolve: true },
       [ACK_CLOSE_LABEL],
       null,
     ],
@@ -863,6 +903,88 @@ describe("ack request card - escalation (WP 4.4)", () => {
   });
 });
 
+// WP 4.5: a request nobody could be reached for says so plainly, never claims anyone received it, and still lets the assignee act.
+describe("ack request card - failed_unreachable (WP 4.5)", () => {
+  const unreachable = (over: Partial<AckRequestDto> = {}) =>
+    request({ status: "failed_unreachable", ...over });
+
+  it("shows the honest status and detail, no 'Respond by' line, and the one explicit action for the assignee", async () => {
+    mount({ get: () => ok([unreachable()]) });
+
+    expect(await takeButton()).toBeTruthy();
+    expect(screen.getByRole("group", { name: ACK_STATUS_TEXT.failed_unreachable })).toBeTruthy();
+    expect(screen.getByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByText(/Respond by|Overdue/)).toBeNull();
+    expect((await axe.run(document.body)).violations).toEqual([]);
+  });
+
+  it("the rendered card never implies anyone was reached, notified, paged or alerted", async () => {
+    mount({ get: () => ok([unreachable()]) });
+    await takeButton();
+
+    const text = document.querySelector(".wx-ack-card")?.textContent ?? "";
+
+    expect(text).toContain(ACK_STATUS_TEXT.failed_unreachable);
+    expect(text).toMatch(/It may still be seen in the app/);
+    expect(text).toMatch(/Nobody is known to have received it/);
+    expect(text).not.toMatch(/\b(reached|notified|paged|alerted)\b/i);
+  });
+
+  it("the sender (can_resolve only) sees the status and no Take button, only Close when it applies", async () => {
+    mount({
+      get: () =>
+        ok([
+          unreachable({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: true },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Close this request/ })).toBeTruthy();
+  });
+
+  it("taking responsibility on a failed_unreachable card calls acknowledge and shows the request as taken", async () => {
+    let gets = 0;
+    const { POST } = mount({
+      get: () => {
+        gets += 1;
+        return ok([
+          gets > 1
+            ? request({
+                status: "acknowledged",
+                acknowledged_at: "2026-10-15T12:05:00.000Z",
+                viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: true },
+              })
+            : unreachable(),
+        ]);
+      },
+    });
+
+    fireEvent.click(await takeButton());
+
+    await screen.findByText(ACK_STATUS_TEXT.acknowledged);
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(String(POST.mock.calls[0]?.[0])).toMatch(/acknowledge/);
+    expect(screen.queryByText(ACK_UNREACHABLE_TEXT)).toBeNull();
+  });
+
+  it("offers no button to someone who is not the assignee", async () => {
+    mount({
+      get: () =>
+        ok([
+          unreachable({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: false },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+  });
+});
+
 // WP 4.4: a poll or focus re-read that shows the request moved on is announced ONCE, politely (never role=alert), and not again.
 describe("ack request card - moved-on announcement (WP 4.4)", () => {
   const polite = () => document.querySelector("output.wx-ack-live")?.textContent ?? "";
@@ -913,6 +1035,39 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each(["pending", "escalated"] as const)(
+    "a poll that turns %s into failed_unreachable is announced politely once, never as an alert, and not on first load",
+    async (before) => {
+      vi.useFakeTimers(FAKE_CLOCK);
+      try {
+        let phase = 0;
+        mount({
+          get: () =>
+            ok([
+              phase === 0 ? request({ status: before }) : request({ status: "failed_unreachable" }),
+            ]),
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(polite()).toBe("");
+
+        await tick(); // unchanged read: nothing
+        expect(polite()).toBe("");
+
+        phase = 1;
+        await tick();
+        expect(polite()).toBe(ACK_UNREACHABLE_NOTICE);
+        expect(alertText()).toBe("");
+
+        await tick(); // unchanged again: cleared, not repeated
+        expect(polite()).toBe("");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("the old assignee: a poll shows the request passed on, the button goes, one polite announcement, and no notice paragraph", async () => {
     vi.useFakeTimers(FAKE_CLOCK);
@@ -1003,11 +1158,51 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
   it("a requester viewing the escalated request sees no buttons and no response notice", async () => {
     mount({
       get: () =>
-        ok([request({ status: "escalated", current_tier: 1, viewer_actions: NO_ACTIONS })]),
+        ok([
+          request({
+            status: "escalated",
+            current_tier: 1,
+            viewer_actions: { ...NO_ACTIONS, can_reassign: false },
+          }),
+        ]),
     });
 
     expect(await screen.findByText(/Nobody has taken responsibility yet/)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByText(ACK_NOTICE)).toBeNull();
+  });
+});
+
+describe("ack request card - notification-link landing (WP 4.8)", () => {
+  it("focuses the card of the linked message once it loads, and sends nothing", async () => {
+    const { POST } = mount({ landOnMessageId: "m-1" });
+
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+
+    expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("reports the landing exactly once, and never for another message", async () => {
+    const onLanded = vi.fn();
+    mount({ landOnMessageId: "m-1", onLanded });
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+    expect(onLanded).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not focus again after the person moves on, and not for another message", async () => {
+    const first = mount({ landOnMessageId: "m-1" });
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+    (document.activeElement as HTMLElement).blur();
+    first.view.rerender(first.tree("c-1", "m-2"));
+    await first.view.findByText(ACK_STATUS_TEXT.pending);
+    expect(document.activeElement).toBe(document.body);
+    first.view.unmount();
+
+    mount({ landOnMessageId: "m-other" });
+    await screen.findByText(ACK_STATUS_TEXT.pending);
+    expect(document.activeElement).toBe(document.body);
   });
 });

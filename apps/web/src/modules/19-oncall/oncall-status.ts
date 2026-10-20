@@ -132,8 +132,8 @@ export const SHIFT_DISCIPLINES: readonly ShiftDiscipline[] = [
   "external",
 ];
 
-/** `triage_call_inbound_channel` — the transport the call arrived on. The three `inbound_*` values are the
- *  D10 machine-opened ones (M17 no-show, M18 late check-out, M36 delivery failure); a human intake form
+/** `triage_call_inbound_channel` — the transport the call arrived on. The `inbound_*` values are the
+ *  D10 machine-opened ones (M17 no-show, M18 late check-out, M36 delivery failure, M36 after-hours request); a human intake form
  *  offers only the four a person can actually dial in on (see {@link HUMAN_INBOUND_CHANNELS}). */
 export const INBOUND_CHANNELS: readonly TriageInboundChannel[] = [
   "phone",
@@ -143,9 +143,10 @@ export const INBOUND_CHANNELS: readonly TriageInboundChannel[] = [
   "inbound_visit_failure",
   "inbound_evv_anomaly",
   "inbound_alert_failure",
+  "inbound_afterhours_request",
 ];
 
-/** The channels a HUMAN intake form may declare. The three `inbound_*` values are written by the D10
+/** The channels a HUMAN intake form may declare. The `inbound_*` values are written by the D10
  *  consumers; offering them on the intake screen would let a clinician mint a call that claims M17 detected
  *  a missed visit. (The server's own narrowing is `OpenableSource`, which pins `source` to `manual`; the
  *  channel has no such union, so the restriction lives here and is stated on the screen.) */
@@ -184,6 +185,7 @@ export const CALL_SOURCE_TONE: Record<string, StatusTone> = {
   geofence_anomaly: "warning",
   m36_delivery_failure: "error",
   paper_origin: "critical",
+  m36_afterhours_request: "warning",
 };
 
 /** `triage_disposition` (D6) — all ten values including the two that are NOT selectable through the
@@ -451,4 +453,5 @@ export const SOURCE_FILTERS: readonly QueueFilterOption<TriageCallSource>[] = [
   { key: "geofence_anomaly", value: "geofence_anomaly", label: "Geofence anomaly" },
   { key: "m36_delivery_failure", value: "m36_delivery_failure", label: "Delivery failure" },
   { key: "paper_origin", value: "paper_origin", label: "Paper origin" },
+  { key: "m36_afterhours_request", value: "m36_afterhours_request", label: "After-hours message" },
 ];

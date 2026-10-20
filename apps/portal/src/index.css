@@ -457,8 +457,6 @@
     color: var(--color-primary-strong);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 
   .wx-portal-auth-heading h1 {
@@ -850,8 +848,6 @@
     color: var(--color-on-surface-variant);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
   .wx-portal-content-list {
@@ -1103,8 +1099,6 @@
     color: var(--color-muted);
     font-size: 0.6875rem;
     font-weight: 750;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
 
   .wx-portal-nav-link {
@@ -1344,14 +1338,14 @@
   .wx-portal-dashboard-welcome { max-width: 43rem; }
   .wx-portal-dashboard-welcome h1 { margin: 0; font: 650 clamp(1.8rem, 3vw, 2.35rem)/1.15 var(--font-display); letter-spacing: -0.03em; }
   .wx-portal-dashboard-welcome p { margin: var(--space-2) 0 0; color: var(--color-on-surface-variant); font-size: 0.96rem; line-height: 1.6; }
-  .wx-portal-dashboard__eyebrow { display: block; margin-bottom: var(--space-1); color: var(--color-primary-strong); font-size: 0.7rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+  .wx-portal-dashboard__eyebrow { display: block; margin-bottom: var(--space-1); color: var(--color-primary-strong); font-size: 0.7rem; font-weight: 750; }
   .wx-portal-dashboard-primary-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(17rem, 1fr); gap: var(--space-5); align-items: stretch; }
   .wx-portal-next-visit, .wx-portal-messages-card { min-width: 0; padding: clamp(var(--space-5), 3vw, var(--space-7)); border: 1px solid var(--color-card-border); border-radius: var(--radius-2xl); }
   .wx-portal-next-visit { min-height: 19rem; display: flex; flex-direction: column; background: var(--color-surface-lowest); box-shadow: var(--shadow-ambient); }
   .wx-portal-messages-card { display: flex; flex-direction: column; background: var(--color-surface-low); }
   .wx-portal-dashboard-section-heading { display: flex; align-items: center; gap: var(--space-3); }
   .wx-portal-dashboard-section-icon { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
-  .wx-portal-dashboard-section-heading > div > span { display: block; color: var(--color-muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+  .wx-portal-dashboard-section-heading > div > span { display: block; color: var(--color-muted); font-size: 0.7rem; font-weight: 700; }
   .wx-portal-dashboard-section-heading h2, .wx-portal-dashboard-heading-row h2, .wx-portal-dashboard-helpful h2 { margin: 0.1rem 0 0; font: 650 1.15rem/1.3 var(--font-display); letter-spacing: -0.015em; }
   .wx-portal-next-visit__details, .wx-portal-next-visit__empty { flex: 1; margin-top: var(--space-7); display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-5); }
   .wx-portal-next-visit__details > div > strong { display: block; max-width: 35rem; font: 650 clamp(1.35rem, 2.4vw, 1.85rem)/1.25 var(--font-display); }
@@ -1435,11 +1429,11 @@
   .wx-portal-upcoming-visits { display: flex; flex-direction: column; gap: var(--space-7); }
   .wx-portal-featured-visit { padding: clamp(var(--space-5), 3.5vw, var(--space-7)); border: 1px solid var(--color-primary-dim); border-radius: var(--radius-2xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-ambient); }
   .wx-portal-featured-visit__top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--space-5); }
-  .wx-portal-featured-visit__title > span { color: var(--color-primary-strong); font-size: 0.7rem; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; }
+  .wx-portal-featured-visit__title > span { color: var(--color-primary-strong); font-size: 0.7rem; font-weight: 750; }
   .wx-portal-featured-visit__title h2 { margin: var(--space-1) 0 0; font: 650 clamp(1.35rem, 2.5vw, 1.85rem)/1.25 var(--font-display); letter-spacing: -0.02em; }
   .wx-portal-featured-visit__title p { margin: var(--space-2) 0 0; color: var(--color-on-surface-variant); font-size: 0.94rem; line-height: 1.5; }
   .wx-portal-visit-date { width: 6.5rem; min-height: 7.2rem; padding: var(--space-3); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); text-align: center; }
-  .wx-portal-visit-date > span { color: var(--color-primary-strong); font-size: 0.72rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+  .wx-portal-visit-date > span { color: var(--color-primary-strong); font-size: 0.72rem; font-weight: 750; }
   .wx-portal-visit-date > strong { margin-top: 0.1rem; font: 650 2rem/1 var(--font-display); }
   .wx-portal-visit-date > small { margin-top: var(--space-2); color: var(--color-on-surface-variant); font-size: 0.72rem; }
   .wx-portal-visit-facts { margin: var(--space-6) 0 0 calc(6.5rem + var(--space-5)); display: flex; flex-wrap: wrap; gap: var(--space-5); }
@@ -1779,7 +1773,7 @@
 
 /* PR3.5 — Patient care-plan summary: read-only, lay-language, patient-scoped. */
 .wx-care-plan-page { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
-.wx-care-plan-eyebrow { display: block; margin-bottom: var(--space-2); color: var(--color-primary-strong); font-size: .6875rem; font-weight: 750; letter-spacing: .085em; text-transform: uppercase; }
+.wx-care-plan-eyebrow { display: block; margin-bottom: var(--space-2); color: var(--color-primary-strong); font-size: .6875rem; font-weight: 750; }
 .wx-care-plan-intro { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); }
 .wx-care-plan-intro__icon { display: grid; flex: 0 0 auto; place-items: center; width: 3rem; height: 3rem; border-radius: var(--radius-lg); color: var(--color-primary-strong); background: var(--color-primary-tint); }
 .wx-care-plan-intro p { margin: 0; color: var(--color-on-surface); font-size: .9rem; line-height: 1.6; }
