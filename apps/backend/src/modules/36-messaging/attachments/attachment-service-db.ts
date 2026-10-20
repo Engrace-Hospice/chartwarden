@@ -24,6 +24,11 @@ import type { MessageAttachmentView } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  activeLiveHolds,
+  isMessageHeldNow,
+  messageHeldByAnyPredicate,
+} from "../jobs/retention-hold-sql";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
 import {
   ATTACHMENT_ACCESS_TTL_SECONDS,
@@ -137,6 +142,8 @@ export interface ReapRunResult {
   readonly reaped: number;
   /** Rows kept because their object could not be destroyed; the next tick retries them. */
   readonly failed: number;
+  /** Retained objects NOT destroyed because their message is under an active legal hold (ADR-0086); retried once the hold is released. */
+  readonly skippedLegalHold: number;
 }
 
 export interface AttachmentServiceDeps {
@@ -1126,7 +1133,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     },
 
     async reapOrphansForOrg(orgId, opts = {}) {
-      const result = { reaped: 0, failed: 0 };
+      const result = { reaped: 0, failed: 0, skippedLegalHold: 0 };
       const reaperDb = deps.reaperDb;
       if (!reaperDb) return result;
       if (opts.budgetMs !== undefined && opts.budgetMs <= 0) return result;
@@ -1191,6 +1198,12 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     },
   };
 
+  function isHeldNow(orgId: string, messageId: string): Promise<boolean> {
+    return withOrgContext(db, systemOrgContext(orgId), (rawTx) =>
+      isMessageHeldNow(rawTx as unknown as Tx, orgId, messageId),
+    );
+  }
+
   /**
    * Destroy the OBJECT of rows that must no longer hold bytes but whose row we keep for audit: a quarantined file, and a
    * clean file on a deleted message, once `retentionMs` has passed. Candidates are read under the app role (RLS), the
@@ -1201,20 +1214,25 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     orgId: string,
     reaperDb: DbClient,
     opts: { limit?: number; budgetMs?: number },
-    result: { reaped: number; failed: number },
+    result: { reaped: number; failed: number; skippedLegalHold: number },
   ): Promise<void> {
     const at = now();
     const cutoff = new Date(at.getTime() - retentionMs);
     const budgetEndsAt = opts.budgetMs === undefined ? undefined : at.getTime() + opts.budgetMs;
-    const candidates = await withOrgContext(db, systemOrgContext(orgId), (rawTx) =>
-      (rawTx as unknown as Tx)
-        .select({ id: ATT.id, objectKey: ATT.objectKey })
+    const candidates = await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
+      const tx = rawTx as unknown as Tx;
+      // ADR-0086: bytes cannot be restored, so an attachment on a message under an ACTIVE hold is never a candidate (live criteria:
+      // covers messages the overlay has not materialised yet). A quarantined file is never served, so keeping it is safe.
+      const holds = await activeLiveHolds(tx, orgId);
+      return tx
+        .select({ id: ATT.id, objectKey: ATT.objectKey, messageId: ATT.messageId })
         .from(ATT)
         .where(
           and(
             eq(ATT.organizationId, orgId),
             isNull(ATT.objectDestroyedAt),
             isNotNull(ATT.objectKey),
+            sql`NOT ${messageHeldByAnyPredicate(holds, sql`${ATT.organizationId}`, sql`${ATT.messageId}`)}`,
             or(
               and(eq(ATT.scanState, "quarantined"), lt(ATT.scannedAt, cutoff)),
               sql`EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${ATT.organizationId}
@@ -1223,8 +1241,8 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           ),
         )
         .orderBy(sql`random()`)
-        .limit(opts.limit ?? REAP_BATCH_LIMIT),
-    );
+        .limit(opts.limit ?? REAP_BATCH_LIMIT);
+    });
     let attempted = 0;
     for (const row of candidates) {
       if (attempted > 0 && budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt) break;
@@ -1232,6 +1250,13 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       const objectKey = row.objectKey;
       if (!objectKey) continue;
       try {
+        // A hold can land after the candidates were read: look again, in a short tx that takes the shared hold lock (a concurrent
+        // apply waits for it), immediately before the irreversible step. Residual: a hold applied between this commit and the
+        // destroy (ADR-0086 known limit (g)).
+        if (row.messageId && (await isHeldNow(orgId, row.messageId))) {
+          result.skippedLegalHold += 1;
+          continue;
+        }
         await runWithDeadline(
           (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
           deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,

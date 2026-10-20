@@ -1718,7 +1718,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       try {
         const live = await uploaded(u1, dm, pdfBytes("reap-live"), { complete: false });
         const result = await attachments.reapOrphansForOrg(ORG_A);
-        expect(result).toEqual({ reaped: 1, failed: 0 });
+        expect(result).toEqual({ reaped: 1, failed: 0, skippedLegalHold: 0 });
         expect(await exists(abandoned.attachmentId)).toBe(false);
         expect(storage.destroyed).toContain(abandonedKey);
         expect(storage.objects.has(`${ORG_A}/${abandonedKey}`)).toBe(false);
@@ -1735,10 +1735,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const restore = advance(pastGrace);
       try {
         storage.destroyFailure.onKeyIncluding = key;
-        expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 1 });
+        expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 0,
+          failed: 1,
+          skippedLegalHold: 0,
+        });
         expect(await exists(abandoned.attachmentId)).toBe(true);
         storage.destroyFailure.onKeyIncluding = null;
-        expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+        expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 1,
+          failed: 0,
+          skippedLegalHold: 0,
+        });
         expect(await exists(abandoned.attachmentId)).toBe(false);
       } finally {
         storage.destroyFailure.onKeyIncluding = null;
@@ -1758,7 +1766,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         [aging.attachmentId],
       );
       expect((await send(u1, dm, [aging.attachmentId])).statusCode).toBe(422);
-      expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await attachments.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect(await exists(stale.attachmentId)).toBe(false);
       expect(await exists(aging.attachmentId)).toBe(true); // reaped on day 7, not before
     });
@@ -1808,7 +1820,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const abandoned = await uploaded(u1, dm, pdfBytes("reap-noop"), { complete: false });
       const restore = advance(pastGrace);
       try {
-        expect(await noReaper.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 });
+        expect(await noReaper.reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 0,
+          failed: 0,
+          skippedLegalHold: 0,
+        });
         expect(await exists(abandoned.attachmentId)).toBe(true);
       } finally {
         restore();
@@ -1887,9 +1903,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         expect(await svc.reapOrphansForOrg(ORG_A, { budgetMs: 0 })).toEqual({
           reaped: 0,
           failed: 0,
+          skippedLegalHold: 0,
         });
         const out = await svc.reapOrphansForOrg(ORG_A, { budgetMs: 1_000, limit: 25 });
-        expect(out).toEqual({ reaped: 1, failed: 0 });
+        expect(out).toEqual({ reaped: 1, failed: 0, skippedLegalHold: 0 });
       } finally {
         clock.now = base;
       }
@@ -2893,7 +2910,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const fresh = await boundRow(who, sent.messageId, "quarantined", 2 * DAY);
       const old = await boundRow(who, sent.messageId, "quarantined", 8 * DAY);
       const svc = quotaSvc(1_000_000);
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect(storage.destroyed).toContain(old.key);
       expect(storage.objects.has(`${ORG_A}/${old.key}`)).toBe(false);
       expect(await destroyedAt(old.id)).not.toBeNull();
@@ -2901,7 +2922,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(storage.objects.has(`${ORG_A}/${fresh.key}`)).toBe(true);
       expect(await destroyedAt(fresh.id)).toBeNull();
       // idempotent: nothing left to do
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 0,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
     });
 
     it("M4: only the destruction credential can stamp object_destroyed_at (the app role cannot)", async () => {
@@ -2931,12 +2956,17 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({
           reaped: 0,
           failed: 1,
+          skippedLegalHold: 0,
         });
         expect(await destroyedAt(row.id)).toBeNull();
       } finally {
         storage.destroyFailure.onKeyIncluding = null;
       }
-      expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect(await destroyedAt(row.id)).not.toBeNull();
     });
 
@@ -2958,7 +2988,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         `UPDATE message SET deleted_at = $2::timestamptz WHERE id = (SELECT message_id FROM message_attachment WHERE id=$1)`,
         [longGone.id, iso(-8 * DAY)],
       );
-      expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect(await destroyedAt(longGone.id)).not.toBeNull();
       expect(await destroyedAt(justNow.id)).toBeNull();
       expect(await rowExists(longGone.id)).toBe(true);
@@ -3026,13 +3060,21 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           sha256Hex: "f".repeat(64),
         });
       await expect(again()).rejects.toMatchObject({ statusCode: 413 });
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 }); // deleted just now: inside the window
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 0,
+        failed: 0,
+        skippedLegalHold: 0,
+      }); // deleted just now: inside the window
       await expect(again()).rejects.toMatchObject({ statusCode: 413 });
       await admin.query(
         `UPDATE message SET deleted_at = $2::timestamptz WHERE id = (SELECT message_id FROM message_attachment WHERE id=$1)`,
         [row.id, iso(-8 * DAY)],
       );
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect((await again()).attachmentId).toBeTruthy();
     });
 
@@ -3059,14 +3101,154 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         );
       }
       await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 0,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       await admin.query(`UPDATE message SET deleted_at = $2::timestamptz WHERE id=$1`, [
         sent.messageId,
         iso(-8 * DAY),
       ]);
-      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+        reaped: 1,
+        failed: 0,
+        skippedLegalHold: 0,
+      });
       expect(storage.destroyed).toContain(row.key);
       expect(await destroyedAt(row.id)).not.toBeNull();
+    });
+
+    describe("ADR-0086: the retention reaper never destroys bytes of a legally held message", () => {
+      /** An ACTIVE hold on one channel, inserted directly: the overlay is never materialised, so this is the live-criteria path. */
+      const placeHold = async (channel: string, user: string) =>
+        (
+          await admin.query(
+            `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+             VALUES ($1, 'reaper-hold', $2::jsonb, 'litigation hold for the reaper suite', $3) RETURNING id`,
+            [ORG_A, JSON.stringify({ channelIds: [channel] }), user],
+          )
+        ).rows[0].id as string;
+      const releaseHold = (id: string) =>
+        admin.query(`UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1`, [id]);
+      /** A long-deleted message with one clean attachment (past the retention window). */
+      async function expiredRow(
+        who: { user: string; channel: string },
+        state: "clean" | "quarantined" = "clean",
+      ) {
+        const sent = await routeService.sendMessage(ORG_A, {
+          channelId: who.channel,
+          authorUserId: who.user,
+          body: "held?",
+        });
+        const row = await boundRow(who, sent.messageId, state, 30 * DAY);
+        await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
+        await admin.query(`UPDATE message SET deleted_at = $2::timestamptz WHERE id=$1`, [
+          sent.messageId,
+          iso(-8 * DAY),
+        ]);
+        return row;
+      }
+
+      it("a held message's bytes are NOT destroyed (clean-on-deleted and quarantined); an unheld message's are; release lets the next run reap them", async () => {
+        const held = await freshUploader("hold-a");
+        const free = await freshUploader("hold-b");
+        const heldClean = await expiredRow(held);
+        const heldQuarantined = await boundRow(
+          held,
+          (
+            await routeService.sendMessage(ORG_A, {
+              channelId: held.channel,
+              authorUserId: held.user,
+              body: "q",
+            })
+          ).messageId,
+          "quarantined",
+          30 * DAY,
+        );
+        const unheld = await expiredRow(free);
+        const holdId = await placeHold(held.channel, held.user);
+        const svc = quotaSvc(1_000_000);
+        try {
+          expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+            reaped: 1,
+            failed: 0,
+            skippedLegalHold: 0,
+          });
+          expect(storage.destroyed).toContain(unheld.key);
+          expect(storage.destroyed).not.toContain(heldClean.key);
+          expect(storage.destroyed).not.toContain(heldQuarantined.key);
+          expect(storage.objects.has(`${ORG_A}/${heldClean.key}`)).toBe(true);
+          expect(await destroyedAt(heldClean.id)).toBeNull();
+          expect(await destroyedAt(heldQuarantined.id)).toBeNull();
+          expect(await destroyedAt(unheld.id)).not.toBeNull();
+        } finally {
+          await releaseHold(holdId);
+        }
+        expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 2,
+          failed: 0,
+          skippedLegalHold: 0,
+        });
+        expect(storage.destroyed).toContain(heldClean.key);
+        expect(await destroyedAt(heldClean.id)).not.toBeNull();
+        expect(await destroyedAt(heldQuarantined.id)).not.toBeNull();
+      });
+
+      it("a hold placed AFTER the candidates were read but BEFORE the destroy is respected (skippedLegalHold counts it)", async () => {
+        const who = await freshUploader("hold-race");
+        const row = await expiredRow(who);
+        let holdId = "";
+        // Intercept the candidate read (a transaction returning our row) and place the hold the instant it commits.
+        const racingDb = new Proxy(handle.db, {
+          get(target, prop) {
+            if (prop === "transaction") {
+              return async (...args: unknown[]) => {
+                const out = await (target.transaction as (...a: unknown[]) => Promise<unknown>)(
+                  ...args,
+                );
+                if (
+                  !holdId &&
+                  Array.isArray(out) &&
+                  out.some((r) => (r as { objectKey?: string })?.objectKey === row.key)
+                ) {
+                  holdId = await placeHold(who.channel, who.user);
+                }
+                return out;
+              };
+            }
+            const v = Reflect.get(target, prop, target);
+            return typeof v === "function" ? v.bind(target) : v;
+          },
+        }) as DbClient;
+        const svc = createAttachmentService({
+          db: racingDb,
+          storage: storage.port,
+          scanner: createBuiltinScanner(),
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          userRequestsPerMinute: 1_000_000,
+          quota: { orgBytes: 1_000_000_000, userBytes: 1_000_000 },
+          reaperDb: destroyer.db,
+        });
+        try {
+          expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({
+            reaped: 0,
+            failed: 0,
+            skippedLegalHold: 1,
+          });
+          expect(holdId).not.toBe("");
+          expect(storage.destroyed).not.toContain(row.key);
+          expect(await destroyedAt(row.id)).toBeNull();
+        } finally {
+          if (holdId) await releaseHold(holdId);
+        }
+        expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 1,
+          failed: 0,
+          skippedLegalHold: 0,
+        });
+      });
     });
 
     it("A: the 413 message says what is true (no 'expire' promise) and names the retention", async () => {

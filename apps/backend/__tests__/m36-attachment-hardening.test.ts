@@ -45,13 +45,24 @@ describe("runWithDeadline: the work is aborted, and the caller waits until it ha
   it("a port that ignores the signal is given up on after the grace (no wedge), still as the deadline error", async () => {
     const started = Date.now();
     await expect(
-      runWithDeadline(() => new Promise<never>(() => undefined), 30, () => new Error("deadline"), 40),
+      runWithDeadline(
+        () => new Promise<never>(() => undefined),
+        30,
+        () => new Error("deadline"),
+        40,
+      ),
     ).rejects.toThrow("deadline");
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it("passes a result and a non-deadline error through untouched", async () => {
-    await expect(runWithDeadline(async () => 7, 1_000, () => new Error("deadline"))).resolves.toBe(7);
+    await expect(
+      runWithDeadline(
+        async () => 7,
+        1_000,
+        () => new Error("deadline"),
+      ),
+    ).resolves.toBe(7);
     await expect(
       runWithDeadline(
         async () => {
@@ -140,7 +151,14 @@ describe("the tick: fair shares and independent phase budgets", () => {
     listActiveOrgs: async () =>
       Array.from({ length: n }, (_, i) => ({ organizationId: `org-${i}` })),
   });
-  const zero = { clean: 0, quarantined: 0, deferred: 0, scannerFailures: 0, storeFailures: 0, scanUnavailable: 0 };
+  const zero = {
+    clean: 0,
+    quarantined: 0,
+    deferred: 0,
+    scannerFailures: 0,
+    storeFailures: 0,
+    scanUnavailable: 0,
+  };
 
   it("fairShareMs is the unspent budget over the orgs still to go", () => {
     expect(fairShareMs(30_000, 3)).toBe(10_000);
@@ -163,7 +181,7 @@ describe("the tick: fair shares and independent phase budgets", () => {
           clock += opts?.budgetMs ?? 0; // the org drags until its slice is spent
           return zero;
         },
-        reapOrphansForOrg: async () => ({ reaped: 0, failed: 0 }),
+        reapOrphansForOrg: async () => ({ reaped: 0, failed: 0, skippedLegalHold: 0 }),
       },
     });
     expect(Object.values(slices)).toEqual([10_000, 10_000, 10_000]); // rotation reorders, shares are equal
@@ -182,7 +200,7 @@ describe("the tick: fair shares and independent phase budgets", () => {
           slices.push(opts?.budgetMs ?? -1);
           return zero; // nothing to scan: spends no time
         },
-        reapOrphansForOrg: async () => ({ reaped: 0, failed: 0 }),
+        reapOrphansForOrg: async () => ({ reaped: 0, failed: 0, skippedLegalHold: 0 }),
       },
     });
     expect(slices).toEqual([10_000, 15_000, 30_000]);
@@ -203,7 +221,7 @@ describe("the tick: fair shares and independent phase budgets", () => {
         },
         reapOrphansForOrg: async (_org, opts) => {
           reapSlices.push(opts?.budgetMs ?? -1);
-          return { reaped: 1, failed: 0 };
+          return { reaped: 1, failed: 0, skippedLegalHold: 0 };
         },
       },
     });
@@ -221,7 +239,7 @@ describe("the tick: fair shares and independent phase budgets", () => {
           },
           reapOrphansForOrg: async () => {
             reaped += 1;
-            return { reaped: 1, failed: 0 };
+            return { reaped: 1, failed: 0, skippedLegalHold: 0 };
           },
         },
       }),
@@ -234,10 +252,15 @@ describe("the tick: fair shares and independent phase budgets", () => {
       activeOrgs: orgs(2),
       service: {
         scanPendingForOrg: async () => ({ ...zero, clean: 2, scanUnavailable: 1 }),
-        reapOrphansForOrg: async () => ({ reaped: 3, failed: 1 }),
+        reapOrphansForOrg: async () => ({ reaped: 3, failed: 1, skippedLegalHold: 2 }),
       },
     });
-    expect(out).toEqual({ ...zero, clean: 4, scanUnavailable: 2, reap: { reaped: 6, failed: 2 } });
+    expect(out).toEqual({
+      ...zero,
+      clean: 4,
+      scanUnavailable: 2,
+      reap: { reaped: 6, failed: 2, skippedLegalHold: 4 },
+    });
   });
 });
 

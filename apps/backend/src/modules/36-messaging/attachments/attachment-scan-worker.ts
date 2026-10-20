@@ -51,7 +51,7 @@ export async function attachmentScanTick(
     storeFailures: 0,
     scanUnavailable: 0,
   };
-  const reapTotals = { reaped: 0, failed: 0 };
+  const reapTotals = { reaped: 0, failed: 0, skippedLegalHold: 0 };
   const phase = (
     budgetMs: number,
     job: string,
@@ -98,6 +98,7 @@ export async function attachmentScanTick(
         const reap = await deps.service.reapOrphansForOrg(organizationId, { budgetMs: sliceMs });
         reapTotals.reaped += reap.reaped;
         reapTotals.failed += reap.failed;
+        reapTotals.skippedLegalHold += reap.skippedLegalHold;
       },
     );
   } catch (error) {
