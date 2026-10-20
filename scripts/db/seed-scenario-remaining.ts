@@ -89,7 +89,7 @@ const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-
 const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-structure
 const IPU_FACILITY_ID = "22222222-0000-4000-8000-000000000003"; // Engrace Inpatient Hospice Unit (kind=ipu)
 const SNF_FACILITY_ID = "22222222-0000-4000-8000-000000000002"; // Oakdale Skilled Nursing (arranged care)
-const HOSPICE_MD_ID = "11111111-0000-4000-8000-000000000001"; // Eleanor Whitfield MD (db:seed:mdm)
+const HOSPICE_MD_ID = "11111111-0000-4000-8000-000000000001"; // Samuel Harris MD (db:seed:mdm)
 const nowIso = (): string => new Date().toISOString();
 
 async function membershipIdFor(email: string): Promise<string> {

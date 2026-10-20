@@ -21,7 +21,7 @@ const ADMIN_EMAIL = "admin@wardenx.local";
 const BYPASS_JUSTIFICATION =
   "Local demo seed: synthetic patients on an empty database, no real duplicates to review.";
 
-const PATIENTS = [
+export const PATIENTS = [
   {
     lastName: "Whitfield",
     firstName: "Eleanor",
@@ -209,7 +209,9 @@ async function main(): Promise<void> {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

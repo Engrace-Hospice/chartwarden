@@ -1,9 +1,10 @@
 /**
  * COP27 API seed — demo patients and the referral-only scenario.
  *
- * A demo patient's legal LAST NAME is its marker (`DEMO-COP27-03`) — obviously fake on every census, chart
- * header and claim preview — and the marker is also recorded as a `hospice_external` identifier. (The MRN
- * itself cannot carry the prefix: M5 assigns it at creation and it is immutable.)
+ * A demo patient has a realistic fictional name (see ./names). Its marker (`DEMO-COP27-03`) is the referral's
+ * externalReferralId and is also recorded as a `hospice_external` identifier; re-runs find records by the
+ * marker, never by name. (The MRN itself cannot carry the prefix: M5 assigns it at creation and it is
+ * immutable.)
  *
  * Two ways a demo patient is born, matching how the platform lets each account find it again:
  *   · through intake — a referral (external id = the marker) → create-patient → triage → qualify → accept,
@@ -16,14 +17,16 @@
  */
 import type { SeedContext } from "./context";
 import { asAnyone, must, readAsAnyone } from "./http";
+import { findByMarker, matchesDemoPatient } from "./refind";
 import type { ScenarioRun } from "./run";
 
 export const IDENTIFIER_ISSUER = "WardenX COP27 demo seed (not a real patient)";
 
 export interface DemoPatientSpec {
-  /** `DEMO-COP27-NN` — also the legal last name. */
+  /** `DEMO-COP27-NN` — the externalReferralId and hospice_external identifier, not a name. */
   readonly marker: string;
   readonly firstName: string;
+  readonly lastName: string;
   readonly dob: string;
   readonly sex: "female" | "male";
 }
@@ -45,13 +48,13 @@ interface ReferralDetail {
 }
 
 async function findReferral(ctx: SeedContext, marker: string): Promise<ReferralDetail | null> {
-  const page = await must<{ items: Array<{ id: string; patientNameAtReceipt: string }> }>(
+  const page = await must<{ items: Array<{ id: string; externalReferralId: string | null }> }>(
     "search referrals",
     ctx.admin.client.GET("/api/v1/referrals", {
       params: { query: { q: marker, includeConverted: true, limit: 50 } },
     }),
   );
-  const hit = page.items.find((r) => r.patientNameAtReceipt.endsWith(marker));
+  const hit = findByMarker(page.items, marker);
   if (!hit) return null;
   return must<ReferralDetail>(
     "read referral",
@@ -101,7 +104,7 @@ export async function ensureReferralOnly(
       createReferral(
         ctx,
         spec,
-        `${spec.firstName} ${spec.marker}`,
+        `${spec.firstName} ${spec.lastName}`,
         "end-stage heart failure (NYHA IV), two admissions in 60 days; family requests a hospice evaluation.",
       ),
     (r) => `referral ${r.id} (${r.status})`,
@@ -143,7 +146,7 @@ export async function ensureIntakePatient(
   ctx: SeedContext,
   spec: DemoPatientSpec,
 ): Promise<IntakePatient> {
-  const name = `${spec.firstName} ${spec.marker}`;
+  const name = `${spec.firstName} ${spec.lastName}`;
   let referral = await run.ensure(
     "referral",
     () => findReferral(ctx, spec.marker),
@@ -251,14 +254,18 @@ interface PatientListItem {
 }
 
 /** Find a directly-created demo patient with whichever account has census scope over it. */
-async function searchPatient(ctx: SeedContext, marker: string): Promise<DemoPatient | null> {
+async function searchPatient(ctx: SeedContext, spec: DemoPatientSpec): Promise<DemoPatient | null> {
   for (const s of ctx.sessions) {
-    const page = await must<{ items: PatientListItem[] }>(
-      "search patients",
-      s.client.GET("/api/v1/patients", { params: { query: { q: marker, limit: 20 } } }),
-    );
-    const hit = page.items.find((p) => p.lastName === marker);
-    if (hit) return { id: hit.id, marker, displayName: `${hit.firstName} ${hit.lastName}` };
+    // The marker query finds a patient created by the earlier scheme (marker as legal last name).
+    for (const q of [spec.lastName, spec.marker]) {
+      const page = await must<{ items: PatientListItem[] }>(
+        "search patients",
+        s.client.GET("/api/v1/patients", { params: { query: { q, limit: 20 } } }),
+      );
+      const hit = page.items.find((p) => matchesDemoPatient(p, spec));
+      if (hit)
+        return { id: hit.id, marker: spec.marker, displayName: `${hit.firstName} ${hit.lastName}` };
+    }
   }
   return null;
 }
@@ -278,12 +285,12 @@ export async function ensureDirectPatient(
   }
   const patient = await run.ensure(
     "patient",
-    () => searchPatient(ctx, spec.marker),
+    () => searchPatient(ctx, spec),
     async () => {
       await asAnyone("create patient", [physician], (s) =>
         s.client.POST("/api/v1/patients", {
           body: {
-            lastName: spec.marker,
+            lastName: spec.lastName,
             firstName: spec.firstName,
             dob: spec.dob,
             administrativeSex: spec.sex,
@@ -291,8 +298,9 @@ export async function ensureDirectPatient(
           },
         }),
       );
-      const created = await searchPatient(ctx, spec.marker);
-      if (!created) throw new Error(`patient ${spec.marker} not found after create`);
+      const created = await searchPatient(ctx, spec);
+      if (!created)
+        throw new Error(`patient ${spec.marker} (${spec.lastName}) not found after create`);
       return created;
     },
     (p) => `patient ${p.id}`,

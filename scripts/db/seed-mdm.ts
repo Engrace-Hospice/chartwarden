@@ -6,7 +6,8 @@
  * that the merge-redirect + per-tenant overlay read paths resolve. In production these come from the
  * NPPES nightly sync (M29) + platform-ops; this seeds a handful by hand for manual UI verification.
  *
- * Idempotent: fixed ids + ON CONFLICT (id) DO NOTHING. Inserted under `session_replication_role =
+ * Idempotent: fixed ids + ON CONFLICT (id) DO NOTHING (facilities, payers). The 5 fixed physician ids use
+ * DO UPDATE on the name fields so a reseed renames rows seeded under older demo names (those ids only). Inserted under `session_replication_role =
  * replica` (skip audit triggers + RI), same pattern as the other scripts/db seeds. The payer table
  * also carries the Medicare/Medicaid reference rows from db:seed — these are additive demo payers.
  *
@@ -17,12 +18,14 @@ import { Client } from "pg";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 
 // Fixed ids (1111…/2222…/3333… prefixes) so re-runs are stable and easy to identify/clear.
-const PHYSICIANS = [
+// Names are fictional and match no patient, COP27 patient or staff persona (scripts/__tests__/seed-demo-names.test.ts);
+// #1 is the hospice ordering/prescribing MD, the same person as persona Dr. Sam Harris.
+export const PHYSICIANS = [
   [
     "11111111-0000-4000-8000-000000000001",
     "1003000001",
-    "Eleanor",
-    "Whitfield",
+    "Samuel",
+    "Harris",
     "MD",
     false,
     "207RH0003X",
@@ -33,7 +36,7 @@ const PHYSICIANS = [
     "11111111-0000-4000-8000-000000000002",
     "1003000002",
     "Marcus",
-    "Delgado",
+    "Tillman",
     "DO",
     false,
     "207RC0000X",
@@ -43,8 +46,8 @@ const PHYSICIANS = [
   [
     "11111111-0000-4000-8000-000000000003",
     "1003000003",
-    "Priya",
-    "Nair",
+    "Imani",
+    "Calloway",
     "NP",
     true,
     "363L00000X",
@@ -54,8 +57,8 @@ const PHYSICIANS = [
   [
     "11111111-0000-4000-8000-000000000004",
     "1003000004",
-    "Samuel",
-    "Okonkwo",
+    "Theodore",
+    "Lindgren",
     "MD",
     false,
     "2084N0400X",
@@ -65,8 +68,8 @@ const PHYSICIANS = [
   [
     "11111111-0000-4000-8000-000000000005",
     "1003000005",
-    "Hannah",
-    "Berg",
+    "Greta",
+    "Sorensen",
     "NP",
     true,
     "363LX0001X",
@@ -146,7 +149,8 @@ async function main(): Promise<void> {
          (id, npi, first_name, last_name, credentials, is_np, specialty_taxonomy, license_states,
           primary_address, contact_methods, status, merged_from, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'[]'::jsonb,'active','{}',now(),now())
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name, credentials = EXCLUDED.credentials, updated_at = now()`,
       [id, npi, first, last, creds, isNp, taxonomy, states, JSON.stringify(addr)],
     );
   }
@@ -178,7 +182,9 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
