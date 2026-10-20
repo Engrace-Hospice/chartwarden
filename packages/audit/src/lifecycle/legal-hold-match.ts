@@ -20,6 +20,29 @@ export interface LegalHoldCriteriaShape {
   readonly patientIds?: readonly string[];
   readonly dateRange?: { readonly from: string; readonly to: string };
   readonly resourceKinds?: readonly string[];
+  /** Messaging selectors (ADR-0086 (proposed), WP 5.6): hold these M36 channels / these users' messages. They name
+   *  no `audit_event` row, so a hold carrying ONLY these (plus, optionally, a dateRange) covers no audit group. */
+  readonly channelIds?: readonly string[];
+  readonly userIds?: readonly string[];
+  /** Provenance marker (`messaging_governance`), NOT a selector: it never widens or narrows a hold. */
+  readonly origin?: string;
+}
+
+/** `criteria.origin` of a hold placed through M36's governance apply route (mirrors MESSAGING_GOVERNANCE_HOLD_ORIGIN in
+ *  @wardenx/types, which this package cannot import; a backend test pins the two equal). */
+export const MESSAGING_GOVERNANCE_ORIGIN_MARKER = "messaging_governance";
+
+/** True when a hold protects messages only: it neither covers an audit row-group nor reads as org-wide to a non-messaging
+ *  reader (M10 HOPE retention, M34 legalHoldClear's patient scope). That is (a) messaging selectors (`channelIds`/`userIds`)
+ *  and no audit selector, or (b) a governance-marked hold with NO `patientIds` (the org-wide governance hold is stored as
+ *  `{resourceKinds:["message"], origin}`; "message" names no audit resource). A governance hold WITH `patientIds` stays
+ *  patient-scoped: it legitimately holds that patient's other records too. */
+export function isMessagingOnlyCriteria(criteria: unknown): boolean {
+  const c = (criteria ?? {}) as LegalHoldCriteriaShape;
+  const noPatients = (c.patientIds?.length ?? 0) === 0;
+  if (c.origin === MESSAGING_GOVERNANCE_ORIGIN_MARKER && noPatients) return true;
+  const messaging = (c.channelIds?.length ?? 0) > 0 || (c.userIds?.length ?? 0) > 0;
+  return messaging && noPatients && (c.resourceKinds?.length ?? 0) === 0;
 }
 
 const toMs = (iso: string): number => Date.parse(iso);
@@ -38,6 +61,7 @@ export function holdCoversGroup(criteria: unknown, input: EraseInput): boolean {
   const hasKinds = (c.resourceKinds?.length ?? 0) > 0;
   const hasRange = c.dateRange !== undefined && c.dateRange !== null;
   if (!hasPatients && !hasKinds && !hasRange) return false;
+  if (isMessagingOnlyCriteria(c)) return false;
 
   if (hasPatients) {
     const listed = c.patientIds as readonly string[];

@@ -12583,7 +12583,7 @@ export interface paths {
         /** List legal holds (cursor-paginated, §4.2) */
         get: operations["getApiV1Legalholds"];
         put?: never;
-        /** Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given */
+        /** Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds) */
         post: operations["postApiV1Legalholds"];
         delete?: never;
         options?: never;
@@ -12600,7 +12600,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Release a legal hold (§10.6) */
+        /** Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED) */
         post: operations["postApiV1LegalholdsByIdRelease"];
         delete?: never;
         options?: never;
@@ -14691,6 +14691,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/governance/legal-holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached */
+        get: operations["getApiV1MessagingGovernanceLegalholds"];
+        put?: never;
+        /** Compliance officer: place a legal hold on messages (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.apply`, else 403 STEP_UP_REQUIRED). Name channels, users and/or patients, or hold the whole organisation (org_wide, alone); a reason of at least 10 characters is required (422). Written through M4's seam in one transaction: the hold, its data.legal_hold_applied audit row with the reason, the m4.legal_hold.applied outbox event and a bounded materialisation of the per-message overlay (the weekly scan covers any remainder; enforcement also reads the live criteria). A held message cannot be edited (409 MESSAGE_UNDER_LEGAL_HOLD) */
+        post: operations["postApiV1MessagingGovernanceLegalholds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/legal-holds/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock */
+        post: operations["postApiV1MessagingGovernanceLegalholdsByIdRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/legal-holds/{id}/release-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance officer: what releasing a hold would do (messaging.retention.manage): held_messages and eligible_on_release (past their retention window and held by no other active hold). Another tenant's or an unknown hold is 404. Read-audited. Not cached */
+        get: operations["getApiV1MessagingGovernanceLegalholdsByIdReleasepreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/governance/offboarding/{userId}": {
         parameters: {
             query?: never;
@@ -14719,6 +14771,23 @@ export interface paths {
         put?: never;
         /** Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only */
         post: operations["postApiV1MessagingGovernanceOffboardingByUserIdExecute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached */
+        get: operations["getApiV1MessagingGovernanceRetention"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -61799,6 +61868,9 @@ export interface operations {
                                     to: string;
                                 };
                                 resourceKinds?: string[];
+                                channelIds?: string[];
+                                userIds?: string[];
+                                origin?: string;
                             };
                             status: "active" | "released";
                             reason: string;
@@ -61835,6 +61907,9 @@ export interface operations {
                             to: string;
                         };
                         resourceKinds?: string[];
+                        channelIds?: string[];
+                        userIds?: string[];
+                        origin?: string;
                     };
                     reason: string;
                 };
@@ -68510,6 +68585,164 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingGovernanceLegalholds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        holds: {
+                            id: string;
+                            name: string;
+                            status: "active" | "released";
+                            scope: {
+                                channel_ids: string[];
+                                user_ids: string[];
+                                patient_ids: string[];
+                                org_wide: boolean;
+                            };
+                            placed_by: string;
+                            placed_at: string;
+                            released_at: string | null;
+                            held_messages: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceLegalholds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    reason: string;
+                    channel_ids?: string[];
+                    user_ids?: string[];
+                    patient_ids?: string[];
+                    org_wide?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        status: "active" | "released";
+                        scope: {
+                            channel_ids: string[];
+                            user_ids: string[];
+                            patient_ids: string[];
+                            org_wide: boolean;
+                        };
+                        placed_by: string;
+                        placed_at: string;
+                        released_at: string | null;
+                        held_messages: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceLegalholdsByIdRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    confirmed_eligible_count: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        status: "active" | "released";
+                        scope: {
+                            channel_ids: string[];
+                            user_ids: string[];
+                            patient_ids: string[];
+                            org_wide: boolean;
+                        };
+                        placed_by: string;
+                        placed_at: string;
+                        released_at: string | null;
+                        held_messages: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceLegalholdsByIdReleasepreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        hold_id: string;
+                        held_messages: number;
+                        eligible_on_release: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingGovernanceOffboardingByUserId: {
         parameters: {
             query?: never;
@@ -68577,6 +68810,44 @@ export interface operations {
                         total: number;
                         complete: boolean;
                         blocked_by: ("sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        classes: {
+                            class: "care_related" | "bereavement" | "operational";
+                            period_years: number;
+                            /** @constant */
+                            source: "platform_default";
+                            eligible: number | null;
+                            held: number | null;
+                            capped: boolean;
+                            certificate_id: string | null;
+                            certificate_status: string | null;
+                        }[];
+                        next_scan_at: string;
+                        last_scan_at: string | null;
+                        /** @constant */
+                        destruction_built: false;
                     };
                 };
             };

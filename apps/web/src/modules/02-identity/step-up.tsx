@@ -5,6 +5,7 @@ import { StepUpCard } from "@wardenx/ui";
 // same-origin `?returnTo` guard) lives in the shared kit's StepUpCard (packages/ui), so the platform-ops
 // console runs the same implementation; this route only supplies the tenant app's brand and footer.
 import type { JSX } from "react";
+import { markStepUpReturn } from "../../shell/step-up-redirect";
 
 export function StepUp(): JSX.Element {
   return (
@@ -13,6 +14,7 @@ export function StepUp(): JSX.Element {
       footer={<a href="/login">Sign in as someone else</a>}
       signInPath="/login"
       enrolPasskeyPath="/security/passkeys"
+      onVerified={markStepUpReturn}
     />
   );
 }

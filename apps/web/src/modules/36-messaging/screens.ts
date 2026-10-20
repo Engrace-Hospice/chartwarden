@@ -32,6 +32,9 @@ const SessionGovernance = lazy(() =>
 const OffboardingWorkflow = lazy(() =>
   import("./offboarding-workflow").then((m) => ({ default: m.OffboardingWorkflow })),
 );
+const RetentionGovernance = lazy(() =>
+  import("./retention-governance").then((m) => ({ default: m.RetentionGovernance })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -100,6 +103,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       title: "Offboarding",
       requiredPermission: "messaging.offboarding.manage",
       screen: OffboardingWorkflow,
+    },
+    {
+      // WP 5.6 (ADR-0086, proposed): per-class retention view and the legal-hold list (place, release). The scan is plan-only; destruction is not built.
+      id: "messaging.retention",
+      path: "/messaging/governance/retention",
+      title: "Retention and legal holds",
+      navGroup: "Admin",
+      requiredPermission: "messaging.retention.manage",
+      screen: RetentionGovernance,
     },
     {
       id: "messaging.saved-replies",

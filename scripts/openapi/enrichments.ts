@@ -1423,6 +1423,15 @@ import {
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 // M36 WP 5.9 workforce offboarding (ADR-0084, PROPOSED).
 import { OffboardingResponseSchema as M36OffboardingResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/offboarding-typebox";
+// M36 WP 5.6 retention and legal-hold governance (ADR-0086, PROPOSED).
+import {
+  ApplyHoldBodySchema as M36ApplyHoldBodySchema,
+  HoldListResponseSchema as M36HoldListResponseSchema,
+  HoldResponseSchema as M36HoldResponseSchema,
+  ReleaseHoldBodySchema as M36ReleaseHoldBodySchema,
+  ReleasePreviewResponseSchema as M36ReleasePreviewResponseSchema,
+  RetentionOverviewResponseSchema as M36RetentionOverviewResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/retention-governance-typebox";
 // M36 WP 4.12 on-call directory.
 import {
   OnCallCoverageQuerySchema as M36OnCallCoverageQuerySchema,
@@ -6812,12 +6821,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M4ELegalHoldListResponseSchema,
   },
   "POST /api/v1/legal-holds": {
-    summary: "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+    summary:
+      "Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds)",
     body: M4ECreateLegalHoldBodySchema,
     response: M4ECreateLegalHoldResponseSchema,
   },
   "POST /api/v1/legal-holds/:id/release": {
-    summary: "Release a legal hold (§10.6)",
+    summary: "Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED)",
     body: M4EReleaseLegalHoldBodySchema,
     response: M4EReleaseLegalHoldResponseSchema,
   },
@@ -10152,6 +10162,36 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
     response: M36OffboardingResponseSchema,
+  },
+
+  // message retention and legal hold (WP 5.6, ADR-0086 PROPOSED)
+  "GET /api/v1/messaging/governance/retention": {
+    summary:
+      "Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached",
+    response: M36RetentionOverviewResponseSchema,
+  },
+  "GET /api/v1/messaging/governance/legal-holds": {
+    summary:
+      "Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached",
+    response: M36HoldListResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/legal-holds": {
+    summary:
+      "Compliance officer: place a legal hold on messages (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.apply`, else 403 STEP_UP_REQUIRED). Name channels, users and/or patients, or hold the whole organisation (org_wide, alone); a reason of at least 10 characters is required (422). Written through M4's seam in one transaction: the hold, its data.legal_hold_applied audit row with the reason, the m4.legal_hold.applied outbox event and a bounded materialisation of the per-message overlay (the weekly scan covers any remainder; enforcement also reads the live criteria). A held message cannot be edited (409 MESSAGE_UNDER_LEGAL_HOLD)",
+    body: M36ApplyHoldBodySchema,
+    response: M36HoldResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/governance/legal-holds/:id/release-preview": {
+    summary:
+      "Compliance officer: what releasing a hold would do (messaging.retention.manage): held_messages and eligible_on_release (past their retention window and held by no other active hold). Another tenant's or an unknown hold is 404. Read-audited. Not cached",
+    response: M36ReleasePreviewResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/legal-holds/:id/release": {
+    summary:
+      "Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock",
+    body: M36ReleaseHoldBodySchema,
+    response: M36HoldResponseSchema,
   },
 
   // alerts (§4.2)

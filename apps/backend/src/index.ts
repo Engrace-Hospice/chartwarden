@@ -360,6 +360,11 @@ import {
 } from "./modules/04-audit/jobs/audit-ops-workers";
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
+import {
+  activeLegalHolds,
+  createMessagingGovernanceHoldPort,
+  openMessageCertificate,
+} from "./modules/04-audit/messaging-hold-workflow";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
@@ -1516,6 +1521,7 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { countHoldOverlayMessages } from "./modules/36-messaging/jobs/retention-hold-sql";
 import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
@@ -4706,7 +4712,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               userLimiter: auditorLimiter("auditor-enrol:user", 30),
             });
           }
-          mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
+          mountAuditRoutes(app, dbHandle.db, {
+            outbox: m4OutboxPublisher,
+            countGovernanceOverlay: countHoldOverlayMessages,
+          }); // M4 — audit-log search + GAP-003 compliance surface
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
           // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.
@@ -4952,6 +4961,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            // WP 5.6 (ADR-0086) - retention overview and legal holds: M4's hold seam (apply/release in the caller's tx) and the audit reader.
+            retentionGovernance: {
+              holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
+              auditQuery: createDbAuditQuery(dbHandle.db),
+            },
             globalSearch: {
               keys: m36SearchKeys,
               ...(m36NameExclusions ? { exclusions: m36NameExclusions } : {}),
@@ -5052,10 +5066,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
               provisionJobs: m34PlatformEnqueue.provisionJobs,
-              // Any active hold (org-wide or patient-scoped) blocks destroying the tenant's key.
+              // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
               legalHoldClear: async (organizationId) => {
                 const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
-                return !scope.orgWide && scope.patientIds.size === 0;
+                return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
               },
               ...(m34ProvisionGateway
                 ? { invitationDelivery: m34ProvisionGateway.invitation }
@@ -9258,8 +9272,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         connection: queueConnection,
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
-        holdScopeForOrg: (organizationId) =>
-          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+        messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
         activeOrgs: m36IntegrityOrgs,
         onError: (context, err) => app.log.error({ ...context, err }, "M36 integrity job error"),
       });

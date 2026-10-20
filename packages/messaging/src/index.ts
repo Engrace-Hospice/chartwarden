@@ -73,6 +73,7 @@ export {
   MESSAGING_JOB_SCHEDULES,
   runHashVerify,
   planRetentionDestruction,
+  messageHeldBy,
   buildDlqAuditRecord,
   createInMemoryHashVerifyPorts,
 } from "./jobs";
@@ -86,6 +87,8 @@ export type {
   HashVerifyRunResult,
   RetentionCandidate,
   RetentionScanPlan,
+  MessageHoldCriteria,
+  MessageHoldFacts,
   DlqLanding,
   DlqAuditRecord,
 } from "./jobs";

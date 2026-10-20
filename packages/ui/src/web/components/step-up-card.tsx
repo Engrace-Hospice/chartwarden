@@ -104,6 +104,8 @@ export interface StepUpCardProps {
    * (the initiate call answers `*_NOT_ENROLLED`), the card links there with a `returnTo` back to this step-up.
    */
   enrolPasskeyPath?: string;
+  /** Called with the `returnTo` path once freshness is recorded, just before the card navigates there. */
+  onVerified?: (returnTo: string) => void;
 }
 
 /** The `{ error: { code } }` envelope's code, or null. */
@@ -119,6 +121,7 @@ export function StepUpCard({
   footer,
   signInPath = "/login",
   enrolPasskeyPath,
+  onVerified,
 }: StepUpCardProps): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -192,6 +195,7 @@ export function StepUpCard({
       setCode("");
       return;
     }
+    onVerified?.(returnTo);
     navigate(returnTo); // freshness recorded — resume the action that required step-up
   }
 
@@ -258,6 +262,7 @@ export function StepUpCard({
       setError("That passkey didn’t verify. Try again, or use an authenticator code.");
       return;
     }
+    onVerified?.(returnTo);
     navigate(returnTo); // freshness recorded — resume the action that required step-up
   }
 

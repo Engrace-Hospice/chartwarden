@@ -110,6 +110,7 @@ import {
   type SnoozeReminderRouteDeps,
   registerSnoozeReminderRoutes,
 } from "./snooze-reminder-routes";
+import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
   DISABLED_UNACKNOWLEDGED,
@@ -641,14 +642,16 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const rich = resolveRichWrite(body);
     await assertSbarFlag(request, sbarDeps, rich?.richBody);
     const clinicalLinks = await validateRichBodyLinks(request, clinicalLinkDeps, rich?.richBody);
-    return service.editMessage(organizationId, {
-      userId,
-      messageId: id,
-      body: rich?.plainText ?? body.body ?? "",
-      richBody: rich?.richBody,
-      references: rich ? rich.references : body.references,
-      clinicalLinks,
-    });
+    return rejectIfUnderLegalHold(() =>
+      service.editMessage(organizationId, {
+        userId,
+        messageId: id,
+        body: rich?.plainText ?? body.body ?? "",
+        richBody: rich?.richBody,
+        references: rich ? rich.references : body.references,
+        clinicalLinks,
+      }),
+    );
   });
 
   // --- soft-delete a message (author check in the service) -----------------------------------

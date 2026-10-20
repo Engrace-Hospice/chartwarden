@@ -324,6 +324,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "step_up_override.manage",
       // GAP-010: the compliance officer may reveal a stored SSN (M5 spec 4.7); the single source is ssn-grants.ts.
       "phi.read_ssn",
+      // WP 5.6 (ADR-0086): migration 1138 grants this to EXISTING compliance_officer roles; this entry gives NEW tenants the same
+      // (administrator / org_admin get it through the non-platform catalog, the mirror in permissions/contributed.ts).
+      "messaging.retention.manage",
     ],
   },
   {
