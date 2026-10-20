@@ -25,6 +25,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { messageBodySha256 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { isLegalHoldViolation } from "../governance/under-hold";
 import type { MessageBodyCipher } from "../messaging-write-core";
 
 const MSG = schema.messages;
@@ -89,6 +90,8 @@ export interface TableBackfillCounts {
   readonly migrated: number;
   readonly wouldMigrate: number;
   readonly skippedConcurrent: number;
+  /** Held by an active legal hold (migration 1138 guard): left on the legacy envelope, so `complete` stays false until the hold is released. */
+  readonly skippedLegalHold: number;
   readonly hashMismatch: number;
   readonly failed: number;
 }
@@ -116,6 +119,7 @@ const zeroCounts = (): TableBackfillCounts => ({
   migrated: 0,
   wouldMigrate: 0,
   skippedConcurrent: 0,
+  skippedLegalHold: 0,
   hashMismatch: 0,
   failed: 0,
 });
@@ -208,7 +212,13 @@ async function nextBatch(
   });
 }
 
-type Outcome = "migrated" | "wouldMigrate" | "skippedConcurrent" | "hashMismatch" | "failed";
+type Outcome =
+  | "migrated"
+  | "wouldMigrate"
+  | "skippedConcurrent"
+  | "skippedLegalHold"
+  | "hashMismatch"
+  | "failed";
 
 async function resealRow(
   tx: Tx,
@@ -242,18 +252,27 @@ async function resealRow(
   }
   if (dryRun) return "wouldMigrate";
   if (table === "message") {
-    const swapped = await tx
-      .update(MSG)
-      .set({ bodyCipher: sealed })
-      .where(
-        and(
-          eq(MSG.organizationId, organizationId),
-          eq(MSG.id, row.id),
-          sql`${MSG.bodyCipher} = ${row.bodyCipher}`,
-        ),
-      )
-      .returning({ id: MSG.id });
-    return swapped.length === 1 ? "migrated" : "skippedConcurrent";
+    try {
+      // A savepoint per row: migration 1138's guard raises 23001 for a message under an active legal hold, and an unguarded
+      // error would abort the whole batch transaction (and, being legacy forever, every later run).
+      const swapped = await tx.transaction((sp) =>
+        sp
+          .update(MSG)
+          .set({ bodyCipher: sealed })
+          .where(
+            and(
+              eq(MSG.organizationId, organizationId),
+              eq(MSG.id, row.id),
+              sql`${MSG.bodyCipher} = ${row.bodyCipher}`,
+            ),
+          )
+          .returning({ id: MSG.id }),
+      );
+      return swapped.length === 1 ? "migrated" : "skippedConcurrent";
+    } catch (err) {
+      if (isLegalHoldViolation(err)) return "skippedLegalHold";
+      throw err;
+    }
   }
   // Revisions and poll options are append-only for the app role: the re-seal runs on the dedicated backfill credential
   // (migrations 1090 / 1094), through one audited SECURITY DEFINER function per table.
@@ -422,6 +441,7 @@ function tally(outcomes: readonly Outcome[]): Omit<TableBackfillCounts, "scanned
     migrated: n("migrated"),
     wouldMigrate: n("wouldMigrate"),
     skippedConcurrent: n("skippedConcurrent"),
+    skippedLegalHold: n("skippedLegalHold"),
     hashMismatch: n("hashMismatch"),
     failed: n("failed"),
   };
@@ -437,6 +457,7 @@ function addCounts(
     migrated: prev.migrated + t.migrated,
     wouldMigrate: prev.wouldMigrate + t.wouldMigrate,
     skippedConcurrent: prev.skippedConcurrent + t.skippedConcurrent,
+    skippedLegalHold: prev.skippedLegalHold + t.skippedLegalHold,
     hashMismatch: prev.hashMismatch + t.hashMismatch,
     failed: prev.failed + t.failed,
   };

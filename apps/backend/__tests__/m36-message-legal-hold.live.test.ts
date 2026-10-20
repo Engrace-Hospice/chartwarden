@@ -14,8 +14,11 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
-import { DegradedError } from "@wardenx/types";
+import { withOrgContext } from "@wardenx/tenancy";
+import { DegradedError, messagingHoldLockName } from "@wardenx/types";
+import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { applyLegalHoldInTx } from "../src/modules/04-audit/messaging-hold-workflow";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { type LiveKit, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";
 
@@ -51,7 +54,11 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
       return { error: null, code: null, rows: res.rows as Record<string, unknown>[] };
     } catch (err) {
       await conn.query("ROLLBACK");
-      return { error: (err as Error).message, code: (err as { code?: string }).code ?? null, rows: [] };
+      return {
+        error: (err as Error).message,
+        code: (err as { code?: string }).code ?? null,
+        rows: [],
+      };
     }
   };
 
@@ -101,9 +108,10 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     const ins = await hold(m);
     expect(ins.error).toBeNull();
     const id = ins.rows[0].id as string;
-    expect((await asRole("app", "UPDATE legal_hold_message SET held_at = now() WHERE id=$1", [id])).error).toMatch(
-      /permission denied/,
-    );
+    expect(
+      (await asRole("app", "UPDATE legal_hold_message SET held_at = now() WHERE id=$1", [id]))
+        .error,
+    ).toMatch(/permission denied/);
     expect((await asRole("app", "DELETE FROM legal_hold_message WHERE id=$1", [id])).error).toMatch(
       /permission denied/,
     );
@@ -114,8 +122,12 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
   it("another organisation reads nothing and cannot write an overlay row against this organisation's message", async () => {
     const m = await mkMessage();
     await hold(m);
-    expect((await asRole("app", "SELECT id FROM legal_hold_message", [], ORG_B)).rows).toHaveLength(0);
-    expect((await asRole("app", "SELECT id FROM legal_hold_message WHERE message_id=$1", [m])).rows).toHaveLength(1);
+    expect((await asRole("app", "SELECT id FROM legal_hold_message", [], ORG_B)).rows).toHaveLength(
+      0,
+    );
+    expect(
+      (await asRole("app", "SELECT id FROM legal_hold_message WHERE message_id=$1", [m])).rows,
+    ).toHaveLength(1);
     const forged = await asRole(
       "app",
       "INSERT INTO legal_hold_message (organization_id, legal_hold_id, message_id) VALUES ($1,$2,$3)",
@@ -123,7 +135,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
       ORG_B,
     );
     expect(forged.error, "forged").toMatch(/foreign key|row-level security/i);
-    expect((await asRole("destruction", "SELECT id FROM legal_hold_message", [], ORG_B)).rows).toHaveLength(0);
+    expect(
+      (await asRole("destruction", "SELECT id FROM legal_hold_message", [], ORG_B)).rows,
+    ).toHaveLength(0);
   });
 
   it("refuses DELETE and a body_cipher UPDATE of a held message with 23001, and lets an unheld one through", async () => {
@@ -136,13 +150,19 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     expect(del.error).toMatch(/active legal hold/);
     expect((await asRole("destruction", SHRED, [held])).code).toBe(HELD_ERRCODE);
     // The tenant's own edit (a body_cipher rewrite by the app role) is refused the same way.
-    expect((await asRole("app", "UPDATE message SET body_cipher = '\\x03'::bytea WHERE id=$1", [held])).code).toBe(
-      HELD_ERRCODE,
-    );
+    expect(
+      (await asRole("app", "UPDATE message SET body_cipher = '\\x03'::bytea WHERE id=$1", [held]))
+        .code,
+    ).toBe(HELD_ERRCODE);
     // A column the guard does not watch still changes (soft-delete bookkeeping is not a body rewrite).
     expect(
-      (await asRole("app", "UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1 RETURNING id", [held]))
-        .error,
+      (
+        await asRole(
+          "app",
+          "UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1 RETURNING id",
+          [held],
+        )
+      ).error,
     ).toBeNull();
     // The unheld message in the same organisation is untouched by the guard.
     expect((await asRole("destruction", SHRED, [free])).rows).toHaveLength(0);
@@ -197,7 +217,11 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
         [ORG_A, author],
       )
     )[0].id;
-    expect(await kit.count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [bare])).toBe(0);
+    expect(
+      await kit.count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [
+        bare,
+      ]),
+    ).toBe(0);
     const store = createDrizzleMessagingEraseStore(kit.handle.db);
     await expect(store.destroyTenantDek(ORG_A)).rejects.toBeInstanceOf(DegradedError);
     await expect(store.deleteStructuralRows(ORG_A)).rejects.toBeInstanceOf(DegradedError);
@@ -220,9 +244,153 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     expect((await asRole("destruction", `${DELETE} RETURNING id`, [m])).rows).toHaveLength(1);
   });
 
-  it("registers messaging.retention.manage in the permission table (compliance category)", async () => {
-    expect(await kit.one("SELECT category, resource, action FROM permission WHERE key='messaging.retention.manage'")).toEqual([
-      { category: "compliance", resource: "message_retention", action: "manage" },
+  it("an edit of a message covered by an active hold with NO overlay row is refused 409 MESSAGE_UNDER_LEGAL_HOLD (live predicate, not only the overlay)", async () => {
+    await setHoldStatus("released");
+    const held = await mkChannel(kit, "care_team", "aaaaaaaa-aaaa-4aaa-8aaa-0000000a86a2", [
+      author,
     ]);
+    const other = await mkChannel(kit, "care_team", "aaaaaaaa-aaaa-4aaa-8aaa-0000000a86a3", [
+      author,
+    ]);
+    const hold = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+         VALUES ($1, 'wp56-edit-lag', $2::jsonb, 'hold placed before the message exists', $3) RETURNING id`,
+        [ORG_A, JSON.stringify({ channelIds: [held] }), author],
+      )
+    )[0].id;
+    // Posted AFTER the hold was applied: no scan has run, so there is no overlay row.
+    const posted = await kit.service.sendMessage(ORG_A, {
+      channelId: held,
+      authorUserId: author,
+      body: "before",
+    });
+    const free = await kit.service.sendMessage(ORG_A, {
+      channelId: other,
+      authorUserId: author,
+      body: "before",
+    });
+    expect(
+      await kit.count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [
+        hold,
+      ]),
+    ).toBe(0);
+    await expect(
+      kit.service.editMessage(ORG_A, {
+        userId: author,
+        messageId: posted.messageId,
+        body: "after",
+      }),
+    ).rejects.toMatchObject({ code: "MESSAGE_UNDER_LEGAL_HOLD", statusCode: 409 });
+    // A message the hold does not cover still edits; and the held one edits once the hold is released.
+    await expect(
+      kit.service.editMessage(ORG_A, { userId: author, messageId: free.messageId, body: "after" }),
+    ).resolves.toBeDefined();
+    await kit.one("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [hold]);
+    await expect(
+      kit.service.editMessage(ORG_A, {
+        userId: author,
+        messageId: posted.messageId,
+        body: "after",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  const HOLD_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
+  const stillPending = async (p: Promise<unknown>): Promise<boolean> => {
+    let done = false;
+    p.then(
+      () => {
+        done = true;
+      },
+      () => {
+        done = true;
+      },
+    );
+    await new Promise((r) => setTimeout(r, 600));
+    return !done;
+  };
+
+  it("ERASER RACE (barriered): a hold applied concurrently with the erase makes the erase wait, then refuse; nothing is destroyed through the gap", async () => {
+    await setHoldStatus("released");
+    const m = await mkMessage();
+    const rival = new Client({ connectionString: DB_URL });
+    await rival.connect();
+    try {
+      // The apply is in flight: it holds the hold lock EXCLUSIVELY and its active row is not yet visible to anyone else.
+      await rival.query("BEGIN");
+      await rival.query(HOLD_LOCK, [messagingHoldLockName(ORG_A)]);
+      const racing = (
+        await rival.query(
+          `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+           VALUES ($1,'wp56-race','{"channelIds":[]}'::jsonb,'hold racing the erase',$2) RETURNING id`,
+          [ORG_A, author],
+        )
+      ).rows[0].id as string;
+      const erase = createDrizzleMessagingEraseStore(kit.handle.db).destroyTenantDek(ORG_A);
+      expect(
+        await stillPending(erase),
+        "the erase must wait for the in-flight apply, not race it",
+      ).toBe(true);
+      await rival.query("COMMIT");
+      await expect(erase).rejects.toBeInstanceOf(DegradedError);
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message WHERE id=$1 AND octet_length(body_cipher) > 0",
+          [m],
+        ),
+      ).toBe(1);
+      await kit.one("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [
+        racing,
+      ]);
+    } finally {
+      await rival.end();
+    }
+  });
+
+  it("APPLY RACE (barriered): applying a hold waits for an in-flight erase transaction (shared hold lock), then commits", async () => {
+    await setHoldStatus("released");
+    const eraserTx = new Client({ connectionString: DB_URL });
+    await eraserTx.connect();
+    try {
+      await eraserTx.query("BEGIN");
+      await eraserTx.query("SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))", [
+        messagingHoldLockName(ORG_A),
+      ]);
+      const applying = withOrgContext(
+        kit.handle.db as never,
+        { organizationId: ORG_A, userId: author },
+        (tx) =>
+          applyLegalHoldInTx(
+            tx as never,
+            {},
+            { organizationId: ORG_A, userId: author, correlationId: "wp56-apply-race" },
+            {
+              organizationId: ORG_A,
+              userId: author,
+              name: "wp56-apply-race",
+              criteria: { channelIds: [channel] },
+              reason: "apply must wait for the erase",
+              matchedRecordCount: 0,
+            },
+          ),
+      );
+      expect(await stillPending(applying), "apply must wait for the in-flight erase").toBe(true);
+      await eraserTx.query("COMMIT");
+      const row = (await applying) as { id: string };
+      await kit.one("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [
+        row.id,
+      ]);
+    } finally {
+      await eraserTx.end();
+    }
+  });
+
+  it("registers messaging.retention.manage in the permission table (compliance category)", async () => {
+    expect(
+      await kit.one(
+        "SELECT category, resource, action FROM permission WHERE key='messaging.retention.manage'",
+      ),
+    ).toEqual([{ category: "compliance", resource: "message_retention", action: "manage" }]);
   });
 });

@@ -89,6 +89,7 @@ import { type AuditExecutor, type NewAuditEvent, createDbAuditQuery } from "@war
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyInstance } from "fastify";
+import type { GovernanceOverlayCounter } from "./messaging-hold-workflow";
 import { registerAuditExportsRoutes as _registerAuditExportsRoutes } from "./routes/audit-exports";
 import { registerAuditIntegrityRoutes as _registerAuditIntegrityRoutes } from "./routes/audit-integrity";
 import { registerAuditRoutes as _registerAuditRoutes } from "./routes/audit-routes";
@@ -103,6 +104,8 @@ export interface MountAuditRoutesOptions {
    *  module's outbox binding: absent ⇒ legal-hold mutations still commit, only the
    *  `m4.legal_hold.applied`/`released` notification is skipped. */
   readonly outbox?: M4OutboxPort;
+  /** M36's materialised-overlay counter, so M4's release route reports a messaging-governance hold's message count. */
+  readonly countGovernanceOverlay?: GovernanceOverlayCounter;
 }
 
 /**
@@ -153,7 +156,12 @@ export function mountAuditRoutes(
   const deps = { query: createDbAuditQuery(db), audit: createTenantAuditExecutor(db) };
   _registerAuditRoutes(app, deps);
   _registerPatientAccountingRoute(app, deps);
-  _registerLegalHoldsRoutes(app, { db, query: deps.query, outbox: options.outbox });
+  _registerLegalHoldsRoutes(app, {
+    db,
+    query: deps.query,
+    outbox: options.outbox,
+    countGovernanceOverlay: options.countGovernanceOverlay,
+  });
   _registerDestructionCertificatesRoutes(app, { db });
   _registerAuditExportsRoutes(app, { db });
   _registerAuditIntegrityRoutes(app, { db });

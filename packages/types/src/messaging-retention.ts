@@ -99,3 +99,11 @@ export interface ReleaseMessageLegalHoldRequest {
   readonly confirmed_eligible_count: number;
 }
 export const RELEASE_PREVIEW_STALE_CODE = "RELEASE_PREVIEW_STALE";
+
+/**
+ * Advisory-lock name that serialises "a legal hold is applied" (M4, EXCLUSIVE, transaction-scoped) against "messages are destroyed"
+ * (the M36 tenant eraser, SHARED): without it the eraser's any-active-hold check and its destructive write are separate snapshots
+ * and a hold committed in between is erased through.
+ */
+export const messagingHoldLockName = (organizationId: string): string =>
+  `m36-legal-hold:${organizationId}`;

@@ -7,7 +7,12 @@
 // transaction (`withOrgContext`), the permission/step-up gates and the match count.
 import { type AuditContext, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
-import { MESSAGING_GOVERNANCE_HOLD_ORIGIN, NotFoundError, WardenXError } from "@wardenx/types";
+import {
+  MESSAGING_GOVERNANCE_HOLD_ORIGIN,
+  NotFoundError,
+  WardenXError,
+  messagingHoldLockName,
+} from "@wardenx/types";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
@@ -55,6 +60,11 @@ export async function applyLegalHoldInTx(
   auditContext: AuditContext,
   input: ApplyLegalHoldInput,
 ): Promise<typeof HOLD.$inferSelect> {
+  // Serialise against the M36 tenant eraser (it holds this lock SHARED across its check-and-destroy transaction): a hold either
+  // commits before the eraser looks, or waits until the erase has committed. Released with this transaction.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${messagingHoldLockName(input.organizationId)}, 0))`,
+  );
   const [row] = await tx
     .insert(HOLD)
     .values({
@@ -98,6 +108,31 @@ export interface ReleaseLegalHoldInput {
   /** Live count of what the hold covered, computed (inside the tx) from the hold's own criteria. */
   readonly countRestored: (criteria: LegalHoldCriteria) => Promise<number>;
 }
+
+/**
+ * What M4's own release route reports as "restored". A MESSAGING-governance hold's scope is messages, not audit events, so
+ * counting audit events (`auditCount`, the route's default) would report a meaningless number for it. When the composition root
+ * binds M36's overlay counter (`overlayCount`; M4 may not read M36's table itself) use it for a governance-origin hold.
+ * (M36's own route supplies its live count and never calls this.)
+ */
+export async function restoredCountForM4Route(
+  tx: DbClient,
+  organizationId: string,
+  holdId: string,
+  criteria: LegalHoldCriteria,
+  auditCount: (criteria: LegalHoldCriteria) => Promise<number>,
+  overlayCount?: GovernanceOverlayCounter,
+): Promise<number> {
+  if (!overlayCount || !isGovernanceHold(criteria)) return auditCount(criteria);
+  return overlayCount(tx, organizationId, holdId);
+}
+
+/** M36's materialised-overlay counter, bound at the composition root. */
+export type GovernanceOverlayCounter = (
+  tx: DbClient,
+  organizationId: string,
+  holdId: string,
+) => Promise<number>;
 
 /** Release an ACTIVE hold: audit + outbox identical to the route. 404 unknown, 409 ALREADY_RELEASED. */
 export async function releaseLegalHoldInTx(

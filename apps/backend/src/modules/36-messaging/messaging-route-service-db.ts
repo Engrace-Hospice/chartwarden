@@ -92,6 +92,8 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from "./endpoint-verification";
+import { MESSAGE_UNDER_LEGAL_HOLD_CODE } from "./governance/under-hold";
+import { isMessageHeldNow } from "./jobs/retention-hold-sql";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
 import { decodeCursor, encodeCursor } from "./message-cursor";
@@ -1563,6 +1565,15 @@ export function createDbMessagingRouteService(
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
+        }
+        // ADR-0086: a message an active hold covers cannot be rewritten. The migration 1138 trigger only knows materialised
+        // overlay rows; this judges the live criteria so a message posted after the hold (not yet scanned) is refused too.
+        if (await isMessageHeldNow(tx as unknown as DbClient, orgId, input.messageId)) {
+          throw new WardenXError(
+            MESSAGE_UNDER_LEGAL_HOLD_CODE,
+            "This message is under a legal hold and cannot be edited.",
+            409,
+          );
         }
         // WP 4.1: an urgent clinical message is final once sent (before the window check: never a window answer).
         assertUrgencyEditable(m.urgency);
