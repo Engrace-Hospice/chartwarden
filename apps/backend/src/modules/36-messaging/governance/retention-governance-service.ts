@@ -27,13 +27,18 @@ import {
 } from "@wardenx/types";
 import { sql } from "drizzle-orm";
 import {
+  type ActiveMessageHold,
+  anyHoldPredicate,
+  holdPredicate,
+} from "../jobs/retention-hold-sql";
+import {
   MESSAGE_RETENTION_YEARS,
   count,
   materialiseHold,
+  overlayCountsByHold,
   pastWindow,
   windowEnd,
 } from "../jobs/retention-scan";
-import { type ActiveMessageHold, anyHoldPredicate, holdPredicate } from "../jobs/retention-hold-sql";
 
 /** The selectors of a hold's criteria that messaging reads (M4's jsonb; extra keys ignored). */
 export interface GovernanceCriteria {
@@ -202,11 +207,8 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
   const heldMessages = (tx: DbClient, orgId: string, criteria: GovernanceCriteria) =>
     count(tx, sql`m.organization_id = ${orgId}::uuid AND ${holdPredicate(criteria)}`);
 
-  const toDto = async (
-    tx: DbClient,
-    orgId: string,
-    row: GovernanceHoldRow,
-  ): Promise<MessageLegalHoldDto> => ({
+  /** `heldMessages` is supplied by the caller: the list passes the materialised overlay count, apply the exact live count. */
+  const toDto = (row: GovernanceHoldRow, heldCount: number): MessageLegalHoldDto => ({
     id: row.id,
     name: row.name,
     status: row.status,
@@ -214,7 +216,7 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
     placed_by: row.appliedBy ?? "",
     placed_at: row.appliedAt.toISOString(),
     released_at: row.releasedAt ? row.releasedAt.toISOString() : null,
-    held_messages: row.status === "active" ? await heldMessages(tx, orgId, row.criteria) : 0,
+    held_messages: row.status === "active" ? heldCount : 0,
   });
 
   async function requireHold(tx: DbClient, orgId: string, id: string): Promise<GovernanceHoldRow> {
@@ -246,7 +248,9 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
       const last = page.items[0];
       const ctx = asRecord(last?.context);
       const certs = (Array.isArray(ctx.certificates) ? ctx.certificates : []).map(asRecord);
-      const certIds = certs.flatMap((c) => (typeof c.certificateId === "string" ? [c.certificateId] : []));
+      const certIds = certs.flatMap((c) =>
+        typeof c.certificateId === "string" ? [c.certificateId] : [],
+      );
       const statuses = await inTx(actor, (tx) =>
         holds.certificateStatuses(tx, actor.organizationId, certIds),
       );
@@ -277,9 +281,13 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
     async list(actor: GovernanceActor): Promise<MessageLegalHoldListDto> {
       return inTx(actor, async (tx) => {
         const rows = await holds.list(tx, actor.organizationId, HOLD_LIST_LIMIT);
-        const out: MessageLegalHoldDto[] = [];
-        for (const row of rows) out.push(await toDto(tx, actor.organizationId, row));
-        return { holds: out };
+        // ONE grouped query, not a live count(*) per hold: the list shows the materialised overlay count (may lag until the next scan).
+        const counts = await overlayCountsByHold(
+          tx,
+          actor.organizationId,
+          rows.filter((r) => r.status === "active").map((r) => r.id),
+        );
+        return { holds: rows.map((row) => toDto(row, counts.get(row.id) ?? 0)) };
       });
     },
 
@@ -300,8 +308,13 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
           matchedRecordCount: matched,
         });
         // The overlay is the cheap half of the hold; enforcement also reads the live criteria, so a bounded batch is enough here.
-        await materialiseHold(tx, actor.organizationId, { id, criteria }, APPLY_MATERIALISE_MAX_BATCHES);
-        return toDto(tx, actor.organizationId, await requireHold(tx, actor.organizationId, id));
+        await materialiseHold(
+          tx,
+          actor.organizationId,
+          { id, criteria },
+          APPLY_MATERIALISE_MAX_BATCHES,
+        );
+        return toDto(await requireHold(tx, actor.organizationId, id), matched);
       });
     },
 
@@ -345,7 +358,7 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
           reason: body.reason,
           countRestored: () => heldMessages(tx, actor.organizationId, row.criteria),
         });
-        return toDto(tx, actor.organizationId, await requireHold(tx, actor.organizationId, id));
+        return toDto(await requireHold(tx, actor.organizationId, id), 0);
       });
     },
   };

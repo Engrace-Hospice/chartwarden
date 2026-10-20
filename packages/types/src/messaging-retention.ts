@@ -63,7 +63,12 @@ export interface MessageLegalHoldDto {
   readonly placed_by: string;
   readonly placed_at: string;
   readonly released_at: string | null;
-  /** Messages held by this hold now (overlay rows plus live criteria; capped counts are exact up to the cap). */
+  /**
+   * GET /legal-holds (list): the MATERIALISED overlay count (rows in legal_hold_message), which may lag the live criteria until the next
+   * retention scan (a message sent after the hold is not counted yet; enforcement still holds it). POST /legal-holds (apply) and the
+   * returns the exact live count at that moment; release-preview and the release confirmation always use the exact live count. A released
+   * hold reports 0.
+   */
   readonly held_messages: number;
 }
 export interface MessageLegalHoldListDto {

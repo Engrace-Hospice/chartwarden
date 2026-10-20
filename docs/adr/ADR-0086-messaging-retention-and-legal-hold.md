@@ -1,6 +1,6 @@
 # ADR-0086 — Message retention and legal hold: an M4-owned hold applied to messages through an overlay
 
-- **Status:** **Proposed** (2026-10-20). **Nothing in this ADR is built.** The retention scan exists and is plan-only; there is no `legal_hold_message` table, no `messaging.retention.manage` permission, no hold or retention route for messages and no web screen. Every default below is a build-team proposal accepted by the product owner for planning (decisions D1-D7); compliance sign-off and confirmation of the retention periods are NOT recorded.
+- **Status:** **Proposed** (2026-10-20). **Built:** the hold overlay (`legal_hold_message`, migration 1138) and its trigger backstop, the M4 seam, the retention scan (still plan-only), the governance routes under `/api/v1/messaging/governance` and the web retention and legal-holds screen. **NOT built:** the message destruction executor, redaction of held messages, the thread "Legal hold" chip and real staff names in the "placed by" column (the id is shown). Every default below is a build-team proposal accepted by the product owner for planning (decisions D1-D7); compliance sign-off and confirmation of the retention periods are NOT recorded.
 - **Date:** 2026-10-20
 - **Phase:** Messaging Hub Phase 5, WP 5.6 (capability SG-06).
 - **Resolves (once accepted):** the open "full messaging hold/retention design" in [ADR-0055](ADR-0055-message-revisions-and-redaction.md) item 9.
@@ -39,7 +39,7 @@ Four defects in the current seam must be fixed for that to be true:
 
 ### The trigger backstop
 
-A `BEFORE DELETE` trigger and a `BEFORE UPDATE OF body_cipher` trigger on `message` refuse a row whose overlay has an active hold, with `ERRCODE 23001`, whoever the caller is. SECURITY DEFINER, owned by `wardenx_admin`, pinned `search_path`, following migration 1053 exactly. It fires only on a bug or an out-of-band delete. The tenant eraser gets a pre-check so it fails cleanly under a hold instead of hitting the trigger.
+A `BEFORE DELETE` trigger and a `BEFORE UPDATE OF body_cipher` trigger on `message` refuse a row whose overlay has an active hold, with `ERRCODE 23001`, whoever the caller is. SECURITY DEFINER, owned by `wardenx_admin`, pinned `search_path`, following migration 1053 exactly. The hold is joined on its own organisation (`l.organization_id = h.organization_id`) and `search_path` is `pg_catalog, public`, so an overlay row naming another tenant's hold uuid cannot make a message undeletable. It fires only on a bug or an out-of-band delete. The tenant eraser gets a pre-check so it fails cleanly instead of hitting the trigger: it refuses while ANY active `legal_hold` exists for the org (the M34 any-active-hold gate), not only holds that already have overlay rows.
 
 ### The four defects and their fixes
 
@@ -54,11 +54,17 @@ Each run checks hold criteria live against messages (so supremacy never depends 
 
 ## What is NOT built
 
-The message destruction executor; redaction of held messages; the thread "Legal hold" chip; audit-event holding by messaging holds; any tenant-configurable period.
+The message destruction executor; redaction of held messages; the thread "Legal hold" chip; real staff names in the "placed by" column; audit-event holding by messaging holds; any tenant-configurable period.
 
 ## Known limits
 
-Apply materialises at most four batches (20,000 rows) synchronously and the weekly scan completes the rest. Until then the backstop trigger does not cover not-yet-materialised messages: an edit of such a message is not refused by the trigger. The scan's live criteria check, the plan-only scan and the M34 any-active-hold gate for tenant erasure still hold, so nothing is destroyed or erased in that window.
+- Apply materialises at most four batches (20,000 rows) synchronously and the weekly scan completes the rest. Until then the backstop trigger does not cover not-yet-materialised messages.
+- (a) A hold placed through M4's own create route with `channelIds` or `userIds` writes no overlay rows until the next scan. Its live criteria are still honoured by the scan, the eraser and the M34 gate.
+- (b) Messages sent after a hold is applied are not in the overlay until the next scan. In that window the trigger does not cover them (an edit is not refused), while the scan's live predicate, the eraser (any active hold) and the M34 gate do, so nothing is destroyed or erased.
+- (c) The list screen's "held messages" is the materialised overlay count (one grouped query) and can lag the live criteria until the next scan. Release-preview, apply and the release confirmation use the exact live count.
+- (d) `openMessageCertificate` is select-then-insert with no unique index, because `destruction_certificates` is M4's table and this work adds no index there. It assumes one scan worker per org; two concurrent scans could open two pending certificates for the same class and month.
+- (e) Separation of duties (accepted for now, open for compliance sign-off): `messaging.retention.manage` is granted to `administrator` and `org_admin` as well as `compliance_officer` (product-owner decision D3), so a tenant admin who cannot touch M4 holds can place or release a messaging hold. Conversely, an M4 `legalhold.manage` holder can release a governance hold through M4's own release route (step-up, but no preview confirmation).
+- (f) Scope of org-wide and patient holds: an org-wide governance hold (`{resourceKinds:["message"], origin}`) is messaging-only. It blocks M34 tenant-key destruction through `legalHoldClear` (`messagingHeld`) but does NOT freeze other modules' retention (M10 HOPE) and holds no audit class. A governance hold WITH `patientIds` stays patient-scoped: it also holds that patient's other records in modules that read `legalHoldScopeOf`.
 
 ## Open human items
 
@@ -66,6 +72,6 @@ Apply materialises at most four batches (20,000 rows) synchronously and the week
 - Confirmation of the retention periods (D2); they are engineering placeholders, not a legal position.
 - Whether the user scope should include messages in channels the user has since left (depends on whether membership history is retained).
 
-## Slices (once accepted)
+## Slices
 
-S0 this ADR. S1 M4 seam (extract apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1138, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs.
+Built: S0 this ADR. S1 M4 seam (apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1138, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs. Not built: the destruction executor, redaction of held messages, the thread chip, staff names in "placed by".
