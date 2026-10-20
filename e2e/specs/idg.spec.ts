@@ -53,7 +53,7 @@
 // no live meeting and fails at the first assertion rather than passing vacuously. CI reseeds before the
 // suite; locally re-run `bun run db:seed:scenario-orders-idg` between runs.
 import { expect, test } from "@playwright/test";
-import { RN_ACCOUNT } from "../fixtures/credentials";
+import { PRESCRIBER_ACCOUNT } from "../fixtures/credentials";
 import {
   enrolPasskey,
   expectNoAxeViolations,
@@ -78,7 +78,7 @@ test.describe("IDG", () => {
   test("main path: the D13 commit point refuses a stale session, then adjourns after a real step-up", async ({
     page,
   }) => {
-    await signInAs(page, RN_ACCOUNT());
+    await signInAs(page, PRESCRIBER_ACCOUNT());
 
     // The one seeded meeting, in session. Filtered on the state as well, so a re-run against an
     // already-adjourned database fails HERE — visibly — rather than somewhere further down.
@@ -144,7 +144,7 @@ test.describe("IDG", () => {
   });
 
   test("the IDG schedule is accessible (WCAG 2.1 A/AA)", async ({ page }) => {
-    await signInAs(page, RN_ACCOUNT());
+    await signInAs(page, PRESCRIBER_ACCOUNT());
     await page.goto(`/idg/schedule?location=${LOCATION_MAIN_ID}`);
     await expect(page.getByRole("heading", { name: "IDG Schedule" })).toBeVisible({
       timeout: 15_000,

@@ -1,15 +1,13 @@
 /**
  * WardenX — one-shot run of the REAL M14 `idg.packets-cron` handler for the demo org (local dev). NOT for prod.
  *
- * WHY THIS EXISTS. The hourly `idg.packets-cron` BullMQ worker fans out over `listActiveOrgs()`, and the
- * composition root (apps/backend/src/index.ts, `m14ActiveOrgs = buildActiveOrgEnumerator({ platformDb:
- * dbHandle.db ... })`) binds that enumerator to the TENANT pool (`wardenx_app`) instead of the platform
- * pool. `organization` RLS (`organization_self`: id = app.org_id) hides every row from a connection with no
- * tenant context, so the enumerator returns [] and the cron completes in ~7 ms having built nothing —
- * meetings sit in `packets_building` forever and `idg_patient_packet` stays empty. (Enqueue a job and watch:
- * `completed`, no packets.) That is a code defect outside this seed's remit; this script is the honest
- * workaround: it runs the SAME `runPacketBuildCron` the worker runs, with the org supplied explicitly, over
- * the real `wardenx_app` connection, real M5/M6/M7/M8 seams and the real catalog-validating outbox publisher.
+ * WHEN YOU NEED IT. "Build packets" in the UI enqueues the real per-meeting build on the `idg.packets-cron`
+ * queue (`POST /idg/meetings/:id/packets/build`), and the worker also sweeps hourly for meetings inside the
+ * T-24h window. On a stack with a running worker and Redis you do not need this script. It is the workaround
+ * for a stack with NO worker or Redis (a meeting then sits in `packets_building` until something consumes
+ * the job), or for building a meeting that is still outside the T-24h window without waiting for the hourly
+ * sweep. It runs the SAME `runPacketBuildCron` the worker runs, with the org supplied explicitly, over the
+ * real `wardenx_app` connection, real M5/M6/M7/M8 seams and the real catalog-validating outbox publisher.
  *
  * Run (host; needs the app-role URL that the Docker stack uses):
  *   DATABASE_URL="$(docker compose exec -T worker printenv DATABASE_URL | sed 's/@postgres:/@localhost:/')" \
