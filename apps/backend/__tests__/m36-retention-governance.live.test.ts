@@ -607,6 +607,12 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       confirmed_eligible_count: 3,
     });
     expect(short.statusCode).toBe(422);
+    // Ten blanks pass the schema's minLength; only the service's trim check refuses them.
+    const blanks = await gov("POST", `/legal-holds/${holdA}/release`, officerLogin, {
+      reason: "          ",
+      confirmed_eligible_count: 3,
+    });
+    expect(blanks.statusCode, blanks.body).toBe(422);
   });
 
   it("BACKSTOP lifts with the hold: the same edit succeeds once the only covering hold is released", async () => {
