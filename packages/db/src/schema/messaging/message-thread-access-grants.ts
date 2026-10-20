@@ -1,4 +1,4 @@
-// M36 ADR-0084 (PROPOSED), slice G1 - the audited, time-limited, one-thread read grant (migration 1134). Insert / revoke-only: the
+// M36 ADR-0085 (PROPOSED), slice G1 - the audited, time-limited, one-thread read grant (migration 1135). Insert / revoke-only: the
 // database guard allows one change, revoked_at NULL -> a value. Ids, a closed reason and instants only. Names match the migration
 // (pinned by a test); granted_at / revoked_at are set from the database clock by the guard trigger.
 import { sql } from "drizzle-orm";

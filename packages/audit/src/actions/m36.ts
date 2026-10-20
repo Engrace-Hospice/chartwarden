@@ -139,4 +139,22 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m36.offboarding.viewed", // WP 5.9 (ADR-0084) - a security officer previewed a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer previewed what is left to offboard for a departed user (resource = the target user; actor, per-item state and counts, complete). Ids, fixed keys and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.offboarding.executed", // WP 5.9 (ADR-0084) - a security officer ran a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer ran the offboarding of a departed user (resource = the target user; actor, per-item state, count and acted, complete). Re-runs write a row too (acted 0). Ids, fixed keys and counts only: never a message, a name or a patient.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

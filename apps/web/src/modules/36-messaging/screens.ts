@@ -29,6 +29,9 @@ const DeviceManager = lazy(() =>
 const SessionGovernance = lazy(() =>
   import("./session-governance").then((m) => ({ default: m.SessionGovernance })),
 );
+const OffboardingWorkflow = lazy(() =>
+  import("./offboarding-workflow").then((m) => ({ default: m.OffboardingWorkflow })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -89,6 +92,14 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.sessions.manage",
       screen: SessionGovernance,
+    },
+    {
+      // WP 5.9 (ADR-0084): a departed person's offboarding checklist. Reached by user id; omitted from nav (param path).
+      id: "messaging.offboarding",
+      path: "/messaging/governance/offboarding/:userId",
+      title: "Offboarding",
+      requiredPermission: "messaging.offboarding.manage",
+      screen: OffboardingWorkflow,
     },
     {
       id: "messaging.saved-replies",

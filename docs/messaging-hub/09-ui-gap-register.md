@@ -89,7 +89,8 @@ states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6
 | Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
 | Device/session manager | Built (ADR-0083, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
 | Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 |
-| Export approval, break-glass review, offboarding workflow | Absent | 5.7–5.9 |
+| Export approval, break-glass review | Absent | 5.7, 5.8 |
+| Offboarding workflow | Built (ADR-0084, proposed): `/messaging/governance/offboarding/:userId`; no per-row Reassign dialog, no stored Mark complete (derived), the officer reaches it by user id (no user picker) | 5.9 |
 | Recovery rehearsal report | CLI drill only | 5.10 |
 | Smart inbox, analytics, voice, language, AI panel, partner share | Absent | 6.1–6.6 |
 | Phase 4-6 accessibility evidence (measured targets, axe, SR script) | Not on record | 10 §2.2, §6 5.4 |

@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0084 (PROPOSED), slice G1 - the one-thread read grant table (migration 1134), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 ADR-0085 (PROPOSED), slice G1 - the one-thread read grant table (migration 1135), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
  *
  *   1. TENANCY     another organisation reads nothing and cannot insert a grant for this org's rows.
  *   2. GUARD       insert-only apart from one revoke: no other column moves, a revoke happens once, no DELETE for the app role,
@@ -22,7 +22,7 @@ const ORG_A = "11111111-1111-4111-8111-11110a830001";
 const ORG_B = "22222222-2222-4222-8222-22220a830002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a83a1";
 
-describe.skipIf(!DB_URL)("M36 ADR-0084 G1 thread access grant - LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("M36 ADR-0085 G1 thread access grant - LIVE Postgres", () => {
   let kit: LiveKit;
   let author: string;
   let assignee: string;

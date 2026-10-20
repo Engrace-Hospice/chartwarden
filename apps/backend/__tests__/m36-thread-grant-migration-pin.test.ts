@@ -1,4 +1,4 @@
-// ADR-0084 G1 - migration 1134, the Drizzle schema, the manifest and the code-side constants agree; the structural promises (RLS,
+// ADR-0085 G1 - migration 1135, the Drizzle schema, the manifest and the code-side constants agree; the structural promises (RLS,
 // insert/revoke-only guard, one live grant, audit trigger, database clock) are pinned on the migration text.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,10 +8,10 @@ import { describe, expect, it } from "vitest";
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
-const sql = flat(read("packages/db/migrations/1134_m36_thread_access_grant.sql"));
+const sql = flat(read("packages/db/migrations/1135_m36_thread_access_grant.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/message-thread-access-grants.ts"));
 
-describe("migration 1134 thread access grant", () => {
+describe("migration 1135 thread access grant", () => {
   it("the flag key is the ADR's and the reasons match the SQL CHECK and the Drizzle CHECK", () => {
     expect(THREAD_ACCESS_GRANT_FLAG_KEY).toBe("messaging.thread_access_grant");
     const list = THREAD_ACCESS_GRANT_REASONS.map((r) => `'${r}'`).join(", ");

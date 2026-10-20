@@ -1,5 +1,5 @@
 // M19 WP 4.13 slice S2 (ADR-0082 decision 4) - the durable "this after-hours request was already decided" record, written in the
-// SAME transaction as the decision and its `m19.afterhours_triage.outcome` event so a redelivery replays nothing. See migration 1133.
+// SAME transaction as the decision and its `m19.afterhours_triage.outcome` event so a redelivery replays nothing. See migration 1134.
 // Ids, one closed outcome and an instant only. No FK to `triage_call` (the call may be erased; the row carries ids only).
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";

@@ -97,6 +97,7 @@ import {
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
+import { registerOffboardingRoutes } from "../src/modules/36-messaging/routes/offboarding-routes";
 import { registerScheduledSendRoutes } from "../src/modules/36-messaging/routes/scheduled-send-routes";
 import { registerSessionDeviceRoutes } from "../src/modules/36-messaging/routes/session-device-routes";
 import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
@@ -132,6 +133,8 @@ const GLOBAL_SEARCH_SETTINGS_SUITE =
   "WP 2.7b C4: org-scoped singleton (no id), permission + step-up + cross-tenant isolation are asserted in m36-global-search-settings.live";
 const SESSION_DEVICES_SUITE =
   "WP 5.5: own-session scope, foreign / other-tenant / repeat revoke is one 404, officer bounded to the organisation: asserted in m36-session-device-controls.live";
+const OFFBOARDING_SUITE =
+  "WP 5.9: foreign / other-tenant / unknown user is one 404 (preview and execute), key + step-up + review key refusals, nothing changes: asserted in m36-workforce-offboarding.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -323,6 +326,15 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: SESSION_DEVICES_SUITE,
   },
+  // WP 5.9 (ADR-0084): the :userId is a departed user in the officer's own organisation; another tenant's and an unknown id are one 404.
+  "GET /api/v1/messaging/governance/offboarding/:userId": {
+    kind: "excluded",
+    reason: OFFBOARDING_SUITE,
+  },
+  "POST /api/v1/messaging/governance/offboarding/:userId/execute": {
+    kind: "excluded",
+    reason: OFFBOARDING_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -396,6 +408,8 @@ const REGISTRAR_FILES = [
   "template-typebox.ts", // schemas only
   "session-device-routes.ts", // WP 5.5 device and session manager (own sessions; officer variant bounded to the organisation)
   "session-device-typebox.ts", // schemas only
+  "offboarding-routes.ts", // WP 5.9 workforce offboarding (preview and execute; officer bounded to the organisation)
+  "offboarding-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -417,6 +431,7 @@ function registeredRoutes(): string[] {
   registerGlobalSearchSettingsRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   registerSessionDeviceRoutes(probe, { service: {} as never });
+  registerOffboardingRoutes(probe, { service: {} as never });
   return [...seen].sort();
 }
 

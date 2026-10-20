@@ -1,0 +1,135 @@
+/* M36 WP 5.9 - the offboarding checklist: a flat list on the shared kit's tokens (no card grid, no shadows). State is a word plus a glyph. */
+.wx-offboarding {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-offboarding-heading {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.wx-offboarding-heading:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-offboarding-progress {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+}
+
+.wx-offboarding-status {
+  min-height: 1.25rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-offboarding-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-offboarding-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.6fr) minmax(10rem, 1fr);
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-offboarding-row:last-child {
+  border-bottom: none;
+}
+
+.wx-offboarding-main {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+}
+
+.wx-offboarding-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.wx-offboarding-title {
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-offboarding-detail {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-offboarding-link {
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+}
+
+.wx-offboarding-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-offboarding-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.wx-offboarding-error {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-offboarding-confirm {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-offboarding-confirm h2,
+.wx-offboarding-confirm p {
+  margin: 0;
+}
+
+.wx-offboarding-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* One column below tablet width; touch targets stay at least 44 px high. */
+@media (max-width: 47.99rem) {
+  .wx-offboarding-row {
+    grid-template-columns: 1fr;
+  }
+
+  .wx-offboarding-actions button,
+  .wx-offboarding-confirm-actions button {
+    min-height: 2.75rem;
+  }
+}

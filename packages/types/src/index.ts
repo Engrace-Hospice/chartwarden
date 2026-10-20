@@ -59,6 +59,7 @@ export * from "./messaging-urgency";
 export * from "./messaging-ack";
 export * from "./messaging-snooze";
 export * from "./messaging-devices";
+export * from "./messaging-offboarding";
 export * from "./messaging-oncall";
 export * from "./messaging-thread-grant";
 export * from "./messaging-escalation";

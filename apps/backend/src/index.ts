@@ -4991,6 +4991,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
             // WP 4.12 - on-call directory (read-only); off unless the tenant flag `messaging.oncall_directory` is on.
             oncall: buildOnCallDirectoryDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 5.9 (ADR-0084) - workforce offboarding: preview and run the offboarding of a departed user. Always on (a security control).
+            // It calls the sweeps the deactivation event already runs, the ADR-0078 supervisor reassign and the ADR-0083 session revoke.
+            ...(m36Ack && m36Tasks && m36Handoffs
+              ? {
+                  offboarding: {
+                    ack: m36Ack.service,
+                    attention: {
+                      alerts: getSeam("AlertEmitter") as AlertEmitter,
+                      opsNotice: (notice) => m36AckOpsNotice(notice),
+                    },
+                    endMemberships: (orgId: string, userId: string) =>
+                      endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+                    reassignTasks: m36Tasks.reassignForLeaver,
+                    resolveHandoffs: m36Handoffs.reassignForLeaver,
+                    warn: (event: string, context: Record<string, string>) =>
+                      app.log.warn(context, event),
+                  },
+                }
+              : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
