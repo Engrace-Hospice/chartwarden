@@ -356,6 +356,10 @@ import {
 } from "./modules/04-audit/jobs/audit-ops-workers";
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
+import {
+  activeLegalHolds,
+  openMessageCertificate,
+} from "./modules/04-audit/messaging-hold-workflow";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
@@ -9233,8 +9237,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         connection: queueConnection,
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
-        holdScopeForOrg: (organizationId) =>
-          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+        messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
         activeOrgs: m36IntegrityOrgs,
         onError: (context, err) => app.log.error({ ...context, err }, "M36 integrity job error"),
       });

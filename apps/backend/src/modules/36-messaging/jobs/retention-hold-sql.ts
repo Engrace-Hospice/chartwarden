@@ -1,0 +1,81 @@
+import type { DbClient } from "@wardenx/db";
+// apps/backend/src/modules/36-messaging/jobs/retention-hold-sql.ts — ADR-0086 (proposed) D5 in SQL: the LIVE hold predicate the
+// retention scan filters with (so enforcement never waits on the overlay) and the overlay materialiser. The predicate mirrors the pure
+// `messageHeldBy` in @wardenx/messaging; the live suite proves the two agree. Aliases: m = message, c = its channel.
+// Every subquery is filtered by organization_id. Ids reach SQL only as bound uuid params.
+import type { MessageHoldCriteria } from "@wardenx/messaging";
+import { type SQL, sql } from "drizzle-orm";
+
+/** The M4 seam the scan needs, injected at the composition root (M36 imports nothing from M4). */
+export interface ActiveMessageHold {
+  readonly id: string;
+  readonly criteria: MessageHoldCriteria;
+}
+
+/** A pending M4 destruction certificate for one message class and month (ids and counts only). */
+export interface MessageCertificateRequest {
+  readonly organizationId: string;
+  readonly dataClass: string;
+  readonly rangeStart: Date;
+  readonly rangeEnd: Date;
+  readonly recordCount: number;
+}
+
+/** M4's published message-hold seam, bound at the composition root (apps/backend/src/index.ts); both calls run in the scan's tenant tx. */
+export interface MessageHoldPort {
+  activeHolds(tx: DbClient, organizationId: string): Promise<readonly ActiveMessageHold[]>;
+  openCertificate(
+    tx: DbClient,
+    request: MessageCertificateRequest,
+  ): Promise<{ readonly id: string; readonly created: boolean }>;
+}
+
+const uuidList = (ids: readonly string[]): SQL =>
+  sql.join(
+    ids.map((i) => sql`${i}::uuid`),
+    sql`, `,
+  );
+const nonEmpty = (a: readonly string[] | undefined): a is readonly string[] => (a?.length ?? 0) > 0;
+
+/** SQL boolean: does this hold's criteria cover message `m` (joined to channel `c`)? Mirrors `messageHeldBy`. */
+export function holdPredicate(criteria: MessageHoldCriteria): SQL {
+  const { patientIds, channelIds, userIds, dateRange } = criteria;
+  const parts: SQL[] = [];
+  if (nonEmpty(patientIds)) {
+    parts.push(sql`(
+      (c.channel_kind = 'care_team' AND c.subject_id IN (${uuidList(patientIds)}))
+      OR c.channel_kind = 'bereavement'
+      OR EXISTS (SELECT 1 FROM message_entity_reference r
+                  WHERE r.organization_id = m.organization_id AND r.message_id = m.id
+                    AND r.reference_kind = 'patient' AND r.entity_id IN (${uuidList(patientIds)})))`);
+  }
+  if (nonEmpty(channelIds)) parts.push(sql`m.channel_id IN (${uuidList(channelIds)})`);
+  if (nonEmpty(userIds)) {
+    parts.push(sql`(
+      m.author_user_id IN (${uuidList(userIds)})
+      OR EXISTS (SELECT 1 FROM channel_member cm
+                  WHERE cm.organization_id = m.organization_id AND cm.channel_id = m.channel_id
+                    AND cm.user_id IN (${uuidList(userIds)})))`);
+  }
+  const selector = parts.length === 0 ? sql`true` : sql`(${sql.join(parts, sql` OR `)})`;
+  return dateRange
+    ? sql`(${selector} AND m.created_at >= ${dateRange.from}::timestamptz AND m.created_at <= ${dateRange.to}::timestamptz)`
+    : selector;
+}
+
+/** SQL boolean: any of `holds` covers `m`; `false` when there are none. */
+export function anyHoldPredicate(holds: readonly ActiveMessageHold[]): SQL {
+  if (holds.length === 0) return sql`false`;
+  return sql`(${sql.join(
+    holds.map((h) => holdPredicate(h.criteria)),
+    sql` OR `,
+  )})`;
+}
+
+/** SQL boolean: an overlay row ties `m` to one of the ACTIVE `holds` (the cheap, indexed half of the filter). */
+export function overlayHeldPredicate(holds: readonly ActiveMessageHold[]): SQL {
+  if (holds.length === 0) return sql`false`;
+  return sql`EXISTS (SELECT 1 FROM legal_hold_message l
+    WHERE l.organization_id = m.organization_id AND l.message_id = m.id
+      AND l.legal_hold_id IN (${uuidList(holds.map((h) => h.id))}))`;
+}

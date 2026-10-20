@@ -20,13 +20,17 @@ import {
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
   eraseTenantMessaging,
+  messageHeldBy,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { richBodyToPlainText, sanitizeRichBody } from "@wardenx/types";
 import { Queue } from "bullmq";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
+import {
+  activeLegalHolds,
+  openMessageCertificate,
+} from "../src/modules/04-audit/messaging-hold-workflow";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
@@ -177,7 +181,7 @@ describe.skipIf(!DB_URL)(
       deps = {
         db: handle.db,
         cipher: createMessageBodyCipher({ kek: KEK }),
-        holdScopeForOrg: (organizationId) => activeLegalHoldScopeForOrg(handle.db, organizationId),
+        messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
       };
     }, 180_000);
 
@@ -451,6 +455,227 @@ describe.skipIf(!DB_URL)(
       expect(wide.toDestroy).toBe(0);
       expect(wide.skippedLegalHold).toBe(wide.candidates);
       expect(wide.candidates).toBeGreaterThanOrEqual(2);
+    });
+
+    describe("WP 5.6 S3 - retention scan honours message legal holds (ADR-0086)", () => {
+      let orgH: string;
+      let uA: string;
+      let uB: string;
+      const PH = "44444444-4444-4444-8444-444444444444";
+      const PO = "55555555-5555-4555-8555-555555555555";
+      const ids: Record<string, string> = {};
+      const ago = (years: number, extraDays = 0) =>
+        new Date(Date.now() - years * 365.25 * 864e5 - extraDays * 864e5).toISOString();
+      const addMsg = async (
+        orgId: string,
+        channelId: string,
+        author: string | null,
+        createdAt: string,
+      ) =>
+        (
+          await admin.query(
+            `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+             VALUES ($1,$2,$3,$4,'\\x0102'::bytea,repeat('a',64),$5) RETURNING id`,
+            [orgId, channelId, author, author ? "user" : "system", createdAt],
+          )
+        ).rows[0].id as string;
+      const applyHold = async (orgId: string, criteria: object) =>
+        (
+          await admin.query(
+            `INSERT INTO legal_hold (organization_id, name, criteria, reason) VALUES ($1,'s3',$2::jsonb,'litigation hold') RETURNING id`,
+            [orgId, JSON.stringify(criteria)],
+          )
+        ).rows[0].id as string;
+      const releaseHold = (holdId: string) =>
+        admin.query("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [
+          holdId,
+        ]);
+      const runRow = async (runId: string) =>
+        (await auditRows("m36.retention_scan.run")).find((r) => r.resource_id === runId)?.context;
+
+      beforeAll(async () => {
+        orgH = await seedOrg("wp56s3");
+        uA = await seedUser("wp56s3-a@x.test", orgH);
+        uB = await seedUser("wp56s3-b@x.test", orgH);
+        const chan = async (
+          kind: string,
+          subject: string | null,
+          cls: string,
+          key: string | null = null,
+        ) =>
+          (
+            await admin.query(
+              `INSERT INTO channel (organization_id, channel_kind, subject_id, dm_participant_key, title, retention_class, archives_at)
+               VALUES ($1,$2::channel_kind,$3,$4,$6,$5,CASE WHEN $6='bereavement' THEN now() + interval '1 year' END) RETURNING id`,
+              [orgH, kind, subject, key, cls, kind],
+            )
+          ).rows[0].id as string;
+        ids.ctH = await chan("care_team", PH, "care_related");
+        ids.ctO = await chan("care_team", PO, "care_related");
+        ids.ber = await chan("bereavement", PO, "bereavement");
+        ids.dm = await chan("dm", null, "care_related", `${uA}:${uB}`);
+        ids.ann = await chan("announcement", null, "operational");
+        // uB was a member of ctO and has since LEFT (soft delete): the user scope still holds that channel
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source, removed_at)
+           VALUES ($1,$2,$3,'member','manual', now())`,
+          [orgH, ids.ctO, uB],
+        );
+        ids.mCT = await addMsg(orgH, ids.ctH, uA, ago(8));
+        ids.mO = await addMsg(orgH, ids.ctO, uA, ago(8, 1));
+        ids.mBer = await addMsg(orgH, ids.ber, uA, ago(8, 2));
+        ids.mDMref = await addMsg(orgH, ids.dm, uA, ago(8, 3));
+        ids.mDMplain = await addMsg(orgH, ids.dm, uA, ago(9));
+        ids.mAnn = await addMsg(orgH, ids.ann, null, ago(2));
+        ids.mRecent = await addMsg(orgH, ids.ctH, uA, new Date().toISOString());
+        await admin.query(
+          `INSERT INTO message_entity_reference (organization_id, message_id, reference_kind, entity_id, start_offset, end_offset)
+           VALUES ($1,$2,'patient',$3,0,1)`,
+          [orgH, ids.mDMref, PH],
+        );
+      }, 60_000);
+
+      /** Past-window, non-operational messages NOT held by any of `criteria`, decided by the pure function. */
+      const predictedEligible = async (criteria: unknown[]): Promise<string[]> => {
+        const facts = await admin.query(
+          `SELECT m.id, m.created_at, m.author_user_id, m.channel_id, c.channel_kind, c.subject_id,
+                  COALESCE((SELECT array_agg(r.entity_id::text) FROM message_entity_reference r
+                             WHERE r.message_id = m.id AND r.reference_kind = 'patient'), '{}') AS refs,
+                  COALESCE((SELECT array_agg(cm.user_id::text) FROM channel_member cm
+                             WHERE cm.channel_id = m.channel_id), '{}') AS mems
+             FROM message m JOIN channel c ON c.id = m.channel_id
+            WHERE m.organization_id = $1 AND m.created_at < $2 AND c.retention_class <> 'operational'`,
+          [orgH, ago(7, 1)],
+        );
+        return facts.rows
+          .filter(
+            (f) =>
+              !criteria.some((c) =>
+                messageHeldBy(c, {
+                  createdAt: f.created_at,
+                  authorUserId: f.author_user_id,
+                  channelId: f.channel_id,
+                  channelKind: f.channel_kind,
+                  channelSubjectId: f.subject_id,
+                  referencedPatientIds: f.refs,
+                  memberUserIds: f.mems,
+                }),
+              ),
+          )
+          .map((f) => f.id as string);
+      };
+
+      it("SQL predicate agrees with messageHeldBy for every scope (patient incl. DM reference and bereavement, channel, user incl. ended member, dateRange, org-wide)", async () => {
+        const scopes: object[] = [
+          { patientIds: [PH] },
+          { channelIds: [ids.ctO] },
+          { userIds: [uB] },
+          { channelIds: [ids.ctH, ids.dm], dateRange: { from: ago(8, 2.5), to: ago(7.9) } },
+          { resourceKinds: ["audit_event"] },
+          {},
+        ];
+        for (const criteria of scopes) {
+          const holdId = await applyHold(orgH, criteria);
+          const scan = await runRetentionScanForOrg(deps, orgH);
+          const past = scan.toDestroyMessageIds.filter((id) => id !== ids.mAnn);
+          expect([...past].sort()).toEqual([...(await predictedEligible([criteria]))].sort());
+          await releaseHold(holdId);
+        }
+        // the named cases, explicitly: a patient hold holds the DM that references the patient and the bereavement channel
+        const holdId = await applyHold(orgH, { patientIds: [PH] });
+        const scan = await runRetentionScanForOrg(deps, orgH);
+        expect(scan.toDestroyMessageIds).toContain(ids.mO);
+        expect(scan.toDestroyMessageIds).toContain(ids.mDMplain);
+        for (const held of [ids.mCT, ids.mDMref, ids.mBer]) {
+          expect(scan.toDestroyMessageIds).not.toContain(held);
+        }
+        await releaseHold(holdId);
+      });
+
+      it("a held message is absent from the plan; after release and rescan it is present; both runs are audited with per-hold counts", async () => {
+        const holdId = await applyHold(orgH, { channelIds: [ids.ctH] });
+        const during = await runRetentionScanForOrg(deps, orgH);
+        expect(during.toDestroyMessageIds).not.toContain(ids.mCT);
+        expect(during.heldByHold).toEqual([{ holdId, held: 1 }]);
+        expect((await runRow(during.runId))?.heldByHold).toEqual([{ holdId, held: 1 }]);
+        expect((await runRow(during.runId))?.heldByClass).toMatchObject({ care_related: 1 });
+        const overlay = await admin.query(
+          "SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1",
+          [holdId],
+        );
+        expect(overlay.rows[0].n).toBe(2); // mCT and mRecent: the overlay covers every message, not only expired ones
+        await releaseHold(holdId);
+        const after = await runRetentionScanForOrg(deps, orgH);
+        expect(after.toDestroyMessageIds).toContain(ids.mCT);
+        expect(after.heldByHold).toEqual([]);
+        expect((await runRow(after.runId))?.skippedLegalHold).toBe(0);
+      });
+
+      it("materialisation lag never weakens enforcement: a message with no overlay row yet is still withheld", async () => {
+        const holdId = await applyHold(orgH, { channelIds: [ids.ctH] });
+        const lagging = await runRetentionScanForOrg({ ...deps, materialiseMaxBatches: 0 }, orgH);
+        const rows = await admin.query(
+          "SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1",
+          [holdId],
+        );
+        expect(rows.rows[0].n).toBe(0);
+        expect(lagging.materialised).toBe(0);
+        expect(lagging.toDestroyMessageIds).not.toContain(ids.mCT);
+        expect(lagging.heldByHold).toEqual([{ holdId, held: 1 }]);
+        await releaseHold(holdId);
+      });
+
+      it("opens one pending certificate per class per month, idempotent across scans, ids and counts only", async () => {
+        const first = await runRetentionScanForOrg(deps, orgH);
+        const second = await runRetentionScanForOrg(deps, orgH);
+        expect(first.certificates.map((c) => c.dataClass).sort()).toEqual([
+          "message.bereavement",
+          "message.care_related",
+          "message.operational",
+        ]);
+        expect(second.certificates.map((c) => c.certificateId)).toEqual(
+          first.certificates.map((c) => c.certificateId),
+        );
+        expect(second.certificates.every((c) => !c.created)).toBe(true);
+        const certs = await admin.query(
+          `SELECT data_class, status, count(*)::int AS n FROM destruction_certificate
+            WHERE organization_id=$1 AND data_class LIKE 'message.%' GROUP BY data_class, status ORDER BY data_class`,
+          [orgH],
+        );
+        expect(certs.rows).toEqual([
+          { data_class: "message.bereavement", status: "pending", n: 1 },
+          { data_class: "message.care_related", status: "pending", n: 1 },
+          { data_class: "message.operational", status: "pending", n: 1 },
+        ]);
+        expect(JSON.stringify(await runRow(second.runId))).not.toMatch(/body|cipher|title/i);
+      });
+
+      it("5000+ held old messages do not crowd eligible ones out, and the cap is reported", async () => {
+        const orgBulk = await seedOrg("wp56s3bulk");
+        const u = await seedUser("wp56s3-bulk@x.test", orgBulk);
+        const heldCh = await seedCareTeamChannel(orgBulk, PH, "held");
+        const freeCh = await seedCareTeamChannel(orgBulk, PO, "free");
+        const bulk = (channelId: string, n: number, years: number) =>
+          admin.query(
+            `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+             SELECT $1, $2, $3, 'user', '\\x0102'::bytea, repeat('a',64), $4::timestamptz + (g || ' seconds')::interval
+               FROM generate_series(1, $5::int) g`,
+            [orgBulk, channelId, u, ago(years), n],
+          );
+        await bulk(heldCh, 5100, 9); // older than every eligible row: ORDER BY created_at puts them first
+        await bulk(freeCh, 3, 8);
+        const holdId = await applyHold(orgBulk, { patientIds: [PH] });
+        const scan = await runRetentionScanForOrg(deps, orgBulk);
+        expect(scan.toDestroy).toBe(3);
+        expect(scan.skippedLegalHold).toBe(5100);
+        expect(scan.capped).toBe(false);
+        expect(scan.heldByHold).toEqual([{ holdId, held: 5100 }]);
+        await releaseHold(holdId);
+        const released = await runRetentionScanForOrg(deps, orgBulk);
+        expect(released.toDestroy).toBe(5000);
+        expect(released.capped).toBe(true);
+        expect((await runRow(released.runId))?.capped).toBe(true);
+      }, 120_000);
     });
 
     it("rotates through every head and revision in (created_at, id) order across runs, wrapping, so a tamper is found within a cycle", async () => {

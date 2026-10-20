@@ -56,6 +56,12 @@ import { runHashVerifyForOrg } from "../src/modules/36-messaging/jobs/integrity-
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { appRoleConnectionString } from "./_live-app-role";
 
+// these suites run hash_verify only; the retention scan is not exercised
+const NO_MESSAGE_HOLDS = {
+  activeHolds: async () => [],
+  openCertificate: async () => ({ id: "", created: false }),
+};
+
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
@@ -487,7 +493,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
       {
         db: handle.db,
         cipher: ringCipher,
-        holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set() }),
+        messageHolds: NO_MESSAGE_HOLDS,
         sampleLimit: 1000,
         randomSampleSize: 100,
       },
@@ -729,7 +735,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     const verifyDeps = {
       db: handle.db,
       cipher: ringCipher,
-      holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set<string>() }),
+      messageHolds: NO_MESSAGE_HOLDS,
       sampleLimit: 1000,
       randomSampleSize: 100,
     };
