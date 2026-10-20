@@ -90,6 +90,8 @@ export const CREATE_DETAIL =
 export const NAME_LABEL = "Name";
 export const REASON_LABEL = "Reason";
 export const REASON_HINT = "At least 10 characters. It is kept in the audit trail.";
+export const REASON_PRIVACY_HINT =
+  "Do not include patient names or identifiers; the reason is stored in audit events.";
 export const ORG_WIDE_LABEL = "Hold every message in the organization";
 export const CHANNEL_IDS_LABEL = "Channel ids";
 export const USER_IDS_LABEL = "Person ids";

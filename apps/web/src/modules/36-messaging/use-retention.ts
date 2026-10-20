@@ -37,7 +37,7 @@ export type ActionResult =
   | { readonly kind: "step_up"; readonly error: unknown }
   | { readonly kind: "stale" }
   | { readonly kind: "invalid" }
-  | { readonly kind: "denied" }
+  | { readonly kind: "denied"; readonly code: 401 | 403 }
   | { readonly kind: "failed" };
 
 const failureView = (status: number | undefined): LoadView<never> =>
@@ -52,34 +52,61 @@ const errorCode = (error: unknown): string | undefined => {
 };
 
 /** Stale-while-revalidate: only the first load shows "loading"; a reload keeps the previous data on screen until the
- *  newest response lands, and only the newest request may apply (an older one settling late is dropped). */
-function useRead<T>(fetcher: Fetcher<T>): { view: LoadView<T>; reload: () => void } {
+ *  newest response lands, and only the newest request may apply (an older one settling late is dropped). A reload that
+ *  fails with a plain error keeps the data and raises `refreshFailed` (an inline Retry); a refusal (401/403) replaces it. */
+function useRead<T>(fetcher: Fetcher<T>): {
+  view: LoadView<T>;
+  reload: () => void;
+  refreshFailed: boolean;
+} {
   const client = useOptionalApiClient();
   const [view, setView] = useState<LoadView<T>>({ status: "loading" });
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const scope = useRef(0);
+  const hasData = useRef(false);
+  const apply = useCallback((next: LoadView<T>): void => {
+    if (next.status === "ready") {
+      hasData.current = true;
+      setRefreshFailed(false);
+      setView(next);
+    } else if (next.status === "error" && hasData.current) {
+      setRefreshFailed(true);
+    } else {
+      hasData.current = false;
+      setRefreshFailed(false);
+      setView(next);
+    }
+  }, []);
   const read = useCallback(async (): Promise<void> => {
     scope.current += 1;
     const mine = scope.current;
     if (!client) {
-      setView({ status: "error" });
+      apply({ status: "error" });
       return;
     }
     try {
       const { data, response } = await fetcher(client);
       if (mine !== scope.current) return;
-      setView(data ? { status: "ready", data } : failureView(response?.status));
+      apply(data ? { status: "ready", data } : failureView(response?.status));
     } catch {
-      if (mine === scope.current) setView({ status: "error" });
+      if (mine === scope.current) apply({ status: "error" });
     }
-  }, [client, fetcher]);
+  }, [client, fetcher, apply]);
   useEffect(() => {
+    hasData.current = false;
+    setRefreshFailed(false);
     setView({ status: "loading" });
     void read();
     return () => {
       scope.current += 1; // an unmount or a new client drops whatever is still in flight
     };
   }, [read]);
-  return { view, reload: useCallback(() => void read(), [read]) };
+  const reload = useCallback((): void => {
+    setRefreshFailed(false);
+    if (!hasData.current) setView({ status: "loading" }); // Retry from the error view shows the spinner
+    void read();
+  }, [read]);
+  return { view, reload, refreshFailed };
 }
 
 export const useRetentionOverview = () => useRead<RetentionOverviewDto>(fetchRetention);
@@ -87,13 +114,14 @@ export const useRetentionOverview = () => useRead<RetentionOverviewDto>(fetchRet
 export function useLegalHolds(): {
   view: LoadView<readonly MessageLegalHoldDto[]>;
   reload: () => void;
+  refreshFailed: boolean;
 } {
-  const { view, reload } = useRead<MessageLegalHoldListDto>(fetchHolds);
+  const { view, reload, refreshFailed } = useRead<MessageLegalHoldListDto>(fetchHolds);
   const mapped = useMemo<LoadView<readonly MessageLegalHoldDto[]>>(
     () => (view.status === "ready" ? { status: "ready", data: view.data.holds } : view),
     [view],
   );
-  return { view: mapped, reload };
+  return { view: mapped, reload, refreshFailed };
 }
 
 function classify(reply: Reply<unknown>): ActionResult {
@@ -103,7 +131,7 @@ function classify(reply: Reply<unknown>): ActionResult {
     return { kind: "step_up", error: reply.error };
   if (status === 409 && errorCode(reply.error) === RELEASE_PREVIEW_STALE_CODE)
     return { kind: "stale" };
-  if (status === 401 || status === 403) return { kind: "denied" };
+  if (status === 401 || status === 403) return { kind: "denied", code: status };
   if (status === 400 || status === 422) return { kind: "invalid" };
   return { kind: "failed" };
 }

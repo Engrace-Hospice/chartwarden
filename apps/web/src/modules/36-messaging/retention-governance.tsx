@@ -32,27 +32,34 @@ const formatTime = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 };
 
+function RetryAlert({ retry }: { readonly retry: () => void }): JSX.Element {
+  return (
+    <div className="wx-retention-error" role="alert">
+      <p>{W.LOAD_FAILED}</p>
+      <Button type="button" tone="secondary" size="sm" onClick={retry}>
+        {W.RETRY_LABEL}
+      </Button>
+    </div>
+  );
+}
+
 function LoadGate<T>({
   view,
   retry,
+  refreshFailed = false,
   children,
 }: {
   readonly view: LoadView<T>;
   readonly retry: () => void;
+  /** A reload failed but the last good data is still shown: say so inline, never replace the data. */
+  readonly refreshFailed?: boolean;
   readonly children: (data: T) => JSX.Element;
 }): JSX.Element {
   switch (view.status) {
     case "loading":
       return <LoadingSpinner />;
     case "error":
-      return (
-        <div className="wx-retention-error" role="alert">
-          <p>{W.LOAD_FAILED}</p>
-          <Button type="button" tone="secondary" size="sm" onClick={retry}>
-            {W.RETRY_LABEL}
-          </Button>
-        </div>
-      );
+      return <RetryAlert retry={retry} />;
     case "denied":
       return (
         <p className="wx-retention-error" role="alert">
@@ -60,7 +67,12 @@ function LoadGate<T>({
         </p>
       );
     case "ready":
-      return children(view.data);
+      return (
+        <>
+          {refreshFailed ? <RetryAlert retry={retry} /> : null}
+          {children(view.data)}
+        </>
+      );
   }
 }
 
@@ -164,8 +176,11 @@ function HoldRow({
 
 function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
   const owner = useStepUpOwner();
-  const { view, reload } = useLegalHolds();
+  const { view, reload, refreshFailed } = useLegalHolds();
   const actions = useLegalHoldActions();
+  // The step-up prefill is one-shot: consumed when its dialog closes, so a later open starts empty.
+  const [resumeCreate, setResumeCreate] = useState(resume.create);
+  const [resumeRelease, setResumeRelease] = useState(resume.release);
   const [creating, setCreating] = useState(() => resume.create !== null);
   const [releasing, setReleasing] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -174,7 +189,6 @@ function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
   const resumedRelease = useRef(false);
 
   // Back from the step-up page with a stashed release: reopen that hold's dialog once the list is known (once).
-  const resumeRelease = resume.release;
   useEffect(() => {
     if (!resumeRelease || resumedRelease.current || view.status !== "ready") return;
     resumedRelease.current = true;
@@ -203,7 +217,7 @@ function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
       <output ref={statusRef} tabIndex={-1} className="wx-retention-status" aria-live="polite">
         {announcement}
       </output>
-      <LoadGate view={view} retry={reload}>
+      <LoadGate view={view} retry={reload} refreshFailed={refreshFailed}>
         {(holds) =>
           holds.length === 0 ? (
             <EmptyState title={W.HOLDS_EMPTY_TITLE} description={W.HOLDS_EMPTY_TEXT} />
@@ -219,10 +233,14 @@ function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
       {creating ? (
         <CreateHoldDialog
           actions={actions}
-          initial={resume.create}
+          initial={resumeCreate}
           draftKey={createDraftKey(owner)}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            setResumeCreate(null);
+            setCreating(false);
+          }}
           onPlaced={() => {
+            setResumeCreate(null);
             setCreating(false);
             announce(W.PLACED_ANNOUNCEMENT);
             reload();
@@ -236,8 +254,12 @@ function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
           actions={actions}
           initialReason={resumeRelease?.holdId === target.id ? resumeRelease.reason : ""}
           draftKey={releaseDraftKey(owner, target.id)}
-          onClose={() => setReleasing(null)}
+          onClose={() => {
+            setResumeRelease(null);
+            setReleasing(null);
+          }}
           onReleased={() => {
+            setResumeRelease(null);
             setReleasing(null);
             announce(W.RELEASE_ANNOUNCEMENT);
             reload();
