@@ -9,6 +9,7 @@ import { asLeaver } from "./leaver-scope";
 import type { OffboardingStep } from "./offboarding-types";
 
 const DE = schema.deliveryEndpoints;
+const USER = schema.users;
 const CM = schema.channelMembers;
 
 export function sessionsDevicesStep(input: {
@@ -27,6 +28,15 @@ export function sessionsDevicesStep(input: {
       ),
     );
 
+  // delivery_endpoint belongs to the HUMAN and has no organisation column, so an organisation's officer may only touch endpoints that are
+  // provably this organisation's (the ones linked to its sessions, expired by the ADR-0083 revoke). Endpoints no session links to are swept
+  // only when the whole account is deactivated (M2, global): a person removed from this organisation but active in another keeps theirs.
+  const accountDeactivated = (organizationId: string, userId: string): Promise<boolean> =>
+    withOrgContext(db, systemOrgContext(organizationId), async (tx) => {
+      const [row] = await tx.select({ status: USER.status }).from(USER).where(eq(USER.id, userId));
+      return row?.status === "deactivated";
+    });
+
   const openEndpoints = (organizationId: string, leaverUserId: string): Promise<number> =>
     asLeaver(db, { organizationId, leaverUserId }, async (tx) => {
       const [row] = await tx
@@ -41,7 +51,9 @@ export function sessionsDevicesStep(input: {
     kind: "sweep",
     async inspect(ctx) {
       const sessions = await liveSessionIds(ctx.organizationId, ctx.leaverUserId);
-      const endpoints = await openEndpoints(ctx.organizationId, ctx.leaverUserId);
+      const endpoints = (await accountDeactivated(ctx.organizationId, ctx.leaverUserId))
+        ? await openEndpoints(ctx.organizationId, ctx.leaverUserId)
+        : 0;
       return { auto: sessions.length + endpoints, human: 0 };
     },
     async run(ctx) {
@@ -55,8 +67,9 @@ export function sessionsDevicesStep(input: {
         const revoked = await input.sessionDevices.revokeForUser(actor, sessionId);
         acted += 1 + revoked.push_endpoints_expired;
       }
-      // Endpoints no session links to (registered before ADR-0083, or whose session already ended) are expired too: a departed
-      // person's browser must not keep receiving pushes. Expired, not deleted: the history of the endpoint stays.
+      // Endpoints no session links to (registered before ADR-0083, or whose session already ended) are expired too, but only for a
+      // deactivated account (see above). Expired, not deleted: the history of the endpoint stays.
+      if (!(await accountDeactivated(ctx.organizationId, ctx.leaverUserId))) return acted;
       acted += await asLeaver(
         db,
         { organizationId: ctx.organizationId, leaverUserId: ctx.leaverUserId },

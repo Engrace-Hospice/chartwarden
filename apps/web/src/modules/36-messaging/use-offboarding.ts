@@ -96,16 +96,19 @@ export function useOffboarding(userId: string): UseOffboarding {
         setView(viewForFailure(status));
         return { kind: "failed" };
       }
+      // The server may have done part of the work before it failed: show what is true now, not the checklist from before the run.
       setRunFailed(true);
+      void read();
       return { kind: "failed" };
     } catch {
       if (mine === scope.current) {
         setRunning(false);
         setRunFailed(true);
+        void read();
       }
       return { kind: "failed" };
     }
-  }, [client, userId]);
+  }, [client, userId, read]);
 
   const retry = useCallback(() => {
     setView({ status: "loading" });

@@ -278,6 +278,23 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         leaver.userId,
       ]),
       messages: await count("SELECT count(*)::int AS n FROM message"),
+      verifiedEndpoints: await count(
+        "SELECT count(*)::int AS n FROM delivery_endpoint WHERE verification_status <> 'expired'",
+      ),
+      scheduled: await count("SELECT count(*)::int AS n FROM scheduled_message"),
+      memberships: await count(
+        "SELECT count(*)::int AS n FROM channel_member WHERE removed_at IS NULL",
+      ),
+      assignments: (
+        await admin.query(
+          "SELECT string_agg(assigned_user_id::text || status, ',' ORDER BY id) AS v FROM message_acknowledgment_request",
+        )
+      ).rows[0]?.v,
+      taskOwners: (
+        await admin.query(
+          "SELECT string_agg(assignee_id::text, ',' ORDER BY id) AS v FROM communication_task",
+        )
+      ).rows[0]?.v,
     });
 
     beforeAll(async () => {
@@ -540,6 +557,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     it("PREVIEW counts every item, changes nothing and writes one audit row", async () => {
       // Identity deactivates the member (the membership ends; the sessions are still on the books in this scenario).
       await admin.query("UPDATE membership SET status='revoked' WHERE user_id=$1", [leaver.userId]);
+      await admin.query(`UPDATE "user" SET status='deactivated' WHERE id=$1`, [leaver.userId]);
       // The sessions are still on the books, so until the execute step revokes them the session is still alive for plain REST.
       expect((await call("GET", "/api/v1/devices", leaverSessions[0] as Login)).statusCode).toBe(
         200,
@@ -579,12 +597,21 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       const lacksReview = await login(noReview, ORG, UA_MAC, true);
       expect((await execute(lacksReview, leaver.userId)).statusCode).toBe(403);
       const other = await login(outsider, ORG_2, UA_MAC, true);
+      const beforeAttack = await footprint();
       const foreign = await preview(other, leaver.userId);
       const unknown = await preview(other, randomUUID());
       expect(foreign.statusCode).toBe(404);
       expect(unknown.statusCode).toBe(404);
       expect(Object.keys(foreign.json()).sort()).toEqual(Object.keys(unknown.json()).sort());
       expect((await execute(other, leaver.userId)).statusCode).toBe(404);
+      // Zero rows changed by the other tenant's officer (sessions, endpoints, requests, tasks, memberships, sends, audit of the target).
+      expect(await footprint()).toEqual(beforeAttack);
+      expect(
+        await count(
+          "SELECT count(*)::int AS n FROM audit_event WHERE event_type LIKE 'm36.offboarding.%' AND organization_id=$1",
+          [ORG_2],
+        ),
+      ).toBe(0);
       expect(
         await count("SELECT count(*)::int AS n FROM session WHERE user_id=$1", [leaver.userId]),
       ).toBe(2);
@@ -782,6 +809,63 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           )
         )[0]?.assignee_id,
       ).toBe(nurse.userId);
+    });
+
+    it("a person removed from this organisation but still active in another keeps the other organisation's session and endpoints", async () => {
+      const dual = await seedPerson("dual", ORG, RECEIVE);
+      const otherMembership = (
+        await admin.query(
+          "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
+          [dual.userId, ORG_2],
+        )
+      ).rows[0].id as string;
+      const otherRole = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'r_dual_b','r_dual_b','clinical_staff',true) RETURNING id",
+          [ORG_2],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'notifications.endpoint.manage')",
+        [ORG_2, otherRole],
+      );
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [ORG_2, otherMembership, otherRole],
+      );
+      await admin.query("DELETE FROM session WHERE user_id=$1", [dual.userId]);
+      const inOtherOrg = await login(dual, ORG_2, UA_MAC);
+      expect(
+        (
+          await call("POST", "/api/v1/notifications/endpoints", inOtherOrg, {
+            channel: "push",
+            target: "https://push.example.test/sub/dual-other-org-dddddddd",
+          })
+        ).statusCode,
+      ).toBe(201);
+      await admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, endpoint_value, verification_status, verified_at) VALUES ($1,'push',$2,'verified',now())`,
+        [dual.userId, "https://push.example.test/sub/dual-unlinked-eeeeeeeeee"],
+      );
+      await admin.query(
+        "UPDATE membership SET status='revoked' WHERE user_id=$1 AND organization_id=$2",
+        [dual.userId, ORG],
+      );
+      const res = await execute(officerLogin, dual.userId);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(item(res.json() as OffboardingDto, "sessions_devices")).toMatchObject({
+        state: "done",
+        count: 0,
+        acted: 0,
+      });
+      // The other organisation's session still works and every endpoint is still verified.
+      expect((await call("GET", "/api/v1/devices", inOtherOrg)).statusCode).toBe(200);
+      expect(
+        await count(
+          "SELECT count(*)::int AS n FROM delivery_endpoint WHERE user_id=$1 AND verification_status='verified'",
+          [dual.userId],
+        ),
+      ).toBe(2);
     });
 
     it("AUDIT: the rows carry ids, fixed keys and counts only", async () => {

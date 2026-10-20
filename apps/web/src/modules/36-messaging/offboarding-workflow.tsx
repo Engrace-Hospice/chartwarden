@@ -29,12 +29,14 @@ import {
   OFFBOARDING_STEP_UP_TEXT,
   OFFBOARDING_TITLE,
   RAN_ANNOUNCEMENT,
+  RUNNING_ANNOUNCEMENT,
   RUNNING_LABEL,
   RUN_AGAIN_LABEL,
   RUN_LABEL,
   STATE_WORDING,
   UNACKNOWLEDGED_LINK,
   UNACKNOWLEDGED_LINK_LABEL,
+  advisoryText,
   blockedText,
   countText,
   progressText,
@@ -91,6 +93,7 @@ function Ready({
   onRun,
   stepUpNeeded,
   announcement,
+  hasRun,
 }: {
   readonly data: OffboardingDto;
   readonly running: boolean;
@@ -98,17 +101,19 @@ function Ready({
   readonly onRun: () => void;
   readonly stepUpNeeded: boolean;
   readonly announcement: string;
+  readonly hasRun: boolean;
 }): JSX.Element {
   const confirmId = useId();
   const [confirming, setConfirming] = useState(false);
-  const ranBefore =
-    data.items.some((i) => i.acted > 0) || data.items.some((i) => i.state === "failed");
+  const advisory = data.items.filter((i) => i.state === "advisory").length;
+  const ranBefore = hasRun || data.items.some((i) => i.acted > 0 || i.state === "failed");
   return (
     <>
       <p className="wx-offboarding-progress">
         <strong>{progressText(data.done, data.total)}</strong>
         {" · "}
         {data.complete ? COMPLETE_TEXT : blockedText(data.blocked_by.length)}
+        {advisory > 0 ? advisoryText(advisory) : null}
       </p>
       <output className="wx-offboarding-status" aria-live="polite">
         {announcement}
@@ -173,13 +178,15 @@ function Person({ userId }: { readonly userId: string }): JSX.Element {
   const { view, running, runFailed, run, retry } = useOffboarding(userId);
   const [stepUpNeeded, setStepUpNeeded] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [hasRun, setHasRun] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const onRun = async (): Promise<void> => {
     setStepUpNeeded(false);
-    setAnnouncement("");
+    setAnnouncement(RUNNING_ANNOUNCEMENT);
+    setHasRun(true);
     const result = await run();
     if (result.kind === "ran") {
       setAnnouncement(RAN_ANNOUNCEMENT);
@@ -229,6 +236,7 @@ function Person({ userId }: { readonly userId: string }): JSX.Element {
           onRun={() => void onRun()}
           stepUpNeeded={stepUpNeeded}
           announcement={announcement}
+          hasRun={hasRun}
         />
       );
       break;

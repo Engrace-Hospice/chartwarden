@@ -17,7 +17,10 @@ export const OFFBOARDING_NOT_OFFBOARDED =
 export const OFFBOARDING_STEP_UP_TEXT =
   "A recent second-factor check is required to run this. Verify with your authenticator, then try again.";
 export const OFFBOARDING_RUN_FAILED =
-  "Could not run the offboarding. Nothing was lost; run it again.";
+  "The result of the run is unknown. The checklist below was refreshed from the server; run it again if items remain.";
+export const RUNNING_ANNOUNCEMENT = "Running offboarding";
+export const advisoryText = (n: number): string =>
+  n === 1 ? " 1 item to check manually." : ` ${n} items to check manually.`;
 
 export const progressText = (done: number, total: number): string => `Done ${done} of ${total}`;
 

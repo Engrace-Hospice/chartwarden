@@ -27,7 +27,7 @@ The lifecycle review queue (`messaging_review_item`) is keyed to a patient lifec
 
 | Item | What M36 does | Through |
 | --- | --- | --- |
-| `sessions_devices` | revoke every live staff session of the user in the organisation, then expire every non-expired delivery endpoint of the user (linked or not) | the ADR-0083 `revokeForUser` (transaction, audit, socket close); endpoints expired, never deleted |
+| `sessions_devices` | revoke every live staff session of the user bound to the organisation (the endpoints linked to them are expired with each); endpoints no session links to are expired only when the whole account is `deactivated` (an endpoint belongs to the person and has no organisation, so an officer of one organisation must not expire a person's endpoints in another) | the ADR-0083 `revokeForUser` (transaction, audit, socket close); endpoints expired, never deleted |
 | `channel_memberships` | soft-remove active memberships (history and attribution stay) | the existing `endChannelMembershipsForUser` |
 | `tasks` | move to creator then care team, else flag `needs_owner` (flagged = needs a person) | the WP 3.4 sweep |
 | `handoffs` | decline offers to the user; flag offers from the user to supervisors | the WP 3.5 sweep |
@@ -67,9 +67,11 @@ The lifecycle review queue (`messaging_review_item`) is keyed to a patient lifec
 ## Known ceilings
 
 - **The preview/execute counts are point-in-time.** Two officers running at once converge (every step is idempotent) but a request moved by the first may be reported by the second as `acted: 0`.
-- **A run handles at most 200 waiting requests per call**; the report shows what is left and the next run continues.
 - **A stale reassign failure raises the supervisor alert** even when the request was acknowledged in the meantime (the alert is keyed to the request version, so it is not repeated).
 - **The first eligible colleague** (name order) takes a moved request; there is no load balancing and no choice offered. The picker already excludes the sender and anyone the Part 2 gate walls off; an officer walled off from a patient moves nothing for that patient and the request stays visible.
 - **On-call is never "done"**: it is advisory by construction until M19 exposes a reader.
 - **Reminders and snoozes are deleted, not archived**; the scheduled send's sealed body is deleted with its row (the same as the owner's own cancel).
-- **`channel_memberships` and `sessions_devices` count rows for the organisation only**; a user's sessions bound to another organisation are not touched (the ADR-0083 officer variant's rule). A platform-wide deactivation reaps those in M2.
+- **A person removed here but active elsewhere keeps their other organisation's sessions and every endpoint not linked to a session of this organisation** (found by review, covered by a live test). A platform-wide deactivation reaps the rest in M2.
+- **An untracked urgent message raises no supervisor alert** (there is no request to key it to); it is only a `needs_person` count on the officer's page. Accepted gap, open question 7.
+- **Up to 2000 waiting requests are attempted per run**, each trying the picker's colleagues in order (never the officer or the leaver); a stuck one raises its alert once per version, and the ops notice for an unpaged alert is raised once per request and version per process.
+- **No rate limit on the two routes** (they need the key, the reassign keys and a fresh step-up).

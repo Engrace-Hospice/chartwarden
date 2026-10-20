@@ -158,6 +158,22 @@ describe("OffboardingWorkflow", () => {
     expect(screen.getByRole("button", { name: "Run again" })).toBeTruthy();
   });
 
+  it("an unknown run outcome re-reads the checklist so it shows what is true", async () => {
+    const { GET } = mount({ get: () => ok(PREVIEW), post: () => fail(500) });
+    fireEvent.click(await screen.findByRole("button", { name: "Run offboarding" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Run offboarding" }),
+    );
+    await screen.findByRole("alert");
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Run again" })).toBeTruthy();
+  });
+
+  it("a complete checklist with a manual item still says what to check", async () => {
+    mount({ get: () => ok(dto({ oncall_seats: { state: "advisory" } })) });
+    expect(await screen.findByText(/1 item to check manually\./)).toBeTruthy();
+  });
+
   it("a finished checklist says it is complete", async () => {
     mount({ get: () => ok(dto({ drafts: { state: "kept", count: 2 } })) });
     expect(await screen.findByText(/Complete: nothing is left for messaging to do\./)).toBeTruthy();
@@ -171,7 +187,7 @@ describe("OffboardingWorkflow", () => {
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Run offboarding" }),
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "Could not run the offboarding",
+      "The result of the run is unknown",
     );
     expect(screen.getByRole("list", { name: "Offboarding checklist" })).toBeTruthy();
   });

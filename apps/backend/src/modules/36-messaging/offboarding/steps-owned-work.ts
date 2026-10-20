@@ -8,6 +8,7 @@ import type { AckSupervisorReasonCode } from "@wardenx/types";
 import { type SQL, and, count, eq, gte, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import {
   type SupervisorAttentionDeps,
+  createOnceGuard,
   raiseSupervisorAttention,
 } from "../ack-escalation/supervisor-attention";
 import type { AckService } from "../ack-requests/ack-service";
@@ -26,8 +27,12 @@ export const UNTRACKED_URGENT_WINDOW_HOURS = 72;
 
 const WAITING = ["pending", "escalated", "failed_unreachable"] as const;
 const OPEN = [...WAITING, "acknowledged"] as const;
-/** Bound on requests handled per run; the next run finishes the rest (the step reports what is left). */
-const ACK_RUN_BATCH = 200;
+/** Upper bound on requests attempted in one run; the step reports what is left. */
+const ACK_RUN_LIMIT = 2_000;
+
+/** The request changed under us (acknowledged, already moved, closed): not a reason to try another colleague. */
+const isStateConflict = (err: unknown): boolean =>
+  err instanceof Error && "code" in err && (err as { code?: unknown }).code === "ACK_STATE_INVALID";
 
 const countOf = async (query: Promise<ReadonlyArray<{ n: number }>>): Promise<number> =>
   (await query)[0]?.n ?? 0;
@@ -134,7 +139,7 @@ export function ackAssignedStep(input: {
         .orderBy(R.deadlineAt, R.id)
         .limit(limit),
     );
-  const acknowledged = (orgId: string, userId: string) =>
+  const countWhere = (orgId: string, userId: string, statuses: readonly string[]) =>
     withOrgContext(input.db, systemOrgContext(orgId), (tx) =>
       countOf(
         tx
@@ -144,37 +149,58 @@ export function ackAssignedStep(input: {
             and(
               eq(R.organizationId, orgId),
               eq(R.assignedUserId, userId),
-              eq(R.status, "acknowledged"),
+              inArray(R.status, [...statuses] as never),
             ),
           ),
       ),
     );
+  // The ops notice that follows an unpaged supervisor alert is raised once per request and version in this process; the alert itself is
+  // idempotent on its correlation id, so a re-run (or another process) never double-notifies the supervisors.
+  const noticed = createOnceGuard();
+
+  async function tryMove(
+    actor: { orgId: string; userId: string },
+    request: WaitingRequest,
+    leaverUserId: string,
+  ): Promise<boolean> {
+    const { candidates } = await input.ack.supervisorReassignCandidates(actor, request.id);
+    // The picker never lists the sender or the current assignee; the officer cannot take it either (a supervisor never assigns to themselves).
+    for (const candidate of candidates) {
+      if (candidate.user_id === leaverUserId || candidate.user_id === actor.userId) continue;
+      try {
+        const out = await input.ack.supervisorReassign(
+          actor,
+          request.id,
+          candidate.user_id,
+          OFFBOARDING_ACK_REASON,
+        );
+        if (out.changed) return true;
+      } catch (err) {
+        if (isStateConflict(err)) return false;
+        // Not eligible after all (a race with the picker): try the next colleague.
+      }
+    }
+    return false;
+  }
 
   return {
     key: "ack_assigned",
     kind: "reassign",
     async inspect(ctx) {
-      const rows = await waiting(ctx.organizationId, ctx.leaverUserId, 10_000);
-      return { auto: rows.length, human: await acknowledged(ctx.organizationId, ctx.leaverUserId) };
+      return {
+        auto: await countWhere(ctx.organizationId, ctx.leaverUserId, WAITING),
+        human: await countWhere(ctx.organizationId, ctx.leaverUserId, ["acknowledged"]),
+      };
     },
     async run(ctx) {
       const actor = { orgId: ctx.organizationId, userId: ctx.actorUserId };
       let moved = 0;
-      for (const request of await waiting(ctx.organizationId, ctx.leaverUserId, ACK_RUN_BATCH)) {
+      // Every waiting request is attempted once per run (stuck ones keep their place, so a fixed-size window would starve the rest).
+      for (const request of await waiting(ctx.organizationId, ctx.leaverUserId, ACK_RUN_LIMIT)) {
         try {
-          const { candidates } = await input.ack.supervisorReassignCandidates(actor, request.id);
-          const next = candidates.find((c) => c.user_id !== ctx.leaverUserId);
-          if (next) {
-            const out = await input.ack.supervisorReassign(
-              actor,
-              request.id,
-              next.user_id,
-              OFFBOARDING_ACK_REASON,
-            );
-            if (out.changed) {
-              moved += 1;
-              continue;
-            }
+          if (await tryMove(actor, request, ctx.leaverUserId)) {
+            moved += 1;
+            continue;
           }
         } catch (err) {
           input.warn?.("offboarding ack reassign failed", {
@@ -184,13 +210,23 @@ export function ackAssignedStep(input: {
           });
         }
         // Nobody could take it: it stays in the supervisors' queue and they are told, once per request and version.
-        await raiseSupervisorAttention(
-          input.attention,
-          ctx.organizationId,
-          { id: request.id, ackClass: request.ackClass },
-          "assignee_departed",
-          `offboard-attn:${request.id}:${request.version}`,
-        );
+        const key = `offboard-attn:${request.id}:${request.version}`;
+        try {
+          await raiseSupervisorAttention(
+            input.attention,
+            ctx.organizationId,
+            { id: request.id, ackClass: request.ackClass },
+            "assignee_departed",
+            key,
+            async () => noticed(key),
+          );
+        } catch (err) {
+          input.warn?.("offboarding supervisor alert failed", {
+            organization_id: ctx.organizationId,
+            request_id: request.id,
+            error_name: err instanceof Error ? err.name : "NonError",
+          });
+        }
       }
       return moved;
     },
