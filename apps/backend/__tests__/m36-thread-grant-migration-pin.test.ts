@@ -36,7 +36,11 @@ describe("migration 1134 thread access grant", () => {
     }
     expect(sql).toContain('ALTER TABLE "message_thread_access_grant" ENABLE ROW LEVEL SECURITY');
     expect(sql).toContain('ALTER TABLE "message_thread_access_grant" FORCE ROW LEVEL SECURITY');
-    expect(sql).toContain("USING (organization_id = current_setting('app.org_id', true)::uuid)");
+    expect(sql).toContain(
+      "USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)",
+    );
+    // The guard reads under the caller's own RLS: no SECURITY DEFINER on the grant guard.
+    expect(sql).toMatch(/message_thread_grant_guard\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY INVOKER/);
   });
 
   it("is insert/revoke-only: no app DELETE, UPDATE only on revoked_at, guard on the database clock", () => {

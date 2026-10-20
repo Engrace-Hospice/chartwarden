@@ -10,7 +10,9 @@
 // row per source event, written in the SAME transaction as the decision and its outcome event (M19 may not
 // read `outbox_event`). A replay that finds it does nothing: the original outcome stands, nothing is
 // republished and no second `coverage_gap` is emitted, even if the world has since changed. Replays are
-// serial per event (the relay claims the row) and the UNIQUE key backstops a race.
+// normally serial per event (the relay claims the row); if two deliveries do race, the UNIQUE key makes the
+// loser's insert return no row and it THROWS, rolling back its whole transaction (call row, gap, outcome),
+// so exactly one outcome is ever published.
 import { type DbClient, schema } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant, OrgId, TriageCallId } from "@wardenx/types";
@@ -68,7 +70,7 @@ async function publishAfterHoursOutcome(
     readonly outcome: AfterHoursOutcome;
   },
 ): Promise<void> {
-  await tx
+  const inserted = await tx
     .insert(DECISION)
     .values({
       organizationId: input.organizationId,
@@ -76,7 +78,16 @@ async function publishAfterHoursOutcome(
       triageCallId: input.triageCallId,
       outcome: input.outcome,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: DECISION.id });
+  // A concurrent delivery of the same event inserted first: this transaction decided on a stale read.
+  // Throw so everything it did (call row, coverage_gap, outcome) rolls back; the relay's retry then reads
+  // the winner's decision row and skips. Publishing here would double the outcome.
+  if (inserted.length === 0) {
+    throw new Error(
+      `after-hours decision for event ${input.sourceOutboxEventId} already recorded by a concurrent delivery`,
+    );
+  }
   await deps.outbox.publish(tx, {
     eventName: M19_AFTERHOURS_OUTCOME_EVENT,
     organizationId: input.organizationId,
@@ -123,6 +134,13 @@ async function applyAfterHoursAction(
         (tx) => answer(tx as DbClient, action.intoTriageCallId, "coalesced"),
       );
     case "no_coverage":
+      if (action.gap === null) {
+        return withOrgContext(
+          deps.db,
+          { organizationId: ctx.organizationId, userId: CONSUMER_USER_ID },
+          (tx) => answer(tx as DbClient, null, "no_coverage"),
+        );
+      }
       return publishCoverageGap(deps, action.gap, (tx) => answer(tx, null, "no_coverage"));
   }
 }

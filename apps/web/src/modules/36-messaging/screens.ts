@@ -23,6 +23,12 @@ const NotificationPreferences = lazy(() =>
 const OnCallDirectory = lazy(() =>
   import("./oncall-directory").then((m) => ({ default: m.OnCallDirectory })),
 );
+const DeviceManager = lazy(() =>
+  import("./device-manager").then((m) => ({ default: m.DeviceManager })),
+);
+const SessionGovernance = lazy(() =>
+  import("./session-governance").then((m) => ({ default: m.SessionGovernance })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -66,6 +72,23 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.oncall.read",
       screen: OnCallDirectory,
+    },
+    {
+      // WP 5.5 (ADR-0083): the caller's own sessions and a Revoke for each. Self-service: no permission key (the API returns only the caller's own).
+      id: "messaging.devices",
+      path: "/messaging/devices",
+      title: "Devices and sessions",
+      navGroup: "General",
+      screen: DeviceManager,
+    },
+    {
+      // WP 5.5 (ADR-0083): a security officer lists and revokes another person's sessions; the revoke also needs a fresh step-up.
+      id: "messaging.session-governance",
+      path: "/messaging/governance/sessions",
+      title: "Sessions",
+      navGroup: "Admin",
+      requiredPermission: "messaging.sessions.manage",
+      screen: SessionGovernance,
     },
     {
       id: "messaging.saved-replies",

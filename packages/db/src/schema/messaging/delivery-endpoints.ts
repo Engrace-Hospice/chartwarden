@@ -4,6 +4,7 @@
 // three-column rule via the check-tenancy NON_ORG_SCOPED allowlist (a reviewed change) —
 // same posture as `session`/`presence`. `consecutive_failures` drives endpoint quarantine.
 // RLS (user-ownership) lands in M36-T03.
+import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { deliveryEndpointChannel, deliveryEndpointVerification } from "../../enums";
 import { users } from "../users";
@@ -27,6 +28,9 @@ export const deliveryEndpoints = pgTable(
     verificationTokenHash: text("verification_token_hash"),
     verificationTokenExpiresAt: timestamp("verification_token_expires_at", { withTimezone: true }),
     verificationAttempts: integer("verification_attempts").notNull().default(0),
+    // WP 5.5 (migration 1130): the session that registered the endpoint. No FK on purpose (`session` is M2's table); a session revoke expires
+    // the endpoints linked to it in the same transaction. NULL = registered before the link or without a session.
+    sessionId: text("session_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -36,6 +40,9 @@ export const deliveryEndpoints = pgTable(
       t.endpointValue,
     ),
     byUserChannel: index("delivery_endpoint_user_channel_idx").on(t.userId, t.channel),
+    bySession: index("delivery_endpoint_session_idx")
+      .on(t.userId, t.sessionId)
+      .where(sql`${t.sessionId} IS NOT NULL`),
   }),
 );
 

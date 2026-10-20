@@ -5,8 +5,8 @@
 import { MEDICATION_QUESTION_TEXT_MAX } from "@wardenx/types";
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { JSX, KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import type { ClinicalLinkCandidate } from "./clinical-link-kinds";
 import {
   ASK_DIALOG_TITLE,

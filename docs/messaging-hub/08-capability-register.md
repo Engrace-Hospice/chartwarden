@@ -96,7 +96,7 @@
 | SG-09 | Secure file access & expiry | P0 | 1 | GOV | 1.5 | new |
 | SG-10 | Data export restrictions | P1 | 5 | GOV | 5.7 | new |
 | SG-11 | Message edit history | P0 | 1 | GOV | 1.3 | new |
-| SG-12 | Session & device controls | P0 | 5 | GOV | 5.5 | part (M2 sessions) |
+| SG-12 | Session & device controls | P0 | 5 | GOV | 5.5 | built (ADR-0083, proposed; list/revoke, socket and endpoint kill; app lock and session policy open for SEC) |
 
 ## Mobile & accessibility (10)
 | ID | Capability | Pri | Ph | Ctx | WP | Status |

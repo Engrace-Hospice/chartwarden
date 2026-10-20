@@ -2271,6 +2271,22 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.devices",
+      "path": "/messaging/devices",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.session-governance",
+      "path": "/messaging/governance/sessions",
+      "permission": "messaging.sessions.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"

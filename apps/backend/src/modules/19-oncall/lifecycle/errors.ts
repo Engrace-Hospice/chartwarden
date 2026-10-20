@@ -265,9 +265,6 @@ export const M19_ERROR_STATUS = {
    *  tenant's, or unknown). Refused, never opened: the frozen outcome contract has no "refused" arm, so the
    *  M36 link row stays unanswered and the sender sees "triage call not confirmed". */
   AFTERHOURS_PATIENT_NOT_IN_ORG: 422,
-  /** ADR-0082 — the patient resolves but no provider entity can anchor a `triage_call` row (none on the
-   *  patient and the organization has more than one). Same posture as the delivery-failure code above. */
-  AFTERHOURS_PROVIDER_ENTITY_UNRESOLVED: 422,
 } as const;
 
 /** A machine-readable M19 domain failure code (§2.3 / §7). */

@@ -189,6 +189,20 @@ describe.skipIf(!DB_URL)("M36 ADR-0084 G1 thread access grant - LIVE Postgres", 
     await drop(live, shortLived);
   });
 
+  it("a cross-org binding probe fails exactly like a request that does not exist (no existence oracle)", async () => {
+    const orgB = ORG_B;
+    const probe = (requestIdArg: string) =>
+      asApp(
+        INSERT,
+        [orgB, channel, rootMessage, requestIdArg, outsider, "escalated", "4 hours"],
+        orgB,
+      );
+    const foreign = await probe(requestId);
+    const missing = await probe(randomUUID());
+    expect(foreign.error).toMatch(/message_thread_grant_binding/);
+    expect(foreign.error).toBe(missing.error);
+  });
+
   it("refuses a grant whose channel is not the request's channel, or whose root is not the request's thread root", async () => {
     const other = await mkChannel(kit, "care_team", randomUUID(), [author]);
     const otherMsg = (

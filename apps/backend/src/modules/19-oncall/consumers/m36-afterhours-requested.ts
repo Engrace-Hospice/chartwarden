@@ -12,6 +12,8 @@
 //   • no_coverage     — nothing covers the instant: the existing `coverage_gap` plus outcome `no_coverage`.
 // A patient that does not resolve in the envelope's organization THROWS (dead-letter): the frozen outcome
 // contract has no "refused" arm, and inventing one would be a contract change.
+// So every request for a patient IN the organization is answered. A patient with no resolvable provider
+// entity answers `no_coverage` without a gap event; only an unknown patient is dead-lettered (no outcome).
 //
 // WHAT THIS FILE NEVER DOES: copy message text. The payload is id-only, the parser keeps exactly three
 // ids, and `chief_complaint_text` is a fixed platform sentence (§3.6 denylists that column for caller
@@ -188,7 +190,8 @@ export type AfterHoursAction =
   | { readonly kind: "idempotent_skip"; readonly triageCallId: TriageCallId | null }
   | { readonly kind: "coalesced"; readonly intoTriageCallId: TriageCallId }
   | { readonly kind: "open_call"; readonly draft: AfterHoursCallDraft }
-  | { readonly kind: "no_coverage"; readonly gap: TriggerCoverageGap };
+  /** `gap` is null when no provider entity can be named: the outcome is still answered, but no gap event is truthful. */
+  | { readonly kind: "no_coverage"; readonly gap: TriggerCoverageGap | null };
 
 /**
  * ORDER: idempotency first (a redelivery re-checks nothing), then the tenancy anchor (a patient outside
@@ -218,11 +221,11 @@ export function decideAfterHoursRequested(input: {
     return { kind: "coalesced", intoTriageCallId: facts.openMachineCallForPatientId };
   }
   const providerEntityId = patient.providerEntityId;
-  require_(
-    providerEntityId !== null,
-    "AFTERHOURS_PROVIDER_ENTITY_UNRESOLVED",
-    `after-hours request ${input.sourceOutboxEventId}: no provider entity can anchor a triage_call row`,
-  );
+  // No provider entity (the patient has none and the organization has several): nothing can be anchored,
+  // so no call opens and no `coverage_gap` is emitted (its aggregate IS the provider entity, and naming a
+  // guess would assert a gap about the wrong one). M36 must still never wait on silence, so the request is
+  // answered `no_coverage` with no gap event; the missing anchor is a data fix, not a retry.
+  if (providerEntityId === null) return { kind: "no_coverage", gap: null };
 
   const shift = resolveCoveringShift(facts.candidateShifts, input.at);
   if (shift === null) {

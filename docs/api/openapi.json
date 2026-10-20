@@ -98937,6 +98937,130 @@
         }
       }
     },
+    "/api/v1/devices": {
+      "get": {
+        "operationId": "getApiV1Devices",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "devices"
+                  ],
+                  "properties": {
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "label",
+                          "current",
+                          "created_at",
+                          "last_used_at",
+                          "push_registered"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "current": {
+                            "type": "boolean"
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "last_used_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "push_registered": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1DevicesById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Revoke one of the caller's own sessions, in one transaction: the session is deleted (its next REST call is 401 and a socket handshake with it is refused), every endpoint linked to it is expired, and an `m36.session.revoked` audit row is written; then the session's live sockets are closed on every api node. `current:true` means the caller revoked the session making this request and must sign in again. A session that is not the caller's, an unknown id and one already revoked are the same 404 (no existence oracle; a repeat is a 404). If closing the sockets fails the revoke still stands and the realtime re-check ends the socket within a minute",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked",
+                    "current",
+                    "push_endpoints_expired"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "push_endpoints_expired": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/devices/attestation": {
       "get": {
         "operationId": "getApiV1DevicesAttestation",
@@ -173416,6 +173540,140 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/sessions": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceSessions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: another user's staff sessions bound to the officer's organisation (messaging.sessions.manage). Same fields as GET /devices. A user with no sessions in this organisation, an unknown user and another tenant's user are all an empty list (never an error, never another tenant's data). Audited as m36.session.admin_listed. Not cached",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "devices"
+                  ],
+                  "properties": {
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "label",
+                          "current",
+                          "created_at",
+                          "last_used_at",
+                          "push_registered"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "current": {
+                            "type": "boolean"
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "last_used_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "push_registered": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/sessions/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingGovernanceSessionsById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked",
+                    "current",
+                    "push_endpoints_expired"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "push_endpoints_expired": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

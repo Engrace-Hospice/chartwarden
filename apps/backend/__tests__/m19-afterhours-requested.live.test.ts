@@ -371,6 +371,73 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
     });
   });
 
+  it("two CONCURRENT deliveries of one no_coverage event publish exactly one outcome and one gap", async () => {
+    const a = seeded[ORG_A] as Seed;
+    const eventId = crypto.randomUUID();
+    const payload = request(ORG_A, a.patient);
+    const settled = await Promise.allSettled([
+      deliver(ORG_A, payload, eventId),
+      deliver(ORG_A, payload, eventId),
+    ]);
+    expect(settled.some((s) => s.status === "fulfilled")).toBe(true);
+    // A loser either saw the winner's row (skip) or lost the insert race and rolled back; a retry is a skip.
+    await deliver(ORG_A, payload, eventId);
+
+    expect(await calls(ORG_A)).toHaveLength(0);
+    expect((await events(ORG_A)).map((e) => e.event_type).sort()).toEqual([
+      "m19.afterhours_triage.outcome",
+      "m19.oncall_shift.coverage_gap",
+    ]);
+  });
+
+  it("two CONCURRENT deliveries of one opening event open one call and publish one outcome", async () => {
+    await seedShift(ORG_A);
+    const a = seeded[ORG_A] as Seed;
+    const eventId = crypto.randomUUID();
+    const payload = request(ORG_A, a.patient);
+    await Promise.allSettled([deliver(ORG_A, payload, eventId), deliver(ORG_A, payload, eventId)]);
+    await deliver(ORG_A, payload, eventId);
+
+    expect(await calls(ORG_A)).toHaveLength(1);
+    expect(await outcomes(ORG_A)).toHaveLength(1);
+  });
+
+  it("a patient with no resolvable provider entity is answered `no_coverage` with no gap event, never silently dropped", async () => {
+    const extraPe = (
+      await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'CCN-A47-extra','A47 extra','NPI-A47-extra','enc','12-31') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    const orphan = (
+      await admin.query(
+        `INSERT INTO patient (organization_id, provider_entity_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+         VALUES ($1,NULL,'MRN-A47-orphan','Af','Hours','1990-01-01','M','active') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    try {
+      await seedShift(ORG_A);
+      const eventId = crypto.randomUUID();
+      await deliver(ORG_A, request(ORG_A, orphan), eventId);
+
+      expect(await calls(ORG_A)).toHaveLength(0);
+      expect((await events(ORG_A)).map((e) => e.event_type)).toEqual([
+        "m19.afterhours_triage.outcome",
+      ]);
+      expect((await outcomes(ORG_A))[0]?.payload).toEqual({
+        sourceOutboxEventId: eventId,
+        triageCallId: null,
+        outcome: "no_coverage",
+      });
+    } finally {
+      await admin.query("DELETE FROM outbox_event");
+      await admin.query("DELETE FROM patient WHERE id = $1", [orphan]);
+      await admin.query("DELETE FROM provider_entity WHERE id = $1", [extraPe]);
+    }
+  });
+
   it("refuses another tenant's patient: nothing opened, nothing published, in either org", async () => {
     await seedShift(ORG_A);
     await seedShift(ORG_B);

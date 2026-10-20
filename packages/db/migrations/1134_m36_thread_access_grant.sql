@@ -10,7 +10,9 @@
 --     Deletion is by privilege: the app role has no DELETE grant; only wardenx_destruction deletes.
 --   * Binding: the insert guard requires channel_id to be the REQUEST's channel and root_message_id to be the ROOT of the request's message
 --     (the message itself when parent_message_id IS NULL, else its parent chain followed to the top, at most 10 hops). G2 derives channel
---     and root server-side from the request row, never from the client; this is the backstop.
+--     and root server-side from the request row, never from the client; this is the backstop. The guard is SECURITY INVOKER: its reads of
+--     the request and the message chain run under the caller's own org RLS, so another organization's request or message is invisible and
+--     a cross-org probe fails with the SAME error as a row that does not exist (no existence oracle).
 --   * Bounds: expires_at <= granted_at + 7 days (CHECK, evaluated after the trigger has forced granted_at, so it sees the database clock).
 --     The per-tenant hours setting (G2) must stay under it. An expired but unrevoked grant still occupies the one-live slot (index
 --     semantics unchanged): G2 must revoke it before re-granting, or do both in one statement.
@@ -44,7 +46,7 @@ CREATE INDEX "message_thread_grant_grantee_idx"
 CREATE INDEX "message_thread_grant_grantee_user_idx" ON "message_thread_access_grant" ("grantee_user_id");--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION message_thread_grant_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_channel uuid; v_cur uuid; v_parent uuid; v_hops integer := 0;
 BEGIN
   IF TG_OP = 'INSERT' THEN
@@ -82,8 +84,8 @@ ALTER TABLE "message_thread_access_grant" ENABLE ROW LEVEL SECURITY;--> statemen
 ALTER TABLE "message_thread_access_grant" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "message_thread_grant_org_isolation" ON "message_thread_access_grant"
   FOR ALL TO wardenx_app
-  USING (organization_id = current_setting('app.org_id', true)::uuid)
-  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "message_thread_access_grant" TO wardenx_app;--> statement-breakpoint
 GRANT UPDATE ("revoked_at") ON "message_thread_access_grant" TO wardenx_app;--> statement-breakpoint
 
@@ -123,5 +125,5 @@ CREATE TRIGGER "trg_audit_message_thread_access_grant"
 GRANT SELECT, DELETE ON "message_thread_access_grant" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "message_thread_grant_destruction" ON "message_thread_access_grant"
   FOR ALL TO wardenx_destruction
-  USING (organization_id = current_setting('app.org_id', true)::uuid)
-  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);

@@ -4,8 +4,8 @@
 // a replay, never two scheduled copies.
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { type MutableRefObject, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { JSX } from "react";
+import { createPortal } from "react-dom";
 import { apiErrorCode } from "./attachment-utils";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";

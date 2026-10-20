@@ -199,10 +199,11 @@ describe("decideAfterHoursRequested", () => {
     );
   });
 
-  it("refuses a patient with no resolvable provider entity rather than guessing", () => {
-    expect(() => decide(facts({ patient: { providerEntityId: null } }))).toThrow(
-      expect.objectContaining({ code: "AFTERHOURS_PROVIDER_ENTITY_UNRESOLVED" }),
-    );
+  it("answers no_coverage with NO gap event for a patient with no resolvable provider entity", () => {
+    expect(decide(facts({ patient: { providerEntityId: null } }))).toEqual({
+      kind: "no_coverage",
+      gap: null,
+    });
   });
 });
 
