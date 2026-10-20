@@ -19,8 +19,10 @@ const LOCATION = schema.locations;
 
 export interface FoundationSiteReader {
   /**
-   * The default service location for a provider entity: prefer an `active` location, else a `created`
-   * one, ties broken by name. Null when the provider entity has no active/created location.
+   * The service location to default an admission to: the provider entity's only `active` location, else
+   * its only `created` one. Null when there is none OR more than one candidate — `location` carries no
+   * primary flag, so picking by name would silently site the admission at the wrong place and skip the
+   * activation-time choice (`resolveActivationLocation` refuses to guess for the same reason).
    */
   defaultLocationIdForProviderEntity(
     tx: DbClient,
@@ -88,21 +90,28 @@ export interface FoundationSiteReader {
   ): Promise<string | null>;
 }
 
+/** The single candidate id, preferring `active` over `created`; null when there is no unambiguous one. */
+export function soleDefaultLocation(
+  rows: ReadonlyArray<{ readonly id: string; readonly status: string }>,
+): string | null {
+  const active = rows.filter((r) => r.status === "active");
+  const candidates = active.length > 0 ? active : rows.filter((r) => r.status === "created");
+  return candidates.length === 1 ? (candidates[0] as { id: string }).id : null;
+}
+
 export function buildFoundationSiteReader(): FoundationSiteReader {
   return {
     async defaultLocationIdForProviderEntity(tx, providerEntityId) {
-      const [location] = await tx
-        .select({ id: LOCATION.id })
+      const rows = await tx
+        .select({ id: LOCATION.id, status: LOCATION.status })
         .from(LOCATION)
         .where(
           and(
             eq(LOCATION.providerEntityId, providerEntityId),
             inArray(LOCATION.status, ["active", "created"]),
           ),
-        )
-        .orderBy(sql`CASE WHEN ${LOCATION.status} = 'active' THEN 0 ELSE 1 END`, LOCATION.name)
-        .limit(1);
-      return location?.id ?? null;
+        );
+      return soleDefaultLocation(rows);
     },
 
     async locationProviderEntity(tx, locationId) {

@@ -1008,3 +1008,116 @@ describe("Evidence upload ceremonies (NOR / Election / CTI) in the right-hand dr
     expect(client.POST).not.toHaveBeenCalled();
   });
 });
+
+// An elected provider entity with several active locations makes the server refuse activation
+// (422 M6_LOCATION_REQUIRED) unless the request names one — so the dialog has to offer the choice.
+describe("Admission activation — service location", () => {
+  const mainOffice = "55555555-0000-4000-8000-000000000001";
+  const unsited = (base: ApiClient): ApiClient => {
+    const get = base.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    return {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (path === "/api/v1/admissions/{id}") {
+          const res = (await get(path, init)) as { data: Record<string, unknown> };
+          return ok({ ...res.data, locationId: null });
+        }
+        if (path === "/api/v1/locations")
+          return ok({
+            items: [
+              {
+                id: mainOffice,
+                providerEntityId,
+                name: "Main Office",
+                addressLine1: "100 Hospice Way",
+                city: "Asheville",
+                state: "NC",
+                postalCode: "28801",
+                status: "active",
+              },
+            ],
+          });
+        return get(path, init);
+      }),
+    } as unknown as ApiClient;
+  };
+
+  it("sends the chosen service location with the activation request", async () => {
+    const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: /service location/i }));
+    fireEvent.click(await within(dialog).findByRole("option", { name: /Main Office/ }));
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        "/api/v1/admissions/{id}/activate",
+        expect.objectContaining({ body: { ifVersion: 4, locationId: mainOffice } }),
+      ),
+    );
+  });
+
+  it("shows the server's location refusal in the open dialog and omits locationId when none is picked", async () => {
+    const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    (client.POST as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: undefined,
+      error: { error: { code: "M6_LOCATION_REQUIRED" } },
+      response: new Response(null, { status: 422 }),
+    });
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+    expect(await within(dialog).findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Choose the service location this admission is served from.",
+    );
+    expect(client.POST).toHaveBeenCalledWith(
+      "/api/v1/admissions/{id}/activate",
+      expect.objectContaining({ body: { ifVersion: 4 } }),
+    );
+  });
+
+  it("forgets a picked location when the dialog is cancelled and reopened", async () => {
+    const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    let dialog = await screen.findByRole("dialog");
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: /service location/i }));
+    fireEvent.click(await within(dialog).findByRole("option", { name: /Main Office/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        "/api/v1/admissions/{id}/activate",
+        expect.objectContaining({ body: { ifVersion: 4 } }),
+      ),
+    );
+  });
+
+  it("offers no location choice when the admission is already sited", async () => {
+    renderWithShell(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+  });
+});
