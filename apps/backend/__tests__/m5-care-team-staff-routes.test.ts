@@ -1,6 +1,6 @@
 // apps/backend/__tests__/m5-care-team-staff-routes.test.ts — GET /api/v1/orgs/:id/care-team-staff, the
 // narrow read-only staff lookup behind the care-team assign dialog. Route layer only: permission
-// (patient.assign, i.e. exactly who may POST an assignment), org binding, allowlisted payload, q/limit.
+// (patient.assign — who may POST an assignment — or idg.read), org binding, allowlisted payload, q/limit.
 // The Drizzle port is proven live in m5-care-team-staff.live.test.ts.
 import {
   createInMemoryEffectivePermissionStore,
@@ -31,9 +31,11 @@ const ORG = "org_a";
 const PERMISSION_SEED = [
   { userId: "assigner_1", permissions: ["patient.read", "patient.assign"] },
   { userId: "reader_1", permissions: ["patient.read"] },
+  { userId: "idg_1", permissions: ["idg.read"] },
 ];
 const ASSIGNER = { "x-test-user": "assigner_1", "x-test-org": ORG };
 const READER = { "x-test-user": "reader_1", "x-test-org": ORG };
+const IDG_READER = { "x-test-user": "idg_1", "x-test-org": ORG };
 
 const STAFF: CareTeamStaffView = {
   userId: "5f1c0b2e-6a43-4d0e-9a53-0d6c1f9a7b11",
@@ -88,6 +90,15 @@ describe("GET /orgs/:id/care-team-staff", () => {
     expect(res.json()).toEqual({ staff: [STAFF] });
     expect(res.body).not.toContain("rosa@example.org");
     expect(res.body).not.toContain("555-0100");
+    await app.close();
+  });
+
+  it("also serves a holder of idg.read (names for IDG screens), with the same allowlist", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(GET(IDG_READER));
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ staff: [STAFF] });
+    expect(res.body).not.toContain("rosa@example.org");
     await app.close();
   });
 

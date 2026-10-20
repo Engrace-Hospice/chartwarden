@@ -83,6 +83,24 @@ export function refusalLabel(token: string): string {
   return REFUSAL_COPY[token] ?? humanize(token);
 }
 
+/** Refusals that mean "nothing is set up to send this", not "a send went wrong" → the info-pill text. */
+const NOT_SENT_INFO_LABEL: Readonly<Record<string, string>> = {
+  no_active_feed: "Not sent — no lab interface configured",
+  no_feed_for_destination: "Not sent — no lab interface configured",
+  no_routing_lab: "Not sent — no performing lab on the order",
+};
+
+/** The informational pill text for a failed transmission that only lacks setup, else null (a real failure). */
+export function notSentInfoLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  const token = reason.startsWith(ORM_REFUSED)
+    ? reason.slice(ORM_REFUSED.length)
+    : reason.startsWith(DISPATCH_REFUSED)
+      ? reason.slice(DISPATCH_REFUSED.length)
+      : "";
+  return NOT_SENT_INFO_LABEL[token] ?? null;
+}
+
 /** The order's `transmissionFailureReason` → one sentence for the order detail. */
 export function transmissionFailureLabel(reason: string): string {
   if (reason.startsWith(ORM_REFUSED))

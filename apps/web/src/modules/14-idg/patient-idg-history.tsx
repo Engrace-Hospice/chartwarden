@@ -27,6 +27,7 @@ import { useSession } from "../../shell/session";
 import { isCareTeamRole } from "../../shell/care-team-roles";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
+import { loadStaffNames } from "./idg-people";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 
 interface DecisionRow {
@@ -248,18 +249,16 @@ export function PatientIdgHistory(): JSX.Element {
   useEffect(() => {
     if (!orgId) return;
     let active = true;
-    void client
-      .GET("/api/v1/orgs/{id}/members", { params: { path: { id: orgId }, query: {} } })
-      .then((r) => {
-        if (!active) return;
-        const map = new Map<string, Member>();
-        for (const m of (r.data?.members ?? []) as Member[]) {
-          map.set(m.userId, m);
-          map.set(m.membershipId, m);
-        }
-        setMembers(map);
-      })
-      .catch(() => undefined);
+    void loadStaffNames(client, orgId).then((rows) => {
+      if (!active) return;
+      const map = new Map<string, Member>();
+      for (const m of rows) {
+        const member: Member = { ...m, email: null };
+        map.set(m.userId, member);
+        map.set(m.membershipId, member);
+      }
+      setMembers(map);
+    });
     return () => {
       active = false;
     };

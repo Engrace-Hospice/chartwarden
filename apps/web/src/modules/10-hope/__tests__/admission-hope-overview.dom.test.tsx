@@ -212,6 +212,28 @@ describe("Admission HOPE overview", () => {
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
   });
 
+  it("never says no action is required while the summary counts actions", async () => {
+    renderOverview(
+      clientFor(
+        workflow({
+          summary: {
+            actionableCount: 2,
+            overdueCount: 0,
+            completedCount: 1,
+            nextDeadline: "2026-09-04T23:59:59.999Z",
+            highestSeverity: "none",
+            dueSoonCount: 0,
+            workflowIssueCount: 0,
+          },
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByText("2 action required")).toBeTruthy());
+    expect(screen.queryByText(/No HOPE action is currently required/)).toBeNull();
+    expect(screen.getByText(/Review HOPE items that need attention/)).toBeTruthy();
+  });
+
   it("opens an existing draft instead of offering to create another timepoint draft", async () => {
     renderOverview(
       clientFor(

@@ -25,7 +25,7 @@ import {
 // summary / eligibility / recommendations (that is the full packet, /packets/:patientId) — so the center is
 // a section scaffold + Open packet. Patients are shown as `patient.displayName` (+ MRN suffix) when the
 // read carries it, else by id prefix; the coordinator is an id on the meeting read, named from
-// GET /orgs/{id}/members (id-prefix fallback). The "carry-forward" flag is the agenda item's
+// GET /orgs/{id}/care-team-staff (id-prefix fallback). The "carry-forward" flag is the agenda item's
 // `carry_forward` kind; overdue-action-item detail is not returned here.
 //
 // #91 / F-062 — the attendance rail renders `GET /idg/meetings/:id/attendance`. The §2.2 transitions

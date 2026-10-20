@@ -16417,7 +16417,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25) */
+        /** Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign or idg.read; bound org only; q = name substring, limit 1-200, default 25) */
         get: operations["getApiV1OrgsByIdCareteamstaff"];
         put?: never;
         post?: never;

@@ -57,9 +57,11 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
       { packetId: "p-1", meetingId: MEETING, patientId: P1, patient: ref, frozenAt: null },
     ]);
   if (path.endsWith("/idg/action-items")) return json([]);
-  if (path.includes("/members"))
+  if (path.includes("/care-team-staff"))
     return json({
-      members: [{ membershipId: "coord-1", displayName: "Dana Coordinator", email: null }],
+      staff: [
+        { membershipId: "coord-1", userId: "u-1", displayName: "Dana Coordinator", roleLabels: [] },
+      ],
     });
   return json({
     id: MEETING,

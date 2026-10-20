@@ -51,7 +51,8 @@ interface AssessmentRow {
   rfaKind: string;
   status: string;
   targetDate: string;
-  authorDiscipline: string;
+  /** The read projection has no author column (the server sends ""), so the table does not show one. */
+  authorDiscipline: string | null;
   j2051MaxSeverity: string | null;
   j2051TriggerFired: boolean;
   wasLate: boolean;
@@ -129,7 +130,7 @@ export function PatientHopeTimeline(): JSX.Element {
       banner={
         <PageHeader title="HOPE Timeline">
           <span style={meta}>
-            {items.length} timepoints
+            {items.length} {items.length === 1 ? "timepoint" : "timepoints"}
             {triggered > 0 ? ` · ${triggered} triggered an SFV` : ""}
           </span>
           {admissionId !== null ? (
@@ -183,7 +184,6 @@ export function PatientHopeTimeline(): JSX.Element {
                   <tr>
                     <th>RFA</th>
                     <th>Target date</th>
-                    <th>Author</th>
                     <th>J2051</th>
                     <th>Status</th>
                   </tr>
@@ -202,8 +202,6 @@ export function PatientHopeTimeline(): JSX.Element {
                       <td>{rfaLabel(a.rfaKind)}</td>
 
                       <td className="tabular-nums">{a.targetDate.slice(0, 10)}</td>
-
-                      <td>{stateLabel(a.authorDiscipline)}</td>
 
                       <td>
                         <span

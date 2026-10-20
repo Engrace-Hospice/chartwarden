@@ -63,6 +63,13 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
+    if (path.endsWith("/care-team-staff"))
+      return {
+        staff: [
+          { membershipId: "m-1", userId: "u-1", displayName: "Sam Social", roleLabels: ["MSW"] },
+          { membershipId: "m-9", userId: "u-9", displayName: "Pat Nurse", roleLabels: ["RN"] },
+        ],
+      };
     if (path.endsWith("/attendance-eligibility")) return eligibility;
     if (path.endsWith("/attendance")) return roster;
     if (path.endsWith("/agenda")) return [agendaItem];
@@ -276,7 +283,8 @@ describe("#91 — the meeting can be conducted", () => {
     mountLive();
     await waitFor(() => expect(screen.getByRole("button", { name: "Check in" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Check in" }));
-    fireEvent.change(await waitFor(() => screen.getByLabelText(/Membership id/i)), {
+    // The attendee is chosen by name from the staff directory (the raw-id field is only the fallback).
+    fireEvent.change(await waitFor(() => screen.getByLabelText("Attendee")), {
       target: { value: "m-1" },
     });
     // The discipline is whatever the SERVER says the picked member's roles confer — the modal asked about m-1.
@@ -426,9 +434,9 @@ describe("#91 — the meeting can be conducted", () => {
       expect(screen.getByRole("button", { name: "Assign follow-up" })).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Assign follow-up" }));
-    fireEvent.change(await waitFor(() => screen.getByLabelText(/Assign to/i)), {
-      target: { value: "m-9" },
-    });
+    // The assignee is picked by name from the staff lookup — no one types a membership id.
+    fireEvent.focus(await screen.findByRole("combobox", { name: /Assign to/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Pat Nurse/ }));
     fireEvent.click(screen.getByRole("button", { name: "Assign" }));
     await waitFor(() =>
       expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/action-items`),

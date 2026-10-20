@@ -1110,6 +1110,15 @@ const schedGet = (
       (v) => (!q.from || v.scheduledStartedAt >= q.from) && (!q.to || v.scheduledStartedAt <= q.to),
     );
   if (p === "/api/v1/patients/{id}") return schedPatient(path.id!);
+  if (p === "/api/v1/orgs/{id}/care-team-staff")
+    return {
+      staff: staffDefs.map(([id, name]) => ({
+        membershipId: id,
+        userId: `u-${id}`,
+        displayName: name,
+        roleLabels: [],
+      })),
+    };
   if (p === "/api/v1/orgs/{id}/members")
     return {
       members: staffDefs.map(([id, name]) => ({
@@ -2321,6 +2330,15 @@ const idgGet = (p: string, o?: { params?: { path?: Record<string, string> } }): 
           { id: IDG_LOC, name: "Pendleton Office", status: "active" },
           { id: idgUuid(9101), name: "Hermiston Satellite", status: "active" },
         ],
+      };
+    case "/api/v1/orgs/{id}/care-team-staff":
+      return {
+        staff: idgMembers.map(([membershipId, displayName]) => ({
+          membershipId,
+          userId: `u-${membershipId}`,
+          displayName,
+          roleLabels: [],
+        })),
       };
     case "/api/v1/orgs/{id}/members":
       return {

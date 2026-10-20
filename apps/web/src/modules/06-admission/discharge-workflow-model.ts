@@ -245,7 +245,8 @@ const CODE_MESSAGES: Record<string, string> = {
     "A discharge dated on or after October 1, 2026 needs the physician discharge order. Add the ordering " +
     "physician on the effective-date step.",
   DISCHARGE_ORDER_TIMING_INVALID:
-    "The discharge order must be signed no later than the discharge date and not in the future.",
+    "The discharge order must be signed no later than the discharge date (a day of slack) and not in the future. " +
+    "If the discharge date is already past, sign it sooner or move the discharge date to today.",
   PHYSICIAN_SIGNER_INVALID:
     "That physician can't sign this discharge order. Choose the medical director, a physician designee, or " +
     "this patient's IDG physician.",

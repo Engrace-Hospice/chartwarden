@@ -14,7 +14,7 @@ export interface ScheduleMeetingModalProps {
   readonly defaultLocationId?: string;
   /** The caller's own membership — the coordinator default. */
   readonly meMembershipId?: string;
-  /** membershipId → name, from GET /orgs/{id}/members (empty when unavailable). */
+  /** membershipId → name, from GET /orgs/{id}/care-team-staff (empty when unavailable). */
   readonly memberNames: ReadonlyMap<string, string>;
   readonly onClose: () => void;
   readonly onScheduled: (meeting: MeetingView) => void;
