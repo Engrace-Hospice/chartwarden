@@ -21660,6 +21660,18 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "windowKind": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
                           }
                         }
                       }
@@ -191227,6 +191239,16 @@
                           "type": "string"
                         },
                         "data": {},
+                        "signedByDisplayName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "verbalOrder": {
                           "anyOf": [
                             {
@@ -193797,6 +193819,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -194805,6 +194837,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -195572,6 +195614,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -196825,6 +196877,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -233234,6 +233296,26 @@
                               }
                             ]
                           },
+                          "assignedToUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assignedToDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "receivedAt": {
                             "type": "string"
                           }
@@ -234351,6 +234433,16 @@
                               }
                             ]
                           },
+                          "authorDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "content": {
                             "type": "string"
                           },
@@ -234422,6 +234514,16 @@
                       "anyOf": [
                         {
                           "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "authorDisplayName": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {

@@ -409,6 +409,8 @@ export interface ReferralNoteView {
   readonly id: string;
   readonly referralId: string;
   readonly authorId: string | null;
+  /** Server-resolved in-org author name on reads (no email); absent when unresolved or system-authored. */
+  readonly authorDisplayName?: string | null;
   readonly content: string;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -443,6 +445,9 @@ export interface ReferralReadView extends SummaryRow {
   readonly externalReferralId: string | null;
   readonly priority: string;
   readonly assignedToUserId: string | null;
+  /** Server-resolved in-org display name of `assignedToUserId` (name only, never email); absent when unassigned
+   *  or when the membership no longer resolves — the client then shows a neutral "Staff member". */
+  readonly assignedToDisplayName?: string | null;
   readonly receivedAt: string;
   readonly reviewedAt: string | null;
   readonly qualifiedAt: string | null;

@@ -24,6 +24,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { controlledLabel, stateLabel } from "./medication-status";
 
 interface MedRow {
@@ -83,6 +85,7 @@ export function MedicationSignInbox(): JSX.Element {
     [items],
   );
 
+  const patientNames = usePatientNames(items.map((o) => o.patientId));
   const rows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const visible = items.filter((o) => {
@@ -91,18 +94,22 @@ export function MedicationSignInbox(): JSX.Element {
         (controlledFilter === "controlled" && o.isControlledSubstance) ||
         (controlledFilter === "standard" && !o.isControlledSubstance);
       const matchesClass = !medClass || o.medClass === medClass;
-      const matchesSearch =
-        !q ||
-        o.id.toLowerCase().includes(q) ||
-        o.patientId.toLowerCase().includes(q) ||
-        o.drugName.toLowerCase().includes(q) ||
-        o.strength.toLowerCase().includes(q) ||
-        o.medClass.toLowerCase().includes(q) ||
-        o.status.toLowerCase().includes(q);
+      const matchesSearch = matchesAllTokens(
+        [
+          o.id,
+          patientNames[o.patientId]?.name,
+          patientNames[o.patientId]?.mrn,
+          o.drugName,
+          o.strength,
+          o.medClass,
+          o.status,
+        ],
+        q,
+      );
       return matchesControlled && matchesClass && matchesSearch;
     });
     return [...visible].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  }, [items, controlledFilter, medClass, searchQuery]);
+  }, [items, controlledFilter, medClass, searchQuery, patientNames]);
 
   const activeFilters = [
     searchQuery.trim() !== "",
@@ -298,9 +305,9 @@ export function MedicationSignInbox(): JSX.Element {
                       </div>
                     </td>
                     <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.patientId)}
-                      </code>
+                      <span style={primaryTextStyle}>
+                        <NameLabel value={patientNameOf(patientNames, o.patientId)} />
+                      </span>
                     </td>
                     <td style={tdStyle}>{stateLabel(o.medClass)}</td>
                     <td style={tdStyle}>

@@ -8,6 +8,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  formatDateOnly,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Scale-license registry, admin (M9 §5.1/§5.2, Track B / ADR-0030).
@@ -470,11 +471,7 @@ function formatScale(scaleType: string): string {
   return scaleType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function formatDate(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value.slice(0, 10) || "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
+const formatDate = (dateOnly: string): string => formatDateOnly(dateOnly) || "—";
 
 const modalBodyStyle = {
   padding: "1.5rem",

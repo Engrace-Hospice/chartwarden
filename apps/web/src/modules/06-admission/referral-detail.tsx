@@ -7,6 +7,7 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  formatDateOnly,
   useApiClient,
 } from "@wardenx/ui";
 import type { CSSProperties, JSX } from "react";
@@ -159,12 +160,14 @@ export function ReferralDetail(): JSX.Element {
           }
         >
           <div style={muted}>
-            Referral {r.externalReferralId || shortId(r.id)} ·{" "}
+            {r.externalReferralId ? `Referral ${r.externalReferralId}` : "Referral"} ·{" "}
             {sourceLabel(r.referrerOrganization || r.source)} · Received{" "}
             {formatDateTime(r.receivedAt)}
           </div>
           <div style={muted}>
-            {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
+            {r.assignedToUserId
+              ? `Assigned to ${r.assignedToDisplayName || "Staff member"}`
+              : "Unassigned"}
           </div>
         </PageHeader>
       }
@@ -240,7 +243,9 @@ export function ReferralDetail(): JSX.Element {
                 <Fact label="Priority" value={PRIORITY_LABEL[r.priority] ?? r.priority} />
                 <Fact
                   label="Owner"
-                  value={r.assignedToUserId ? shortId(r.assignedToUserId) : "Unassigned"}
+                  value={
+                    r.assignedToUserId ? r.assignedToDisplayName || "Staff member" : "Unassigned"
+                  }
                 />
                 <Fact
                   label="Patient match"
@@ -317,9 +322,7 @@ export function ReferralDetail(): JSX.Element {
               {resolved ? (
                 <div style={resolvedBox}>
                   <strong>Patient resolved</strong>
-                  <span>
-                    {r.patientId ? `M5 patient ${shortId(r.patientId)}` : "Patient link confirmed"}
-                  </span>
+                  <span>Patient link confirmed</span>
                   {r.patientId ? (
                     <Button
                       size="sm"
@@ -396,11 +399,9 @@ export function ReferralDetail(): JSX.Element {
                         const patientId = c.patientId ?? c.id ?? "";
                         return (
                           <div key={candidateKey(c)} style={candidate}>
-                            <strong>
-                              {c.displayName ?? c.name ?? `Patient ${shortId(patientId)}`}
-                            </strong>
+                            <strong>{c.displayName ?? c.name ?? "Patient"}</strong>
                             <span style={muted}>
-                              {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
+                              {c.dob ? `DOB ${formatDateOnly(c.dob)}` : "DOB not shown"}
                               {c.mrn ? ` · ${formatMrn(c.mrn)}` : ""}
                               {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
                             </span>
@@ -460,7 +461,9 @@ export function ReferralDetail(): JSX.Element {
                 <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
                 <ReadOnly
                   label="DOB at receipt"
-                  value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
+                  value={
+                    r.patientDobAtReceipt ? formatDateOnly(r.patientDobAtReceipt) : "Not provided"
+                  }
                 />
                 <label style={label}>
                   Sex assigned at birth
@@ -670,7 +673,7 @@ export function ReferralDetail(): JSX.Element {
                 {notes.map((note) => (
                   <div key={note.id} style={noteBox}>
                     <div style={muted}>
-                      {note.authorId ? shortId(note.authorId) : "System"} ·{" "}
+                      {note.authorId ? note.authorDisplayName || "Staff member" : "System"} ·{" "}
                       {formatTime(note.createdAt)}
                     </div>
                     <div>{note.content}</div>
@@ -811,20 +814,8 @@ function candidateKey(c: ReferralCandidate): string {
   return [c.displayName ?? c.name ?? "", c.dob ?? "", c.mrn ?? "", c.phoneLast4 ?? ""].join("|");
 }
 
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
-
 function sourceLabel(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
 }
 
 function formatDateTime(value: string): string {

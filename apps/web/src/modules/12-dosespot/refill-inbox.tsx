@@ -25,6 +25,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { REFILL_TONE, stateLabel } from "./medication-status";
 
 interface RefillRow {
@@ -77,6 +79,7 @@ export function RefillInbox(): JSX.Element {
     }),
     [items, now],
   );
+  const patientNames = usePatientNames(items.map((o) => o.patientId));
   const rows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const visible = items.filter((r) => {
@@ -86,16 +89,20 @@ export function RefillInbox(): JSX.Element {
         (slaFilter === "warning" && age >= WARN_HOURS && age < CRITICAL_HOURS) ||
         (slaFilter === "critical" && age >= CRITICAL_HOURS);
       const matchesStatus = !status || r.status === status;
-      const matchesSearch =
-        !q ||
-        r.id.toLowerCase().includes(q) ||
-        r.patientId.toLowerCase().includes(q) ||
-        r.sourceMedicationOrderId.toLowerCase().includes(q) ||
-        r.status.toLowerCase().includes(q);
+      const matchesSearch = matchesAllTokens(
+        [
+          r.id,
+          patientNames[r.patientId]?.name,
+          patientNames[r.patientId]?.mrn,
+          r.sourceMedicationOrderId,
+          r.status,
+        ],
+        q,
+      );
       return matchesSla && matchesStatus && matchesSearch;
     });
     return [...visible].sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
-  }, [items, now, searchQuery, slaFilter, status]);
+  }, [items, now, searchQuery, slaFilter, status, patientNames]);
 
   const activeFilters = [searchQuery.trim() !== "", slaFilter !== "all", status !== ""].filter(
     Boolean,
@@ -293,9 +300,9 @@ export function RefillInbox(): JSX.Element {
                       </div>
                     </td>
                     <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(r.patientId)}
-                      </code>
+                      <span style={primaryTextStyle}>
+                        <NameLabel value={patientNameOf(patientNames, r.patientId)} />
+                      </span>
                     </td>
                     <td style={tdStyle}>
                       <code className="wx-data-md" style={codeStyle}>

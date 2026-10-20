@@ -30986,6 +30986,10 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            admissionId?: string;
+                            windowKind?: string;
+                            severity?: string;
+                            dueAt?: string;
                         }[];
                     };
                 };
@@ -72836,6 +72840,7 @@ export interface operations {
                     } & {
                         kindVersion: string;
                         data: unknown;
+                        signedByDisplayName?: string | null;
                         verbalOrder: {
                             status: string;
                             receivedAt: string;
@@ -73245,6 +73250,7 @@ export interface operations {
                         } & {
                             kindVersion: string;
                             data: unknown;
+                            signedByDisplayName?: string | null;
                             verbalOrder: {
                                 status: string;
                                 receivedAt: string;
@@ -73377,6 +73383,7 @@ export interface operations {
                         } & {
                             kindVersion: string;
                             data: unknown;
+                            signedByDisplayName?: string | null;
                             verbalOrder: {
                                 status: string;
                                 receivedAt: string;
@@ -73485,6 +73492,7 @@ export interface operations {
                         } & {
                             kindVersion: string;
                             data: unknown;
+                            signedByDisplayName?: string | null;
                             verbalOrder: {
                                 status: string;
                                 receivedAt: string;
@@ -73663,6 +73671,7 @@ export interface operations {
                         } & {
                             kindVersion: string;
                             data: unknown;
+                            signedByDisplayName?: string | null;
                             verbalOrder: {
                                 status: string;
                                 receivedAt: string;
@@ -84296,6 +84305,8 @@ export interface operations {
                             patientNameAtReceipt?: string;
                             patientDobAtReceipt?: string | null;
                             referrerOrganization?: string | null;
+                            assignedToUserId?: string | null;
+                            assignedToDisplayName?: string | null;
                             receivedAt?: string;
                         }[];
                         nextCursor: string | null;
@@ -84753,6 +84764,7 @@ export interface operations {
                             id: string;
                             referralId: string;
                             authorId: string | null;
+                            authorDisplayName?: string | null;
                             content: string;
                             /** Format: date-time */
                             createdAt: string;
@@ -84793,6 +84805,7 @@ export interface operations {
                         id: string;
                         referralId: string;
                         authorId: string | null;
+                        authorDisplayName?: string | null;
                         content: string;
                         /** Format: date-time */
                         createdAt: string;

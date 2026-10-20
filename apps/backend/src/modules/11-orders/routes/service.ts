@@ -113,6 +113,9 @@ export interface OrderView {
 export interface OrderDetailView extends OrderView {
   readonly kindVersion: string;
   readonly data: unknown;
+  /** Detail-only: the signer's in-org display name (name only, no email), resolved from `signedBy` (a membership
+   *  id). Absent/null when unsigned or unresolved — the client shows a neutral "Staff member". */
+  readonly signedByDisplayName?: string | null;
   /** Detail-only verbal-order evidence. Present only when this order was recorded verbally. */
   readonly verbalOrder: {
     readonly status: string;
