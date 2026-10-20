@@ -217,7 +217,8 @@ jobs:
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
                 test:m6:t5:write:live test:m6:t5:counts:live test:m6:abac-scope:live
-                test:m6:election-guards:live test:m6:claim-discharge-seam:live test:m6:physician-authority:live",
+                test:m6:election-guards:live test:m6:claim-discharge-seam:live test:m6:physician-authority:live
+                test:m6:create-patient:live",
             }
           - {
               name: "M7 Care Plan",
@@ -690,6 +691,8 @@ jobs:
           # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
+          # Demo finding 2 — the narrow care-team staff lookup (patient.assign, allowlisted fields, org-bound, RLS).
+          - { name: "M5 care-team staff", scripts: "test:m5:care-team-staff:live" }
           # GAP-020 — the patient wristband (on-file side of the BCMA wrong_patient arm): digest-only storage,
           # rotation + concurrent-print arbitration, verifier verdicts, merge/death voiding, RLS, step-up void.
           - { name: "M5 patient wristband", scripts: "test:m5:patient-wristband:live" }
@@ -812,7 +815,7 @@ jobs:
           - { name: "M36 after-hours triage link", scripts: "test:m36:afterhours-link:live" }
           # ADR-0085 G1 (PROPOSED) - one-thread read grant table (migration 1135): FORCEd RLS as wardenx_app (cross-org reads nothing), insert/revoke-only guard (no other column moves, one revoke, no app DELETE, database-clock granted_at/revoked_at), one live grant per (request, grantee), reason and window CHECKs, expiry judged on now(), audit rows.
           - { name: "M36 thread access grant", scripts: "test:m36:thread-grant:live" }
-          # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1137): wardenx_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
+          # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1138): wardenx_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
           - { name: "M36 message legal hold", scripts: "test:m36:message-legal-hold:live" }
           # ADR-0086 (PROPOSED) / WP 5.6 S4 - retention and legal-hold governance routes with REAL Better Auth sessions as wardenx_app: 403 without the key or a fresh step-up, other tenant = unknown 404, short reason 422, stale preview count 409 RELEASE_PREVIEW_STALE, apply and release audited with the reason and the overlay materialised in the same transaction, a held message edit is a typed 409, responses carry ids/counts/dates/hold names only.
           - { name: "M36 retention governance", scripts: "test:m36:retention-governance:live" }

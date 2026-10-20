@@ -1,4 +1,4 @@
-// ADR-0086 (PROPOSED) WP 5.6 S2 - migration 1137, the Drizzle schema, the manifest, the permission and the code-side constants agree;
+// ADR-0086 (PROPOSED) WP 5.6 S2 - migration 1138, the Drizzle schema, the manifest, the permission and the code-side constants agree;
 // the structural promises (FORCEd RLS, append-only overlay, SECURITY DEFINER backstop on 23001, grants) are pinned on the migration text.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,10 +14,10 @@ import { describe, expect, it } from "vitest";
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const flat = (s: string) => s.replace(/\s+/g, " ");
-const sql = flat(read("packages/db/migrations/1137_m36_message_legal_hold.sql"));
+const sql = flat(read("packages/db/migrations/1138_m36_message_legal_hold.sql"));
 const schema = flat(read("packages/db/src/schema/messaging/legal-hold-messages.ts"));
 
-describe("migration 1137 message legal hold", () => {
+describe("migration 1138 message legal hold", () => {
   it("the code-side constants are the ADR's", () => {
     expect(MESSAGING_RETENTION_MANAGE_PERMISSION).toBe("messaging.retention.manage");
     expect(MESSAGE_LEGAL_HOLD_APPLY_STEP_UP_KEY).toBe("messaging.legal_hold.apply");

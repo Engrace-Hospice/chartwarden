@@ -200100,6 +200100,103 @@
         }
       }
     },
+    "/api/v1/orgs/{id}/care-team-staff": {
+      "get": {
+        "operationId": "getApiV1OrgsByIdCareteamstaff",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "staff"
+                  ],
+                  "properties": {
+                    "staff": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "membershipId",
+                          "displayName",
+                          "roleLabels"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "roleLabels": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/orgs/{id}/invitations": {
       "get": {
         "operationId": "getApiV1OrgsByIdInvitations",
@@ -203970,6 +204067,7 @@
                         "required": [
                           "id",
                           "clinicianUserId",
+                          "displayName",
                           "role",
                           "assignedAt",
                           "unassignedAt",
@@ -203981,6 +204079,16 @@
                           },
                           "clinicianUserId": {
                             "type": "string"
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "role": {
                             "type": "string"

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/governance/under-hold.ts - ADR-0086 (PROPOSED): migration 1137's backstop trigger refuses to rewrite the
+// apps/backend/src/modules/36-messaging/governance/under-hold.ts - ADR-0086 (PROPOSED): migration 1138's backstop trigger refuses to rewrite the
 // body of a message an ACTIVE legal hold covers (SQLSTATE 23001). Turn that into a clear, typed 409 instead of a generic 500.
 import { WardenXError } from "@wardenx/types";
 

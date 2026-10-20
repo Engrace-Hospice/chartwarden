@@ -24,6 +24,7 @@ import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { useSession } from "../../shell/session";
+import { isCareTeamRole } from "../../shell/care-team-roles";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
@@ -213,7 +214,11 @@ export function PatientIdgHistory(): JSX.Element {
     void client
       .GET("/api/v1/patients/{id}/care-team", { params: { path: { id: patientId } } })
       .then((r) => {
-        if (active) setTeam(((r.data?.assignments ?? []) as Assignment[]).filter((a) => a.current));
+        // `admitting_staff` is an access grant, not an IDG discipline (see shell/care-team-roles).
+        if (active) {
+          const current = ((r.data?.assignments ?? []) as Assignment[]).filter((a) => a.current);
+          setTeam(current.filter((a) => isCareTeamRole(a.role)));
+        }
       })
       .catch(() => active && setTeam([]));
     void client

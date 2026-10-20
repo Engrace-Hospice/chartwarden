@@ -10,6 +10,8 @@ export const M5_QUEUES = {
   geocodeAddress: "m5.geocode_address",
   /** Daily: amendment 60-day SLA tick → warn/escalate pending requests. */
   amendmentSlaScan: "m5.amendment_sla_scan",
+  /** Daily backstop: end `admitting_staff` access grants older than 14 days (`./admitting-grant-expiry.ts`). */
+  admittingGrantExpiry: "m5.admitting_grant_expiry",
   /** On `m39.consent.*`: recompute patient_privacy_flag_snapshot (consumer; wired when M39 lands). */
   privacyFlagRecompute: "m5.privacy_flag_recompute",
   /** Quarterly + manual admin route: full `patient_privacy_flag_snapshot` rebuild (`./snapshot-rebuild.ts`). */
@@ -21,6 +23,7 @@ export type M5QueueName = (typeof M5_QUEUES)[keyof typeof M5_QUEUES];
 /** The §4.5 cron cadences (the scheduler registers the repeatables; event-triggered jobs have none). */
 export const M5_JOB_SCHEDULES = {
   amendmentSlaScan: "0 7 * * *", // daily 07:00
+  admittingGrantExpiry: "30 7 * * *", // daily 07:30
   snapshotRebuild: "0 3 1 1,4,7,10 *", // quarterly: 03:00 on Jan/Apr/Jul/Oct 1 (§4.5 gives no time)
 } as const;
 

@@ -33,7 +33,7 @@ Four defects in the current seam must be fixed for that to be true:
 6. **D6: no clock extension on release.** Release makes a message eligible again on its original clock.
 7. **D7: out of scope.** Redaction of held messages (ADR-0055 governs) and the thread "Legal hold" chip.
 
-### The overlay (migration 1137, same shape as ADR-0051)
+### The overlay (migration 1138, same shape as ADR-0051)
 
 `legal_hold_message (id, organization_id, legal_hold_id, message_id, held_at)`: `legal_hold_id` is a plain uuid with no FK (M4 owns the hold); composite FK `(organization_id, message_id)` to `message` with `ON DELETE CASCADE`; `UNIQUE (legal_hold_id, message_id)`; index `(organization_id, message_id)`. RLS keyed only on `app.org_id`, ENABLEd and FORCEd. `wardenx_app` has SELECT and INSERT; `wardenx_destruction` has SELECT and DELETE. As in ADR-0051 there is no `released_at`: a row is held while its `legal_hold.status = 'active'`, so release is the one existing UPDATE and takes effect for every row at once.
 
@@ -68,4 +68,4 @@ Apply materialises at most four batches (20,000 rows) synchronously and the week
 
 ## Slices (once accepted)
 
-S0 this ADR. S1 M4 seam (extract apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1137, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs.
+S0 this ADR. S1 M4 seam (extract apply/release in a transaction, criteria, `holdCoversDataClass`, step-up, `openMessageCertificate`). S2 migration 1138, trigger, drizzle schema, manifest, permission, eraser pre-check. S3 scan. S4 routes. S5 web. S6 docs.

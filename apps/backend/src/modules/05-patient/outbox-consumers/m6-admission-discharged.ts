@@ -9,7 +9,7 @@
 // §4.2.7 reason (`death` | `moved_out_of_service_area` | `no_longer_terminal` | `for_cause` | `other`)
 // or to `revocation` / `transfer` for the two paths that file no `discharge_event`.
 //
-// DEATH IS NOT HANDLED HERE: a `reason: "death"` delivery returns at once. The `→ deceased` edge (with
+// DEATH IS NOT HANDLED HERE (beyond ending the access grant): a `reason: "death"` delivery applies no status edge. The `→ deceased` edge (with
 // `deceased_date`, `m5.patient.deceased`) belongs to the `m6.discharge.death` cascade (`deceased-db.ts`);
 // moving the chart to `discharged` first would race it.
 //
@@ -30,6 +30,7 @@ import { schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { endAdmittingAssignments } from "../assignments-db";
 import type { M5OutboxPort } from "../deceased-db";
 import { isDeathDischargeReason, liveDischargeTransitionFrom } from "../patient-status-transitions";
 
@@ -51,6 +52,8 @@ export interface AdmissionDischargedDeps {
   readonly db: DbClient;
   /** Emits `m5.patient.status_changed` when the discharge moves the chart (§2.4.1). */
   readonly outbox: M5OutboxPort;
+  /** Ends the creator's `admitting_staff` grant on a patient. Defaults to the real (org-explicit) write; tests inject. */
+  readonly endGrant?: (organizationId: string, patientId: string) => Promise<void>;
 }
 
 /** What one delivery did (returned for tests and logs; the relay ignores it). */
@@ -79,6 +82,18 @@ function factsOf(payload: unknown): AdmissionDischargedPayload {
     return value;
   };
   return { admissionId: read("admissionId"), reason: read("reason") };
+}
+
+/** End the creator's `admitting_staff` grant (org-explicit, idempotent, no-op when absent). */
+async function endGrantFor(
+  deps: AdmissionDischargedDeps,
+  organizationId: string,
+  patientId: string,
+): Promise<void> {
+  if (deps.endGrant) return deps.endGrant(organizationId, patientId);
+  await withOrgContext(deps.db, systemOrgContext(organizationId), (scoped) =>
+    endAdmittingAssignments(scoped as unknown as DbClient, { organizationId, patientId }),
+  );
 }
 
 /** Apply the §2.4.1 live-discharge edge to the patient row, in one org-scoped tx with its event. */
@@ -120,16 +135,22 @@ export async function applyAdmissionDischarged(
   event: { readonly organizationId: string; readonly payload: unknown },
 ): Promise<AdmissionDischargedOutcome> {
   const facts = factsOf(event.payload);
-  if (isDeathDischargeReason(facts.reason)) return "skipped_death";
-
   const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
     event.organizationId,
     facts.admissionId,
   );
+  // A death is the death cascade's (the `→ deceased` edge is not applied here), but the stay is over all the same:
+  // a never-activated admission discharged for death must not leave the creator's access grant open.
+  if (isDeathDischargeReason(facts.reason)) {
+    if (care) await endGrantFor(deps, event.organizationId, care.patientId);
+    return "skipped_death";
+  }
   // Unknown / cross-tenant admission id: nothing of this tenant's to discharge.
   if (!care) return "skipped_unknown_admission";
   if (!ENDED_ADMISSION_STATES.has(care.status)) return "skipped_admission_not_ended";
   if (care.otherAdmissionUnderCare) return "skipped_other_admission_under_care";
+  // The stay is over: the creator's `admitting_staff` access grant (if it somehow survived activation) ends too.
+  await endGrantFor(deps, event.organizationId, care.patientId);
 
   return dischargePatient(deps, event.organizationId, care.patientId);
 }

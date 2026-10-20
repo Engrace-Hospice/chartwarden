@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1691,
-    "enriched": 1691,
+    "routes": 1692,
+    "enriched": 1692,
     "deficit": 0,
     "mutating": 957,
     "mutatingNoBody": 1,
-    "gets": 685,
+    "gets": 686,
     "getsNoResponse": 8
   },
   "modules": [
@@ -41,12 +41,12 @@
     },
     {
       "module": "05-patient",
-      "routes": 44,
-      "enriched": 44,
+      "routes": 45,
+      "enriched": 45,
       "deficit": 0,
       "mutating": 25,
       "mutatingNoBody": 0,
-      "gets": 19,
+      "gets": 20,
       "getsNoResponse": 4
     },
     {

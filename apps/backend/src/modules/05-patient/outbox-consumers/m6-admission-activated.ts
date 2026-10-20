@@ -45,6 +45,7 @@ import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { endAdmittingAssignments } from "../assignments-db";
 import type { M5OutboxPort } from "../deceased-db";
 import {
   type PatientStatus,
@@ -86,6 +87,13 @@ function factsOf(payload: unknown): AdmissionActivatedPayload {
   return { admissionId: read("admissionId"), patientId: read("patientId") };
 }
 
+/** End the creator's access grant on its own (the early-return paths where the siting/status work is skipped). */
+async function endGrant(db: DbClient, organizationId: string, patientId: string): Promise<void> {
+  await withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, (scoped) =>
+    endAdmittingAssignments(scoped as unknown as DbClient, { organizationId, patientId }),
+  );
+}
+
 /**
  * M5's live `m6.admission.activated` binding — denormalizes the activating admission's provider
  * entity/location and applies M5's admission-driven patient lifecycle edge in the same transaction.
@@ -111,7 +119,10 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
       // No siting row (unknown/cross-tenant admission id) — nothing to denormalize. Not an error: the
       // admission may not yet be visible under this read's own RLS scope on a redelivery race, and a
       // later event for the same admission (or a later admission) will re-resolve correctly.
-      if (!siting) return;
+      if (!siting) {
+        await endGrant(deps.db, organizationId, facts.patientId);
+        return;
+      }
 
       await withOrgContext(
         deps.db,
@@ -123,7 +134,10 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
             .from(P)
             .where(eq(P.id, facts.patientId))
             .limit(1);
-          if (!row) return;
+          if (!row) {
+            await endAdmittingAssignments(tx, { organizationId, patientId: facts.patientId });
+            return;
+          }
           // §2.4.1 `prospective --> active : admission approved (M6)` and `discharged --> active :
           // re-admission` — the status half of the activation, applied with the siting in one tx.
           const promote = activationPromotesToActive(row.status);
@@ -153,6 +167,9 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
                 : {}),
             })
             .where(eq(P.id, facts.patientId));
+
+          // The creator's `admitting_staff` access grant ends with the activation (idempotent; no-op when absent).
+          await endAdmittingAssignments(tx, { organizationId, patientId: facts.patientId });
 
           if (transition.kind === "activate") {
             await deps.outbox.publish(tx, {

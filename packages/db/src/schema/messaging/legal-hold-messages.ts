@@ -1,4 +1,4 @@
-// M36 WP 5.6 (ADR-0086, PROPOSED) - the append-only OVERLAY that records which messages an M4 legal hold holds (migration 1137; the
+// M36 WP 5.6 (ADR-0086, PROPOSED) - the append-only OVERLAY that records which messages an M4 legal hold holds (migration 1138; the
 // ADR-0051 pattern). A row is "held" while its legal_hold.status = 'active'; releasing the hold is the one existing M4 UPDATE. No FK
 // on legal_hold_id (M4 owns that table; the seam is the plain uuid). The message FK cascades, but a BEFORE DELETE trigger on `message`
 // refuses a held row first. Ids and an instant only: no text, no patient column. Names match the migration (pinned by a test).

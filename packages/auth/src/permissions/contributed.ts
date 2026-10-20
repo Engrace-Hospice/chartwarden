@@ -367,7 +367,7 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     abac: "none",
   },
   // --- WP 5.6 (ADR-0086, PROPOSED): apply and release a legal hold on messages and read the retention view (compliance officer). Apply and
-  //     release each demand a fresh step-up and a written reason; migration 1137 grants it to compliance_officer, administrator and org_admin. ---
+  //     release each demand a fresh step-up and a written reason; migration 1138 grants it to compliance_officer, administrator and org_admin. ---
   "messaging.retention.manage": {
     resource: "message_retention",
     action: "manage",

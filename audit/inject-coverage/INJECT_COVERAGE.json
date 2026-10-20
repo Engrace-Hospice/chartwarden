@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1680,
-    "coveredRoutes": 1680,
-    "directRoutesReferenced": 1565
+    "routes": 1681,
+    "coveredRoutes": 1681,
+    "directRoutesReferenced": 1566
   },
   "modules": [
     {
@@ -78,7 +78,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 44,
+      "routes": 45,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -92,13 +92,15 @@
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-care-team-staff-routes.test.ts",
+        "apps/backend/__tests__/m5-care-team-staff.live.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 44
+      "directRoutesReferenced": 45
     },
     {
       "module": "06-admission",
@@ -110,6 +112,7 @@
         "apps/backend/__tests__/admission-discharge.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
+        "apps/backend/__tests__/admission-malformed-id.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",

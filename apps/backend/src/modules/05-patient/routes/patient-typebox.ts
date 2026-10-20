@@ -307,11 +307,13 @@ export const AddPatientPayerBodySchema = Type.Object({
 export const AddPatientPayerResponseSchema = PatientPayerSchema;
 
 // GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
-// `clinicianUserId` names an M2 user whose display name is resolved client-side via the M2 roster
-// (no cross-module schema import); `current` rows render above closed ones.
+// `clinicianUserId` names an M2 user; `displayName` is resolved server-side (in-org membership join); `current` rows render above closed ones.
 const PatientAssignmentSchema = Type.Object({
   id: Type.String(),
   clinicianUserId: Type.String(),
+  // The clinician's name, resolved in M5 through the in-org membership (suspended members included, so past
+  // assignments resolve); null when it cannot be. Never an email.
+  displayName: Type.Union([Type.String(), Type.Null()]),
   role: Type.String(),
   assignedAt: Type.String(),
   unassignedAt: Type.Union([Type.String(), Type.Null()]),

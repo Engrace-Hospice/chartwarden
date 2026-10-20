@@ -15,7 +15,11 @@ import { ApiClientProvider, createApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AdmissionLookupField, MembershipLookupField } from "./entity-lookups";
+import {
+  AdmissionLookupField,
+  CareTeamStaffLookupField,
+  MembershipLookupField,
+} from "./entity-lookups";
 import { SessionProvider } from "./session";
 
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -171,5 +175,54 @@ describe("MembershipLookupField identifier spaces", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Jordan Clinician/i }));
     expect(selectedValue).toBe(MEMBERSHIP);
     expect(selectedUserId).toBe(CLINICIAN_USER);
+  });
+});
+
+describe("CareTeamStaffLookupField (care-team assign dialog)", () => {
+  const staffFetch = async (): Promise<Response> =>
+    new Response(
+      JSON.stringify({
+        staff: [
+          {
+            userId: CLINICIAN_USER,
+            membershipId: MEMBERSHIP,
+            displayName: "Jordan Clinician",
+            roleLabels: ["RN Case Manager"],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  const mountStaff = (value: string): JSX.Element => (
+    <MemoryRouter>
+      <ApiClientProvider
+        client={createApiClient({ baseUrl: "http://localhost", fetch: staffFetch })}
+      >
+        <SessionProvider
+          session={{
+            userId: "viewer-user",
+            organizationId: "org-1",
+            membershipId: "viewer-membership",
+            roles: [],
+            permissions: [],
+            isAdmin: false,
+          }}
+        >
+          <CareTeamStaffLookupField label="Clinician" value={value} onChange={() => {}} />
+        </SessionProvider>
+      </ApiClientProvider>
+    </MemoryRouter>
+  );
+
+  it("shows a staff member's role once in the dropdown row, not as label and again as description", async () => {
+    render(mountStaff(""));
+    fireEvent.focus(screen.getByRole("combobox"));
+    const row = await screen.findByRole("option", { name: /Jordan Clinician/i });
+    expect(row.textContent?.match(/RN Case Manager/g)).toHaveLength(1);
+  });
+
+  it("offers a single clear control on a selected clinician (the search input's own), not a second button", () => {
+    render(mountStaff(MEMBERSHIP));
+    expect(screen.queryByRole("button", { name: /clear selection/i })).toBeNull();
   });
 });

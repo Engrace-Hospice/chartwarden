@@ -178,6 +178,17 @@ export {
 } from "./jobs/snapshot-rebuild";
 // GAP-118 — the daily amendment SLA scan (due-soon / overdue events for pending §164.526 requests).
 export {
+  ADMITTING_GRANT_MAX_AGE_DAYS,
+  M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
+  M5_ADMITTING_GRANT_EXPIRY_QUEUE,
+  M5_ADMITTING_GRANT_EXPIRY_SCHEDULE,
+  registerAdmittingGrantExpiryWorker,
+  runAdmittingGrantExpiry,
+  scheduleAdmittingGrantExpiry,
+  wireAdmittingGrantExpiryTenancy,
+} from "./jobs/admitting-grant-expiry";
+export { buildM5ReferralClosedConsumer } from "./outbox-consumers/m6-referral-closed";
+export {
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_AMENDMENT_SLA_QUEUE,
   M5_AMENDMENT_SLA_SCHEDULE,
@@ -369,6 +380,7 @@ export {
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
+import { createDbCareTeamStaffPort as _dbCareTeamStaffPort } from "./care-team-staff-db";
 import type { M5OutboxPort } from "./deceased-db";
 import type { PatientIdentifierCipher } from "./identifiers/identifier-cipher";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
@@ -379,6 +391,7 @@ import type { PrivacyOfficerPorts } from "./privacy/officer";
 import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } from "./routes/assignment-routes";
+import { registerCareTeamStaffRoutes as _registerCareTeamStaffRoutes } from "./routes/care-team-staff-routes";
 import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } from "./routes/lifecycle-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
@@ -413,6 +426,8 @@ export function mountPatientRoutes(
   });
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
   _registerPatientAssignmentRoutes(app, { assignments: _dbAssignmentsPort(db, outbox) });
+  // Demo finding 2 — the narrow staff lookup the assign dialog reads (patient.assign, allowlisted fields).
+  _registerCareTeamStaffRoutes(app, { staff: _dbCareTeamStaffPort(db) });
   // GAP-018/019/012 — status, death, identifiers, caregivers, the match queue, unmerge, amendment inbox.
   _registerPatientLifecycleRoutes(app, {
     lifecycle: _dbLifecyclePort(db, outbox, undefined, census.identifierCipher),

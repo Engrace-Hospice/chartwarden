@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
@@ -386,6 +386,288 @@ describe("Admission intake workspace", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Complete admission details" })[0]!);
     expect(screen.getByText("No patient residence address on file.")).toBeTruthy();
   }
+
+  it("says a residence address is required to complete details (not optional) and blocks saving without one", async () => {
+    const client = withoutAddress(() => ok({ batches: [] }));
+    renderWithShell(client);
+    await openDetails();
+
+    const required = "A patient residence address is required before completing admission details.";
+    const block = screen.getByText("No patient residence address on file.").parentElement!;
+    expect(block.textContent).not.toMatch(/optional/i);
+    expect(within(block).getByText(new RegExp(required))).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save admission details" }));
+
+    // The save gate refuses with the very same sentence the dialog shows, now in the alert too.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(required);
+    expect(client.PATCH).not.toHaveBeenCalled();
+  });
+
+  // Patient reads fail with `status`; `failing.current` lets a test flip the mock back to success.
+  function withPatientFailure(status: number, readinessResponse = readiness()) {
+    const base = clientFor(readinessResponse);
+    const baseGet = base.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    const failing = { current: true };
+    const failure = {
+      data: undefined,
+      error: { code: "X" },
+      response: new Response(null, { status }),
+    };
+    const client = {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (
+          failing.current &&
+          (path === "/api/v1/patients/{id}" ||
+            path === "/api/v1/patients/{id}/addresses" ||
+            path === "/api/v1/patients/{patientId}/election-certification")
+        )
+          return failure;
+        return baseGet(path, init);
+      }),
+    } as unknown as ApiClient;
+    return { client, failing };
+  }
+  const getCalls = (client: ApiClient, path: string): number =>
+    (client.GET as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === path)
+      .length;
+
+  it("shows a not-visible state instead of a raw patient id on 404, and Retry recovers in place", async () => {
+    const { client, failing } = withPatientFailure(404);
+    renderWithShell(client);
+
+    const notice = await screen.findByTestId("patient-unavailable");
+    expect(notice.tagName).toBe("SECTION");
+    expect(notice.getAttribute("role")).toBeNull();
+    expect(within(notice).getByRole("heading").textContent).toMatch(/not visible to you/i);
+    expect(document.body.textContent).not.toContain("patient-1");
+    expect(
+      within(notice).getByRole("link", { name: "Back to referral" }).getAttribute("href"),
+    ).toBe("/referrals/referral-1");
+    expect(screen.getByText("4 of 7 items complete")).toBeTruthy();
+
+    const loadsBefore = getCalls(client, "/api/v1/admissions/{id}");
+    const patientBefore = getCalls(client, "/api/v1/patients/{id}");
+    failing.current = false;
+    fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.queryByTestId("patient-unavailable")).toBeNull());
+    expect(getCalls(client, "/api/v1/patients/{id}")).toBe(patientBefore + 1);
+    // The focused Retry button is gone; focus moves to the page heading, not to <body>.
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Admission Intake" }));
+    // Patient-only refetch: the admission itself is not reloaded and the page never blanks.
+    expect(getCalls(client, "/api/v1/admissions/{id}")).toBe(loadsBefore);
+    expect(screen.getAllByRole("link", { name: "Elena Rivera" }).length).toBeGreaterThan(0);
+  });
+
+  it("announces the notice Retry politely: still failing keeps the notice and says so", async () => {
+    const { client } = withPatientFailure(503);
+    renderWithShell(client);
+    const notice = await screen.findByTestId("patient-unavailable");
+    const status = within(notice).getByTestId("patient-retry-status");
+    expect(status.getAttribute("role") ?? status.tagName).toMatch(/status|OUTPUT/i);
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.textContent).toBe("");
+
+    fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(status.textContent).toMatch(/Still couldn.t load/));
+    expect(document.activeElement).not.toBe(
+      screen.getByRole("heading", { name: "Admission Intake" }),
+    );
+  });
+
+  it("does not claim 'no access' when the patient read fails with a 503", async () => {
+    const { client } = withPatientFailure(503);
+    renderWithShell(client);
+
+    const notice = await screen.findByTestId("patient-unavailable");
+    expect(notice.textContent).toMatch(/Couldn.t load the patient record\. Try again\./);
+    expect(notice.textContent).not.toMatch(/not visible|access/i);
+    expect(within(notice).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("503 notice is announced as an alert; the not-visible variant is not", async () => {
+    const { client } = withPatientFailure(503);
+    renderWithShell(client);
+    const notice = await screen.findByTestId("patient-unavailable");
+    expect(notice.getAttribute("role")).toBe("alert");
+  });
+
+  it("Retry that rejects clears the retrying state, keeps a retryable load_failed notice, and can be retried again", async () => {
+    const { client, failing } = withPatientFailure(503);
+    const failingGet = client.GET as unknown as (p: string, i?: unknown) => Promise<unknown>;
+    const rejecting = { current: false };
+    const wrapped = {
+      ...client,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (rejecting.current && path === "/api/v1/patients/{id}") throw new Error("network down");
+        return failingGet(path, init);
+      }),
+    } as unknown as ApiClient;
+    renderWithShell(wrapped);
+    const notice = await screen.findByTestId("patient-unavailable");
+
+    rejecting.current = true;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+      await waitFor(() =>
+        expect(
+          within(notice).getByRole("button", { name: "Retry" }).getAttribute("aria-disabled"),
+        ).toBe("false"),
+      );
+      expect(notice.textContent).toMatch(/Couldn.t load the patient record/);
+    }
+
+    rejecting.current = false;
+    failing.current = false;
+    fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByTestId("patient-unavailable")).toBeNull());
+  });
+
+  it("a Retry that resolves after the admission changed is ignored", async () => {
+    const { client } = withPatientFailure(503);
+    const baseGet = client.GET as unknown as (p: string, i?: unknown) => Promise<unknown>;
+    let release: (v: unknown) => void = () => undefined;
+    const hold = { current: false };
+    const wrapped = {
+      ...client,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (hold.current && path === "/api/v1/patients/{id}") {
+          hold.current = false;
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return baseGet(path, init);
+      }),
+    } as unknown as ApiClient;
+    function GoNext() {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate("/admissions/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")}
+        >
+          next admission
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={[`/admissions/${admissionId}`]}>
+        <ApiClientProvider client={wrapped}>
+          <SessionProvider session={session}>
+            <GoNext />
+            <Routes>
+              <Route path="/admissions/:id" element={<AdmissionDetail />} />
+            </Routes>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const notice = await screen.findByTestId("patient-unavailable");
+    hold.current = true;
+    fireEvent.click(within(notice).getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "next admission" }));
+    await waitFor(() => expect(getCalls(wrapped, "/api/v1/admissions/{id}")).toBe(2));
+    // The stale retry now resolves with a readable patient; the new admission's own (failed) load wins.
+    release({
+      data: {
+        id: "patient-1",
+        organizationId: "org-1",
+        lastName: "Stale",
+        firstName: "Row",
+        status: "active",
+      },
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByTestId("patient-unavailable")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Stale");
+    expect(
+      within(screen.getByTestId("patient-unavailable"))
+        .getByRole("button", { name: "Retry" })
+        .getAttribute("aria-disabled"),
+    ).toBe("false");
+  });
+
+  it("a failed address read shows a retryable error and never claims 'no residence on file'", async () => {
+    const base = clientFor(
+      readiness({
+        requirements: [
+          {
+            code: "admission_details",
+            label: "Admission details",
+            status: "action_required",
+            blocking: true,
+            message: "Missing admission details.",
+            action: "COMPLETE_ADMISSION_DETAILS",
+          },
+        ],
+      }),
+    );
+    const baseGet = base.GET as unknown as (p: string, i?: unknown) => Promise<unknown>;
+    const addressFails = { current: true };
+    const client = {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) =>
+        addressFails.current && path === "/api/v1/patients/{id}/addresses"
+          ? { data: undefined, error: { code: "X" }, response: new Response(null, { status: 503 }) }
+          : baseGet(path, init),
+      ),
+    } as unknown as ApiClient;
+    renderWithShell(client);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Complete admission details" }))[0]!,
+    );
+
+    expect(screen.queryByText("No patient residence address on file.")).toBeNull();
+    expect(screen.getByText(/addresses could not be loaded/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save admission details" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/addresses could not be loaded/i);
+    expect(alert.textContent).not.toMatch(/is required before completing/i);
+
+    addressFails.current = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry loading addresses" }));
+    await screen.findByText("Patient residence");
+    // The address retry runs inside the modal: focus is not yanked out to the page heading.
+    expect(document.activeElement).not.toBe(
+      screen.getByRole("heading", { name: "Admission Intake" }),
+    );
+  });
+
+  it("does not strand the user on an unfixable address error when the patient is not visible", async () => {
+    const { client } = withPatientFailure(
+      404,
+      readiness({
+        requirements: [
+          {
+            code: "admission_details",
+            label: "Admission details",
+            status: "action_required",
+            blocking: true,
+            message: "Missing admission details.",
+            action: "COMPLETE_ADMISSION_DETAILS",
+          },
+        ],
+      }),
+    );
+    renderWithShell(client);
+    await screen.findByTestId("patient-unavailable");
+    fireEvent.click(screen.getAllByRole("button", { name: "Complete admission details" })[0]!);
+
+    expect(screen.queryByRole("link", { name: "Open patient addresses" })).toBeNull();
+    const block = screen.getByText("Patient record unavailable.").parentElement!;
+    expect(block.textContent).toMatch(/must be visible to you/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save admission details" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/must be visible to you to add a residence address/i);
+    expect(client.PATCH).not.toHaveBeenCalled();
+  });
 
   it("points at the intake reviews holding an extracted address, one link per batch (never the value)", async () => {
     const client = withoutAddress(() =>

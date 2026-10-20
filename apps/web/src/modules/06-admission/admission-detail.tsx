@@ -36,7 +36,7 @@ import {
   type StatusTone,
   useApiClient,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -249,6 +249,14 @@ export function AdmissionDetail({
   const [hope, setHope] = useState<HopeSummary | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [patientAddresses, setPatientAddresses] = useState<AddressView[] | null>(null);
+  const [patientIssue, setPatientIssue] = useState<PatientIssue>(null);
+  const [retryingPatient, setRetryingPatient] = useState(false);
+  // Polite announcement for the page-level notice's Retry (the focused button's label change is not announced).
+  const [retryAnnouncement, setRetryAnnouncement] = useState("");
+  // The address read can fail while the patient read succeeds; "no address on file" must not be claimed then.
+  const [addressLoadFailed, setAddressLoadFailed] = useState(false);
+  // Bumped by every load()/retry/unmount: a patient refetch only commits if it is still the latest.
+  const patientRequest = useRef(0);
   const [electionCert, setElectionCert] = useState<ElectionCertificationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -327,6 +335,8 @@ export function AdmissionDetail({
   >(undefined);
   const load = useCallback(async () => {
     if (!id) return;
+    patientRequest.current += 1;
+    setRetryingPatient(false);
     setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/admissions/{id}", {
@@ -403,11 +413,70 @@ export function AdmissionDetail({
     setHope(h.data ? (h.data as HopeSummary) : null);
     setElectionCert(ec.data ? (ec.data as unknown as ElectionCertificationView) : null);
     setPatient(patientResult.data ? (patientResult.data as PatientSummary) : null);
+    setPatientIssue(patientIssueOf(patientResult));
     setPatientAddresses(
       (addressResult.data as { addresses?: AddressView[] } | null | undefined)?.addresses ?? null,
     );
+    setAddressLoadFailed(Boolean((addressResult as { error?: unknown }).error));
     setLoading(false);
   }, [client, id]);
+
+  // Patient-only refetch: keeps the page (and the notice's focused Retry button) mounted. Re-reads what
+  // load() reads about the patient (record, addresses, election certification); a rejected read is a
+  // load_failed issue, and a result that arrives after load()/unmount/another retry is dropped.
+  // Focus handoff is the caller's job: only the page-level notice (whose focused Retry button unmounts on
+  // success) asks for it; the address retry inside the "Complete admission details" modal keeps focus there.
+  const retryPatient = useCallback(
+    async (opts: { fromNotice?: boolean } = {}) => {
+      const patientId = admission?.patientId;
+      if (!patientId || retryingPatient) return;
+      const request = ++patientRequest.current;
+      setRetryingPatient(true);
+      if (opts.fromNotice) setRetryAnnouncement("Retrying\u2026");
+      try {
+        const [patientResult, addressResult, certResult] = await Promise.all([
+          client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+          client.GET("/api/v1/patients/{id}/addresses", { params: { path: { id: patientId } } }),
+          client.GET("/api/v1/patients/{patientId}/election-certification", {
+            params: { path: { patientId } },
+          }),
+        ]);
+        if (request !== patientRequest.current) return;
+        setPatient(patientResult.data ? (patientResult.data as PatientSummary) : null);
+        setPatientIssue(patientIssueOf(patientResult));
+        setPatientAddresses(
+          (addressResult.data as { addresses?: AddressView[] } | null | undefined)?.addresses ??
+            null,
+        );
+        setAddressLoadFailed(Boolean(addressResult.error));
+        if (certResult.data)
+          setElectionCert(certResult.data as unknown as ElectionCertificationView);
+        if (opts.fromNotice) {
+          setRetryAnnouncement(
+            patientResult.data ? "" : "Still couldn\u2019t load the patient record.",
+          );
+          if (patientResult.data) focusPageHeading();
+        }
+      } catch {
+        if (request !== patientRequest.current) return;
+        setPatient(null);
+        setPatientIssue("load_failed");
+        setAddressLoadFailed(true);
+        if (opts.fromNotice) setRetryAnnouncement("Still couldn\u2019t load the patient record.");
+      } finally {
+        if (request === patientRequest.current) setRetryingPatient(false);
+      }
+    },
+    [admission?.patientId, client, retryingPatient],
+  );
+
+  // Unmount invalidates any in-flight patient refetch.
+  useEffect(
+    () => () => {
+      patientRequest.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     void load();
@@ -512,7 +581,11 @@ export function AdmissionDetail({
     if (!admissionDate || !providerEntityId || !hospicePhysicianId || !residence) {
       setActionError(
         !residence
-          ? "A patient residence address is required before completing admission details."
+          ? patient || !admission.patientId
+            ? addressLoadFailed
+              ? ADDRESS_LOAD_FAILED_MESSAGE
+              : RESIDENCE_REQUIRED_MESSAGE
+            : PATIENT_UNAVAILABLE_ADDRESS_MESSAGE
           : "Choose the admission/SOC date, hospice provider, and Hospice Physician before saving.",
       );
       return;
@@ -544,6 +617,8 @@ export function AdmissionDetail({
     hospicePhysicianId,
     admissionCodes,
     patientAddresses,
+    patient,
+    addressLoadFailed,
     client,
     branchError,
     closeCeremony,
@@ -1119,6 +1194,15 @@ export function AdmissionDetail({
         }
       >
         <div style={contentShellStyle}>
+          {admission.patientId && !patient ? (
+            <PatientUnavailableNotice
+              issue={patientIssue}
+              referralId={admission.referralId}
+              retrying={retryingPatient}
+              announcement={retryAnnouncement}
+              onRetry={() => void retryPatient({ fromNotice: true })}
+            />
+          ) : null}
           <TransferNoticeStatus admissionId={admission.id} />
           <section style={summaryCardStyle}>
             <div style={summaryHeaderStyle}>
@@ -1228,7 +1312,7 @@ export function AdmissionDetail({
                 <Field label="Planned/SOC" value={fmtDate(admission.admissionAt)} />
               </div>
 
-              {admission.patientId ? (
+              {admission.patientId && patient ? (
                 <PatientIntakeDetails
                   patientId={admission.patientId}
                   onSaved={load}
@@ -1582,6 +1666,10 @@ export function AdmissionDetail({
               <ServiceLocationBlock
                 patientId={admission!.patientId}
                 address={currentResidenceAddress(patientAddresses)}
+                patientUnavailable={!patient}
+                addressLoadFailed={addressLoadFailed}
+                onRetryAddresses={() => void retryPatient()}
+                retrying={retryingPatient}
               />
 
               <MdmEntityLookupField
@@ -2258,9 +2346,17 @@ function addressLines(address: AddressView | null | undefined): string[] {
 function ServiceLocationBlock({
   patientId,
   address,
+  patientUnavailable,
+  addressLoadFailed,
+  onRetryAddresses,
+  retrying,
 }: {
   patientId?: string;
   address: AddressView | null;
+  patientUnavailable: boolean;
+  addressLoadFailed: boolean;
+  onRetryAddresses: () => void;
+  retrying: boolean;
 }): JSX.Element {
   return (
     <div style={formStackStyle}>
@@ -2272,13 +2368,33 @@ function ServiceLocationBlock({
             <span key={line}>{line}</span>
           ))}
         </div>
+      ) : patientId && patientUnavailable ? (
+        <div style={addressBoxStyle}>
+          <strong>Patient record unavailable.</strong>
+          <div style={hintTextStyle}>{PATIENT_UNAVAILABLE_ADDRESS_MESSAGE}</div>
+        </div>
+      ) : patientId && addressLoadFailed ? (
+        <div style={addressBoxStyle}>
+          <strong>Addresses unavailable.</strong>
+          <div style={hintTextStyle}>{ADDRESS_LOAD_FAILED_MESSAGE}</div>
+          <button
+            type="button"
+            className="wx-btn-secondary"
+            aria-disabled={retrying}
+            onClick={() => {
+              if (!retrying) onRetryAddresses();
+            }}
+          >
+            {retrying ? "Retrying\u2026" : "Retry loading addresses"}
+          </button>
+        </div>
       ) : (
         <div style={addressBoxStyle}>
           <strong>No patient residence address on file.</strong>
 
           <div style={hintTextStyle}>
-            Residence address is optional at this stage. You can continue admission and add it
-            later.
+            {RESIDENCE_REQUIRED_MESSAGE} You can add it during admission, before you save the
+            admission details.
           </div>
 
           {patientId ? <IntakePendingAddressHint patientId={patientId} /> : null}
@@ -2793,6 +2909,12 @@ const inputStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--color-outline-variant)",
 };
+const RESIDENCE_REQUIRED_MESSAGE =
+  "A patient residence address is required before completing admission details.";
+const ADDRESS_LOAD_FAILED_MESSAGE =
+  "The patient\u2019s addresses could not be loaded, so we can\u2019t tell whether a residence is on file. Retry before saving.";
+const PATIENT_UNAVAILABLE_ADDRESS_MESSAGE =
+  "The patient record must be visible to you to add a residence address, which is required to complete admission details.";
 const addressBoxStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -2803,6 +2925,7 @@ const addressBoxStyle: CSSProperties = {
   background: "var(--color-surface-container)",
   fontSize: "0.85rem",
 };
+const patientNoticeTitleStyle: CSSProperties = { margin: 0, fontSize: "0.9rem", fontWeight: 600 };
 const alertStyle: CSSProperties = {
   margin: 0,
   fontSize: "0.8rem",
@@ -3268,9 +3391,9 @@ function fmtDate(value: string | null | undefined): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
 }
 
-function patientDisplayName(patient: PatientSummary | null, patientId?: string): string {
+function patientDisplayName(patient: PatientSummary | null): string {
   const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
-  return name || patient?.mrn || patientId || "Unresolved";
+  return name || patient?.mrn || "Patient unavailable";
 }
 
 function patientMeta(patient: PatientSummary | null): string | null {
@@ -3303,6 +3426,81 @@ function normalizeSecondaryDiagnoses(value: string): string[] {
     .filter(Boolean);
 }
 
+type PatientIssue = "not_visible" | "load_failed" | null;
+
+/** After a successful in-place retry the focused Retry button unmounts; hand focus to the page heading. */
+function focusPageHeading(): void {
+  const heading = document.querySelector<HTMLElement>("h1.wx-page-title");
+  if (!heading) return;
+  heading.tabIndex = -1;
+  heading.focus();
+}
+const NOT_VISIBLE_STATUSES = [403, 404];
+
+function patientIssueOf(result: {
+  data?: unknown;
+  response?: { status: number };
+}): PatientIssue {
+  if (result.data) return null;
+  return result.response && NOT_VISIBLE_STATUSES.includes(result.response.status)
+    ? "not_visible"
+    : "load_failed";
+}
+
+function PatientUnavailableNotice({
+  issue,
+  referralId,
+  retrying,
+  announcement,
+  onRetry,
+}: {
+  issue: PatientIssue;
+  referralId?: string | null;
+  retrying: boolean;
+  announcement: string;
+  onRetry: () => void;
+}): JSX.Element {
+  const notVisible = issue === "not_visible";
+  return (
+    <section
+      aria-labelledby="patient-unavailable-title"
+      data-testid="patient-unavailable"
+      // A transient load failure is announced; "not visible to you" is a stable state, not an alert.
+      {...(notVisible ? {} : { role: "alert" })}
+      style={addressBoxStyle}
+    >
+      <h2 id="patient-unavailable-title" style={patientNoticeTitleStyle}>
+        {notVisible
+          ? "Patient record not visible to you."
+          : "Couldn\u2019t load the patient record. Try again."}
+      </h2>
+      <div style={hintTextStyle}>
+        {notVisible
+          ? "This patient\u2019s details are not available for your role. The rest of this admission is still available."
+          : "The rest of this admission is still available."}
+      </div>
+      <output aria-live="polite" className="wx-sr-only" data-testid="patient-retry-status">
+        {announcement}
+      </output>
+      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={onRetry}
+          aria-disabled={retrying}
+          className="wx-btn-secondary"
+        >
+          {retrying ? "Retrying\u2026" : "Retry"}
+        </button>
+        {referralId ? (
+          <Link to={`/referrals/${referralId}`} style={patientLinkStyle}>
+            Back to referral
+          </Link>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function AdmissionPatientLink({
   patientId,
   patient,
@@ -3313,10 +3511,12 @@ function AdmissionPatientLink({
   compact?: boolean;
 }): JSX.Element {
   if (!patientId) return <span>Unresolved</span>;
+  // No readable record (e.g. 404 for this role): never show the raw id or link to a page that will 404.
+  if (!patient) return <span>{patientDisplayName(null)}</span>;
   return (
     <>
       <Link to={`/patients/${patientId}`} style={patientLinkStyle}>
-        {patientDisplayName(patient, patientId)}
+        {patientDisplayName(patient)}
       </Link>
       {!compact && patientMeta(patient) ? (
         <span style={patientMetaStyle}>{patientMeta(patient)}</span>

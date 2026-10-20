@@ -844,6 +844,10 @@ import {
   PatientAssignmentViewSchema as M5EPatientAssignmentViewSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/assignment-typebox";
 import {
+  CareTeamStaffListResponseSchema as M5ECareTeamStaffListResponseSchema,
+  CareTeamStaffQuerySchema as M5ECareTeamStaffQuerySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/care-team-staff-typebox";
+import {
   CaregiverBodySchema as M5EWCaregiverBodySchema,
   DeceasedBodySchema as M5EWDeceasedBodySchema,
   IdentifierBodySchema as M5EWIdentifierBodySchema,
@@ -6952,6 +6956,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "End an open assignment — sets unassignedAt (default today); 409 when already ended; emits m5.patient.assignment_ended (§4.3; patient.assign)",
     body: M5EEndAssignmentBodySchema,
     response: M5EPatientAssignmentViewSchema,
+  },
+  "GET /api/v1/orgs/:id/care-team-staff": {
+    summary:
+      "Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25)",
+    query: M5ECareTeamStaffQuerySchema,
+    response: M5ECareTeamStaffListResponseSchema,
   },
   "PATCH /api/v1/patients/:id": {
     summary:

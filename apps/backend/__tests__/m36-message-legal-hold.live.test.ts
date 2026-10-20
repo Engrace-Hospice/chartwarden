@@ -1,5 +1,5 @@
 /**
- * M36 WP 5.6 S2 (ADR-0086, PROPOSED) - the message legal-hold overlay and its backstop trigger (migration 1137), LIVE Postgres.
+ * M36 WP 5.6 S2 (ADR-0086, PROPOSED) - the message legal-hold overlay and its backstop trigger (migration 1138), LIVE Postgres.
  *
  *   1. OVERLAY     the NOBYPASSRLS `wardenx_app` role can record a held message but cannot UPDATE or DELETE the overlay.
  *   2. TENANCY     another organisation reads nothing and cannot write an overlay row against this organisation's message.

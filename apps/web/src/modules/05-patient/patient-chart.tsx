@@ -47,8 +47,9 @@ import {
   usePatientChartData,
 } from "./patient-overview";
 
+import { isCareTeamRole } from "../../shell/care-team-roles";
 import { ChartModuleRail, type ChartSection } from "../../shell/chart-module-rail";
-import { MembershipLookupField } from "../../shell/entity-lookups";
+import { CareTeamStaffLookupField } from "../../shell/entity-lookups";
 import { useOpenPatientConversation } from "../../shell/open-patient-conversation";
 import { useSession } from "../../shell/session";
 
@@ -1942,6 +1943,9 @@ interface Assignment {
 
   clinicianUserId: string;
 
+  /** Resolved server-side from the member directory; null when the member is no longer listed. */
+  displayName?: string | null;
+
   role: string;
 
   assignedAt: string;
@@ -1997,14 +2001,6 @@ interface CareTeam {
   emergencyContacts: EmergencyContact[];
 }
 
-interface TeamMember {
-  membershipId: string;
-  userId: string;
-  displayName: string | null;
-  email: string | null;
-  status: string;
-}
-
 const ROLE_LABELS: Record<string, string> = {
   primary_rn: "Primary RN",
 
@@ -2025,7 +2021,12 @@ const ROLE_LABELS: Record<string, string> = {
   volunteer: "Volunteer",
 
   bereavement: "Bereavement",
+
+  admitting_staff: "Admitting staff",
 };
+
+/** Shown when the care-team response carries no name for a clinician (e.g. a departed member). */
+const UNRESOLVED_STAFF_LABEL = "Staff member";
 
 const ASSIGNABLE_ROLES = [
   "primary_rn",
@@ -2175,7 +2176,6 @@ export function CareTeamTab({
   const toast = useToast();
   const navigate = useNavigate();
   const [team, setTeam] = useState<CareTeam | null>(null);
-  const [members, setMembers] = useState<Map<string, TeamMember>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [assignOpen, setAssignOpen] = useState(false);
   const [clinicianUserId, setClinicianUserId] = useState("");
@@ -2190,41 +2190,36 @@ export function CareTeamTab({
   const { open: openCareTeamConversation, opening: openingConversation } =
     useOpenPatientConversation(patientId);
 
+  // Latest-wins: a reload only commits if no newer reload, patient switch or unmount happened since.
+  const reloadRequest = useRef(0);
   const reload = useCallback(
     async (showLoading = false) => {
+      const request = ++reloadRequest.current;
       if (showLoading) setStatus("loading");
-
-      const [teamResult, membersResult] = await Promise.all([
-        client.GET("/api/v1/patients/{id}/care-team", {
+      try {
+        const teamResult = await client.GET("/api/v1/patients/{id}/care-team", {
           params: { path: { id: patientId } },
-        }),
-        client.GET("/api/v1/orgs/{id}/members", {
-          params: { path: { id: organizationId }, query: {} },
-        }),
-      ]);
-
-      if (teamResult.error || !teamResult.data) {
-        setStatus("error");
-        return;
-      }
-
-      setTeam(teamResult.data as CareTeam);
-
-      const nextMembers = new Map<string, TeamMember>();
-      if (!membersResult.error && membersResult.data) {
-        for (const member of (membersResult.data as { members: TeamMember[] }).members ?? []) {
-          nextMembers.set(member.userId, member);
-          nextMembers.set(member.membershipId, member);
+        });
+        if (request !== reloadRequest.current) return;
+        if (teamResult.error || !teamResult.data) {
+          setStatus("error");
+          return;
         }
+        setTeam(teamResult.data as CareTeam);
+        setStatus("ready");
+      } catch {
+        if (request === reloadRequest.current) setStatus("error");
       }
-      setMembers(nextMembers);
-      setStatus("ready");
     },
-    [client, organizationId, patientId],
+    [client, patientId],
   );
 
   useEffect(() => {
+    setTeam(null);
     void reload(true);
+    return () => {
+      reloadRequest.current += 1;
+    };
   }, [reload]);
 
   if (status === "loading" && team === null) return <LoadingSpinner />;
@@ -2238,7 +2233,9 @@ export function CareTeamTab({
     );
   }
 
-  const assignments = [...team.assignments].sort((a, b) => Number(b.current) - Number(a.current));
+  const assignments = team.assignments
+    .filter((assignment) => isCareTeamRole(assignment.role))
+    .sort((a, b) => Number(b.current) - Number(a.current));
   const activeAssignments = assignments.filter((assignment) => assignment.current);
   const pastAssignments = assignments.filter((assignment) => !assignment.current);
   const caregivers = team.caregivers.filter((caregiver) => caregiver.current);
@@ -2248,15 +2245,7 @@ export function CareTeamTab({
   const primaryCaregiver = caregivers.find((caregiver) => caregiver.isPrimary);
 
   const clinicianName = (assignment: Assignment): string => {
-    const member = members.get(assignment.clinicianUserId);
-    return (
-      member?.displayName ?? member?.email ?? `Clinician ${assignment.clinicianUserId.slice(0, 8)}…`
-    );
-  };
-
-  const clinicianSecondary = (assignment: Assignment): string | null => {
-    const member = members.get(assignment.clinicianUserId);
-    return member?.displayName && member.email ? member.email : null;
+    return assignment.displayName ?? UNRESOLVED_STAFF_LABEL;
   };
 
   return (
@@ -2322,7 +2311,6 @@ export function CareTeamTab({
               <div style={recordList}>
                 {activeAssignments.map((assignment) => {
                   const name = clinicianName(assignment);
-                  const secondary = clinicianSecondary(assignment);
                   return (
                     <div
                       key={assignment.id}
@@ -2341,20 +2329,11 @@ export function CareTeamTab({
                             ) : null}
                           </div>
                           <div style={assignmentRoleText}>{roleLabel(assignment.role)}</div>
-                          {secondary ? <div style={recordMeta}>{secondary}</div> : null}
                         </div>
                       </div>
 
                       <div style={assignmentMeta}>
                         <span>Assigned {dateOnly(assignment.assignedAt)}</span>
-                        {!members.has(assignment.clinicianUserId) ? (
-                          <code
-                            style={inlineCode}
-                            title={`Clinician ${assignment.clinicianUserId}`}
-                          >
-                            {assignment.clinicianUserId.slice(0, 8)}…
-                          </code>
-                        ) : null}
                       </div>
                     </div>
                   );
@@ -2517,16 +2496,16 @@ export function CareTeamTab({
           </header>
 
           <div style={assignmentModalBody}>
-            <MembershipLookupField
+            <CareTeamStaffLookupField
               label="Clinician"
               value={membershipId}
               valueLabel={membershipLabel}
               appearance="modal"
-              placeholder="Search staff by name or email..."
-              hint="Only active members of this organization are available."
+              placeholder="Search staff by name..."
+              hint="Only active members of this organization are available. Search by name. Up to 25 shown."
               onChange={(value, option) => {
                 setMembershipId(value);
-                setClinicianUserId(option?.metadata?.userId ?? members.get(value)?.userId ?? "");
+                setClinicianUserId(option?.metadata?.userId ?? "");
                 setMembershipLabel(option?.searchLabel ?? "");
                 setAssignmentError(null);
               }}

@@ -368,8 +368,8 @@ export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Pr
           <h3 style={title}>Patient information</h3>
 
           <p style={description}>
-            Residence address and coverage are optional during intake. You can continue without
-            completing them.
+            Residence address and coverage are optional during intake. A residence address is
+            still required to complete the admission details.
           </p>
         </div>
 

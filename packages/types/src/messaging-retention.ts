@@ -2,7 +2,7 @@
 // (channel kinds); these are the cross-package names: the permission, the two fresh-step-up operation keys, the reason floor and the
 // M4 destruction-certificate data classes the plan-only retention scan opens.
 
-/** Lets a compliance officer apply / release a legal hold on messages and read the retention view (migration 1137). */
+/** Lets a compliance officer apply / release a legal hold on messages and read the retention view (migration 1138). */
 export const MESSAGING_RETENTION_MANAGE_PERMISSION = "messaging.retention.manage";
 
 /** Fresh step-up operation keys; the apply and release routes each demand one. */

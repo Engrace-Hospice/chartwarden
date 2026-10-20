@@ -284,7 +284,7 @@ export function createDrizzleMessagingEraseStore(
   }
 
   /**
-   * ADR-0086 (PROPOSED): a message under an ACTIVE legal hold cannot be rewritten or deleted (migration 1137's backstop trigger raises 23001
+   * ADR-0086 (PROPOSED): a message under an ACTIVE legal hold cannot be rewritten or deleted (migration 1138's backstop trigger raises 23001
    * mid-statement). Look first, before any key is destroyed or any row touched, and fail cleanly and retryably (release the hold, then
    * retry) instead of dying on a trigger halfway through the erase.
    */

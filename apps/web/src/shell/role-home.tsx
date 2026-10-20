@@ -90,7 +90,7 @@ interface WidgetSource {
   readonly id: string;
   /** The actor needs any one of these keys. */
   readonly permission: string | readonly string[];
-  readonly load: (client: ApiClient) => Promise<Contribution>;
+  readonly load: (client: ApiClient, session: Session | null) => Promise<Contribution>;
 }
 
 interface PatientRef {
@@ -381,7 +381,10 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   {
     id: "hope",
     permission: "hope.timepoint.read",
-    async load(client) {
+    async load(client, session) {
+      // hope.scope admits an unfiltered list only to org-wide-scope roles (anyone else gets a 404), so
+      // don't issue the call at all for a caseload-scoped actor.
+      if (!session?.orgWidePatientScope) return { unavailable: ["hope"] };
       const res = await client.GET("/api/v1/hope/schedules", {
         params: { query: { status: "open" } },
       });
@@ -442,14 +445,17 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   {
     id: "idg",
     permission: "idg.read",
-    async load(client) {
+    async load(client, session) {
       const [locs, mine] = await Promise.all([
         client.GET("/api/v1/locations", { params: { query: {} } }),
         client.GET("/api/v1/idg/action-items", { params: { query: { assignee: "me" } } }),
       ]);
       const from = startOfDay().toISOString();
       const to = startOfDay(1).toISOString();
-      const sites = (locs.data?.items ?? []).slice(0, 5);
+      // /idg/schedule 404s a location outside the actor's scope, so only ask for the actor's own sites.
+      const sites = (locs.data?.items ?? [])
+        .filter((l) => session?.orgWidePatientScope || (session?.locationIds ?? []).includes(l.id))
+        .slice(0, 5);
       const lists = await Promise.all(
         sites.map((l) =>
           client
@@ -845,7 +851,9 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
     }
     setLoading(true);
     void (async () => {
-      const settled = await Promise.allSettled(enabled.map((source) => source.load(client)));
+      const settled = await Promise.allSettled(
+        enabled.map((source) => source.load(client, session)),
+      );
       if (!active) return;
       const good: Contribution[] = [];
       const failed: string[] = [];
