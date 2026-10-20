@@ -5,6 +5,10 @@
  * link-a-record, needs-a-response, ask-a-nurse, urgent/SBAR or IDG controls. `db:seed:all` runs after the demo org is
  * rebuilt (its feature_flag rows go with the org), so this belongs in that chain.
  *
+ * It also grants the demo `administrator` role `messaging.urgent.send` and `messaging.oncall.send`, which the Needs a
+ * response and Ask a nurse controls require and which no tenant role template holds (ADR-0081: the clinical lead names who
+ * may page a role). A reseed rebuilds role grants from the templates, so the grant lives here to survive it.
+ *
  * Demo org only. A real tenant's flags are set through the platform admin API (step-up gated), never here.
  * Idempotent: upserts on (flag_key, organization_id). Uses the admin connection.
  * Usage: bun run db:seed:messaging-flags
@@ -25,6 +29,9 @@ export const MESSAGING_FLAGS = [
   "messaging.urgent_clinical",
 ] as const;
 
+const ADMIN_ROLE_KEY = "administrator";
+const ADMIN_GRANTS = ["messaging.urgent.send", "messaging.oncall.send"] as const;
+
 async function main(): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -44,6 +51,17 @@ async function main(): Promise<void> {
         [orgId, flag],
       );
     }
+    const granted = await db.query(
+      `INSERT INTO role_permission (organization_id, role_id, permission_key)
+       SELECT r.organization_id, r.id, g
+         FROM role r, unnest($2::text[]) g
+        WHERE r.organization_id = $1 AND r.key = $3
+       ON CONFLICT (role_id, permission_key) DO NOTHING`,
+      [orgId, [...ADMIN_GRANTS], ADMIN_ROLE_KEY],
+    );
+    console.log(
+      `granted ${ADMIN_GRANTS.join(", ")} to ${ADMIN_ROLE_KEY} (${granted.rowCount} new)`,
+    );
     console.log(`messaging flags on for ${ORG_SLUG}: ${MESSAGING_FLAGS.join(", ")}`);
   } finally {
     await db.end();
