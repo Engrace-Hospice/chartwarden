@@ -11,6 +11,7 @@ import {
   type StatusTone,
   ageYears,
   cardSurface,
+  formatDateOnly,
   humanizeIdentifier,
   useApiClient,
   useToast,
@@ -662,16 +663,8 @@ function DemographicsTab({
     value?.trim() ? value : <span style={missingValue}>Not recorded</span>;
   const displayCodes = (values: string[]): ReactNode =>
     values.length ? values.join(", ") : <span style={missingValue}>Not recorded</span>;
-  const formatDisplayDate = (value: string | null | undefined): string => {
-    if (!value) return "Not recorded";
-    const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) return value.slice(0, 10);
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(parsed);
-  };
+  const formatDisplayDate = (value: string | null | undefined): string =>
+    value ? formatDateOnly(value.slice(0, 10)) : "Not recorded";
   const legalName = [d.legalFirstName, d.legalMiddleName, d.legalLastName, d.legalNameSuffix]
     .filter(Boolean)
     .join(" ");

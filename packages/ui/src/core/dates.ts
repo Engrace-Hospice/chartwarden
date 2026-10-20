@@ -38,3 +38,21 @@ export function ageYears(dob: string): number | null {
   if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < d.getDate())) age--;
   return age >= 0 && age < 150 ? age : null;
 }
+
+const DATE_ONLY_STRICT = /^\d{4}-\d{2}-\d{2}(?:T00:00:00(?:\.0+)?Z)?$/;
+
+/**
+ * Display a date-ONLY value as the viewer's locale date WITHOUT the UTC-midnight shift: the calendar
+ * day stored is the calendar day shown, in every time zone. Strict: accepts exactly `YYYY-MM-DD` or
+ * the midnight-UTC serialization of a date column (`YYYY-MM-DDT00:00:00(.000)Z`). Anything else —
+ * including a real instant, whose calendar day depends on the viewer's zone — is returned unchanged
+ * so it stays visible instead of silently showing the UTC day. Format instants in the viewer's zone.
+ */
+export function formatDateOnly(
+  dateOnly: string,
+  options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" },
+): string {
+  if (!DATE_ONLY_STRICT.test(dateOnly)) return dateOnly;
+  const d = parseLocalDateOnly(dateOnly);
+  return d ? new Intl.DateTimeFormat(undefined, options).format(d) : dateOnly;
+}

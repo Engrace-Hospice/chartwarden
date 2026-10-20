@@ -4,6 +4,7 @@ import {
   LoadingSpinner,
   OffsetPagination,
   StatusPill,
+  formatDateOnly,
   interactiveRowProps,
   t,
   useApiClient,
@@ -313,7 +314,7 @@ function ReferralTable({
                   </button>
                   <span className="wx-row-sub">
                     {r.patientDobAtReceipt
-                      ? `DOB ${formatDate(r.patientDobAtReceipt)}`
+                      ? `DOB ${formatDateOnly(r.patientDobAtReceipt)}`
                       : "DOB not provided"}
                   </span>
                 </span>
@@ -335,7 +336,9 @@ function ReferralTable({
               <PriorityBadge value={r.priority} />
             </td>
             <td>
-              {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
+              {r.assignedToUserId
+                ? `Assigned to ${r.assignedToDisplayName || "Staff member"}`
+                : "Unassigned"}
             </td>
             <td>
               <StatusPill
@@ -375,18 +378,6 @@ function firstLast(name: string): string {
 
 function sourceLabel(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
 }
 
 function formatDateTime(value: string): string {

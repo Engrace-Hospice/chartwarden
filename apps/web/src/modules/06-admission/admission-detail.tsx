@@ -34,6 +34,7 @@ import {
   RightDetailPanel,
   StatusPill,
   type StatusTone,
+  formatDateOnly,
   useApiClient,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -51,6 +52,15 @@ import {
   EMPTY_ADMISSION_CODES,
   admissionCodesBody,
 } from "./admission-codes-fields";
+import {
+  type PeriodRow,
+  type SummaryRow,
+  type WindowRow,
+  describePeriod,
+  describeWindow,
+  displayPatientStatus,
+  usePromotionPoll,
+} from "./admission-detail-status";
 import { EvidenceUploadDrawer, type EvidenceUploadKind } from "./admission-evidence-upload";
 import { AdmissionHoldAction } from "./admission-hold-action";
 import {
@@ -78,11 +88,6 @@ const NOR_METHODS = [
 ] as const;
 type NorMethod = (typeof NOR_METHODS)[number]["value"];
 
-interface SummaryRow {
-  id: string;
-  state: string;
-  version: number;
-}
 interface AdmissionDetailView extends SummaryRow {
   patientId?: string;
   referralId?: string | null;
@@ -244,8 +249,8 @@ export function AdmissionDetail({
   const hasPermission = (key: string): boolean => session?.permissions?.includes(key) ?? false;
   const [admission, setAdmission] = useState<AdmissionDetailView | null>(null);
   const [readiness, setReadiness] = useState<AdmissionReadiness | null>(null);
-  const [periods, setPeriods] = useState<SummaryRow[]>([]);
-  const [windows, setWindows] = useState<SummaryRow[]>([]);
+  const [periods, setPeriods] = useState<PeriodRow[]>([]);
+  const [windows, setWindows] = useState<WindowRow[]>([]);
   const [hope, setHope] = useState<HopeSummary | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [patientAddresses, setPatientAddresses] = useState<AddressView[] | null>(null);
@@ -333,9 +338,19 @@ export function AdmissionDetail({
   const [referralNumbers, setReferralNumbers] = useState<
     { medicare: string | null; medicaid: string | null } | undefined
   >(undefined);
+  const { resetPolls: resetPromotionPolls, announcement: promotionAnnouncement } =
+    usePromotionPoll<PatientSummary>({
+      client,
+      admissionState: admission?.state,
+      patientId: admission?.patientId,
+      patientStatus: patient?.status,
+      patientRequest,
+      onPatient: setPatient,
+    });
   const load = useCallback(async () => {
     if (!id) return;
     patientRequest.current += 1;
+    resetPromotionPolls();
     setRetryingPatient(false);
     setLoading(true);
     setError(null);
@@ -419,7 +434,7 @@ export function AdmissionDetail({
     );
     setAddressLoadFailed(Boolean((addressResult as { error?: unknown }).error));
     setLoading(false);
-  }, [client, id]);
+  }, [client, id, resetPromotionPolls]);
 
   // Patient-only refetch: keeps the page (and the notice's focused Retry button) mounted. Re-reads what
   // load() reads about the patient (record, addresses, election certification); a rejected read is a
@@ -1127,7 +1142,10 @@ export function AdmissionDetail({
               {admission.referralId ? (
                 <>
                   {" "}
-                  · Referral <span className="wx-data-md">{admission.referralId}</span>
+                  ·{" "}
+                  <Link to={`/referrals/${admission.referralId}`} style={patientLinkStyle}>
+                    Referral
+                  </Link>
                 </>
               ) : null}
             </div>
@@ -1304,10 +1322,27 @@ export function AdmissionDetail({
 
                 <Field
                   label="Patient"
-                  value={<AdmissionPatientLink patientId={admission.patientId} patient={patient} />}
+                  value={
+                    <AdmissionPatientLink
+                      patientId={admission.patientId}
+                      patient={patient}
+                      admissionState={admission.state}
+                    />
+                  }
                 />
 
-                <Field label="Referral" value={admission.referralId ?? "Direct admission"} mono />
+                <Field
+                  label="Referral"
+                  value={
+                    admission.referralId ? (
+                      <Link to={`/referrals/${admission.referralId}`} style={patientLinkStyle}>
+                        View referral
+                      </Link>
+                    ) : (
+                      "Direct admission"
+                    )
+                  }
+                />
 
                 <Field label="Planned/SOC" value={fmtDate(admission.admissionAt)} />
               </div>
@@ -1448,6 +1483,7 @@ export function AdmissionDetail({
               rows={windows}
               empty="No intake activity timeline is available yet."
               toneFor={WINDOW_TONE}
+              describe={describeWindow}
             />
           </Section>
         </div>
@@ -1468,6 +1504,9 @@ export function AdmissionDetail({
                 label={stateLabel(admission.state)}
                 tone={ADMISSION_TONE[admission.state] ?? "neutral"}
               />
+              <output aria-live="polite" className="wx-sr-only" data-testid="promotion-status">
+                {promotionAnnouncement}
+              </output>
               {canAcknowledgeNor ? (
                 <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
                   Acknowledge NOR
@@ -1521,7 +1560,7 @@ export function AdmissionDetail({
               fontSize: "0.875rem",
             }}
           >
-            Admission <span className="wx-data-md">{admission.id}</span> · version{" "}
+            {stateLabel(admission.state)} · version{" "}
             <span className="tabular-nums">{admission.version}</span>
             {admission.patientId ? (
               <>
@@ -1573,7 +1612,13 @@ export function AdmissionDetail({
             <Field label="Admission ID" value={admission.id} mono />
             <Field
               label="Patient"
-              value={<AdmissionPatientLink patientId={admission.patientId} patient={patient} />}
+              value={
+                <AdmissionPatientLink
+                  patientId={admission.patientId}
+                  patient={patient}
+                  admissionState={admission.state}
+                />
+              }
             />
             <Field label="Version" value={String(admission.version)} mono />
             <Field
@@ -1584,7 +1629,7 @@ export function AdmissionDetail({
         </section>
 
         <Section title="Election periods">
-          <RowList rows={periods} empty="No election periods yet." />
+          <RowList rows={periods} empty="No election periods yet." describe={describePeriod} />
         </Section>
         <Section title="HOPE">
           <HopeEntry
@@ -1595,7 +1640,12 @@ export function AdmissionDetail({
           />
         </Section>
         <Section title="Compliance windows">
-          <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
+          <RowList
+            rows={windows}
+            empty="No open compliance windows."
+            toneFor={WINDOW_TONE}
+            describe={describeWindow}
+          />
         </Section>
         <AdmissionRecommendationSection
           admissionId={admission.id}
@@ -3396,12 +3446,12 @@ function patientDisplayName(patient: PatientSummary | null): string {
   return name || patient?.mrn || "Patient unavailable";
 }
 
-function patientMeta(patient: PatientSummary | null): string | null {
+function patientMeta(patient: PatientSummary | null, admissionState?: string): string | null {
   if (!patient) return null;
   return [
-    patient.dob ? `DOB ${fmtDate(patient.dob)}` : null,
+    patient.dob ? `DOB ${formatDateOnly(patient.dob)}` : null,
     patient.mrn ? formatMrn(patient.mrn) : null,
-    patient.status ? stateLabel(patient.status) : null,
+    patient.status ? stateLabel(displayPatientStatus(patient.status, admissionState)) : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -3505,10 +3555,12 @@ function AdmissionPatientLink({
   patientId,
   patient,
   compact,
+  admissionState,
 }: {
   patientId?: string;
   patient: PatientSummary | null;
   compact?: boolean;
+  admissionState?: string;
 }): JSX.Element {
   if (!patientId) return <span>Unresolved</span>;
   // No readable record (e.g. 404 for this role): never show the raw id or link to a page that will 404.
@@ -3518,8 +3570,8 @@ function AdmissionPatientLink({
       <Link to={`/patients/${patientId}`} style={patientLinkStyle}>
         {patientDisplayName(patient)}
       </Link>
-      {!compact && patientMeta(patient) ? (
-        <span style={patientMetaStyle}>{patientMeta(patient)}</span>
+      {!compact && patientMeta(patient, admissionState) ? (
+        <span style={patientMetaStyle}>{patientMeta(patient, admissionState)}</span>
       ) : null}
     </>
   );
@@ -3559,14 +3611,16 @@ function Section({
   );
 }
 
-function RowList({
+function RowList<R extends SummaryRow>({
   rows,
   empty,
   toneFor,
+  describe,
 }: {
-  rows: SummaryRow[];
+  rows: R[];
   empty: string;
   toneFor?: Record<string, StatusTone>;
+  describe?: (row: R) => string;
 }): JSX.Element {
   if (rows.length === 0) return <p style={emptyTextStyle}>{empty}</p>;
   return (
@@ -3574,8 +3628,8 @@ function RowList({
       <tbody>
         {rows.map((r) => (
           <tr key={r.id} style={rowStyle}>
-            <td className="wx-data-md" style={tdStyle}>
-              {r.id}
+            <td className={describe ? undefined : "wx-data-md"} style={tdStyle}>
+              {describe ? describe(r) : r.id}
             </td>
             <td style={tdStyle}>
               <StatusPill label={stateLabel(r.state)} tone={toneFor?.[r.state] ?? "neutral"} />

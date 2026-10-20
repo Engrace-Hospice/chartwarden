@@ -1,9 +1,9 @@
 // apps/web/src/shell — patient display names for a worklist whose rows carry only a `patientId`. One
 // `GET /api/v1/patients/{id}` per distinct id on screen (the same read the census, discharge and transfer-notice
 // worklists make), so the M5 patient read stays the only place a name comes from and the caller's own scope applies:
-// a patient the caller cannot read resolves to `null` and the screen falls back to a short id.
-import { useApiClient } from "@wardenx/ui";
-import { useEffect, useState } from "react";
+// a patient the caller cannot read resolves to `null` and callers show a neutral "Patient" label (never the id).
+import type { ApiClient } from "@wardenx/ui";
+import { useResolvedNames } from "./resolved-names";
 
 export interface PatientNameEntry {
   /** "Last, First". */
@@ -11,7 +11,7 @@ export interface PatientNameEntry {
   readonly mrn: string | null;
 }
 
-/** Keyed by patient id: absent = still loading, `null` = not readable (fall back to the id). */
+/** Keyed by patient id: absent = still loading, `null` = not readable (callers show "Patient"). */
 export type PatientNames = Readonly<Record<string, PatientNameEntry | null>>;
 
 interface PatientNameWire {
@@ -25,31 +25,11 @@ export function toPatientNameEntry(p: PatientNameWire | null | undefined): Patie
   return name ? { name, mrn: p?.mrn || null } : null;
 }
 
+async function fetchPatientName(client: ApiClient, id: string): Promise<PatientNameEntry | null> {
+  const r = await client.GET("/api/v1/patients/{id}", { params: { path: { id } } });
+  return toPatientNameEntry(r.data);
+}
+
 export function usePatientNames(ids: readonly string[]): PatientNames {
-  const client = useApiClient();
-  const [names, setNames] = useState<PatientNames>({});
-  const missing = [...new Set(ids)]
-    .filter((id) => id && !(id in names))
-    .sort()
-    .join(",");
-
-  useEffect(() => {
-    if (!missing) return;
-    let active = true;
-    void Promise.all(
-      missing.split(",").map((id) =>
-        client
-          .GET("/api/v1/patients/{id}", { params: { path: { id } } })
-          .then((r) => [id, toPatientNameEntry(r.data)] as const)
-          .catch(() => [id, null] as const),
-      ),
-    ).then((pairs) => {
-      if (active) setNames((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
-    });
-    return () => {
-      active = false;
-    };
-  }, [client, missing]);
-
-  return names;
+  return useResolvedNames("patient", ids, fetchPatientName);
 }

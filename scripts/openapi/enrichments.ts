@@ -156,6 +156,7 @@ import {
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
+  ComplianceWindowItemsResponseSchema as M6ComplianceWindowItemsResponseSchema,
   ComplianceWindowPageResponseSchema as M6ComplianceWindowPageResponseSchema,
   PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
   ReferralListResponseSchema as M6ReferralListResponseSchema,
@@ -4536,7 +4537,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // Compliance windows (routes 43–46)
   "GET /api/v1/admissions/:id/compliance-windows": {
     summary: "Open compliance windows for the admission",
-    response: M6SummaryItemsResponseSchema,
+    response: M6ComplianceWindowItemsResponseSchema,
   },
   "GET /api/v1/compliance-windows": {
     summary:

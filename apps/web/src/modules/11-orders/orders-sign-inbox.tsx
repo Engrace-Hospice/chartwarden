@@ -20,6 +20,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { type OrderAction, OrderActionModal } from "./order-action-modal";
 import { COSIGN_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
@@ -62,21 +64,20 @@ export function OrdersSignInbox(): JSX.Element {
     void load();
   }, [load]);
 
+  const patientNames = usePatientNames(items.map((o) => o.patientId));
   const rows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const visible = items.filter((o) => {
       const matchesKind = !kind || o.kind === kind;
       const matchesPriority = !priority || o.priority === priority;
-      const matchesSearch =
-        !q ||
-        o.id.toLowerCase().includes(q) ||
-        o.patientId.toLowerCase().includes(q) ||
-        o.kind.toLowerCase().includes(q) ||
-        o.status.toLowerCase().includes(q);
+      const matchesSearch = matchesAllTokens(
+        [o.id, patientNames[o.patientId]?.name, patientNames[o.patientId]?.mrn, o.kind, o.status],
+        q,
+      );
       return matchesKind && matchesPriority && matchesSearch;
     });
     return [...visible].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  }, [items, kind, priority, searchQuery]);
+  }, [items, kind, priority, searchQuery, patientNames]);
 
   const activeFilters = [searchQuery.trim() !== "", kind !== "", priority !== ""].filter(
     Boolean,
@@ -240,9 +241,9 @@ export function OrdersSignInbox(): JSX.Element {
                         </div>
                       </td>
                       <td style={tdStyle}>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(o.patientId)}
-                        </code>
+                        <span style={primaryTextStyle}>
+                          <NameLabel value={patientNameOf(patientNames, o.patientId)} />
+                        </span>
                       </td>
                       <td style={tdStyle}>
                         <StatusPill

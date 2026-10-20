@@ -40,6 +40,8 @@ export interface ReferralView {
   externalReferralId: string | null;
   priority: ReferralPriority;
   assignedToUserId: string | null;
+  /** Server-resolved staff name (no email); absent/null renders as the neutral "Staff member". */
+  assignedToDisplayName?: string | null;
   receivedAt: string;
   reviewedAt: string | null;
   qualifiedAt: string | null;
@@ -54,6 +56,7 @@ export interface ReferralNote {
   id: string;
   referralId: string;
   authorId: string | null;
+  authorDisplayName?: string | null;
   content: string;
   createdAt: string;
   updatedAt: string;
