@@ -14691,6 +14691,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/governance/offboarding/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached */
+        get: operations["getApiV1MessagingGovernanceOffboardingByUserId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/offboarding/{userId}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only */
+        post: operations["postApiV1MessagingGovernanceOffboardingByUserIdExecute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/governance/sessions": {
         parameters: {
             query?: never;
@@ -68448,6 +68482,80 @@ export interface operations {
                             changedAt: string | null;
                             effectiveReady: boolean;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceOffboardingByUserId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user_id: string;
+                        items: {
+                            key: "sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts";
+                            state: "done" | "pending" | "needs_person" | "kept" | "advisory" | "failed";
+                            count: number;
+                            acted: number;
+                            needs_person: number;
+                        }[];
+                        done: number;
+                        total: number;
+                        complete: boolean;
+                        blocked_by: ("sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGovernanceOffboardingByUserIdExecute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        user_id: string;
+                        items: {
+                            key: "sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts";
+                            state: "done" | "pending" | "needs_person" | "kept" | "advisory" | "failed";
+                            count: number;
+                            acted: number;
+                            needs_person: number;
+                        }[];
+                        done: number;
+                        total: number;
+                        complete: boolean;
+                        blocked_by: ("sessions_devices" | "channel_memberships" | "tasks" | "handoffs" | "ack_assigned" | "ack_sent" | "urgent_untracked" | "oncall_seats" | "scheduled_sends" | "reminders_snoozes" | "drafts")[];
                     };
                 };
             };

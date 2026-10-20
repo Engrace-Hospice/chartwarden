@@ -122,6 +122,9 @@ describe("only an explicit transition writes an acknowledgment", () => {
         "apps/backend/src/modules/36-messaging/oncall-directory/binding.ts",
         // WP 4.8 (ADR-0075): the deep-link resolver names the open request on a message through the aggregate's own read (a type and a lookup port), never its tables.
         "apps/backend/src/modules/36-messaging/delivery-target/delivery-target-service.ts",
+        // WP 5.9 (ADR-0084): workforce offboarding calls the aggregate's service (the supervisor reassign) and names its row type/class; it writes nothing itself.
+        "apps/backend/src/modules/36-messaging/offboarding/binding.ts",
+        "apps/backend/src/modules/36-messaging/offboarding/steps-owned-work.ts",
         // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.
         "apps/backend/src/modules/36-messaging/ack-escalation/binding.ts",
         "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",
@@ -155,6 +158,10 @@ describe("one writer of the aggregate's tables", () => {
       "apps/backend/src/modules/36-messaging/snooze-reminders/snoozed-users-port.ts",
       // WP 4.4: the audit resource kind of a dead timer job's `m36.dlq_job` row, again a label and not a table access.
       "apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts",
+      // WP 5.9 (ADR-0084): offboarding READS the request table (the waiting / acknowledged requests assigned to a departed user, the open ones they
+      // sent, and "urgent message with no request"). Select only: offboarding-static.test.ts pins that it never inserts, updates or deletes it; every
+      // move goes through the aggregate's supervisor reassign.
+      "apps/backend/src/modules/36-messaging/offboarding/steps-owned-work.ts",
     ]);
     const offenders = [
       ...walk(join(ROOT, "apps/backend/src")),
