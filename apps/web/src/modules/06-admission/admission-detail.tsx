@@ -553,7 +553,9 @@ export function AdmissionDetail({
       params: { path: { id } },
       body: {
         ifVersion: admission.version,
-        ...(activationLocationId ? { locationId: activationLocationId } : {}),
+        ...(activationLocationId && !admission.locationId
+          ? { locationId: activationLocationId }
+          : {}),
       },
     });
     if (err) {

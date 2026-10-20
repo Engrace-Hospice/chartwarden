@@ -175,6 +175,7 @@ export function EntityLookupField({
   function onInputKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === "Escape" && open) {
       event.preventDefault();
+      event.stopPropagation(); // dismiss the listbox only, not an enclosing modal
       setOpen(false);
       setActiveIndex(-1);
       return;

@@ -3971,11 +3971,18 @@ export function createDbAdmissionRouteService(
             updates.serviceAddressCountry = residence.country;
           }
 
+          // Keep an existing site while the entity is unchanged; re-defaulting could null it
+          // when the entity has several locations.
+          const keepCurrentLocation =
+            input.providerEntityId === undefined ||
+            input.providerEntityId === current.providerEntityId;
           updates.locationId =
             input.locationId ??
-            (finalProviderEntityId
-              ? await foundationSites.defaultLocationIdForProviderEntity(tx, finalProviderEntityId)
-              : null);
+            (keepCurrentLocation && current.locationId
+              ? current.locationId
+              : finalProviderEntityId
+                ? await foundationSites.defaultLocationIdForProviderEntity(tx, finalProviderEntityId)
+                : null);
         } else if (input.locationId !== undefined) {
           updates.locationId = input.locationId;
         }

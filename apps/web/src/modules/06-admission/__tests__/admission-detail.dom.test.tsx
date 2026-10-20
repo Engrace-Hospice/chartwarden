@@ -1087,6 +1087,30 @@ describe("Admission activation — service location", () => {
     );
   });
 
+  it("forgets a picked location when the dialog is cancelled and reopened", async () => {
+    const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    let dialog = await screen.findByRole("dialog");
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: /service location/i }));
+    fireEvent.click(await within(dialog).findByRole("option", { name: /Main Office/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        "/api/v1/admissions/{id}/activate",
+        expect.objectContaining({ body: { ifVersion: 4 } }),
+      ),
+    );
+  });
+
   it("offers no location choice when the admission is already sited", async () => {
     renderWithShell(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
     await waitFor(() =>
