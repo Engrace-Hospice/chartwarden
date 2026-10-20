@@ -102,6 +102,8 @@ export function createDrizzleMessagingEraseStore(
   db: DbClient,
   deps: DrizzleMessagingEraseDeps = {},
 ): MessagingEraseStore {
+  const LH = schema.legalHolds;
+  const LHM = schema.legalHoldMessages;
   const CH = schema.channels;
   const CM = schema.channelMembers;
   const MSG = schema.messages;
@@ -281,8 +283,30 @@ export function createDrizzleMessagingEraseStore(
     );
   }
 
+  /**
+   * ADR-0086 (PROPOSED): a message under an ACTIVE legal hold cannot be rewritten or deleted (migration 1137's backstop trigger raises 23001
+   * mid-statement). Look first, before any key is destroyed or any row touched, and fail cleanly and retryably (release the hold, then
+   * retry) instead of dying on a trigger halfway through the erase.
+   */
+  async function assertNoActiveMessageHold(orgId: string): Promise<void> {
+    const [held] = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+      tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(LHM)
+        .innerJoin(LH, and(eq(LH.id, LHM.legalHoldId), eq(LH.status, "active")))
+        .where(eq(LHM.organizationId, orgId)),
+    );
+    if (held && held.n > 0) {
+      throw new DegradedError(
+        "legal-hold",
+        `${held.n} message(s) are under an active legal hold; refusing to erase the tenant's messages (release the hold, then retry)`,
+      );
+    }
+  }
+
   return {
     async destroyTenantDek(orgId) {
+      await assertNoActiveMessageHold(orgId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const shredded = await tx
           .update(MSG)
@@ -296,6 +320,7 @@ export function createDrizzleMessagingEraseStore(
     async deleteStructuralRows(orgId) {
       // 1. Close the door (no new object can be created for this tenant), 2. wait out the URLs already minted, 3. destroy
       // the bytes in their own short transactions (see destroyAttachmentObjects), 4. delete the rows.
+      await assertNoActiveMessageHold(orgId);
       await preflightAttachmentRemoval(orgId);
       await blockNewUploads(orgId);
       await assertUploadUrlsExpired(orgId);

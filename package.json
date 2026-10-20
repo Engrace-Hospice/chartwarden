@@ -536,6 +536,7 @@
     "test:m36:role-send:live": "vitest run apps/backend/__tests__/m36-role-send.live.test.ts",
     "test:m36:afterhours-link:live": "vitest run apps/backend/__tests__/m36-afterhours-link.live.test.ts",
     "test:m36:thread-grant:live": "vitest run apps/backend/__tests__/m36-thread-grant.live.test.ts",
+    "test:m36:message-legal-hold:live": "vitest run apps/backend/__tests__/m36-message-legal-hold.live.test.ts",
     "test:m36:session-devices:live": "vitest run apps/backend/__tests__/m36-session-device-controls.live.test.ts",
     "test:m36:workforce-offboarding:live": "vitest run apps/backend/__tests__/m36-workforce-offboarding.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
