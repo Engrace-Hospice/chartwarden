@@ -95,8 +95,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.referral.duplicate",
     moduleOwner: "m6",
     description: "Referral was marked as duplicate.",
-    payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
-    declaredConsumers: [],
+    payloadSchema: Type.Object({
+      referralId: Type.String({ minLength: 1 }),
+      // Present when the referral had resolved/created a patient: M5 ends the creator's access grant on it.
+      patientId: Type.Optional(Type.String({ minLength: 1 })),
+      // Present when M6's create-patient step ran: the grant holder, so M5 ends only their grant.
+      patientCreatedByUserId: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+    declaredConsumers: ["m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -154,8 +160,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
+      // Present when the referral had resolved/created a patient: M5 ends the creator's access grant on it.
+      patientId: Type.Optional(Type.String({ minLength: 1 })),
+      // Present when M6's create-patient step ran: the grant holder, so M5 ends only their grant.
+      patientCreatedByUserId: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -170,8 +180,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       withdrawnVia: Type.String({ minLength: 1 }),
       originalReferralReceivedAt: Type.String({ minLength: 1 }),
       withdrawnAt: Type.String({ minLength: 1 }),
+      // Present when the referral had resolved/created a patient: M5 ends the creator's access grant on it.
+      patientId: Type.Optional(Type.String({ minLength: 1 })),
+      // Present when M6's create-patient step ran: the grant holder, so M5 ends only their grant.
+      patientCreatedByUserId: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

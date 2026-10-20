@@ -84,6 +84,13 @@ export interface SeedCareTeamAssignment {
 /** The `patient_assignment_role` member that IS the RN case manager (§3.5; one open row per patient). */
 export const PRIMARY_RN_ASSIGNMENT_ROLE = "primary_rn";
 
+/**
+ * The non-clinical access-grant role given to whoever created a patient from a referral (migration 1137). It
+ * puts the actor on the caseload so the chart opens, and is NOT a care-team member: every care-team roster
+ * (channel membership, display) excludes it.
+ */
+export const ADMITTING_STAFF_ASSIGNMENT_ROLE = "admitting_staff";
+
 /** An in-memory {@link CareTeamStore} for the slice/tests. Deterministic, no I/O. */
 export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignment[] = []): {
   store: CareTeamStore;

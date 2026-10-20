@@ -172,6 +172,23 @@ export function buildAdmissionAbacPredicates(
     return inCallerSite(context, chart.providerEntityId, chart.locationId);
   };
 
+  /**
+   * `clinical_supervisor` oversees admissions they did not open and holds no assignment on a brand-new patient, so
+   * it may open an UNSITED admission — but only inside its own site: with no site restriction at all, or when the
+   * patient's chart is sited within the supervisor's provider entities / locations (the arm above). A SITED
+   * admission is untouched: provider-entity match or caseload, like every other role.
+   */
+  const unsitedAdmissionForSupervisor = async (
+    context: AbacContext,
+    facts: { patientId: string },
+  ): Promise<boolean> => {
+    if (!hasRole(context, "clinical_supervisor")) return false;
+    if (context.providerEntityIds.length === 0 && context.locationIds.length === 0) return true;
+    const chart = await resolver.loadPatientIntakeFacts(context.organizationId, facts.patientId);
+    if (!chart) return false;
+    return inCallerSite(context, chart.providerEntityId, chart.locationId);
+  };
+
   /** Caseload-or-scope over an admission's patient (medical_director = org-wide). §4.6 admission.scope. */
   const admissionScopeFor = async (
     context: AbacContext,
@@ -190,6 +207,8 @@ export function buildAdmissionAbacPredicates(
     // unsited-admission roles above (which reach every unsited admission of the org): only the clinician who opened
     // it, or one at the site the patient's chart is sited at. A SITED admission keeps the provider-entity arm alone.
     if (facts.providerEntityId === null && (await unsitedAdmissionAtCallerSite(context, facts)))
+      return true;
+    if (facts.providerEntityId === null && (await unsitedAdmissionForSupervisor(context, facts)))
       return true;
     if (!context.userId) return false;
     return isInCaseload({

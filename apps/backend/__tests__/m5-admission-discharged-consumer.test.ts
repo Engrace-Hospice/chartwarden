@@ -57,10 +57,33 @@ describe("M5 m6.admission.discharged consumer — pre-write decisions", () => {
     expect(M5_ADMISSION_DISCHARGED_CONSUMER.eventName).toBe("m6.admission.discharged");
   });
 
-  it("skips a death discharge without even resolving the admission", async () => {
+  it("leaves a death discharge to the death cascade but still ends the creator's access grant", async () => {
     const asked = withCare(care());
-    expect(await deliver("death")).toBe("skipped_death");
-    expect(asked).toEqual([]);
+    const ended: string[] = [];
+    const out = await applyAdmissionDischarged(
+      {
+        ...(untouchable as object),
+        endGrant: async (org: string, patientId: string) => void ended.push(`${org}/${patientId}`),
+      } as never,
+      { organizationId: ORG, payload: { admissionId: ADMISSION, reason: "death" } },
+    );
+    expect(out).toBe("skipped_death");
+    expect(asked).toEqual([`${ORG}/${ADMISSION}`]);
+    expect(ended).toEqual([`${ORG}/${care().patientId}`]);
+  });
+
+  it("a death for an unknown admission ends nothing", async () => {
+    withCare(null);
+    const ended: string[] = [];
+    const out = await applyAdmissionDischarged(
+      {
+        ...(untouchable as object),
+        endGrant: async (_o: string, p: string) => void ended.push(p),
+      } as never,
+      { organizationId: ORG, payload: { admissionId: ADMISSION, reason: "death" } },
+    );
+    expect(out).toBe("skipped_death");
+    expect(ended).toEqual([]);
   });
 
   it("resolves the patient through M6's org-explicit seam with the event's own org", async () => {

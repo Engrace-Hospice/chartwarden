@@ -1114,6 +1114,17 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    it("GET /orgs/:id/members stays member.manage-gated (a clinician without it gets 403; use /care-team-staff)", async () => {
+      const { app } = makeServer({ seed: seed() });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/members",
+        headers: { "x-test-user": "clinician_1", "x-test-org": "org_a", "x-test-roles": "rn" },
+      });
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    });
+
     it("GET /orgs/:id/members?q narrows the roster by user identity (FB-T11 staff facet)", async () => {
       const { app } = makeServer({ seed: seed() });
       const res = await app.inject({

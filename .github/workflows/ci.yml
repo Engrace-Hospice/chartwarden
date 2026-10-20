@@ -217,7 +217,8 @@ jobs:
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
                 test:m6:t5:write:live test:m6:t5:counts:live test:m6:abac-scope:live
-                test:m6:election-guards:live test:m6:claim-discharge-seam:live test:m6:physician-authority:live",
+                test:m6:election-guards:live test:m6:claim-discharge-seam:live test:m6:physician-authority:live
+                test:m6:create-patient:live",
             }
           - {
               name: "M7 Care Plan",
@@ -690,6 +691,8 @@ jobs:
           # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
+          # Demo finding 2 — the narrow care-team staff lookup (patient.assign, allowlisted fields, org-bound, RLS).
+          - { name: "M5 care-team staff", scripts: "test:m5:care-team-staff:live" }
           # GAP-020 — the patient wristband (on-file side of the BCMA wrong_patient arm): digest-only storage,
           # rotation + concurrent-print arbitration, verifier verdicts, merge/death voiding, RLS, step-up void.
           - { name: "M5 patient wristband", scripts: "test:m5:patient-wristband:live" }

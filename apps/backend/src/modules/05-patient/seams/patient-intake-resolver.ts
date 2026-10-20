@@ -10,6 +10,7 @@ import {
   normalizeMedicareNumber,
 } from "@wardenx/types";
 import { and, eq, gte, isNull, or } from "drizzle-orm";
+import { ensureAdmittingAssignment } from "../assignments-db";
 import { type MatchCandidate, runMatch } from "../matching/matcher";
 import { normalizeSubject } from "../matching/normalize";
 import { createDrizzlePatientReaderStore } from "./drizzle-stores";
@@ -174,9 +175,10 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
       const dob = input.patientDobAtReceipt;
       if (!dob)
         throw new Error("patient DOB is required to create a canonical patient from intake");
+      const actorUserId = input.createdByUserId || SEAM_SYSTEM_USER_ID;
       return withOrgContext(
         db,
-        { organizationId: input.organizationId, userId: SEAM_SYSTEM_USER_ID },
+        { organizationId: input.organizationId, userId: actorUserId },
         async (tx) => {
           const mrn = `MRN-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
           const today = new Date().toISOString().slice(0, 10);
@@ -190,6 +192,9 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
               dob,
               sexAssignedAtBirth: input.administrativeSex ?? "U",
               status: "prospective",
+              ...(input.providerEntityId
+                ? { providerEntityId: input.providerEntityId, locationId: input.locationId ?? null }
+                : {}),
             })
             .returning({
               id: P.id,
@@ -218,6 +223,13 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
               value: mbi,
               issuer: "referral_intake",
               effectiveFrom: today,
+            });
+          }
+          if (input.createdByUserId) {
+            await ensureAdmittingAssignment(tx, {
+              organizationId: input.organizationId,
+              patientId: row.id,
+              userId: input.createdByUserId,
             });
           }
           return toIdentity(row);

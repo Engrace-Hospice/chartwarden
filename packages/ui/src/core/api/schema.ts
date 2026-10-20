@@ -16341,6 +16341,23 @@ export interface paths {
         patch: operations["patchApiV1OrgsById"];
         trace?: never;
     };
+    "/api/v1/orgs/{id}/care-team-staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25) */
+        get: operations["getApiV1OrgsByIdCareteamstaff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{id}/invitations": {
         parameters: {
             query?: never;
@@ -74027,6 +74044,40 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1OrgsByIdCareteamstaff: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        staff: {
+                            userId: string;
+                            membershipId: string;
+                            displayName: string | null;
+                            roleLabels: string[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OrgsByIdInvitations: {
         parameters: {
             query?: never;
@@ -75281,6 +75332,7 @@ export interface operations {
                         assignments: {
                             id: string;
                             clinicianUserId: string;
+                            displayName: string | null;
                             role: string;
                             assignedAt: string;
                             unassignedAt: string | null;

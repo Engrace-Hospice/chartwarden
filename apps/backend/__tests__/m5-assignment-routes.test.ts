@@ -216,6 +216,14 @@ describe("GAP-015 — POST /patients/:id/assignments", () => {
     await app.close();
   });
 
+  it("rejects the system-only admitting_staff role (422): it is an access grant, never assigned by hand", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject(POST(DON, { ...BODY, role: "admitting_staff" }));
+    expect(res.statusCode).toBe(422);
+    expect(calls.assign).toHaveLength(0);
+    await app.close();
+  });
+
   it("rejects an unknown role and a non-uuid clinician (422)", async () => {
     const { app } = makeServer();
     expect((await app.inject(POST(DON, { ...BODY, role: "janitor" }))).statusCode).toBe(422);

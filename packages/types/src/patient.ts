@@ -316,6 +316,14 @@ export interface PatientIntakeSubject {
 
 export interface PatientCreateFromIntakeInput extends PatientIntakeSubject {
   readonly administrativeSex?: "M" | "F" | "U" | "O" | string;
+  /**
+   * The acting user who creates the patient. M5 puts them on the new patient's caseload (a non-clinical
+   * `admitting_staff` assignment) in the same transaction so they can open what they just created.
+   */
+  readonly createdByUserId?: string;
+  /** The creating actor's single default site, stamped on the new patient (omit for an unsited / org-wide actor). */
+  readonly providerEntityId?: string;
+  readonly locationId?: string | null;
 }
 
 /** M5-owned intake resolver seam. M6 orchestrates referrals; M5 remains patient identity authority. */
