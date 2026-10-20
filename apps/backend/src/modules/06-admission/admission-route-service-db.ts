@@ -347,6 +347,8 @@ const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
 const RA = schema.referralActivities;
 const RN = schema.referralNotes;
+const MEM = schema.memberships;
+const USR = schema.users;
 
 /**
  * F-223 — the ONE place a PENDING election-period shell is opened: next `sequence_number`, the §418.21(a)
@@ -496,6 +498,26 @@ function referralMedicaidNumber(raw: string | undefined): string | null {
   return id;
 }
 
+/**
+ * Display names (name only — never email) for staff user ids, through the IN-ORG membership join: `user` is not
+ * RLS'd, so membership is what scopes the lookup to this tenant. Suspended members are included so an earlier
+ * assignment still resolves; a user with no membership here is simply absent (the client shows "Staff member").
+ */
+async function staffDisplayNames(
+  tx: DbClient,
+  organizationId: string,
+  userIds: readonly (string | null)[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(userIds.filter((u): u is string => !!u))];
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ userId: MEM.userId, name: USR.name })
+    .from(MEM)
+    .innerJoin(USR, eq(USR.id, MEM.userId))
+    .where(and(eq(MEM.organizationId, organizationId), inArray(MEM.userId, ids)));
+  return new Map(rows.flatMap((r): [string, string][] => (r.name ? [[r.userId, r.name]] : [])));
+}
+
 function toReferralReadView(
   r: {
     id: string;
@@ -526,6 +548,7 @@ function toReferralReadView(
     rejectionReason: string | null;
   },
   qualificationBlockers: readonly { code: string; message: string }[],
+  assigneeNames: ReadonlyMap<string, string> = new Map(),
 ): ReferralReadView {
   return {
     id: r.id,
@@ -548,6 +571,9 @@ function toReferralReadView(
     externalReferralId: r.externalReferralId,
     priority: r.priority,
     assignedToUserId: r.assignedToUserId,
+    assignedToDisplayName: r.assignedToUserId
+      ? (assigneeNames.get(r.assignedToUserId) ?? null)
+      : null,
     receivedAt: r.receivedAt.toISOString(),
     reviewedAt: r.reviewedAt?.toISOString() ?? null,
     qualifiedAt: r.qualifiedAt?.toISOString() ?? null,
@@ -2015,7 +2041,13 @@ export function createDbAdmissionRouteService(
           .orderBy(desc(REF.receivedAt), desc(REF.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows.slice(0, limit).map((r) =>
+        const pageRows = rows.slice(0, limit);
+        const assigneeNames = await staffDisplayNames(
+          tx,
+          organizationId,
+          pageRows.map((r) => r.assignedToUserId),
+        );
+        const items = pageRows.map((r) =>
           toReferralReadView(
             r,
             qualificationBlockers({
@@ -2032,6 +2064,7 @@ export function createDbAdmissionRouteService(
               referrerOrganization: r.referrerOrganization,
               externalReferralId: r.externalReferralId,
             }),
+            assigneeNames,
           ),
         );
         return {
@@ -2043,6 +2076,9 @@ export function createDbAdmissionRouteService(
     async getReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx.select(referralProjection).from(REF).where(eq(REF.id, id)).limit(1);
+        const assigneeNames = await staffDisplayNames(tx, organizationId, [
+          r?.assignedToUserId ?? null,
+        ]);
         return r
           ? toReferralReadView(
               r,
@@ -2060,6 +2096,7 @@ export function createDbAdmissionRouteService(
                 referrerOrganization: r.referrerOrganization,
                 externalReferralId: r.externalReferralId,
               }),
+              assigneeNames,
             )
           : null;
       });
@@ -3409,10 +3446,16 @@ export function createDbAdmissionRouteService(
           .from(RN)
           .where(eq(RN.referralId, id))
           .orderBy(desc(RN.createdAt));
+        const authorNames = await staffDisplayNames(
+          tx,
+          organizationId,
+          rows.map((r) => r.authorId),
+        );
         return rows.map((r) => ({
           id: r.id,
           referralId: r.referralId,
           authorId: r.authorId ?? null,
+          authorDisplayName: r.authorId ? (authorNames.get(r.authorId) ?? null) : null,
           content: r.content,
           createdAt: r.createdAt.toISOString(),
           updatedAt: r.updatedAt.toISOString(),

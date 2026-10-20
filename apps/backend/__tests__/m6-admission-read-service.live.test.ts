@@ -334,4 +334,46 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     const closed = await service.closeComplianceWindow(ORG_A, rows[0].id, 0);
     expect(closed.state).toBe("closed");
   });
+
+  // Finding 9 — an assignee / note author is shown by NAME, resolved server-side through the IN-ORG membership
+  // join (name only). A user with no membership in the caller's org must resolve to null, never leak a name.
+  it("referral reads carry the assignee/author display name via the in-org membership, null across orgs", async () => {
+    const OUTSIDER = "77777777-7777-4777-8777-777777777777";
+    await admin.query(`UPDATE "user" SET name = 'Nora Visit, RN' WHERE id = $1`, [USER]);
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'outsider@x.test','Olivia Outsider')`,
+      [OUTSIDER],
+    );
+    await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+      [USER, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+      [OUTSIDER, ORG_B],
+    );
+    const mk = async (assignee: string) =>
+      (
+        await admin.query(
+          `INSERT INTO referral (organization_id, patient_name_at_receipt, source_channel, assigned_to_user_id)
+           VALUES ($1,'Pat Ient','phone',$2) RETURNING id`,
+          [ORG_A, assignee],
+        )
+      ).rows[0].id as string;
+    const inOrg = await mk(USER);
+    const outsider = await mk(OUTSIDER);
+    await admin.query(
+      `INSERT INTO referral_note (organization_id, referral_id, author_id, content)
+      VALUES ($1,$2,$3,'called family')`,
+      [ORG_A, inOrg, USER],
+    );
+
+    const page = await service.listReferrals(ORG_A, {}, undefined, undefined);
+    expect(page.items.find((r) => r.id === inOrg)?.assignedToDisplayName).toBe("Nora Visit, RN");
+    expect(page.items.find((r) => r.id === outsider)?.assignedToDisplayName).toBeNull();
+    expect((await service.getReferral(ORG_A, inOrg))?.assignedToDisplayName).toBe("Nora Visit, RN");
+    expect((await service.getReferral(ORG_A, outsider))?.assignedToDisplayName).toBeNull();
+    const notes = await service.listReferralNotes(ORG_A, inOrg);
+    expect(notes[0]?.authorDisplayName).toBe("Nora Visit, RN");
+  });
 });

@@ -20,6 +20,8 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
+import { nameText } from "../../shell/name-display";
+import { usePhysicianNames } from "../../shell/physician-names";
 import { OrderEditor } from "./order-editor";
 import type { EditableOrder } from "./order-editor";
 import {
@@ -53,6 +55,8 @@ interface OrderDetailView {
   replacesOrderId: string | null;
   signedAt: string | null;
   signedBy: string | null;
+  /** Server-resolved signer name (no email); a missing name shows the neutral "Staff member". */
+  signedByDisplayName?: string | null;
   completedAt: string | null;
   createdAt: string;
   kindVersion: string;
@@ -91,6 +95,12 @@ export function OrderDetail(): JSX.Element {
   const client = useApiClient();
   const { id } = useParams<{ id: string }>();
   const [row, setRow] = useState<OrderDetailView | null>(null);
+  const physicianNames = usePhysicianNames(
+    row?.orderingPhysicianMdmId ? [row.orderingPhysicianMdmId] : [],
+  );
+  const physicianLabel = row?.orderingPhysicianMdmId
+    ? nameText(physicianNames[row.orderingPhysicianMdmId])
+    : "Not assigned";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -381,14 +391,7 @@ export function OrderDetail(): JSX.Element {
                   <div style={verbalInfoItem}>
                     <span style={verbalInfoLabel}>Physician</span>
 
-                    <strong style={verbalInfoValue}>
-                      {
-                        // row.orderingPhysicianName ??
-                        row.orderingPhysicianMdmId
-                          ? `Physician ${row.orderingPhysicianMdmId.slice(0, 5)}...`
-                          : "Not assigned"
-                      }
-                    </strong>
+                    <strong style={verbalInfoValue}>{physicianLabel}</strong>
                   </div>
 
                   <div style={verbalInfoItem}>
@@ -631,12 +634,12 @@ export function OrderDetail(): JSX.Element {
             <dt style={dt}>Drafter discipline</dt>
             <dd style={dd}>{stateLabel(row.drafterDiscipline)}</dd>
             <dt style={dt}>Ordering physician</dt>
-            <dd style={dd} className="wx-data-md">
-              {row.orderingPhysicianMdmId}
-            </dd>
+            <dd style={dd}>{physicianLabel}</dd>
             <dt style={dt}>Signed</dt>
             <dd style={dd} className="tabular-nums">
-              {row.signedAt ? `${ts(row.signedAt)} · ${row.signedBy ?? ""}` : "—"}
+              {row.signedAt
+                ? `${ts(row.signedAt)} · ${row.signedBy ? row.signedByDisplayName || "Staff member" : ""}`
+                : "—"}
             </dd>
             <dt style={dt}>Cosignature</dt>
             <dd style={dd}>

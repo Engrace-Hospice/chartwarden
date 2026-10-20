@@ -198,6 +198,7 @@ export const ReferralNoteResponseSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   referralId: Type.String({ minLength: 1 }),
   authorId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+  authorDisplayName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   content: Type.String(),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
@@ -986,6 +987,10 @@ export const ComplianceWindowRowResponseSchema = Type.Object({
   severity: Type.Optional(Type.String()),
   dueAt: Type.Optional(Type.String()),
 });
+/** The bounded `{ items }` envelope of one admission's windows (no cursor). */
+export const ComplianceWindowItemsResponseSchema = Type.Object({
+  items: Type.Array(ComplianceWindowRowResponseSchema),
+});
 export const ComplianceWindowPageResponseSchema = Type.Object({
   items: Type.Array(ComplianceWindowRowResponseSchema),
   nextCursor: Type.Union([Type.String(), Type.Null()]),
@@ -1009,6 +1014,8 @@ export const ReferralListItemResponseSchema = Type.Object({
   patientNameAtReceipt: Type.Optional(Type.String()),
   patientDobAtReceipt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   referrerOrganization: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  assignedToUserId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  assignedToDisplayName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   receivedAt: Type.Optional(Type.String()),
 });
 export const ReferralListResponseSchema = Type.Object({

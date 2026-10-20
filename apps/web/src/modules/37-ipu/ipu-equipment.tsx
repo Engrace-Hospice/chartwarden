@@ -11,6 +11,7 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
+  formatDateOnly,
   useApiClient,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -37,16 +38,7 @@ const titleCase = (value: string): string =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .trim();
 
-const formatDate = (iso: string | null): string => {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+const formatDate = (dateOnly: string | null): string => (dateOnly ? formatDateOnly(dateOnly) : "—");
 
 const addDays = (date: string, days: number): string => {
   const next = new Date(`${date}T00:00:00.000Z`);

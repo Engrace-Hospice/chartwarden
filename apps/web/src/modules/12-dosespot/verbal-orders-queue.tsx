@@ -22,6 +22,9 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, matchesAllTokens, nameText, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
+import { usePhysicianNames } from "../../shell/physician-names";
 import { MED_ORDER_TONE, stateLabel } from "./medication-status";
 
 interface MedRow {
@@ -68,6 +71,8 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
   }, [load]);
 
   const now = Date.now();
+  const patientNames = usePatientNames(items.map((o) => o.patientId));
+  const physicianNames = usePhysicianNames(items.map((o) => o.prescribingPhysicianMdmId));
   const medClassOptions = useMemo(
     () => [...new Set(items.map((o) => o.medClass).filter(Boolean))].sort(),
     [items],
@@ -87,18 +92,22 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
         (ageFilter === "older36" && age >= 36);
       const matchesClass = !medClass || o.medClass === medClass;
       const matchesPrescriber = !prescriber || o.prescribingPhysicianMdmId === prescriber;
-      const matchesSearch =
-        !q ||
-        o.id.toLowerCase().includes(q) ||
-        o.patientId.toLowerCase().includes(q) ||
-        o.drugName.toLowerCase().includes(q) ||
-        o.strength.toLowerCase().includes(q) ||
-        o.medClass.toLowerCase().includes(q) ||
-        o.prescribingPhysicianMdmId.toLowerCase().includes(q);
+      const matchesSearch = matchesAllTokens(
+        [
+          o.id,
+          patientNames[o.patientId]?.name,
+          patientNames[o.patientId]?.mrn,
+          o.drugName,
+          o.strength,
+          o.medClass,
+          physicianNames[o.prescribingPhysicianMdmId],
+        ],
+        q,
+      );
       return matchesAge && matchesClass && matchesPrescriber && matchesSearch;
     });
     return [...visible].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  }, [items, ageFilter, medClass, now, prescriber, searchQuery]);
+  }, [items, ageFilter, medClass, now, prescriber, searchQuery, patientNames, physicianNames]);
 
   const activeFilters = [
     searchQuery.trim() !== "",
@@ -191,7 +200,7 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
                   <option value="">All</option>
                   {prescriberOptions.map((option) => (
                     <option key={option} value={option}>
-                      {shortId(option)}
+                      {nameText(physicianNames[option])}
                     </option>
                   ))}
                 </select>
@@ -277,9 +286,9 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
                       </div>
                     </td>
                     <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.patientId)}
-                      </code>
+                      <span style={primaryTextStyle}>
+                        <NameLabel value={patientNameOf(patientNames, o.patientId)} />
+                      </span>
                     </td>
                     <td style={tdStyle}>{stateLabel(o.medClass)}</td>
                     <td style={tdStyle}>
@@ -289,9 +298,7 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
                       />
                     </td>
                     <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.prescribingPhysicianMdmId)}
-                      </code>
+                      <NameLabel value={physicianNames[o.prescribingPhysicianMdmId]} />
                     </td>
                     <td
                       style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}

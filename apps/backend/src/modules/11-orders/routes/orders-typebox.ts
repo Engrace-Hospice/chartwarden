@@ -358,6 +358,7 @@ export const OrderDetailResponseSchema = Type.Intersect([
   Type.Object({
     kindVersion: Type.String(),
     data: Type.Unknown(),
+    signedByDisplayName: Type.Optional(nullableString()),
     verbalOrder: Type.Union([
       Type.Object({
         status: Type.String(),

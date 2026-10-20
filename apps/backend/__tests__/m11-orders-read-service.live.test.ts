@@ -217,4 +217,28 @@ describe.skipIf(!DB_URL)("M11 Drizzle read service — LIVE Postgres (M11L)", ()
     expect(readBack.id).toBe(draft.id);
     expect(readBack.kind).toBe("dme");
   });
+
+  // Finding 9 — the signer is shown by NAME: `signedByDisplayName` is resolved from the signature's membership id
+  // through the in-org membership join (name only); an unsigned order carries null.
+  it("getOrder resolves the signer's display name from the signature membership", async () => {
+    await admin.query(`UPDATE "user" SET name = 'Dr. Sig Ner' WHERE id = $1`, [USER]);
+    const row = (
+      await admin.query(
+        `SELECT o.id, o.provider_entity_id, o.location_id, m.id AS mid FROM order_record o
+         JOIN membership m ON m.organization_id = o.organization_id WHERE o.organization_id = $1 LIMIT 1`,
+        [ORG_A],
+      )
+    ).rows[0];
+    const unsigned = await service.getOrder(ORG_A, row.id);
+    expect(unsigned.signedByDisplayName ?? null).toBeNull();
+    await admin.query(
+      `INSERT INTO order_signature (organization_id, provider_entity_id, location_id, target_kind, target_id,
+         signature_kind, signer_membership_id, signer_discipline)
+       VALUES ($1,$2,$3,'order',$4,'signature',$5,'rn')`,
+      [ORG_A, row.provider_entity_id, row.location_id, row.id, row.mid],
+    );
+    const signed = await service.getOrder(ORG_A, row.id);
+    expect(signed.signedBy).toBe(row.mid);
+    expect(signed.signedByDisplayName).toBe("Dr. Sig Ner");
+  });
 });
