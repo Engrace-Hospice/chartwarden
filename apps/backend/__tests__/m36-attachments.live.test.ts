@@ -1345,6 +1345,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       // privilege, but its only policy is a SELECT one, so the privilege check passes while RLS hides every row from it.
       await admin.query(`GRANT USAGE ON SCHEMA public TO wp15_selectonly`);
       await admin.query(`GRANT SELECT, DELETE ON message_attachment TO wp15_selectonly`);
+      // The eraser reads the active holds in its own transaction (ADR-0086), so every role it can run as needs SELECT on legal_hold.
+      await admin.query(`GRANT SELECT ON legal_hold TO wp15_selectonly`);
       await admin.query(
         `CREATE POLICY wp15_selectonly_read ON message_attachment FOR SELECT TO wp15_selectonly
            USING (organization_id = current_setting('app.org_id', true)::uuid)`,
@@ -1365,6 +1367,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         await odd.close();
         await admin.query(`DROP POLICY wp15_selectonly_read ON message_attachment`);
         await admin.query(`REVOKE ALL ON message_attachment FROM wp15_selectonly`);
+        await admin.query(`REVOKE ALL ON legal_hold FROM wp15_selectonly`);
       }
     });
 
