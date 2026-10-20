@@ -4,17 +4,19 @@
 // dates only, never message content. State is a word, never colour alone.
 import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@wardenx/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@wardenx/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { useSession } from "../../shell/session";
-import { peekStepUpDraft } from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
+import { CreateHoldDialog, ReleaseHoldDialog } from "./legal-hold-dialogs";
 import {
-  CREATE_DRAFT_KEY,
-  CreateHoldDialog,
-  RELEASE_DRAFT_KEY,
-  type ReleaseDraft,
-  ReleaseHoldDialog,
-} from "./legal-hold-dialogs";
+  HOLD_ACTIONS,
+  type HoldResume,
+  NO_RESUME,
+  createDraftKey,
+  readResume,
+  releaseDraftKey,
+} from "./legal-hold-drafts";
 import * as W from "./retention-wording";
 import {
   type LoadView,
@@ -22,6 +24,7 @@ import {
   useLegalHolds,
   useRetentionOverview,
 } from "./use-retention";
+import { UUID_RE } from "./uuid";
 import "./retention.css";
 
 const formatTime = (iso: string): string => {
@@ -78,7 +81,11 @@ function ClassRow({ row }: { readonly row: RetentionClassDto }): JSX.Element {
         {row.capped ? <span className="wx-retention-detail">{W.CAPPED_TEXT}</span> : null}
         {row.certificate_id !== null && row.certificate_status !== null ? (
           <span className="wx-retention-detail">
-            <StatusPill tone="progress" glyph="clock" label={row.certificate_status} />{" "}
+            <StatusPill
+              tone="progress"
+              glyph="clock"
+              label={W.certificateStatusLabel(row.certificate_status)}
+            />{" "}
             {W.certificateText(row.certificate_status)} {W.certificateIdText(row.certificate_id)}
           </span>
         ) : (
@@ -108,15 +115,13 @@ function RetentionPanel({ data }: { readonly data: RetentionOverviewDto }): JSX.
   );
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // placed_by is the placing user's id; the contract carries no staff name, so show "you" or a labelled short id (full id in a title), never a bare uuid.
 function PlacedBy({ hold }: { readonly hold: MessageLegalHoldDto }): JSX.Element {
   const me = useSession()?.userId;
   const by = hold.placed_by;
   const when = formatTime(hold.placed_at);
   if (!UUID_RE.test(by)) return <>{W.placedText(by, when)}</>;
-  const who = by === me ? "you" : W.shortUserId(by);
+  const who = by === me ? W.PLACED_BY_YOU : W.shortUserId(by);
   return <span title={by}>{W.placedText(who, when)}</span>;
 }
 
@@ -157,24 +162,35 @@ function HoldRow({
   );
 }
 
-function HoldsPanel(): JSX.Element {
+function HoldsPanel({ resume }: { readonly resume: HoldResume }): JSX.Element {
+  const owner = useStepUpOwner();
   const { view, reload } = useLegalHolds();
   const actions = useLegalHoldActions();
-  const [creating, setCreating] = useState(() => peekStepUpDraft(CREATE_DRAFT_KEY) !== null);
+  const [creating, setCreating] = useState(() => resume.create !== null);
   const [releasing, setReleasing] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [announceSeq, setAnnounceSeq] = useState(0);
+  const statusRef = useRef<HTMLOutputElement>(null);
+  const resumedRelease = useRef(false);
 
-  // Back from the step-up page with a stashed release: reopen that hold's dialog once the list is known.
-  const resumeId = peekStepUpDraft<ReleaseDraft>(RELEASE_DRAFT_KEY)?.holdId ?? null;
+  // Back from the step-up page with a stashed release: reopen that hold's dialog once the list is known (once).
+  const resumeRelease = resume.release;
   useEffect(() => {
-    if (
-      resumeId &&
-      view.status === "ready" &&
-      view.data.some((h) => h.id === resumeId && h.status === "active")
-    ) {
-      setReleasing(resumeId);
+    if (!resumeRelease || resumedRelease.current || view.status !== "ready") return;
+    resumedRelease.current = true;
+    if (view.data.some((h) => h.id === resumeRelease.holdId && h.status === "active")) {
+      setReleasing(resumeRelease.holdId);
     }
-  }, [resumeId, view]);
+  }, [resumeRelease, view]);
+
+  // After a place/release the trigger may be gone (the row changed, the dialog closed): keep focus on the result.
+  useEffect(() => {
+    if (announceSeq > 0) statusRef.current?.focus();
+  }, [announceSeq]);
+  const announce = (text: string): void => {
+    setAnnouncement(text);
+    setAnnounceSeq((n) => n + 1);
+  };
 
   const target = view.status === "ready" ? view.data.find((h) => h.id === releasing) : undefined;
   return (
@@ -184,7 +200,7 @@ function HoldsPanel(): JSX.Element {
           {W.PLACE_HOLD_LABEL}
         </Button>
       </div>
-      <output className="wx-retention-status" aria-live="polite">
+      <output ref={statusRef} tabIndex={-1} className="wx-retention-status" aria-live="polite">
         {announcement}
       </output>
       <LoadGate view={view} retry={reload}>
@@ -203,10 +219,12 @@ function HoldsPanel(): JSX.Element {
       {creating ? (
         <CreateHoldDialog
           actions={actions}
+          initial={resume.create}
+          draftKey={createDraftKey(owner)}
           onClose={() => setCreating(false)}
           onPlaced={() => {
             setCreating(false);
-            setAnnouncement(W.PLACED_ANNOUNCEMENT);
+            announce(W.PLACED_ANNOUNCEMENT);
             reload();
           }}
         />
@@ -216,10 +234,12 @@ function HoldsPanel(): JSX.Element {
           key={target.id}
           hold={target}
           actions={actions}
+          initialReason={resumeRelease?.holdId === target.id ? resumeRelease.reason : ""}
+          draftKey={releaseDraftKey(owner, target.id)}
           onClose={() => setReleasing(null)}
           onReleased={() => {
             setReleasing(null);
-            setAnnouncement(W.RELEASE_ANNOUNCEMENT);
+            announce(W.RELEASE_ANNOUNCEMENT);
             reload();
           }}
         />
@@ -245,19 +265,31 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function RetentionGovernance(): JSX.Element {
   // Back from the step-up page with a stashed place/release: land on the Legal holds tab, where that dialog reopens.
+  // A draft left by an abandoned step-up is discarded, never reopened.
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, HOLD_ACTIONS);
+  const [resume] = useState<HoldResume>(() => (returning ? readResume(owner) : NO_RESUME));
   const [tab, setTab] = useState<TabId>(() =>
-    peekStepUpDraft(CREATE_DRAFT_KEY) !== null || peekStepUpDraft(RELEASE_DRAFT_KEY) !== null
-      ? "holds"
-      : "retention",
+    resume.create !== null || resume.release !== null ? "holds" : "retention",
   );
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const here = TABS.findIndex((t) => t.id === tab);
+    const last = TABS.length - 1;
+    const to =
+      e.key === "ArrowRight"
+        ? (here + 1) % TABS.length
+        : e.key === "ArrowLeft"
+          ? (here + last) % TABS.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? last
+              : -1;
+    const next = TABS[to];
+    if (!next) return;
     e.preventDefault();
-    const next = TABS[(TABS.findIndex((t) => t.id === tab) + 1) % TABS.length];
-    if (next) {
-      setTab(next.id);
-      document.getElementById(`wx-retention-tab-${next.id}`)?.focus();
-    }
+    setTab(next.id);
+    document.getElementById(`wx-retention-tab-${next.id}`)?.focus();
   };
   return (
     <>
@@ -273,7 +305,7 @@ export function RetentionGovernance(): JSX.Element {
               type="button"
               role="tab"
               aria-selected={tab === t.id}
-              aria-controls={`wx-retention-panel-${t.id}`}
+              aria-controls={tab === t.id ? `wx-retention-panel-${t.id}` : undefined}
               tabIndex={tab === t.id ? 0 : -1}
               onClick={() => setTab(t.id)}
               onKeyDown={onKeyDown}
@@ -286,9 +318,11 @@ export function RetentionGovernance(): JSX.Element {
           role="tabpanel"
           id={`wx-retention-panel-${tab}`}
           aria-labelledby={`wx-retention-tab-${tab}`}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: WAI-ARIA tabs pattern - a panel with no focusable content must itself be reachable
+          tabIndex={0}
           className="wx-retention-panel"
         >
-          {tab === "retention" ? <RetentionTab /> : <HoldsPanel />}
+          {tab === "retention" ? <RetentionTab /> : <HoldsPanel resume={resume} />}
         </div>
       </section>
     </>

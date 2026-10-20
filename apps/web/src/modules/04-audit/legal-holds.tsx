@@ -16,15 +16,19 @@ import {
 // apps/web/src/modules/04-audit — Legal Holds (GAP-003, M4 spec §4.2/§10.6).
 // List + apply + release, over the real routes GET/POST /api/v1/legal-holds,
 // POST /api/v1/legal-holds/:id/release via the generated typed client. Imports only leaves.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  type StepUpDraftOwner,
   clearStepUpDraft,
+  findStepUpDraftResourceId,
   peekStepUpDraft,
   stashStepUpDraft,
+  stepUpDraftKey,
   stepUpRedirectFor,
 } from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 
 // Wire shape mirrored from apps/backend/.../audit-typebox.ts LegalHoldSchema (UI owns its copy).
 interface LegalHold {
@@ -49,8 +53,13 @@ const STATUS_TONE: Record<LegalHold["status"], StatusTone> = {
   released: "neutral",
 };
 // Apply and release need a fresh step-up (WP 5.6): what the user typed survives the /step-up round trip.
-const CREATE_DRAFT_KEY = "legal-hold-create";
-const RELEASE_DRAFT_KEY = "legal-hold-release";
+const APPLY_ACTION = "audit.legal_hold.apply";
+const RELEASE_ACTION = "audit.legal_hold.release";
+const HOLD_ACTIONS: readonly string[] = [APPLY_ACTION, RELEASE_ACTION];
+const createDraftKey = (owner: StepUpDraftOwner): string | null =>
+  stepUpDraftKey(owner, APPLY_ACTION, "new");
+const releaseDraftKey = (owner: StepUpDraftOwner, holdId: string): string | null =>
+  stepUpDraftKey(owner, RELEASE_ACTION, holdId);
 interface CreateDraft {
   name: string;
   reason: string;
@@ -62,6 +71,22 @@ interface CreateDraft {
 interface ReleaseDraft {
   holdId: string;
   reason: string;
+}
+interface HoldResume {
+  create: CreateDraft | null;
+  release: ReleaseDraft | null;
+}
+
+/** This owner's stashed drafts (read once, never cleared here). */
+function readResume(owner: StepUpDraftOwner): HoldResume {
+  const create = peekStepUpDraft<CreateDraft>(createDraftKey(owner));
+  const holdId = findStepUpDraftResourceId(owner, RELEASE_ACTION);
+  const stored = holdId
+    ? peekStepUpDraft<{ reason?: unknown }>(releaseDraftKey(owner, holdId))
+    : null;
+  const release =
+    holdId && typeof stored?.reason === "string" ? { holdId, reason: stored.reason } : null;
+  return { create, release };
 }
 const LEGAL_HOLD_PAGE_SIZES = [25, 50, 100] as const;
 
@@ -75,7 +100,14 @@ export function LegalHolds(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<LegalHold | null>(null);
-  const [showCreate, setShowCreate] = useState(() => peekStepUpDraft(CREATE_DRAFT_KEY) !== null);
+  // Back from /step-up: reopen the stashed modal / selection. An abandoned draft is discarded, never reopened.
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, HOLD_ACTIONS);
+  const [resume] = useState<HoldResume>(() =>
+    returning ? readResume(owner) : { create: null, release: null },
+  );
+  const resumedRelease = useRef(false);
+  const [showCreate, setShowCreate] = useState(() => resume.create !== null);
 
   const load = useCallback(
     async (cursor?: string) => {
@@ -92,13 +124,17 @@ export function LegalHolds(): JSX.Element {
       }
       const page = (data?.items ?? []) as LegalHold[];
       setItems((prev) => (cursor ? [...prev, ...page] : page));
-      const resume = peekStepUpDraft<ReleaseDraft>(RELEASE_DRAFT_KEY);
-      const resumed = resume ? page.find((h) => h.id === resume.holdId) : undefined;
-      if (resumed) setSelected(resumed);
+      const resumed = resume.release
+        ? page.find((h) => h.id === resume.release?.holdId)
+        : undefined;
+      if (resumed && !resumedRelease.current) {
+        resumedRelease.current = true;
+        setSelected(resumed);
+      }
       setNextCursor(data?.nextCursor ?? null);
       setLoading(false);
     },
-    [client, status, pageSize],
+    [client, status, pageSize, resume],
   );
 
   useEffect(() => {
@@ -224,8 +260,10 @@ export function LegalHolds(): JSX.Element {
           selected ? (
             <HoldDetail
               hold={selected}
+              initialReason={resume.release?.holdId === selected.id ? resume.release.reason : ""}
+              draftKey={releaseDraftKey(owner, selected.id)}
               onClose={() => {
-                clearStepUpDraft(RELEASE_DRAFT_KEY);
+                clearStepUpDraft(releaseDraftKey(owner, selected.id));
                 setSelected(null);
               }}
               onReleased={handleReleased}
@@ -236,8 +274,10 @@ export function LegalHolds(): JSX.Element {
       />
       {showCreate ? (
         <CreateHoldModal
+          initial={resume.create}
+          draftKey={createDraftKey(owner)}
           onClose={() => {
-            clearStepUpDraft(CREATE_DRAFT_KEY);
+            clearStepUpDraft(createDraftKey(owner));
             setShowCreate(false);
           }}
           onCreated={(count) => {
@@ -389,10 +429,14 @@ function CriteriaSummary({ hold }: { hold: LegalHold }): JSX.Element {
 
 function HoldDetail({
   hold,
+  initialReason,
+  draftKey,
   onClose,
   onReleased,
 }: {
   hold: LegalHold;
+  initialReason: string;
+  draftKey: string | null;
   onClose: () => void;
   onReleased: (id: string, restoredRecordCount: number) => void;
 }): JSX.Element {
@@ -400,10 +444,7 @@ function HoldDetail({
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const [releaseReason, setReleaseReason] = useState(() => {
-    const draft = peekStepUpDraft<ReleaseDraft>(RELEASE_DRAFT_KEY);
-    return draft?.holdId === hold.id ? draft.reason : "";
-  });
+  const [releaseReason, setReleaseReason] = useState(initialReason);
   const [busy, setBusy] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
 
@@ -421,7 +462,7 @@ function HoldDetail({
     setBusy(false);
     const stepUp = err ? stepUpRedirectFor(err, `${location.pathname}${location.search}`) : null;
     if (stepUp) {
-      stashStepUpDraft(RELEASE_DRAFT_KEY, { holdId: hold.id, reason: releaseReason });
+      stashStepUpDraft(draftKey, { holdId: hold.id, reason: releaseReason } satisfies ReleaseDraft);
       navigate(stepUp);
       return;
     }
@@ -430,9 +471,9 @@ function HoldDetail({
       toast.show("Could not release hold.", { tone: "error" });
       return;
     }
-    clearStepUpDraft(RELEASE_DRAFT_KEY);
+    clearStepUpDraft(draftKey);
     onReleased(hold.id, data.restoredRecordCount);
-  }, [client, hold.id, releaseReason, onReleased, toast, navigate, location]);
+  }, [client, hold.id, releaseReason, onReleased, toast, navigate, location, draftKey]);
 
   const row = (fieldLabel: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
@@ -540,16 +581,20 @@ function HoldDetail({
 }
 
 function CreateHoldModal({
+  initial,
+  draftKey,
   onClose,
   onCreated,
 }: {
+  initial: CreateDraft | null;
+  draftKey: string | null;
   onClose: () => void;
   onCreated: (matchedRecordCount: number) => void;
 }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const [draft] = useState(() => peekStepUpDraft<CreateDraft>(CREATE_DRAFT_KEY));
+  const draft = initial;
   const [name, setName] = useState(draft?.name ?? "");
   const [reason, setReason] = useState(draft?.reason ?? "");
   const [patientIds, setPatientIds] = useState(draft?.patientIds ?? "");
@@ -600,7 +645,7 @@ function CreateHoldModal({
     setBusy(false);
     const stepUp = err ? stepUpRedirectFor(err, `${location.pathname}${location.search}`) : null;
     if (stepUp) {
-      stashStepUpDraft(CREATE_DRAFT_KEY, { name, reason, patientIds, resourceKinds, from, to });
+      stashStepUpDraft(draftKey, { name, reason, patientIds, resourceKinds, from, to });
       navigate(stepUp);
       return;
     }
@@ -608,9 +653,21 @@ function CreateHoldModal({
       setError(err?.error?.message ?? "The hold could not be applied.");
       return;
     }
-    clearStepUpDraft(CREATE_DRAFT_KEY);
+    clearStepUpDraft(draftKey);
     onCreated(data.matchedRecordCount);
-  }, [client, name, reason, patientIds, resourceKinds, from, to, onCreated, navigate, location]);
+  }, [
+    client,
+    name,
+    reason,
+    patientIds,
+    resourceKinds,
+    from,
+    to,
+    onCreated,
+    navigate,
+    location,
+    draftKey,
+  ]);
 
   return (
     <Modal open onClose={onClose} ariaLabel="Apply a legal hold">

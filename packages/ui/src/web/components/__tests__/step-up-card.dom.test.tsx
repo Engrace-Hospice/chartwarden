@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "../../../core/api/client";
 import { ApiClientProvider } from "../../../core/api/provider";
 import { StepUpCard, safeReturnTo } from "../step-up-card";
@@ -36,7 +36,11 @@ function Where(): JSX.Element {
   return <div data-testid="where">{`${loc.pathname}${loc.search}`}</div>;
 }
 
-function mount(entry: string, enrolPasskeyPath?: string): void {
+function mount(
+  entry: string,
+  enrolPasskeyPath?: string,
+  onVerified?: (returnTo: string) => void,
+): void {
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <MemoryRouter initialEntries={[entry]}>
@@ -48,6 +52,7 @@ function mount(entry: string, enrolPasskeyPath?: string): void {
                 brand={<strong>Brand</strong>}
                 signInPath="/sign-in"
                 {...(enrolPasskeyPath ? { enrolPasskeyPath } : {})}
+                {...(onVerified ? { onVerified } : {})}
               />
             }
           />
@@ -102,6 +107,18 @@ describe("StepUpCard", () => {
       expect(screen.getByTestId("where").textContent).toBe("/billing/wage-index?fy=2026"),
     );
     expect(paths).toEqual(["/api/v1/sessions/step-up/initiate", "/api/v1/sessions/step-up"]);
+  });
+
+  it("tells the app which path it is returning to once verified (and not before)", async () => {
+    const onVerified = vi.fn();
+    mount(
+      `/step-up?returnTo=${encodeURIComponent("/compliance/legal-holds")}`,
+      undefined,
+      onVerified,
+    );
+    expect(onVerified).not.toHaveBeenCalled();
+    await verifyWithCode();
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith("/compliance/legal-holds"));
   });
 
   it("rejects an absolute returnTo and goes home instead", async () => {
