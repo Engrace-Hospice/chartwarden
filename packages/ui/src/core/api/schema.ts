@@ -12583,7 +12583,7 @@ export interface paths {
         /** List legal holds (cursor-paginated, §4.2) */
         get: operations["getApiV1Legalholds"];
         put?: never;
-        /** Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given */
+        /** Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds) */
         post: operations["postApiV1Legalholds"];
         delete?: never;
         options?: never;
@@ -12600,7 +12600,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Release a legal hold (§10.6) */
+        /** Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED) */
         post: operations["postApiV1LegalholdsByIdRelease"];
         delete?: never;
         options?: never;
@@ -61778,6 +61778,8 @@ export interface operations {
                                     to: string;
                                 };
                                 resourceKinds?: string[];
+                                channelIds?: string[];
+                                userIds?: string[];
                             };
                             status: "active" | "released";
                             reason: string;
@@ -61814,6 +61816,8 @@ export interface operations {
                             to: string;
                         };
                         resourceKinds?: string[];
+                        channelIds?: string[];
+                        userIds?: string[];
                     };
                     reason: string;
                 };

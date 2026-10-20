@@ -157,6 +157,9 @@ export const LegalHoldCriteriaSchema = Type.Object({
     }),
   ),
   resourceKinds: Type.Optional(Type.Array(Type.String())),
+  // ADR-0086 (proposed): M36 messaging selectors. Ids only; the messaging scan resolves them.
+  channelIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }))),
+  userIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }))),
 });
 export type LegalHoldCriteria = Static<typeof LegalHoldCriteriaSchema>;
 
