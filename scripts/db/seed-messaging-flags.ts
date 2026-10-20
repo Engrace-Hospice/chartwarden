@@ -5,12 +5,13 @@
  * link-a-record, needs-a-response, ask-a-nurse, urgent/SBAR or IDG controls. `db:seed:all` runs after the demo org is
  * rebuilt (its feature_flag rows go with the org), so this belongs in that chain.
  *
- * It also grants the demo `administrator` role `messaging.urgent.send` and `messaging.oncall.send`, which the Needs a
- * response and Ask a nurse controls require and which no tenant role template holds (ADR-0081: the clinical lead names who
- * may page a role). A reseed rebuilds role grants from the templates, so the grant lives here to survive it.
+ * It also backfills `messaging.urgent.send` and `messaging.oncall.send` onto the demo `administrator` role, which the Needs a
+ * response and Ask a nurse controls require. A fresh `db:seed` already grants that role the whole catalog (grantAll), so this
+ * only matters for a demo DB seeded before migrations 1105/1129 added those permissions (ADR-0081: no tenant role template
+ * holds oncall.send; the clinical lead names who may page a role).
  *
  * Demo org only. A real tenant's flags are set through the platform admin API (step-up gated), never here.
- * Idempotent: upserts on (flag_key, organization_id). Uses the admin connection.
+ * Idempotent: upserts on (flag_key, organization_id) and (role_id, permission_key). Uses the admin connection.
  * Usage: bun run db:seed:messaging-flags
  */
 import { Client } from "pg";
