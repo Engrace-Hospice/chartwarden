@@ -512,6 +512,7 @@ export function AdmissionDetail({
     setUploadedSignerName("");
     setUploadedSignatureDate("");
     setUploadStage("idle");
+    setActivationLocationId("");
   }, []);
 
   const branchError = useCallback(
@@ -2184,7 +2185,7 @@ export function AdmissionDetail({
               </span>
               {!admission?.locationId && admission?.providerEntityId ? (
                 <LocationLookupField
-                  label="Service location"
+                  label="Service location (required if the hospice has several)"
                   providerEntityId={admission.providerEntityId}
                   value={activationLocationId}
                   onChange={setActivationLocationId}

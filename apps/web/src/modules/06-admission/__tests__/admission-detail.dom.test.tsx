@@ -1062,6 +1062,31 @@ describe("Admission activation — service location", () => {
     );
   });
 
+  it("shows the server's location refusal in the open dialog and omits locationId when none is picked", async () => {
+    const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
+    (client.POST as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: undefined,
+      error: { error: { code: "M6_LOCATION_REQUIRED" } },
+      response: new Response(null, { status: 422 }),
+    });
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Activate Admission" })[0]!);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+    expect(await within(dialog).findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Choose the service location this admission is served from.",
+    );
+    expect(client.POST).toHaveBeenCalledWith(
+      "/api/v1/admissions/{id}/activate",
+      expect.objectContaining({ body: { ifVersion: 4 } }),
+    );
+  });
+
   it("offers no location choice when the admission is already sited", async () => {
     renderWithShell(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
     await waitFor(() =>
