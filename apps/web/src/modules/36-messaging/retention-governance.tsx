@@ -6,12 +6,14 @@ import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } fro
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
+import { useSession } from "../../shell/session";
+import { peekStepUpDraft } from "../../shell/step-up-redirect";
 import {
   CREATE_DRAFT_KEY,
   CreateHoldDialog,
   RELEASE_DRAFT_KEY,
-  ReleaseHoldDialog,
   type ReleaseDraft,
+  ReleaseHoldDialog,
 } from "./legal-hold-dialogs";
 import * as W from "./retention-wording";
 import {
@@ -20,7 +22,6 @@ import {
   useLegalHolds,
   useRetentionOverview,
 } from "./use-retention";
-import { peekStepUpDraft } from "../../shell/step-up-redirect";
 import "./retention.css";
 
 const formatTime = (iso: string): string => {
@@ -107,6 +108,18 @@ function RetentionPanel({ data }: { readonly data: RetentionOverviewDto }): JSX.
   );
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// placed_by is the placing user's id; the contract carries no staff name, so show "you" or a labelled short id (full id in a title), never a bare uuid.
+function PlacedBy({ hold }: { readonly hold: MessageLegalHoldDto }): JSX.Element {
+  const me = useSession()?.userId;
+  const by = hold.placed_by;
+  const when = formatTime(hold.placed_at);
+  if (!UUID_RE.test(by)) return <>{W.placedText(by, when)}</>;
+  const who = by === me ? "you" : W.shortUserId(by);
+  return <span title={by}>{W.placedText(who, when)}</span>;
+}
+
 function HoldRow({
   hold,
   onRelease,
@@ -121,7 +134,7 @@ function HoldRow({
         <span className="wx-retention-title">{hold.name}</span>
         <span className="wx-retention-detail">{W.scopeText(hold.scope)}</span>
         <span className="wx-retention-detail">
-          {W.placedText(hold.placed_by, formatTime(hold.placed_at))}
+          <PlacedBy hold={hold} />
           {hold.released_at ? `. ${W.releasedText(formatTime(hold.released_at))}` : ""}
         </span>
       </div>
@@ -231,7 +244,12 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export function RetentionGovernance(): JSX.Element {
-  const [tab, setTab] = useState<TabId>("retention");
+  // Back from the step-up page with a stashed place/release: land on the Legal holds tab, where that dialog reopens.
+  const [tab, setTab] = useState<TabId>(() =>
+    peekStepUpDraft(CREATE_DRAFT_KEY) !== null || peekStepUpDraft(RELEASE_DRAFT_KEY) !== null
+      ? "holds"
+      : "retention",
+  );
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();

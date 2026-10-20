@@ -55,6 +55,7 @@ export const HOLD_STATUS = {
 export const heldMessagesText = (n: number): string =>
   n === 1 ? "1 message held" : `${n} messages held`;
 export const placedText = (by: string, at: string): string => `Placed by ${by} on ${at}`;
+export const shortUserId = (id: string): string => `user ${id.slice(0, 8)}`;
 export const releasedText = (at: string): string => `Released ${at}`;
 export const releaseLabel = (hold: Pick<MessageLegalHoldDto, "name">): string =>
   `Release hold ${hold.name}`;

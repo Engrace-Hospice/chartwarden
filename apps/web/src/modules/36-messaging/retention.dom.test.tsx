@@ -7,6 +7,8 @@ import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../shell/session";
+import { stashStepUpDraft } from "../../shell/step-up-redirect";
 import { RetentionGovernance } from "./retention-governance";
 
 const CH = "11111111-1111-4111-8111-111111111111";
@@ -59,7 +61,7 @@ interface Routes {
   release?: () => Reply;
   apply?: () => Reply;
 }
-function mount(routes: Routes) {
+function mount(routes: Routes, userId = "99999999-9999-4999-8999-999999999999") {
   const GET = vi.fn((path: string, _init?: unknown): Promise<Reply> => {
     if (path.endsWith("/retention")) return Promise.resolve(routes.retention?.() ?? ok(OVERVIEW));
     if (path.endsWith("/release-preview")) return Promise.resolve(routes.preview?.() ?? fail(500));
@@ -82,10 +84,12 @@ function mount(routes: Routes) {
           { GET, POST, PUT: writes[0], PATCH: writes[1], DELETE: writes[2] } as unknown as ApiClient
         }
       >
-        <main>
-          <RetentionGovernance />
-          <Where />
-        </main>
+        <SessionProvider session={{ userId, organizationId: "org-1" }}>
+          <main>
+            <RetentionGovernance />
+            <Where />
+          </main>
+        </SessionProvider>
       </ApiClientProvider>
     </MemoryRouter>,
   );
@@ -387,6 +391,69 @@ describe("Legal holds tab", () => {
     const tab = await screen.findByRole("tab", { name: "Retention" });
     fireEvent.keyDown(tab, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+});
+
+describe("Who placed a hold, and returning after step-up", () => {
+  const ME = "99999999-9999-4999-8999-999999999999";
+  const OTHER = "ab12cd34-0000-4000-8000-000000000000";
+
+  it("shows You for the signed-in user and a labelled short id (never a bare uuid) for others", async () => {
+    mount({
+      holds: () =>
+        ok({
+          holds: [
+            hold({ id: HOLD, placed_by: ME }),
+            hold({ id: CH, name: "Other", placed_by: OTHER }),
+          ],
+        }),
+    });
+    await openHolds();
+    const list = await screen.findByRole("list", { name: "Legal holds" });
+    expect(list.textContent).toContain("Placed by you on");
+    expect(list.textContent).toContain("Placed by user ab12cd34 on");
+    expect(list.textContent).not.toContain(OTHER);
+    expect(list.querySelector(`[title="${OTHER}"]`)).toBeTruthy();
+    expect(await axe.run(list)).toHaveProperty("violations", []);
+  });
+
+  it("returning from step-up lands on Legal holds and reopens the release dialog at step one, prefilled", async () => {
+    const preview = () => ok({ hold_id: HOLD, held_messages: 41, eligible_on_release: 7 });
+    stashStepUpDraft("messaging-legal-hold-release", { holdId: HOLD, reason: "Matter settled" });
+    mount({ preview });
+    const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
+    expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(
+      (within(dialog).getByLabelText(/^Reason for release/) as HTMLTextAreaElement).value,
+    ).toBe("Matter settled");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(await axe.run(dialog)).toHaveProperty("violations", []);
+  });
+
+  it("returning from step-up with a stashed place draft lands on Legal holds", async () => {
+    stashStepUpDraft("messaging-legal-hold-create", {
+      name: "Case A",
+      reason: "Subpoena",
+      orgWide: false,
+      channels: "",
+      users: CH,
+      patients: "",
+    });
+    mount({});
+    await screen.findByRole("dialog", { name: "Place a legal hold" });
+    expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  it("without a stash the Retention tab stays the default", async () => {
+    mount({});
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
       "true",
     );
   });
