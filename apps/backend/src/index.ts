@@ -284,6 +284,10 @@ import {
   buildAckRateLimit,
 } from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
+import {
+  M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "./bootstrap/plugins/route-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
   type RealtimeHandle,
@@ -661,6 +665,7 @@ import {
   M14_ALERT_PAYLOADS,
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  M14_QUEUES,
   buildM14ActionItemAutoCloseConsumer,
   buildM14AssessmentRecordedConsumer,
   buildM14AssessmentSignificantChangeConsumer,
@@ -671,6 +676,7 @@ import {
   buildM14MedicationOrderDiscontinuedConsumer,
   buildM14OrderDiscontinuedConsumer,
   buildM14WorkerDeps,
+  createBullmqPacketBuildQueuePort,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
   mountIdgRoutes,
@@ -4362,6 +4368,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       ...context,
       reason: err instanceof Error ? err.name : "unknown",
     });
+  // M14 on-demand packet build: ONE producer on the existing `idg.packets-cron` queue (the worker that consumes it
+  // is registerM14CronWorkers); same queue + same owner as the cron, so `arch:queue-names` is unchanged.
+  const m14PacketBuildQueue = queueConnection
+    ? new Queue(M14_QUEUES.packetsBuild, { connection: queueConnection })
+    : undefined;
   const m36AckTimerQueue = queueConnection
     ? new Queue(MESSAGING_QUEUES.ackEscalationTimer, { connection: queueConnection })
     : undefined;
@@ -4861,6 +4872,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               },
             },
             (q) => getCaseloadProvider().caseloadPatientIds(q),
+            m14PacketBuildQueue ? createBullmqPacketBuildQueuePort(m14PacketBuildQueue) : undefined,
+            // Fail-open (availability control only, not a probing oracle): 10/min/user, 60/min/org.
+            createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+              keyPrefix: "m14-packet-build",
+            }),
           ); // GAP-128 — M14 packet/idg-history per-patient scope over M5's registered CaseloadProvider; M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           // GAP-055 follow-up (ADR-0035): the device-attestation requirement + session-device binding are behind
@@ -6289,6 +6307,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       { ...context, reason: err instanceof Error ? err.name : "unknown" },
       "M36 ack escalation request failed",
     );
+  if (m14PacketBuildQueue) app.addHook("onClose", () => m14PacketBuildQueue.close());
   if (m36AckTimerQueue) {
     app.addHook("onClose", async () => {
       await m36AckTimerQueue.close();

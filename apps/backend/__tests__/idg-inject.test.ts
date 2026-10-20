@@ -36,13 +36,15 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { evaluateQuorum } from "@wardenx/idg";
+import { RateLimitedError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type IdgMembershipDisplayPort,
   type IdgRouteEnrichmentPorts,
+  type PacketBuildQueuePort,
   buildIdgAbacPredicates,
   createInMemoryIdgBackend,
   registerIdgRoutes,
@@ -137,6 +139,8 @@ const FAKE_MEMBERSHIP_ROLES: NonNullable<IdgRouteEnrichmentPorts["membershipRole
 function makeServer(
   meetings: readonly IdgMeetingSeed[] = [],
   enrichment?: IdgRouteEnrichmentPorts,
+  packetBuildQueue?: PacketBuildQueuePort,
+  packetBuildRateLimit?: (req: unknown, reply: unknown) => Promise<void>,
 ) {
   const backend = createInMemoryIdgBackend({ now: () => NOW, meetings });
 
@@ -161,6 +165,8 @@ function makeServer(
     service: backend,
     enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES, ...enrichment },
     caseload: COVERS_EVERY_PATIENT,
+    ...(packetBuildQueue ? { packetBuildQueue } : {}),
+    ...(packetBuildRateLimit ? { packetBuildRateLimit: packetBuildRateLimit as never } : {}),
   });
   return { app, backend };
 }
@@ -300,6 +306,92 @@ describe("M14-idg-inject — meeting lifecycle transitions (each on its own fres
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("packets_building");
     await app.close();
+  });
+
+  describe("on-demand packet build enqueue", () => {
+    const seed = (status?: "packets_building" | "packets_ready") => [
+      {
+        id: MEETING_BUILD,
+        organizationId: ORG,
+        locationId: LOC,
+        ...(status ? { status } : {}),
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+        includedPatientIds: [PATIENT],
+      },
+    ];
+    const post = (app: ReturnType<typeof makeServer>["app"]) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/idg/meetings/${MEETING_BUILD}/packets/build`,
+        headers: SUPER,
+      });
+
+    it("enqueues {organizationId, meetingId} after the flip", async () => {
+      const enqueue = vi.fn(async () => undefined);
+      const { app } = makeServer(seed(), undefined, { enqueue });
+      const res = await post(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("packets_building");
+      expect(enqueue).toHaveBeenCalledExactlyOnceWith({
+        organizationId: ORG,
+        meetingId: MEETING_BUILD,
+        requestedByMembershipId: expect.any(String),
+      });
+      await app.close();
+    });
+
+    it("re-POST while packets_building returns 200 and re-enqueues (stuck-meeting recovery)", async () => {
+      const enqueue = vi.fn(async () => undefined);
+      const { app } = makeServer(seed("packets_building"), undefined, { enqueue });
+      const res = await post(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("packets_building");
+      expect(enqueue).toHaveBeenCalledOnce();
+      await app.close();
+    });
+
+    it("packets_ready is still 409 ILLEGAL_MEETING_TRANSITION and enqueues nothing", async () => {
+      const enqueue = vi.fn(async () => undefined);
+      const { app } = makeServer(seed("packets_ready"), undefined, { enqueue });
+      const res = await post(app);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("ILLEGAL_MEETING_TRANSITION");
+      expect(enqueue).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it("an enqueue failure still returns 200 packets_building", async () => {
+      const enqueue = vi.fn(async () => {
+        throw new Error("redis down");
+      });
+      const { app } = makeServer(seed(), undefined, { enqueue });
+      const res = await post(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("packets_building");
+      expect(enqueue).toHaveBeenCalledOnce();
+      await app.close();
+    });
+
+    it("a route rate limit that refuses stops the build before any flip or enqueue", async () => {
+      const enqueue = vi.fn(async () => undefined);
+      const { app, backend } = makeServer(seed(), undefined, { enqueue }, async () => {
+        throw new RateLimitedError();
+      });
+      const res = await post(app);
+      expect(res.statusCode).toBe(429);
+      expect(enqueue).not.toHaveBeenCalled();
+      expect((await backend.getMeeting(ORG, MEETING_BUILD)).status).toBe("scheduled");
+      await app.close();
+    });
+
+    it("with no queue bound it only flips the status (as before)", async () => {
+      const { app } = makeServer(seed());
+      const res = await post(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("packets_building");
+      await app.close();
+    });
   });
 
   it("POST /idg/meetings/:id/start — packets_ready → live (200)", async () => {

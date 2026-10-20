@@ -11039,7 +11039,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Trigger the per-patient packet build */
+        /** Trigger the per-patient packet build (enqueues the build; re-POST while packets_building retries it) */
         post: operations["postApiV1IdgMeetingsByIdPacketsBuild"];
         delete?: never;
         options?: never;

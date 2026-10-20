@@ -12,15 +12,17 @@
 // Several assertions are about the SHAPE of the §2.6 payload, which is a discriminated union the server
 // validates in the domain: getting `kind` or the nesting wrong comes back 422 in production and would
 // pass a shallow "did we POST" check.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { LiveMeeting } from "./live-meeting";
 import { MeetingDetail } from "./meeting-detail";
 import { Minutes } from "./minutes";
+import { LIVE_REFRESH_INTERVAL_MS } from "./use-live-refresh";
+import { PACKET_BUILD_STALE_MS } from "./use-packet-build-polling";
 
 const MEETING = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const PATIENT = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
@@ -47,6 +49,8 @@ const agendaItem = {
 
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
+let meetingReadFailing = false;
+let meetingReadGate: Promise<void> | null = null;
 let writeFailure: { status: number; body: unknown } | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
@@ -147,6 +151,19 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
+  if (meetingReadGate && method === "GET" && path === `/api/v1/idg/meetings/${MEETING}`) {
+    const held = bodyFor(method, path); // snapshot: the held response carries the status at request time
+    await meetingReadGate;
+    return new Response(JSON.stringify(held), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (meetingReadFailing && method === "GET" && path === `/api/v1/idg/meetings/${MEETING}`)
+    return new Response(JSON.stringify({ error: { code: "boom" } }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
   if (path.endsWith("/attendance-eligibility")) {
     eligibilityQueries.push(
       new URL(url, "http://localhost").searchParams.get("membershipId") ?? "",
@@ -236,6 +253,8 @@ beforeEach(() => {
   calls = [];
   bodies = [];
   writeFailure = null;
+  meetingReadFailing = false;
+  meetingReadGate = null;
   meetingStatus = "live";
   minutesStatus = "in_progress";
   roster = [];
@@ -691,5 +710,114 @@ describe("#91 — the minutes are the §418.56(d) evidence", () => {
     expect(bodies[0]?.amendmentReason).toBe("The attendance record omits the chaplain.");
     // No PATCH anywhere: final minutes are immutable and the M4 trigger refuses a content update.
     expect(writes().some((c) => c.startsWith("PATCH /api/v1/idg/minutes"))).toBe(false);
+  });
+});
+
+describe("packets_building — the background build is polled", () => {
+  const meetingReads = (): number =>
+    calls.filter((c) => c === `GET /api/v1/idg/meetings/${MEETING}`).length;
+  const tick = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("polls while building, offers Retry build (POSTs again), and stops once ready", async () => {
+    meetingStatus = "packets_building";
+    mountDetail();
+    const retry = await screen.findByRole("button", { name: "Retry build" });
+    expect(screen.queryByRole("button", { name: "Build packets" })).toBeNull();
+
+    const before = meetingReads();
+    await tick(LIVE_REFRESH_INTERVAL_MS + 100);
+    expect(meetingReads()).toBeGreaterThan(before);
+
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/packets/build`),
+    );
+    expect(await screen.findByText(/Building packets…/)).toBeTruthy();
+
+    meetingStatus = "packets_ready";
+    await tick(LIVE_REFRESH_INTERVAL_MS + 100);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Retry build" })).toBeNull();
+    // The in-progress notice is replaced by the ready announcement in the aria-live region.
+    expect(screen.queryByText(/Building packets…/)).toBeNull();
+    expect(screen.getByText("Packets are ready.")).toBeTruthy();
+    const settled = meetingReads();
+    await tick(LIVE_REFRESH_INTERVAL_MS * 3);
+    expect(meetingReads()).toBe(settled);
+  });
+
+  it("does not poll a scheduled meeting and keeps the normal Build packets label", async () => {
+    meetingStatus = "scheduled";
+    mountDetail();
+    await screen.findByRole("button", { name: "Build packets" });
+    const before = meetingReads();
+    await tick(LIVE_REFRESH_INTERVAL_MS * 3);
+    expect(meetingReads()).toBe(before);
+    expect(screen.queryByRole("button", { name: "Retry build" })).toBeNull();
+  });
+
+  it("a failed poll keeps the page, says it is retrying, and recovers", async () => {
+    meetingStatus = "packets_building";
+    mountDetail();
+    await screen.findByRole("button", { name: "Retry build" });
+    meetingReadFailing = true;
+    await tick(LIVE_REFRESH_INTERVAL_MS + 100);
+    expect(await screen.findByText(/Couldn't refresh/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry build" })).toBeTruthy();
+    expect(screen.queryByText(/Could not load this IDG meeting/)).toBeNull();
+
+    meetingReadFailing = false;
+    meetingStatus = "packets_ready";
+    await tick(LIVE_REFRESH_INTERVAL_MS * 3);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy());
+    expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+  });
+
+  it("stops polling after the stale threshold, says so, and Retry build restarts polling", async () => {
+    meetingStatus = "packets_building";
+    mountDetail();
+    await screen.findByRole("button", { name: "Retry build" });
+    await tick(PACKET_BUILD_STALE_MS + 100);
+    expect(await screen.findByText(/taking longer than expected/i)).toBeTruthy();
+    const stopped = meetingReads();
+    await tick(LIVE_REFRESH_INTERVAL_MS * 3);
+    expect(meetingReads()).toBe(stopped);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry build" }));
+    await waitFor(() => expect(screen.queryByText(/taking longer than expected/i)).toBeNull());
+    const resumed = meetingReads();
+    await tick(LIVE_REFRESH_INTERVAL_MS + 100);
+    expect(meetingReads()).toBeGreaterThan(resumed);
+  });
+
+  it("a Retry-build load that overlaps a poll never overwrites the newer response", async () => {
+    meetingStatus = "packets_building";
+    mountDetail();
+    await screen.findByRole("button", { name: "Retry build" });
+    // The Retry click's load() is held open and answers with the OLD status; a poll tick overtakes it.
+    let release: () => void = () => undefined;
+    meetingReadGate = new Promise<void>((r) => {
+      release = r;
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry build" }));
+    await waitFor(() => expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/packets/build`));
+    meetingStatus = "packets_ready";
+    meetingReadGate = null;
+    await tick(LIVE_REFRESH_INTERVAL_MS + 100);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy());
+    release();
+    await tick(LIVE_REFRESH_INTERVAL_MS);
+    expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry build" })).toBeNull();
   });
 });

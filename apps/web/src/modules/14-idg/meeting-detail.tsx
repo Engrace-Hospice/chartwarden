@@ -33,7 +33,7 @@ import {
 // `per_patient_review_floor_clear` refuses a cancel/move that would push a patient past the 15-day floor.
 // The buttons reflect the CURRENT status only so the coordinator is not offered a transition that is
 // obviously not next; the refusal is still the server's.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -51,6 +51,7 @@ import { IdgStat, MeetingProgress } from "./idg-page-kit";
 import { PatientLabel, type PatientRef, patientText, shortId, useMemberNames } from "./idg-people";
 import { MEETING_TONE, stateLabel } from "./idg-status";
 import { MeetingPromotions } from "./meeting-promotions";
+import { usePacketBuildPolling } from "./use-packet-build-polling";
 
 interface MeetingView {
   id: string;
@@ -109,6 +110,17 @@ function timeLabel(iso: string): string {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+type ApiClient = ReturnType<typeof useApiClient>;
+/** The four reads behind this screen; `signal` is set only by the background poll. */
+function readView(client: ApiClient, id: string, signal?: AbortSignal) {
+  return Promise.all([
+    client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } }, signal }),
+    client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } }, signal }),
+    loadAttendance(client, id),
+    loadAgenda(client, id),
+  ]);
+}
+
 export function MeetingDetail(): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -127,18 +139,34 @@ export function MeetingDetail(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [lifecycle, setLifecycle] = useState<LifecycleAction | null>(null);
+  /** Only the newest read may write state: a slow older response must not overwrite a newer one. */
+  const readSeq = useRef(0);
+
+  /** Background re-read while a build runs: no spinner, no error screen; throws so the hook backs off. */
+  const poll = useCallback(
+    async (signal: AbortSignal) => {
+      if (!id) return;
+      const seq = ++readSeq.current;
+      const [m, p, nextRoster, nextAgenda] = await readView(client, id, signal);
+      if (m.error || p.error) throw new Error("meeting refresh failed");
+      if (seq !== readSeq.current) return;
+      setMeeting((m.data ?? null) as MeetingView | null);
+      setPackets((p.data ?? []) as PacketRow[]);
+      setRoster(nextRoster);
+      setAgenda(nextAgenda);
+      setLoading(false); // a poll that superseded an in-flight load now owns the settled state
+    },
+    [client, id],
+  );
 
   const load = useCallback(async () => {
     if (!id) return;
+    const seq = ++readSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const [m, p, nextRoster, nextAgenda] = await Promise.all([
-        client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
-        client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
-        loadAttendance(client, id),
-        loadAgenda(client, id),
-      ]);
+      const [m, p, nextRoster, nextAgenda] = await readView(client, id);
+      if (seq !== readSeq.current) return;
       if (m.error || p.error) {
         const status = m.error ? m.response.status : p.response.status;
         setError({
@@ -180,11 +208,14 @@ export function MeetingDetail(): JSX.Element {
       setNotice(
         res.ok
           ? kind === "build"
-            ? "Packet build started."
+            ? "Building packets… this page updates when they are ready."
             : "Meeting started — decisions can now be recorded."
           : res.message,
       );
-      if (res.ok) await load();
+      if (res.ok) {
+        packetBuild.restart();
+        await load();
+      }
     } catch {
       setNotice("The network request did not complete. Check your connection and try again.");
     } finally {
@@ -195,6 +226,9 @@ export function MeetingDetail(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const packetBuild = usePacketBuildPolling({ status: meeting?.status, poll, setNotice });
+  const { building } = packetBuild;
 
   // The meeting read carries only a location id; name it from the org's sites.
   const locationId = meeting?.locationId;
@@ -249,7 +283,6 @@ export function MeetingDetail(): JSX.Element {
 
   const ready = packets.filter((p) => p.frozenAt !== null).length;
   const selected = packets.find((p) => p.packetId === selectedId) ?? null;
-  const building = meeting.status === "packets_building";
   const terminal = ["adjourned", "cancelled", "rescheduled"].includes(meeting.status);
   const quorumLabel =
     roster.length === 0
@@ -364,14 +397,14 @@ export function MeetingDetail(): JSX.Element {
             </ul>
           </div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {canCoordinate && meeting.status === "scheduled" ? (
+            {canCoordinate && (meeting.status === "scheduled" || building) ? (
               <button
                 type="button"
                 className="wx-btn-secondary"
                 onClick={() => void transition("build")}
                 disabled={busy}
               >
-                Build packets
+                {building ? "Retry build" : "Build packets"}
               </button>
             ) : null}
             {canCoordinate && meeting.status === "packets_ready" ? (
@@ -425,6 +458,16 @@ export function MeetingDetail(): JSX.Element {
           adjournedAt={meeting.adjournedAt}
         />
 
+        {building && packetBuild.stale ? (
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
+            This is taking longer than expected. Use Retry build.
+          </output>
+        ) : null}
+        {building && packetBuild.failing ? (
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
+            Couldn't refresh — retrying.
+          </output>
+        ) : null}
         {notice ? (
           <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
         ) : null}

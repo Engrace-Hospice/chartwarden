@@ -5633,7 +5633,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M14RescheduleMeetingRequest,
   },
   "POST /api/v1/idg/meetings/:id/packets/build": {
-    summary: "Trigger the per-patient packet build",
+    summary:
+      "Trigger the per-patient packet build (enqueues the build; re-POST while packets_building retries it)",
     response: M14MeetingViewSchema,
   },
   "POST /api/v1/idg/meetings/:id/start": {

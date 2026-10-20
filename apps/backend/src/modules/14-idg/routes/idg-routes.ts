@@ -30,6 +30,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
+import type { PacketBuildQueuePort } from "../jobs/packet-build-queue";
 import {
   type AttendanceTargetFacts,
   attendanceSelfOnlyError,
@@ -109,6 +110,13 @@ export interface IdgRouteDeps {
    * `CaseloadProvider` seam (an unbound seam fails closed for non-org-wide roles). Injected in tests.
    */
   caseload?: IdgCaseloadResolver;
+  /**
+   * Producer for the real packet build: the build route enqueues `{organizationId, meetingId}` AFTER the status
+   * flip commits. Unbound (in-memory slice / no Redis) ⇒ the route only flips status, as before.
+   */
+  packetBuildQueue?: PacketBuildQueuePort;
+  /** Optional per-route limiter (ids-only buckets) for the build route, bound at the composition root. */
+  packetBuildRateLimit?: PreHandler;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -425,11 +433,38 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 7 — trigger the packet build.
   app.post(
     "/api/v1/idg/meetings/:id/packets/build",
-    { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
+    {
+      preHandler: [
+        COORDINATE,
+        SCOPE("idg.coordinate"),
+        ...(deps.packetBuildRateLimit ? [deps.packetBuildRateLimit] : []),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.buildPackets(organizationId, userId, id);
+      const view = await service.buildPackets(organizationId, userId, id);
+      // The flip has committed. An enqueue failure must not fail the request: the meeting is `packets_building`
+      // and a re-POST (or the hourly cron inside T-24h) resumes it. Log without PHI.
+      try {
+        await deps.packetBuildQueue?.enqueue({
+          organizationId,
+          meetingId: id,
+          requestedByMembershipId: userId,
+        });
+      } catch (err) {
+        // name/message only: the raw error can carry the Redis connection string.
+        request.log.error(
+          {
+            errName: err instanceof Error ? err.name : "unknown",
+            errMessage: err instanceof Error ? err.message : String(err),
+            organizationId,
+            meetingId: id,
+          },
+          "idg: packet build enqueue failed; meeting stays packets_building (200: re-POST retries)",
+        );
+      }
+      return view;
     },
   );
 
