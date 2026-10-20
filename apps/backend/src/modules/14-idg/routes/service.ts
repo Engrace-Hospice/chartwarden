@@ -1369,6 +1369,7 @@ export function createInMemoryIdgBackend(
     },
     async buildPackets(orgId, _userId, id) {
       const m = meetingOf(orgId, id);
+      if (m.status === "packets_building") return toMeetingView(m); // re-POST resumes a stuck build
       const t = transitionMeeting(m.status, {
         type: "BUILD_PACKETS",
         includedPatientCount: m.includedPatientIds.size,

@@ -31,6 +31,14 @@ export const GLOBAL_SEARCH_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "closed",
 };
 
+/** M14 `POST /idg/meetings/:id/packets/build`: an availability control (a build is heavy), so fail-open. */
+export const M14_PACKET_BUILD_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 60,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 export interface RouteRateLimitOptions {
   readonly store: RateLimitStore;
   readonly limit: RouteRateLimit;

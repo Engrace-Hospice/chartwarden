@@ -34,7 +34,8 @@ import type {
   Idg12MedicationHistoryPort,
   IdgFlaggedEventSourcePort,
 } from "./packet-build";
-import { runPacketBuildCron } from "./packet-build";
+import { runOnDemandPacketBuild, runPacketBuildCron } from "./packet-build";
+import { ON_DEMAND_PACKET_BUILD_JOB, parseOnDemandPacketBuildJob } from "./packet-build-queue";
 import type { Idg1LocationTimezonePort } from "./schedule-materialise";
 import { runScheduleMaterialiseCron } from "./schedule-materialise";
 
@@ -381,6 +382,27 @@ function bullmqCheckpoint(job: Job): ReviewClockSweepCheckpoint {
   };
 }
 
+/** The name `scheduleM14Jobs` registers every M14 repeatable under. */
+const M14_CRON_JOB_NAME = "scheduled";
+
+/** The `idg.packets-cron` processor: `on-demand` jobs build one validated meeting, anything else is the hourly sweep. */
+export async function processPacketsBuildJob(
+  job: Pick<Job, "name" | "data">,
+  packetDeps: Parameters<typeof runPacketBuildCron>[0],
+  log: (message: string, context: Record<string, string>) => void = (message, context) =>
+    console.info(message, context),
+): Promise<void> {
+  if (job.name === ON_DEMAND_PACKET_BUILD_JOB) {
+    const args = parseOnDemandPacketBuildJob(job.data);
+    // Ids only (no PHI): the worker runs without an actor, so this line is where the requester is attributable.
+    log("idg on-demand packet build", { ...args });
+    return runOnDemandPacketBuild(packetDeps, args);
+  }
+  if (job.name === M14_CRON_JOB_NAME) return runPacketBuildCron(packetDeps);
+  // Never fall through to the cross-tenant sweep for an unrecognised name.
+  throw new Error(`M14_PACKET_BUILD: unknown job name "${job.name}"`);
+}
+
 /** Construct all FOUR M14 crons (+ `idg.carry-forward`, §2.7) (the caller owns lifecycle — `close()` on shutdown): the pre-existing
  * `idg.review-clock-sweep`, plus F-171's `idg.schedule-materialise` (§7.1) and `idg.packets-cron` (§4.9.1
  * `tminus-24h-build`) — the real T-24h packet-build worker. `m6`/`m7`/`redis` resolve through the same
@@ -411,8 +433,9 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
     ),
     new Worker(
       M14_QUEUES.packetsBuild,
-      async () =>
-        runPacketBuildCron({
+      // The queue carries the hourly cron AND the coordinator's `on-demand` job; dispatch on the job name.
+      async (job) => {
+        const packetDeps = {
           db: deps.db,
           outbox: deps.outbox,
           activeOrgs: activeOrgsOf(deps),
@@ -426,7 +449,9 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           siteDisplay: deps.siteDisplay,
           membershipDisplay: deps.membershipDisplay,
           now: deps.now,
-        }),
+        };
+        return processPacketsBuildJob(job, packetDeps);
+      },
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },
     ),
     new Worker(
@@ -478,7 +503,7 @@ export async function scheduleM14Jobs(connection: ConnectionOptions): Promise<Qu
   for (const spec of specs) {
     const queue = new Queue(spec.queue, { connection });
     await queue.add(
-      "scheduled",
+      M14_CRON_JOB_NAME,
       {},
       {
         repeat: { pattern: spec.pattern },

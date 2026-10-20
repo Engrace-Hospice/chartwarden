@@ -133479,7 +133479,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Trigger the per-patient packet build",
+        "summary": "Trigger the per-patient packet build (enqueues the build; re-POST while packets_building retries it)",
         "parameters": [
           {
             "name": "id",
