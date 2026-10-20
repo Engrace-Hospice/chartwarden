@@ -1515,6 +1515,7 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { countHoldOverlayMessages } from "./modules/36-messaging/jobs/retention-hold-sql";
 import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
@@ -4700,7 +4701,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               userLimiter: auditorLimiter("auditor-enrol:user", 30),
             });
           }
-          mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
+          mountAuditRoutes(app, dbHandle.db, {
+            outbox: m4OutboxPublisher,
+            countGovernanceOverlay: countHoldOverlayMessages,
+          }); // M4 — audit-log search + GAP-003 compliance surface
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
           // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.

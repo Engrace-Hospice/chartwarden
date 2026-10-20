@@ -6,11 +6,14 @@
 --     the seam is the id. The message FK is composite (organization_id, message_id) and cascades.
 --   * Backstop: BEFORE DELETE and BEFORE UPDATE OF body_cipher on `message` refuse (23001) a message with an overlay row whose hold is
 --     active, whoever runs the statement (the destruction credential, a tenant eraser, an out-of-band delete). SECURITY DEFINER owned by
---     wardenx_admin with a pinned search_path (pg_catalog first) so it sees the overlay and the hold whatever RLS context the caller carries (a missing
+--     wardenx_admin with a pinned search_path (pg_catalog only, every relation schema-qualified) so it sees the overlay and the hold whatever RLS context the caller carries (a missing
 --     GUC must not read as "no hold"). The FK cascade from channel delete runs the per-row BEFORE DELETE trigger too, so it is covered.
 --     The hold is joined on its own organization too: an overlay row naming another tenant's hold uuid cannot make a message undeletable.
 --     Not covered, stated plainly: DROP / TRUNCATE or session_replication_role = replica by a superuser (procedural control).
 --     Consequence: editing the body of a HELD message is refused (body_cipher is rewritten on edit); the revision chain is unaffected.
+--     The M36 body backfill (re-seal under the ring) rewrites body_cipher too: it runs each row in a savepoint, treats this 23001 as
+--     'skipped, legal hold' (counted as skippedLegalHold, audited in the batch row) and leaves the row on the legacy envelope until
+--     the hold is released. The edit route additionally checks the LIVE hold predicate, so a not-yet-materialised held message is refused too.
 --   * Messaging-only: no audit_event row is held by this overlay (ADR-0086 D5).
 -- Table name starts with `legal_hold_`, not `audit_event`, so wardenx_audit_trigger() audits it (as 1053 does legal_hold_audit_event).
 
@@ -56,13 +59,13 @@ CREATE TRIGGER "legal_hold_message_audit" AFTER UPDATE OR DELETE ON legal_hold_m
 CREATE OR REPLACE FUNCTION message_legal_hold_guard() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog
 AS $$
 BEGIN
   IF EXISTS (
        SELECT 1
-         FROM legal_hold_message h
-         JOIN legal_hold l ON l.id = h.legal_hold_id
+         FROM public.legal_hold_message h
+         JOIN public.legal_hold l ON l.id = h.legal_hold_id
                           AND l.organization_id = h.organization_id
                           AND l.status = 'active'
         WHERE h.organization_id = OLD.organization_id

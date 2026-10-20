@@ -50,8 +50,10 @@ import {
   createMessagingGovernanceHoldPort,
   openMessageCertificate,
   releaseLegalHoldInTx,
+  restoredCountForM4Route,
 } from "../src/modules/04-audit/messaging-hold-workflow";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
+import { countHoldOverlayMessages } from "../src/modules/36-messaging/jobs/retention-hold-sql";
 import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retention-scan";
 import { appRoleConnectionString } from "./_live-app-role";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
@@ -721,6 +723,79 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         [raceHold],
       ),
     ).toBe(1);
+  });
+
+  it("M4 RELEASE of a governance-origin hold reports the messages it covered (overlay count), not an audit-event count", async () => {
+    const govHold = (
+      await admin.query(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason)
+         VALUES ($1,'m4-release-count','{"channelIds":[],"origin":"messaging_governance"}'::jsonb,'m4 route releases a governance hold') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO legal_hold_message (organization_id, legal_hold_id, message_id) VALUES ($1,$2,$3)`,
+      [ORG, govHold, freshMsg],
+    );
+    const out = await withOrgContext<DbClient, { restoredRecordCount: number }>(
+      handle.db as never,
+      { organizationId: ORG, userId: author.userId },
+      (tx) =>
+        releaseLegalHoldInTx(
+          tx,
+          {},
+          { organizationId: ORG, userId: author.userId, correlationId: "m4-release-count" },
+          {
+            organizationId: ORG,
+            holdId: govHold,
+            reason: "released through M4's route",
+            // The M4 route's audit-event counter would answer 777 here; the overlay count must win.
+            countRestored: (criteria) =>
+              restoredCountForM4Route(
+                tx,
+                ORG,
+                govHold,
+                criteria,
+                async () => 777,
+                countHoldOverlayMessages,
+              ),
+          },
+        ),
+    );
+    expect(out.restoredRecordCount).toBe(1);
+    // An M4-placed hold still takes the route's own audit-event count.
+    const m4Held = (
+      await admin.query(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason)
+         VALUES ($1,'m4-own','{"channelIds":[]}'::jsonb,'m4 own hold') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
+    const own = await withOrgContext<DbClient, { restoredRecordCount: number }>(
+      handle.db as never,
+      { organizationId: ORG, userId: author.userId },
+      (tx) =>
+        releaseLegalHoldInTx(
+          tx,
+          {},
+          { organizationId: ORG, userId: author.userId, correlationId: "m4-own-release" },
+          {
+            organizationId: ORG,
+            holdId: m4Held,
+            reason: "released through M4's route",
+            countRestored: (criteria) =>
+              restoredCountForM4Route(
+                tx,
+                ORG,
+                m4Held,
+                criteria,
+                async () => 777,
+                countHoldOverlayMessages,
+              ),
+          },
+        ),
+    );
+    expect(own.restoredRecordCount).toBe(777);
   });
 
   it("BACKSTOP lifts with the hold: the same edit succeeds once the only covering hold is released", async () => {

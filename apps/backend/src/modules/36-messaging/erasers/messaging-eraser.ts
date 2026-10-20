@@ -23,7 +23,7 @@ import {
   eraseTenantMessaging,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
+import { DegradedError, messagingHoldLockName } from "@wardenx/types";
 import type { DataEraser } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
@@ -235,6 +235,10 @@ export function createDrizzleMessagingEraseStore(
     if (!storage) throw noObjectStore(); // (preflight refused earlier; kept so no code path destroys without a store)
     let destroyed = 0;
     while (batch.length > 0) {
+      // Re-look immediately before each irreversible batch (a hold applied during the previous batch or the URL wait). The
+      // window between this look and the destroy calls is one batch of network calls; the row delete that follows is not
+      // reached for a held tenant because the structural step looks again inside its own transaction.
+      await assertNoActiveMessageHold(orgId);
       for (const { key } of batch) {
         if (key) {
           await runWithDeadline(
@@ -290,26 +294,43 @@ export function createDrizzleMessagingEraseStore(
    * trigger is only the last-resort backstop. Look first, before any key is destroyed or any row touched, and fail cleanly and
    * retryably (release the hold, then retry) instead of dying on a trigger halfway through the erase.
    */
-  async function assertNoActiveMessageHold(orgId: string): Promise<void> {
-    const [held] = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
-      tx
-        .select({ id: LH.id })
-        .from(LH)
-        .where(and(eq(LH.organizationId, orgId), eq(LH.status, "active")))
-        .limit(1),
+  const activeHoldRefusal = () =>
+    new DegradedError(
+      "legal-hold",
+      "the organisation has an active legal hold; refusing to erase the tenant's messages (release the hold, then retry)",
     );
-    if (held) {
-      throw new DegradedError(
-        "legal-hold",
-        "the organisation has an active legal hold; refusing to erase the tenant's messages (release the hold, then retry)",
-      );
-    }
+
+  /**
+   * The check, INSIDE the transaction that does the destructive write (no check-then-act gap): take the hold lock SHARED (M4's
+   * `applyLegalHoldInTx` takes it EXCLUSIVE, so a hold either committed before this look or waits for this transaction to
+   * commit) and read the active holds (no row lock: the app role has SELECT only on `legal_hold`, and the advisory lock is the serialiser). READ COMMITTED gives the select a fresh snapshot after the lock is granted.
+   */
+  async function assertNoActiveHoldInTx(
+    tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0],
+    orgId: string,
+  ): Promise<void> {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${messagingHoldLockName(orgId)}, 0))`,
+    );
+    const [held] = await tx
+      .select({ id: LH.id })
+      .from(LH)
+      .where(and(eq(LH.organizationId, orgId), eq(LH.status, "active")))
+      .limit(1);
+    if (held) throw activeHoldRefusal();
+  }
+
+  /** The same look in its own short transaction: a fail-fast before anything irreversible, and again before each object-destroy batch. */
+  async function assertNoActiveMessageHold(orgId: string): Promise<void> {
+    await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+      assertNoActiveHoldInTx(tx, orgId),
+    );
   }
 
   return {
     async destroyTenantDek(orgId) {
-      await assertNoActiveMessageHold(orgId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        await assertNoActiveHoldInTx(tx, orgId);
         const shredded = await tx
           .update(MSG)
           .set({ bodyCipher: Buffer.alloc(0), bodySha256: ERASED_BODY_SHA256 })
@@ -330,6 +351,7 @@ export function createDrizzleMessagingEraseStore(
       await assertNoActiveMessageHold(orgId);
       await destroyAllAttachmentObjects(orgId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        await assertNoActiveHoldInTx(tx, orgId);
         // Last look, inside this transaction: a row with an object that appeared after the final pass would be removed
         // with its bytes orphaned. Refuse (retryable) instead; the whole transaction rolls back.
         const [late] = await tx

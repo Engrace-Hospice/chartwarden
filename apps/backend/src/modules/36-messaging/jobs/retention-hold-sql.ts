@@ -1,10 +1,10 @@
-import type { DbClient } from "@wardenx/db";
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/36-messaging/jobs/retention-hold-sql.ts — ADR-0086 (proposed) D5 in SQL: the LIVE hold predicate the
 // retention scan filters with (so enforcement never waits on the overlay) and the overlay materialiser. The predicate mirrors the pure
 // `messageHeldBy` in @wardenx/messaging; the live suite proves the two agree. Aliases: m = message, c = its channel.
 // Every subquery is filtered by organization_id. Ids reach SQL only as bound uuid params.
 import type { MessageHoldCriteria } from "@wardenx/messaging";
-import { type SQL, sql } from "drizzle-orm";
+import { type SQL, and, eq, sql } from "drizzle-orm";
 
 /** The M4 seam the scan needs, injected at the composition root (M36 imports nothing from M4). */
 export interface ActiveMessageHold {
@@ -78,4 +78,46 @@ export function overlayHeldPredicate(holds: readonly ActiveMessageHold[]): SQL {
   return sql`EXISTS (SELECT 1 FROM legal_hold_message l
     WHERE l.organization_id = m.organization_id AND l.message_id = m.id
       AND l.legal_hold_id IN (${uuidList(holds.map((h) => h.id))}))`;
+}
+
+/**
+ * Is message `messageId` covered by an ACTIVE hold right now, judged on the live criteria (not the overlay, which lags until the next
+ * scan)? Runs in the caller's tenant transaction; org-filtered in addition to RLS. The overlay trigger (migration 1138) stays the
+ * backstop for the materialised case.
+ */
+export async function isMessageHeldNow(
+  tx: DbClient,
+  organizationId: string,
+  messageId: string,
+): Promise<boolean> {
+  const active = await tx
+    .select({ id: schema.legalHolds.id, criteria: schema.legalHolds.criteria })
+    .from(schema.legalHolds)
+    .where(
+      and(
+        eq(schema.legalHolds.organizationId, organizationId),
+        eq(schema.legalHolds.status, "active"),
+      ),
+    );
+  if (active.length === 0) return false;
+  const holds = active.map((h) => ({ id: h.id, criteria: h.criteria as MessageHoldCriteria }));
+  const res = await tx.execute<{ held: boolean }>(
+    sql`SELECT true AS held FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
+         WHERE m.organization_id = ${organizationId}::uuid AND m.id = ${messageId}::uuid AND ${anyHoldPredicate(holds)}
+         LIMIT 1`,
+  );
+  return res.rows.length > 0;
+}
+
+/** Messages a hold has materialised in the overlay (the count M4's own release route reports for a governance-origin hold). */
+export async function countHoldOverlayMessages(
+  tx: DbClient,
+  organizationId: string,
+  holdId: string,
+): Promise<number> {
+  const res = await tx.execute<{ n: number }>(
+    sql`SELECT count(*)::int AS n FROM legal_hold_message
+         WHERE organization_id = ${organizationId}::uuid AND legal_hold_id = ${holdId}::uuid`,
+  );
+  return Number(res.rows[0]?.n ?? 0);
 }

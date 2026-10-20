@@ -38,6 +38,11 @@ function stubTx(results: unknown[][]): { tx: DbClient; calls: string[] } {
       return chain;
     };
   }
+  // execute (the apply's advisory lock) must not consume a queued query result.
+  chain.execute = () => {
+    calls.push("execute");
+    return Promise.resolve({ rows: [] });
+  };
   chain.returning = next;
   chain.limit = next;
   // biome-ignore lint/suspicious/noThenProperty: drizzle query builders are thenables; the stub must be awaitable.

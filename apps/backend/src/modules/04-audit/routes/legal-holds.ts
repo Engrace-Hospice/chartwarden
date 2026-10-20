@@ -27,10 +27,12 @@ import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
+  type GovernanceOverlayCounter,
   type M4OutboxPort,
   applyLegalHoldInTx,
   hasSelector,
   releaseLegalHoldInTx,
+  restoredCountForM4Route,
 } from "../messaging-hold-workflow";
 import {
   type CreateLegalHoldBody,
@@ -54,6 +56,8 @@ export interface LegalHoldsRouteDeps {
   /** The same RLS-scoped `AuditQuery` `mountAuditRoutes` already builds — reused for match counts. */
   readonly query: AuditQuery;
   readonly outbox?: M4OutboxPort;
+  /** M36's overlay counter for a governance-origin hold released through M4's own route (see `restoredCountForM4Route`). */
+  readonly countGovernanceOverlay?: GovernanceOverlayCounter;
 }
 
 const HOLD = schema.legalHolds;
@@ -256,7 +260,15 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
             organizationId,
             holdId: id,
             reason: body.reason,
-            countRestored: (criteria) => countMatchingEvents(deps.query, organizationId, criteria),
+            countRestored: (criteria) =>
+              restoredCountForM4Route(
+                tx,
+                organizationId,
+                id,
+                criteria,
+                (c) => countMatchingEvents(deps.query, organizationId, c),
+                deps.countGovernanceOverlay,
+              ),
           }),
       );
     },
