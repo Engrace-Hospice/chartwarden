@@ -21660,6 +21660,18 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "windowKind": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
                           }
                         }
                       }
@@ -133467,7 +133479,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Trigger the per-patient packet build",
+        "summary": "Trigger the per-patient packet build (enqueues the build; re-POST while packets_building retries it)",
         "parameters": [
           {
             "name": "id",
@@ -147580,6 +147592,23 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              "channelIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "userIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "origin": {
+                                "type": "string"
                               }
                             }
                           },
@@ -147655,7 +147684,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+        "summary": "Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds)",
         "parameters": [],
         "responses": {
           "200": {
@@ -147737,6 +147766,23 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "channelIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "userIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "origin": {
+                        "type": "string"
                       }
                     }
                   },
@@ -147757,7 +147803,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Release a legal hold (§10.6)",
+        "summary": "Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED)",
         "parameters": [
           {
             "name": "id",
@@ -173544,6 +173590,1063 @@
         }
       }
     },
+    "/api/v1/messaging/governance/legal-holds": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceLegalholds",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "holds"
+                  ],
+                  "properties": {
+                    "holds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "status",
+                          "scope",
+                          "placed_by",
+                          "placed_at",
+                          "released_at",
+                          "held_messages"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "released",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scope": {
+                            "type": "object",
+                            "required": [
+                              "channel_ids",
+                              "user_ids",
+                              "patient_ids",
+                              "org_wide"
+                            ],
+                            "properties": {
+                              "channel_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "user_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "patient_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "org_wide": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          "placed_by": {
+                            "type": "string"
+                          },
+                          "placed_at": {
+                            "type": "string"
+                          },
+                          "released_at": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "held_messages": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceLegalholds",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: place a legal hold on messages (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.apply`, else 403 STEP_UP_REQUIRED). Name channels, users and/or patients, or hold the whole organisation (org_wide, alone); a reason of at least 10 characters is required (422). Written through M4's seam in one transaction: the hold, its data.legal_hold_applied audit row with the reason, the m4.legal_hold.applied outbox event and a bounded materialisation of the per-message overlay (the weekly scan covers any remainder; enforcement also reads the live criteria). A held message cannot be edited (409 MESSAGE_UNDER_LEGAL_HOLD)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "scope",
+                    "placed_by",
+                    "placed_at",
+                    "released_at",
+                    "held_messages"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "released",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "channel_ids",
+                        "user_ids",
+                        "patient_ids",
+                        "org_wide"
+                      ],
+                      "properties": {
+                        "channel_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "user_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "patient_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "org_wide": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "placed_by": {
+                      "type": "string"
+                    },
+                    "placed_at": {
+                      "type": "string"
+                    },
+                    "released_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "name",
+                  "reason"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "channel_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "user_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "patient_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "org_wide": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/legal-holds/{id}/release": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceLegalholdsByIdRelease",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "scope",
+                    "placed_by",
+                    "placed_at",
+                    "released_at",
+                    "held_messages"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "released",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "channel_ids",
+                        "user_ids",
+                        "patient_ids",
+                        "org_wide"
+                      ],
+                      "properties": {
+                        "channel_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "user_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "patient_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "org_wide": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "placed_by": {
+                      "type": "string"
+                    },
+                    "placed_at": {
+                      "type": "string"
+                    },
+                    "released_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason",
+                  "confirmed_eligible_count"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "confirmed_eligible_count": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/legal-holds/{id}/release-preview": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceLegalholdsByIdReleasepreview",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: what releasing a hold would do (messaging.retention.manage): held_messages and eligible_on_release (past their retention window and held by no other active hold). Another tenant's or an unknown hold is 404. Read-audited. Not cached",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hold_id",
+                    "held_messages",
+                    "eligible_on_release"
+                  ],
+                  "properties": {
+                    "hold_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "eligible_on_release": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/offboarding/{userId}": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceOffboardingByUserId",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user_id",
+                    "items",
+                    "done",
+                    "total",
+                    "complete",
+                    "blocked_by"
+                  ],
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "state",
+                          "count",
+                          "acted",
+                          "needs_person"
+                        ],
+                        "properties": {
+                          "key": {
+                            "anyOf": [
+                              {
+                                "const": "sessions_devices",
+                                "type": "string"
+                              },
+                              {
+                                "const": "channel_memberships",
+                                "type": "string"
+                              },
+                              {
+                                "const": "tasks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoffs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent_untracked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "oncall_seats",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scheduled_sends",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reminders_snoozes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drafts",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "done",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_person",
+                                "type": "string"
+                              },
+                              {
+                                "const": "kept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "advisory",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acted": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "needs_person": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "done": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "blocked_by": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sessions_devices",
+                            "type": "string"
+                          },
+                          {
+                            "const": "channel_memberships",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tasks",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoffs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_sent",
+                            "type": "string"
+                          },
+                          {
+                            "const": "urgent_untracked",
+                            "type": "string"
+                          },
+                          {
+                            "const": "oncall_seats",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scheduled_sends",
+                            "type": "string"
+                          },
+                          {
+                            "const": "reminders_snoozes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "drafts",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/offboarding/{userId}/execute": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceOffboardingByUserIdExecute",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user_id",
+                    "items",
+                    "done",
+                    "total",
+                    "complete",
+                    "blocked_by"
+                  ],
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "state",
+                          "count",
+                          "acted",
+                          "needs_person"
+                        ],
+                        "properties": {
+                          "key": {
+                            "anyOf": [
+                              {
+                                "const": "sessions_devices",
+                                "type": "string"
+                              },
+                              {
+                                "const": "channel_memberships",
+                                "type": "string"
+                              },
+                              {
+                                "const": "tasks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoffs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent_untracked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "oncall_seats",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scheduled_sends",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reminders_snoozes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drafts",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "done",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_person",
+                                "type": "string"
+                              },
+                              {
+                                "const": "kept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "advisory",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acted": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "needs_person": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "done": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "blocked_by": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sessions_devices",
+                            "type": "string"
+                          },
+                          {
+                            "const": "channel_memberships",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tasks",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoffs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_sent",
+                            "type": "string"
+                          },
+                          {
+                            "const": "urgent_untracked",
+                            "type": "string"
+                          },
+                          {
+                            "const": "oncall_seats",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scheduled_sends",
+                            "type": "string"
+                          },
+                          {
+                            "const": "reminders_snoozes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "drafts",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/retention": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceRetention",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "classes",
+                    "next_scan_at",
+                    "last_scan_at",
+                    "destruction_built"
+                  ],
+                  "properties": {
+                    "classes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "class",
+                          "period_years",
+                          "source",
+                          "eligible",
+                          "held",
+                          "capped",
+                          "certificate_id",
+                          "certificate_status"
+                        ],
+                        "properties": {
+                          "class": {
+                            "anyOf": [
+                              {
+                                "const": "care_related",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "period_years": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "source": {
+                            "const": "platform_default",
+                            "type": "string"
+                          },
+                          "eligible": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "held": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capped": {
+                            "type": "boolean"
+                          },
+                          "certificate_id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "certificate_status": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "next_scan_at": {
+                      "type": "string"
+                    },
+                    "last_scan_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "destruction_built": {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/governance/sessions": {
       "get": {
         "operationId": "getApiV1MessagingGovernanceSessions",
@@ -190136,6 +191239,16 @@
                           "type": "string"
                         },
                         "data": {},
+                        "signedByDisplayName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "verbalOrder": {
                           "anyOf": [
                             {
@@ -192706,6 +193819,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -193714,6 +194837,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -194481,6 +195614,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -195734,6 +196877,16 @@
                               "type": "string"
                             },
                             "data": {},
+                            "signedByDisplayName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "verbalOrder": {
                               "anyOf": [
                                 {
@@ -199005,6 +200158,103 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}/care-team-staff": {
+      "get": {
+        "operationId": "getApiV1OrgsByIdCareteamstaff",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "staff"
+                  ],
+                  "properties": {
+                    "staff": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "membershipId",
+                          "displayName",
+                          "roleLabels"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "roleLabels": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -202879,6 +204129,7 @@
                         "required": [
                           "id",
                           "clinicianUserId",
+                          "displayName",
                           "role",
                           "assignedAt",
                           "unassignedAt",
@@ -202890,6 +204141,16 @@
                           },
                           "clinicianUserId": {
                             "type": "string"
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "role": {
                             "type": "string"
@@ -232035,6 +233296,26 @@
                               }
                             ]
                           },
+                          "assignedToUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assignedToDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "receivedAt": {
                             "type": "string"
                           }
@@ -233152,6 +234433,16 @@
                               }
                             ]
                           },
+                          "authorDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "content": {
                             "type": "string"
                           },
@@ -233223,6 +234514,16 @@
                       "anyOf": [
                         {
                           "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "authorDisplayName": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {

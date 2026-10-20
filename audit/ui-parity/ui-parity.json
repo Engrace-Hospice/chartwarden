@@ -2287,6 +2287,22 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.offboarding",
+      "path": "/messaging/governance/offboarding/:userId",
+      "permission": "messaging.offboarding.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.retention",
+      "path": "/messaging/governance/retention",
+      "permission": "messaging.retention.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"

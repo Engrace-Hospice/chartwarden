@@ -43,6 +43,8 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.oncall.read",
         "messaging.oncall.send",
         "messaging.sessions.manage",
+        "messaging.offboarding.manage",
+        "messaging.retention.manage",
         "alert.inbox.self",
       ].sort(),
     );
@@ -73,10 +75,20 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.oncall.read",
       "messaging.oncall.send",
       "messaging.sessions.manage",
+      "messaging.offboarding.manage",
+      "messaging.retention.manage",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");
     }
+  });
+
+  it("the retention key is compliance-category on message_retention", () => {
+    expect(M36_CONTRIBUTED_PERMISSIONS["messaging.retention.manage"]).toMatchObject({
+      resource: "message_retention",
+      action: "manage",
+      category: "compliance",
+    });
   });
 
   it("the admin key is platform-category; alert-rule edits are admin", () => {

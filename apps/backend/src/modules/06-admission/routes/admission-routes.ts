@@ -10,6 +10,7 @@
 // bypass the per-reason policy by changing the path. §4.6: the four role-gated signer/override
 // predicates M6 owns are wired via `requireAbac` (routes 31/32/40/46); the scope + signer-identity
 // predicates resolve through M6's registered resolvers (see abac-predicates.ts).
+
 import {
   INTAKE_ROLE_KEYS,
   hasAdmittingClinicianRole,
@@ -23,6 +24,7 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
+import { soleSiteOf } from "../actor-site";
 import {
   type DischargeDetailBodyIssue,
   checkPlaceOfDeathBody,
@@ -523,7 +525,13 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralPatientCreateSchema, request.body);
-      return service.createReferralPatient(organizationId, idOf(request), body.ifVersion, userId);
+      return service.createReferralPatient(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+        soleSiteOf(request.context) ?? undefined,
+      );
     },
   );
 

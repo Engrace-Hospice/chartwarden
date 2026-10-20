@@ -20,11 +20,12 @@
  * admitted patients have a SIGNED care-plan version (M14 packet-build refuses to fabricate one). Coordinator
  * at both = Ada (admin), the persona operating the UI.
  *
- * Packet build. `POST .../packets/build` only flips the meeting to `packets_building`; the packets themselves
- * are inserted by the `idg.packets-cron` handler (`jobs/packet-build.ts`, only for meetings starting within
- * T-24h). The DEPLOYED cron is a no-op on this stack (its active-org enumerator is bound to the tenant pool,
- * so RLS hides every org — see `run-idg-packet-build.ts`), so this script runs that same handler once via
- * `db:idg:packet-build` instead, then polls.
+ * Packet build. `POST .../packets/build` flips the meeting to `packets_building` and enqueues an `on-demand`
+ * job on `idg.packets-cron` (only when a worker + Redis are running; the seed's API stack may have neither); the
+ * packets themselves are inserted by that job or by the hourly `idg.packets-cron` handler (`jobs/packet-build.ts`,
+ * only for meetings starting within T-24h). The deployed worker's active-org enumerator is now bound to the platform pool (index.ts
+ * `m14ActiveOrgs`), but a local seed stack may run no worker at all, so this script still runs that same handler
+ * once via `db:idg:packet-build`, then polls (the older "cron is a no-op" note in `run-idg-packet-build.ts` is stale).
  *
  * Gaps deliberately NOT faked:
  *   - Adjourn needs FRESH STEP-UP (a passkey/TOTP ceremony); there is no dev bypass, so no meeting is

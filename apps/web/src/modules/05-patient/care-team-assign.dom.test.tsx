@@ -24,6 +24,10 @@ const session: Session = {
 };
 
 let posts: { path: string; body: unknown }[] = [];
+let gets: string[] = [];
+// Per-test knobs: the assignments the care-team read returns and whether the staff lookup fails.
+let careTeamAssignments: Record<string, unknown>[] = [];
+let staffLookupStatus = 200;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -46,18 +50,21 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     }
     return json({ id: "asg-1" }, 201);
   }
+  gets.push(url.pathname);
   if (url.pathname === `/api/v1/patients/${PATIENT}/care-team`) {
-    return json({ assignments: [], caregivers: [], emergencyContacts: [] });
+    return json({ assignments: careTeamAssignments, caregivers: [], emergencyContacts: [] });
   }
-  if (url.pathname === `/api/v1/orgs/${ORG}/members`) {
+  if (url.pathname === `/api/v1/orgs/${ORG}/care-team-staff`) {
+    if (staffLookupStatus !== 200) {
+      return json({ error: { code: "FORBIDDEN", message: "no" } }, staffLookupStatus);
+    }
     return json({
-      members: [
+      staff: [
         {
           membershipId: RN_MEMBERSHIP,
           userId: RN_USER,
           displayName: "Nora Visit, RN",
-          email: "nora@example.test",
-          status: "active",
+          roleLabels: ["Registered Nurse"],
         },
       ],
     });
@@ -65,10 +72,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return json({ error: { code: "NOT_FOUND", message: "not found" } }, 404);
 }
 
-function mount() {
+function mount(as: Session = session) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <SessionProvider session={session}>
+      <SessionProvider session={as}>
         <ToastProvider>
           <MemoryRouter>
             <Routes>
@@ -116,8 +123,23 @@ async function pickClinicianAndRole(roleName: string) {
   fireEvent.click(screen.getByRole("button", { name: "Assign clinician" }));
 }
 
+const assignment = (over: Record<string, unknown>) => ({
+  id: "asg-1",
+  patientId: PATIENT,
+  clinicianUserId: RN_USER,
+  role: "primary_rn",
+  assignedAt: "2026-10-01",
+  unassignedAt: null,
+  reason: null,
+  current: true,
+  ...over,
+});
+
 beforeEach(() => {
   posts = [];
+  gets = [];
+  careTeamAssignments = [];
+  staffLookupStatus = 200;
 });
 
 describe("Assign care team member", () => {
@@ -149,5 +171,105 @@ describe("Assign care team member", () => {
       path: `/api/v1/messaging/patients/${PATIENT}/care-team-channel`,
       body: null,
     });
+  });
+
+  it("loads names from the care-team response and never calls the staff lookup on load", async () => {
+    careTeamAssignments = [assignment({ displayName: "Nora Visit, RN" })];
+    mount();
+    expect((await screen.findAllByText("Nora Visit, RN")).length).toBeGreaterThan(0);
+    expect(gets).not.toContain(`/api/v1/orgs/${ORG}/care-team-staff`);
+    expect(gets).not.toContain(`/api/v1/orgs/${ORG}/members`);
+  });
+
+  it("a read-only viewer without patient.assign sees names and triggers no 403 lookup", async () => {
+    careTeamAssignments = [assignment({ displayName: "Nora Visit, RN" })];
+    staffLookupStatus = 403;
+    mount({ ...session, permissions: ["patient.read"] });
+    expect((await screen.findAllByText("Nora Visit, RN")).length).toBeGreaterThan(0);
+    expect(gets).not.toContain(`/api/v1/orgs/${ORG}/care-team-staff`);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a neutral label, not a uuid prefix, when the response carries no name", async () => {
+    careTeamAssignments = [
+      assignment({ clinicianUserId: "dddddddd-4444-4444-8444-dddddddddddd", displayName: null }),
+    ];
+    mount();
+    expect((await screen.findAllByText("Staff member")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/dddddddd/)).toBeNull();
+  });
+
+  it("tells the assigner when the staff lookup is forbidden, instead of a generic reload hint", async () => {
+    staffLookupStatus = 403;
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Assign care team member" }));
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(await screen.findByText("You don't have permission to look up staff.")).toBeTruthy();
+    expect(screen.queryByText(/Reload to try again/)).toBeNull();
+  });
+
+  it("explains the lookup is by name and capped, with role labels to tell duplicates apart", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Assign care team member" }));
+    expect(screen.getByText(/Search by name\. Up to 25 shown\./)).toBeTruthy();
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(await screen.findByRole("option", { name: /Registered Nurse/ })).toBeTruthy();
+  });
+
+  it("does not list an admitting_staff access grant as a care-team member", async () => {
+    careTeamAssignments = [
+      assignment({ id: "asg-2", role: "admitting_staff", clinicianUserId: RN_USER }),
+    ];
+    mount();
+    await screen.findByRole("button", { name: "Assign care team member" });
+    expect(screen.queryByText("Admitting staff")).toBeNull();
+    expect(screen.getByText("No care team members assigned yet")).toBeTruthy();
+  });
+
+  it("ignores a slow care-team response for a patient the tab has since left", async () => {
+    const other = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+    let releaseFirst: () => void = () => undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const slowFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(String(input), init);
+      const url = new URL(req.url, "http://localhost");
+      if (url.pathname === `/api/v1/patients/${PATIENT}/care-team`) {
+        await firstGate;
+        return json({
+          assignments: [assignment({ displayName: "Stale Person" })],
+          caregivers: [],
+          emergencyContacts: [],
+        });
+      }
+      if (url.pathname === `/api/v1/patients/${other}/care-team`) {
+        return json({
+          assignments: [assignment({ id: "asg-9", displayName: "Fresh Person" })],
+          caregivers: [],
+          emergencyContacts: [],
+        });
+      }
+      return stubFetch(input, init);
+    };
+    const client = createApiClient({ baseUrl: "http://localhost", fetch: slowFetch });
+    const tree = (patientId: string) => (
+      <ApiClientProvider client={client}>
+        <SessionProvider session={session}>
+          <ToastProvider>
+            <MemoryRouter>
+              <CareTeamTab patientId={patientId} organizationId={ORG} />
+            </MemoryRouter>
+          </ToastProvider>
+        </SessionProvider>
+      </ApiClientProvider>
+    );
+    const view = render(tree(PATIENT));
+    view.rerender(tree(other));
+    expect((await screen.findAllByText("Fresh Person")).length).toBeGreaterThan(0);
+    releaseFirst();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Stale Person")).toBeNull();
+    expect(screen.getAllByText("Fresh Person").length).toBeGreaterThan(0);
   });
 });

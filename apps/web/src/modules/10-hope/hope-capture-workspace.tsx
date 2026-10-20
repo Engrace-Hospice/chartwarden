@@ -188,7 +188,7 @@ function HopeCaptureWorkspace({
       header={
         <PageHeader
           title={title}
-          breadcrumb={`Admissions / ${state.admissionId} / HOPE / ${title}`}
+          breadcrumb={`Admissions / Admission / HOPE / ${title}`}
           actions={
             <button
               type="button"

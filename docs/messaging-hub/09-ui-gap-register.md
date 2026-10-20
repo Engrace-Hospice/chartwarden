@@ -59,7 +59,7 @@
 | Admin alert-delivery view | `GET /admin/messaging/alert-deliveries` | none | new `apps/admin` 36-messaging module |
 | Attachment quarantine review/release | user-side only | none | route + screen (unscheduled; SG-05) |
 | Tenant erase | eraser + `messaging_erase_block`, no route | none | platform admin (M34), unscheduled |
-| Retention / legal hold | weekly plan-only job | none | WP 5.6 (confirm it includes a screen) |
+| Retention / legal hold | weekly plan-only job | none | WP 5.6 (built (holds, overlay, scan, routes, screen); NOT built: destruction executor, redaction of held messages, thread chip, real staff names in 'placed by' (ADR-0086, proposed)) |
 | Key custody / rotation | none | none | platform concern (M34), unscheduled |
 | DR / restore status | CLI drill + runbook | none | runbook only; screen probably not needed |
 
@@ -88,8 +88,9 @@ states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6
 | Snooze, fallback card, drill log, deep-link landing | Deep-link landing (ADR-0075) and snooze/reminders (ADR-0077) built; fallback card and drill-log screens absent (runbook only) | 4.8, 4.10, 4.11 |
 | Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
 | Device/session manager | Built (ADR-0083, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
-| Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 |
-| Export approval, break-glass review, offboarding workflow | Absent | 5.7–5.9 |
+| Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 (built (holds, overlay, scan, routes, screen); NOT built: destruction executor, redaction of held messages, thread chip, real staff names in 'placed by' (ADR-0086, proposed)) |
+| Export approval, break-glass review | Absent | 5.7, 5.8 |
+| Offboarding workflow | Built (ADR-0084, proposed): `/messaging/governance/offboarding/:userId`; no per-row Reassign dialog, no stored Mark complete (derived), the officer reaches it by user id (no user picker) | 5.9 |
 | Recovery rehearsal report | CLI drill only | 5.10 |
 | Smart inbox, analytics, voice, language, AI panel, partner share | Absent | 6.1–6.6 |
 | Phase 4-6 accessibility evidence (measured targets, axe, SR script) | Not on record | 10 §2.2, §6 5.4 |

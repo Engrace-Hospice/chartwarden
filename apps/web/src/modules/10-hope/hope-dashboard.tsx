@@ -28,6 +28,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import type { RfaKind } from "./hope-api";
 import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
@@ -91,6 +93,7 @@ export function HopeDashboard(): JSX.Element {
     void load();
   }, [load]);
 
+  const patientNames = usePatientNames(items.map((r) => r.patientId));
   const nowMs = Date.now();
   const tagged = useMemo(
     () => items.map((r) => ({ row: r, bucket: bucketOf(r, nowMs) })),
@@ -120,23 +123,24 @@ export function HopeDashboard(): JSX.Element {
     const visible = tagged.filter((t) => {
       const matchesBucket = !filter || t.bucket === filter;
       const matchesRfa = !rfaFilter || t.row.rfaKind === rfaFilter;
-      const matchesSearch =
-        !q ||
+      const matchesSearch = matchesAllTokens(
         [
           t.row.id,
-          t.row.patientId,
-          t.row.admissionId,
+          patientNames[t.row.patientId]?.name,
+          patientNames[t.row.patientId]?.mrn,
           t.row.rfaKind,
           t.row.status,
           t.row.windowOpensAt,
           t.row.windowClosesAt,
-        ].some((value) => value.toLowerCase().includes(q));
+        ],
+        q,
+      );
       return matchesBucket && matchesRfa && matchesSearch;
     });
     return [...visible].sort(
       (a, b) => Date.parse(a.row.windowClosesAt) - Date.parse(b.row.windowClosesAt),
     );
-  }, [filter, rfaFilter, searchQuery, tagged]);
+  }, [filter, rfaFilter, searchQuery, tagged, patientNames]);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
@@ -237,7 +241,7 @@ export function HopeDashboard(): JSX.Element {
                 <Glyph name="search" size={16} />
                 <input
                   type="search"
-                  placeholder="Search schedule, patient, admission..."
+                  placeholder="Search schedule or patient..."
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -334,10 +338,9 @@ export function HopeDashboard(): JSX.Element {
                 >
                   <colgroup>
                     <col style={{ width: "22%" }} />
+                    <col style={{ width: "18%" }} />
                     <col style={{ width: "16%" }} />
-                    <col style={{ width: "16%" }} />
-                    <col style={{ width: "13%" }} />
-                    <col style={{ width: "15%" }} />
+                    <col style={{ width: "26%" }} />
                     <col style={{ width: "18%" }} />
                   </colgroup>
                   <thead>
@@ -346,7 +349,6 @@ export function HopeDashboard(): JSX.Element {
                       <th>Window closes</th>
                       <th>State</th>
                       <th>Patient</th>
-                      <th>Admission</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -382,8 +384,16 @@ export function HopeDashboard(): JSX.Element {
                             tone={BUCKET_TONE[bucket] ?? "neutral"}
                           />
                         </td>
-                        <td style={monoMutedStyle}>{row.patientId.slice(0, 8)}</td>
-                        <td style={monoMutedStyle}>{row.admissionId.slice(0, 8)}</td>
+                        <td>
+                          <div style={primaryCellStyle}>
+                            <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                              <NameLabel value={patientNameOf(patientNames, row.patientId)} />
+                            </span>
+                            {patientNames[row.patientId]?.mrn ? (
+                              <span style={monoMutedStyle}>{patientNames[row.patientId]?.mrn}</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td>
                           {row.status === "open" ? (
                             // The row itself navigates; a click on an action must not also do that.

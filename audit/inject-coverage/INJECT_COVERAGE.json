@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1673,
-    "coveredRoutes": 1673,
-    "directRoutesReferenced": 1563
+    "routes": 1681,
+    "coveredRoutes": 1681,
+    "directRoutesReferenced": 1566
   },
   "modules": [
     {
@@ -71,13 +71,14 @@
         "apps/backend/__tests__/audit-routes.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
+        "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m4-audit-integrity-sample.live.test.ts"
       ],
       "directRoutesReferenced": 13
     },
     {
       "module": "05-patient",
-      "routes": 44,
+      "routes": 45,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -91,13 +92,15 @@
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-care-team-staff-routes.test.ts",
+        "apps/backend/__tests__/m5-care-team-staff.live.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 44
+      "directRoutesReferenced": 45
     },
     {
       "module": "06-admission",
@@ -109,6 +112,7 @@
         "apps/backend/__tests__/admission-discharge.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
+        "apps/backend/__tests__/admission-malformed-id.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
@@ -506,7 +510,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 131,
+      "routes": 138,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -553,6 +557,7 @@
         "apps/backend/__tests__/m36-promotion-routes.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
+        "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m36-review-routes.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
         "apps/backend/__tests__/m36-role-send.live.test.ts",
@@ -572,12 +577,13 @@
         "apps/backend/__tests__/m36-unacknowledged.test.ts",
         "apps/backend/__tests__/m36-urgency.live.test.ts",
         "apps/backend/__tests__/m36-urgent-routes.test.ts",
+        "apps/backend/__tests__/m36-workforce-offboarding.live.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 131
+      "directRoutesReferenced": 133
     },
     {
       "module": "37-ipu",

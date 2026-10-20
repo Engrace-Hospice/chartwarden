@@ -63,7 +63,7 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     moduleOwner: "m36",
     defaultRetentionClass: "operational",
     description:
-      "A weekly message retention scan completed per tenant (runId, candidates, toDestroy, skippedLegalHold). Counts only; the scan plans and never deletes, and a legal-held message is withheld from the plan.",
+      "A weekly message retention scan completed per tenant (runId, candidates, toDestroy, skippedLegalHold, eligibleByClass, heldByClass, capped, heldByHold, materialised, certificates). Ids and counts only; the scan plans and never deletes, a legal-held message is withheld from the plan, and per-class pending M4 certificates are opened.",
     denylistCategories: [],
     isPartTwoEligible: false,
   },
@@ -136,6 +136,24 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     defaultRetentionClass: "compliance",
     description:
       "A security officer listed another user's sessions in the organisation (resource = the target user; actor, count). Ids and a count only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.offboarding.viewed", // WP 5.9 (ADR-0084) - a security officer previewed a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer previewed what is left to offboard for a departed user (resource = the target user; actor, per-item state and counts, complete). Ids, fixed keys and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.offboarding.executed", // WP 5.9 (ADR-0084) - a security officer ran a departed user's offboarding
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A security officer ran the offboarding of a departed user (resource = the target user; actor, per-item state, count and acted, complete). Re-runs write a row too (acted 0). Ids, fixed keys and counts only: never a message, a name or a patient.",
     denylistCategories: [],
     isPartTwoEligible: false,
   },

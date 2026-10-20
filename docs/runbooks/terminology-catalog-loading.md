@@ -6,7 +6,7 @@ direct database path (`wardenx_app` cannot write a canonical table, and the load
 `terminology_loader_*` SECURITY DEFINER functions, migration 0364).
 
 Why this exists: search pickers (`CodeSearchInput`) call `GET /api/v1/terminology/{system}/search`, which can only
-return what is in `concept_<system>`. On a fresh environment only ICD-10-CM is loaded; the rest need an operator.
+return what is in `concept_<system>`. On a fresh environment only RxNorm and a small ICD-10-CM / LOINC starter subset (`bun run db:seed:terminology`, part of `db:seed:all`) are present; the full ICD-10-CM release is `bun run db:load:icd10cm` and the rest need an operator.
 Decision record: [`docs/history/m38-catalog-loading-and-search.md`](../history/m38-catalog-loading-and-search.md).
 
 ## How data gets in (the only path)

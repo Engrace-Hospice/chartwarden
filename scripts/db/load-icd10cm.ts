@@ -12,6 +12,10 @@
  * Codes billable in FY2026 but not in FY2027 get a `deprecation_mapping` to their FY2027 successors
  * (e.g. I42.0 → I42.00/I42.01/I42.09), so a stale code on an old fax maps forward instead of just failing.
  *
+ * STARTER SUBSET. `db:seed:terminology` seeds ~16 ICD-10-CM codes under these same FY2026/FY2027 version ids
+ * (checksum `seed-local-subset`). The checksum differs from the release's, so this loader deletes that
+ * subset and loads the full set in place — no duplicate codes.
+ *
  * SOURCES are pinned: each file is fetched from the NCHS publication directory and its SHA-256 checked
  * before anything is parsed; a mismatch aborts. Files are cached under `.cache/terminology/icd10cm/`
  * (gitignored). Pass `--source <dir>` to use already-downloaded zips (same file names) instead.
@@ -41,6 +45,7 @@ import {
   parseOrderFile,
   parseTabular,
 } from "./lib/icd10cm-release";
+import { ICD10CM_FY2026, ICD10CM_FY2027, type Icd10cmVersion } from "./lib/icd10cm-versions";
 
 const NCHS = "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM";
 
@@ -52,13 +57,8 @@ interface ReleaseFile {
   readonly entry: string;
 }
 
-interface Release {
-  readonly version: "FY2026" | "FY2027";
-  /** Fixed ids, so a re-run is idempotent rather than accumulating versions. */
-  readonly id: string;
-  readonly releasedOn: string;
-  readonly effectiveFrom: string;
-  readonly effectiveTo: string | null;
+/** Version ids and dates live in `lib/icd10cm-versions.ts`, shared with the starter-subset seed. */
+interface Release extends Icd10cmVersion {
   readonly order: ReleaseFile;
   readonly addenda: ReleaseFile;
   readonly tabular: ReleaseFile;
@@ -66,11 +66,7 @@ interface Release {
 
 const RELEASES: readonly Release[] = [
   {
-    version: "FY2026",
-    id: "38000000-0000-4000-8000-0000000a2026",
-    releasedOn: "2025-06-10",
-    effectiveFrom: "2025-10-01",
-    effectiveTo: "2026-09-30",
+    ...ICD10CM_FY2026,
     order: {
       zip: "icd10cm-code-descriptions-2026.zip",
       url: `${NCHS}/2026/icd10cm-Code%20Descriptions-2026.zip`,
@@ -91,11 +87,7 @@ const RELEASES: readonly Release[] = [
     },
   },
   {
-    version: "FY2027",
-    id: "38000000-0000-4000-8000-0000000a2027",
-    releasedOn: "2026-06-03",
-    effectiveFrom: "2026-10-01",
-    effectiveTo: null,
+    ...ICD10CM_FY2027,
     order: {
       zip: "icd10cm-code-descriptions-2027.zip",
       url: `${NCHS}/2027/icd10cm-code-descriptions-2027.zip`,

@@ -12,10 +12,10 @@
  *     project's own live-test suite (`apps/backend/__tests__/m14-idg-write.live.test.ts`) works
  *     around this by seeding one `idg_meeting` row directly at `status:'live'`; this script does the
  *     same, then drives agenda/attendance/decisions/adjourn through the real API from that point.
- *   - M14 (2nd gap, same root cause): `POST /idg/meetings/:id/packets/build` only flips
- *     `idg_meeting.status` — it does NOT insert into `idg_patient_packet` (that table is meant to be
- *     populated by the same unregistered background worker the meeting-creation gap above already
- *     documents; see `idg-route-service-db.ts`'s own header comment on `buildPackets`). Since the
+ *   - M14 (2nd gap, same root cause): `POST /idg/meetings/:id/packets/build` flips
+ *     `idg_meeting.status` and enqueues the on-demand build; the route itself never inserts into
+ *     `idg_patient_packet` (the `idg.packets-cron` worker does, and it is not running for this seed; see
+ *     `idg-route-service-db.ts`'s own header comment on `buildPackets`). Since the
  *     "IDG History" patient-chart tab (`GET /patients/:id/idg-history`) keys ENTIRELY on a packet row
  *     existing — not on the agenda item — driving agenda/attendance/decision/adjourn through the real
  *     API (as above) is not sufficient to make a reviewed patient show up there. This script closes

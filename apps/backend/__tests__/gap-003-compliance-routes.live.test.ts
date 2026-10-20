@@ -20,12 +20,14 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleSeams } from "../src/index";
 import { mountAuditRoutes } from "../src/modules/04-audit/index";
+import { openMessageCertificate } from "../src/modules/04-audit/messaging-hold-workflow";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -281,6 +283,55 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
       });
       expect(res.statusCode).toBe(409);
       expect(res.json().error.code).toBe("HELD_RECORDS_PRESENT");
+    });
+
+    it("a messaging-only (channelIds) hold is accepted, counts no audit rows, and does not block an audit certificate", async () => {
+      await seedDisclosureEvent();
+      const create = await app.inject({
+        method: "POST",
+        url: "/api/v1/legal-holds",
+        headers: HEADERS,
+        payload: {
+          name: "Channel hold",
+          reason: "Preserve one channel for a pending inquiry",
+          criteria: { channelIds: ["44444444-4444-4444-8444-444444444444"] },
+        },
+      });
+      expect(create.statusCode).toBe(201);
+      expect(create.json().matchedRecordCount).toBe(0);
+      const certId = await seedCertificate("audit_event");
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/destruction-certificates/${certId}/approve`,
+        headers: HEADERS,
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it("openMessageCertificate is idempotent on (dataClass, rangeStart)", async () => {
+      const input = {
+        organizationId: ORG,
+        dataClass: "message.operational",
+        rangeStart: new Date("2025-01-01T00:00:00Z"),
+        rangeEnd: new Date("2025-01-31T23:59:59Z"),
+        recordCount: 4,
+      };
+      const first = await withOrgContext<DbClient, { id: string; created: boolean }>(
+        handle.db,
+        { organizationId: ORG, userId: USER },
+        (tx) => openMessageCertificate(tx, input),
+      );
+      const second = await withOrgContext<DbClient, { id: string; created: boolean }>(
+        handle.db,
+        { organizationId: ORG, userId: USER },
+        (tx) => openMessageCertificate(tx, { ...input, recordCount: 9 }),
+      );
+      expect(first.created).toBe(true);
+      expect(second).toEqual({ id: first.id, created: false });
+      const rows = await admin.query(
+        "SELECT status, record_count FROM destruction_certificate WHERE data_class='message.operational'",
+      );
+      expect(rows.rows).toEqual([{ status: "pending", record_count: 4 }]);
     });
 
     it("defers a certificate to held with a reason", async () => {

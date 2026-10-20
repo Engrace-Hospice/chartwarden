@@ -29,6 +29,12 @@ const DeviceManager = lazy(() =>
 const SessionGovernance = lazy(() =>
   import("./session-governance").then((m) => ({ default: m.SessionGovernance })),
 );
+const OffboardingWorkflow = lazy(() =>
+  import("./offboarding-workflow").then((m) => ({ default: m.OffboardingWorkflow })),
+);
+const RetentionGovernance = lazy(() =>
+  import("./retention-governance").then((m) => ({ default: m.RetentionGovernance })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -89,6 +95,23 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.sessions.manage",
       screen: SessionGovernance,
+    },
+    {
+      // WP 5.9 (ADR-0084): a departed person's offboarding checklist. Reached by user id; omitted from nav (param path).
+      id: "messaging.offboarding",
+      path: "/messaging/governance/offboarding/:userId",
+      title: "Offboarding",
+      requiredPermission: "messaging.offboarding.manage",
+      screen: OffboardingWorkflow,
+    },
+    {
+      // WP 5.6 (ADR-0086, proposed): per-class retention view and the legal-hold list (place, release). The scan is plan-only; destruction is not built.
+      id: "messaging.retention",
+      path: "/messaging/governance/retention",
+      title: "Retention and legal holds",
+      navGroup: "Admin",
+      requiredPermission: "messaging.retention.manage",
+      screen: RetentionGovernance,
     },
     {
       id: "messaging.saved-replies",

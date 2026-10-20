@@ -138,6 +138,8 @@ const OR = schema.orderRecords;
 const SO = schema.standingOrders;
 const SOI = schema.standingOrderInstances;
 const OS = schema.orderSignatures;
+const MEM = schema.memberships;
+const USR = schema.users;
 const VO = schema.verbalOrders;
 const VP = schema.orderVerbalPolicies;
 const OD = schema.orderDiscontinuations;
@@ -191,6 +193,7 @@ const DEFAULT_POLICY: VerbalPolicyView = {
 /** The joined order-record read projection (order_record + its unique verbal-order + primary signature). */
 type OrderRow = {
   id: string;
+  organizationId: string;
   patientId: string;
   admissionId: string;
   kind: string;
@@ -438,6 +441,7 @@ export function createDbOrderBackend(
     tx
       .select({
         id: OR.id,
+        organizationId: OR.organizationId,
         patientId: OR.patientId,
         admissionId: OR.admissionId,
         kind: OR.kind,
@@ -495,6 +499,27 @@ export function createDbOrderBackend(
     });
   };
 
+  /**
+   * The signer's NAME (never email) from their signature's membership id, through the in-org membership join
+   * (`user` is not RLS'd; the membership row, filtered by this tenant's RLS, is what scopes it). Null when the
+   * order is unsigned or the membership does not resolve. Filtered to the order's own organization explicitly
+   * (not RLS alone), like 06-admission's `staffDisplayNames`.
+   */
+  async function signerDisplayName(
+    tx: DbClient,
+    organizationId: string,
+    membershipId: string | null,
+  ): Promise<string | null> {
+    if (!membershipId) return null;
+    const [r] = await tx
+      .select({ name: USR.name })
+      .from(MEM)
+      .innerJoin(USR, eq(USR.id, MEM.userId))
+      .where(and(eq(MEM.organizationId, organizationId), eq(MEM.id, membershipId)))
+      .limit(1);
+    return r?.name ?? null;
+  }
+
   /** Re-read one order (post-write, RLS-scoped) as the joined view or a non-leaking 404. */
   async function readOrder(
     tx: DbClient,
@@ -509,7 +534,10 @@ export function createDbOrderBackend(
         ? "rn_case_manager"
         : null
       : null;
-    const view = toOrderDetailView(row, actor, needed);
+    const view = {
+      ...toOrderDetailView(row, actor, needed),
+      signedByDisplayName: await signerDisplayName(tx, row.organizationId, row.signedBy),
+    };
     // F-202 — the attested-recovery history, for a lab order only (nothing else can have one).
     if (row.kind !== "lab") return view;
     const attestations = await tx

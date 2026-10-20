@@ -37,7 +37,7 @@ import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session"
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
-const ATTENDING = "11111111-0000-4000-8000-000000000002"; // Marcus Delgado DO (db:seed:mdm)
+const ATTENDING = "11111111-0000-4000-8000-000000000002"; // Marcus Tillman DO (db:seed:mdm)
 const NOR_FORM_VERSION_ID = "00000000-0000-4000-8000-000000000001";
 const PATIENT_NAME = "Rosa Delgado";
 

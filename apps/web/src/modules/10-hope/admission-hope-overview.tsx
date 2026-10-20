@@ -184,7 +184,7 @@ export function AdmissionHopeOverview(): JSX.Element {
       header={
         <PageHeader
           title="HOPE"
-          breadcrumb={`Admissions / ${state.admissionId} / HOPE`}
+          breadcrumb={`Admissions / ${patient ? `${patient.firstName} ${patient.lastName}` : "Admission"} / HOPE`}
           actions={
             <button
               type="button"

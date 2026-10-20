@@ -284,6 +284,10 @@ import {
   buildAckRateLimit,
 } from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
+import {
+  M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "./bootstrap/plugins/route-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
   type RealtimeHandle,
@@ -356,8 +360,14 @@ import {
 } from "./modules/04-audit/jobs/audit-ops-workers";
 import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
+import {
+  activeLegalHolds,
+  createMessagingGovernanceHoldPort,
+  openMessageCertificate,
+} from "./modules/04-audit/messaging-hold-workflow";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
 import {
+  M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
   M5_AMENDMENT_SLA_PLATFORM_JOB_ID,
   M5_OUTBOX_EVENTS,
   M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
@@ -369,6 +379,7 @@ import {
   buildM5ExtractionWritebackConsumer,
   buildM5GeocodeAddressConsumer,
   buildM5IntakeSudPrivacyConsumer,
+  buildM5ReferralClosedConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
@@ -395,13 +406,16 @@ import {
   patientIsDeceasedForOrg,
   patientNameFragmentsPageForOrg,
   rebuildPrivacySnapshotsForOrg,
+  registerAdmittingGrantExpiryWorker,
   registerAmendmentSlaWorker,
   registerPatientErasers,
   registerPatientSeams,
   registerSnapshotRebuildWorker,
   resolveGeocoder,
+  scheduleAdmittingGrantExpiry,
   scheduleAmendmentSla,
   scheduleSnapshotRebuild,
+  wireAdmittingGrantExpiryTenancy,
   wireAmendmentSlaTenancy,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
@@ -656,6 +670,7 @@ import {
   M14_ALERT_PAYLOADS,
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  M14_QUEUES,
   buildM14ActionItemAutoCloseConsumer,
   buildM14AssessmentRecordedConsumer,
   buildM14AssessmentSignificantChangeConsumer,
@@ -666,6 +681,7 @@ import {
   buildM14MedicationOrderDiscontinuedConsumer,
   buildM14OrderDiscontinuedConsumer,
   buildM14WorkerDeps,
+  createBullmqPacketBuildQueuePort,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
   mountIdgRoutes,
@@ -1505,6 +1521,7 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { countHoldOverlayMessages } from "./modules/36-messaging/jobs/retention-hold-sql";
 import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
@@ -2378,6 +2395,7 @@ export function wireModuleSeams(
   registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
   registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
+  wireAdmittingGrantExpiryTenancy(); // M5 — the admitting-grant expiry sweep's org enumeration
   wireAmendmentSlaTenancy(); // GAP-118 — M5 §4.5 amendment SLA scan's org enumeration
   registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
@@ -4356,6 +4374,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       ...context,
       reason: err instanceof Error ? err.name : "unknown",
     });
+  // M14 on-demand packet build: ONE producer on the existing `idg.packets-cron` queue (the worker that consumes it
+  // is registerM14CronWorkers); same queue + same owner as the cron, so `arch:queue-names` is unchanged.
+  const m14PacketBuildQueue = queueConnection
+    ? new Queue(M14_QUEUES.packetsBuild, { connection: queueConnection })
+    : undefined;
   const m36AckTimerQueue = queueConnection
     ? new Queue(MESSAGING_QUEUES.ackEscalationTimer, { connection: queueConnection })
     : undefined;
@@ -4689,7 +4712,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               userLimiter: auditorLimiter("auditor-enrol:user", 30),
             });
           }
-          mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
+          mountAuditRoutes(app, dbHandle.db, {
+            outbox: m4OutboxPublisher,
+            countGovernanceOverlay: countHoldOverlayMessages,
+          }); // M4 — audit-log search + GAP-003 compliance surface
           // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
           // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
           // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.
@@ -4855,6 +4881,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               },
             },
             (q) => getCaseloadProvider().caseloadPatientIds(q),
+            m14PacketBuildQueue ? createBullmqPacketBuildQueuePort(m14PacketBuildQueue) : undefined,
+            // Fail-open (availability control only, not a probing oracle): 10/min/user, 60/min/org.
+            createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+              keyPrefix: "m14-packet-build",
+            }),
           ); // GAP-128 — M14 packet/idg-history per-patient scope over M5's registered CaseloadProvider; M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           // GAP-055 follow-up (ADR-0035): the device-attestation requirement + session-device binding are behind
@@ -4928,6 +4961,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            // WP 5.6 (ADR-0086) - retention overview and legal holds: M4's hold seam (apply/release in the caller's tx) and the audit reader.
+            retentionGovernance: {
+              holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
+              auditQuery: createDbAuditQuery(dbHandle.db),
+            },
             globalSearch: {
               keys: m36SearchKeys,
               ...(m36NameExclusions ? { exclusions: m36NameExclusions } : {}),
@@ -4991,6 +5029,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
             // WP 4.12 - on-call directory (read-only); off unless the tenant flag `messaging.oncall_directory` is on.
             oncall: buildOnCallDirectoryDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 5.9 (ADR-0084) - workforce offboarding: preview and run the offboarding of a departed user. Always on (a security control).
+            // It calls the sweeps the deactivation event already runs, the ADR-0078 supervisor reassign and the ADR-0083 session revoke.
+            ...(m36Ack && m36Tasks && m36Handoffs
+              ? {
+                  offboarding: {
+                    ack: m36Ack.service,
+                    attention: {
+                      alerts: getSeam("AlertEmitter") as AlertEmitter,
+                      opsNotice: (notice) => m36AckOpsNotice(notice),
+                    },
+                    endMemberships: (orgId: string, userId: string) =>
+                      endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+                    reassignTasks: m36Tasks.reassignForLeaver,
+                    resolveHandoffs: m36Handoffs.reassignForLeaver,
+                    warn: (event: string, context: Record<string, string>) =>
+                      app.log.warn(context, event),
+                  },
+                }
+              : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5009,10 +5066,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
               provisionJobs: m34PlatformEnqueue.provisionJobs,
-              // Any active hold (org-wide or patient-scoped) blocks destroying the tenant's key.
+              // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
               legalHoldClear: async (organizationId) => {
                 const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
-                return !scope.orgWide && scope.patientIds.size === 0;
+                return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
               },
               ...(m34ProvisionGateway
                 ? { invitationDelivery: m34ProvisionGateway.invitation }
@@ -6264,6 +6321,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       { ...context, reason: err instanceof Error ? err.name : "unknown" },
       "M36 ack escalation request failed",
     );
+  if (m14PacketBuildQueue) app.addHook("onClose", () => m14PacketBuildQueue.close());
   if (m36AckTimerQueue) {
     app.addHook("onClose", async () => {
       await m36AckTimerQueue.close();
@@ -9214,8 +9272,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         connection: queueConnection,
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
-        holdScopeForOrg: (organizationId) =>
-          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+        messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
         activeOrgs: m36IntegrityOrgs,
         onError: (context, err) => app.log.error({ ...context, err }, "M36 integrity job error"),
       });
@@ -9533,11 +9590,33 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         reason: "M5 §4.5 amendment SLA scan fan-out",
       }),
     });
-    attachDlqAlertsToAll([m5SnapshotRebuildWorker, m5AmendmentSlaWorker], "m5");
+    // Backstop: end `admitting_staff` access grants still open after 14 days (the event hooks are primary).
+    const m5AdmittingGrantExpiryWorker = registerAdmittingGrantExpiryWorker(queueConnection, {
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M5_ADMITTING_GRANT_EXPIRY_PLATFORM_JOB_ID,
+        reason: "M5 admitting-grant expiry sweep fan-out",
+      }),
+    });
+    attachDlqAlertsToAll(
+      [m5SnapshotRebuildWorker, m5AmendmentSlaWorker, m5AdmittingGrantExpiryWorker],
+      "m5",
+    );
     app.addHook("onClose", async () => {
       await m5SnapshotRebuildWorker.close();
       await m5AmendmentSlaWorker.close();
+      await m5AdmittingGrantExpiryWorker.close();
     });
+    try {
+      const m5AdmittingGrantExpiryQueue = await scheduleAdmittingGrantExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m5AdmittingGrantExpiryQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M5 admitting-grant expiry schedule registration failed");
+    }
     try {
       const m5AmendmentSlaQueue = await scheduleAmendmentSla(queueConnection);
       app.addHook("onClose", async () => {
@@ -10878,6 +10957,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // §2.4.1 — a LIVE discharge (revocation, transfer out, moved, no longer terminal, for cause,
           // other) moves the chart `active/on_hold → discharged`; a death is the death cascade's.
           buildM5AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // The creator's `admitting_staff` access grant ends when its referral is declined / duplicate / withdrawn.
+          buildM5ReferralClosedConsumer({ db: dbHandle.db }),
           // GAP-118 — M5's own `geocode_address` job as the consumer of `m5.patient.address_changed`. The vendor
           // is NOT bound (a geocode sends a patient's home address to a third party: no vendor / BAA / key exists),
           // so `resolveGeocoder` returns the fail-closed port unless GEOCODER_VENDOR + GEOCODER_API_KEY +

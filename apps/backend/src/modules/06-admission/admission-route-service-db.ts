@@ -11,10 +11,12 @@
 // executes the §2.5 declarative effects (windows open/close, LOC + election-period end cascades), and
 // emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
+
 import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
+  ConflictError,
   type PatientAdmissionClearance,
   type PatientAdmissionClearanceReader,
   type PatientIntakeResolver,
@@ -45,6 +47,7 @@ import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reade
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
+import type { ActorSite } from "./actor-site";
 import { createDocumentReaderEvidenceValidator } from "./admission-document-validator";
 import {
   type AdmissionEvidenceDocumentValidator,
@@ -125,6 +128,7 @@ import {
   resolvePeriodF2fWindowStart,
   startRecertPeriodInTx,
 } from "./recert-period-activation";
+import { referralPatientFields } from "./referral-patient-fields";
 import {
   type RenderBuildCtx,
   type RenderSourcesPort,
@@ -343,6 +347,8 @@ const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
 const RA = schema.referralActivities;
 const RN = schema.referralNotes;
+const MEM = schema.memberships;
+const USR = schema.users;
 
 /**
  * F-223 — the ONE place a PENDING election-period shell is opened: next `sequence_number`, the §418.21(a)
@@ -492,6 +498,26 @@ function referralMedicaidNumber(raw: string | undefined): string | null {
   return id;
 }
 
+/**
+ * Display names (name only — never email) for staff user ids, through the IN-ORG membership join: `user` is not
+ * RLS'd, so membership is what scopes the lookup to this tenant. Suspended members are included so an earlier
+ * assignment still resolves; a user with no membership here is simply absent (the client shows "Staff member").
+ */
+async function staffDisplayNames(
+  tx: DbClient,
+  organizationId: string,
+  userIds: readonly (string | null)[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(userIds.filter((u): u is string => !!u))];
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ userId: MEM.userId, name: USR.name })
+    .from(MEM)
+    .innerJoin(USR, eq(USR.id, MEM.userId))
+    .where(and(eq(MEM.organizationId, organizationId), inArray(MEM.userId, ids)));
+  return new Map(rows.flatMap((r): [string, string][] => (r.name ? [[r.userId, r.name]] : [])));
+}
+
 function toReferralReadView(
   r: {
     id: string;
@@ -522,6 +548,7 @@ function toReferralReadView(
     rejectionReason: string | null;
   },
   qualificationBlockers: readonly { code: string; message: string }[],
+  assigneeNames: ReadonlyMap<string, string> = new Map(),
 ): ReferralReadView {
   return {
     id: r.id,
@@ -544,6 +571,9 @@ function toReferralReadView(
     externalReferralId: r.externalReferralId,
     priority: r.priority,
     assignedToUserId: r.assignedToUserId,
+    assignedToDisplayName: r.assignedToUserId
+      ? (assigneeNames.get(r.assignedToUserId) ?? null)
+      : null,
     receivedAt: r.receivedAt.toISOString(),
     reviewedAt: r.reviewedAt?.toISOString() ?? null,
     qualifiedAt: r.qualifiedAt?.toISOString() ?? null,
@@ -556,6 +586,11 @@ function toReferralReadView(
 }
 
 const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
+/** Create-patient hit `patient_identifier_mbi_unique`: says nothing about WHO the existing patient is. */
+const duplicatePatientMbi = (): ConflictError =>
+  new ConflictError(
+    "A patient with this Medicare number already exists in your organization. This may be a possible duplicate patient; review the referral and match the existing patient instead of creating a new one.",
+  );
 
 /**
  * §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). The two 42 CFR
@@ -2006,7 +2041,13 @@ export function createDbAdmissionRouteService(
           .orderBy(desc(REF.receivedAt), desc(REF.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows.slice(0, limit).map((r) =>
+        const pageRows = rows.slice(0, limit);
+        const assigneeNames = await staffDisplayNames(
+          tx,
+          organizationId,
+          pageRows.map((r) => r.assignedToUserId),
+        );
+        const items = pageRows.map((r) =>
           toReferralReadView(
             r,
             qualificationBlockers({
@@ -2023,6 +2064,7 @@ export function createDbAdmissionRouteService(
               referrerOrganization: r.referrerOrganization,
               externalReferralId: r.externalReferralId,
             }),
+            assigneeNames,
           ),
         );
         return {
@@ -2034,6 +2076,9 @@ export function createDbAdmissionRouteService(
     async getReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx.select(referralProjection).from(REF).where(eq(REF.id, id)).limit(1);
+        const assigneeNames = await staffDisplayNames(tx, organizationId, [
+          r?.assignedToUserId ?? null,
+        ]);
         return r
           ? toReferralReadView(
               r,
@@ -2051,6 +2096,7 @@ export function createDbAdmissionRouteService(
                 referrerOrganization: r.referrerOrganization,
                 externalReferralId: r.externalReferralId,
               }),
+              assigneeNames,
             )
           : null;
       });
@@ -2858,7 +2904,11 @@ export function createDbAdmissionRouteService(
           payload:
             outcome === "eligible"
               ? { referralId: id, outcome }
-              : { referralId: id, reason: "ineligible" },
+              : {
+                  referralId: id,
+                  reason: "ineligible",
+                  ...(await referralPatientFields(tx, id, cur.patientId)),
+                },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -3032,7 +3082,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
+    async createReferralPatient(organizationId, id, ifVersion, actorUserId, actorSite) {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -3049,13 +3099,28 @@ export function createDbAdmissionRouteService(
             ],
           );
         }
-        const patient = await patientResolver().createPatientFromIntake({
-          organizationId,
-          patientNameAtReceipt: cur.patientNameAtReceipt,
-          patientDobAtReceipt: cur.patientDobAtReceipt,
-          medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
-          administrativeSex: cur.sexAssignedAtBirth ?? "U",
-        });
+        // The actor who creates the patient is put on its caseload (M5, same transaction as the patient
+        // insert; the referral update below is a separate outer transaction, so a failure there leaves an
+        // orphan patient and a retry gets the 409 duplicate message against it) so they can open the chart
+        // and admission they just made. A duplicate MBI in this org is a conflict, never a 500; the
+        // raw error carries bound parameters (PHI) and is neither logged nor returned.
+        const patient = await patientResolver()
+          .createPatientFromIntake({
+            organizationId,
+            patientNameAtReceipt: cur.patientNameAtReceipt,
+            patientDobAtReceipt: cur.patientDobAtReceipt,
+            medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
+            administrativeSex: cur.sexAssignedAtBirth ?? "U",
+            ...(actorUserId ? { createdByUserId: actorUserId } : {}),
+            // The creator's single default site, so a site-scoped supervisor/clinician at that site can open the
+            // admission. M5's activation consumer later overwrites it with the admission's own siting.
+            ...(actorSite
+              ? { providerEntityId: actorSite.providerEntityId, locationId: actorSite.locationId }
+              : {}),
+          })
+          .catch((err: unknown) => {
+            throw mapUniqueViolation(err, { patient_identifier_mbi_unique: duplicatePatientMbi });
+          });
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -3321,7 +3386,11 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.referral.declined",
-          payload: { referralId: id, reason },
+          payload: {
+            referralId: id,
+            reason,
+            ...(await referralPatientFields(tx, id, cur.patientId)),
+          },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -3377,10 +3446,16 @@ export function createDbAdmissionRouteService(
           .from(RN)
           .where(eq(RN.referralId, id))
           .orderBy(desc(RN.createdAt));
+        const authorNames = await staffDisplayNames(
+          tx,
+          organizationId,
+          rows.map((r) => r.authorId),
+        );
         return rows.map((r) => ({
           id: r.id,
           referralId: r.referralId,
           authorId: r.authorId ?? null,
+          authorDisplayName: r.authorId ? (authorNames.get(r.authorId) ?? null) : null,
           content: r.content,
           createdAt: r.createdAt.toISOString(),
           updatedAt: r.updatedAt.toISOString(),
@@ -3569,7 +3644,7 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.referral.duplicate",
-          payload: { referralId: id },
+          payload: { referralId: id, ...(await referralPatientFields(tx, id, cur.patientId)) },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -3581,7 +3656,9 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status === "converted")
+        // Only an open referral withdraws (the same four states the HL7 withdrawal path guards): a repeat withdraw
+        // would re-emit `m6.referral.withdrawn`, and declined / duplicate / converted referrals are already closed.
+        if (!["received", "under_review", "pending_information", "qualified"].includes(cur.status))
           throw new InvalidReferralStateError(id, cur.status, "withdraw");
         const r = firstOrThrow(
           await tx
@@ -3613,6 +3690,27 @@ export function createDbAdmissionRouteService(
             reason: reason ?? null,
           },
         );
+        // M5 ends the creator's access grant on the patient (the catalogued event had no manual emit site).
+        const [received] = await tx
+          .select({ receivedAt: REF.receivedAt })
+          .from(REF)
+          .where(eq(REF.id, id))
+          .limit(1);
+        const withdrawnAt = now();
+        await outbox.publish(tx, {
+          eventName: "m6.referral.withdrawn",
+          payload: {
+            referralId: id,
+            organizationId,
+            withdrawnVia: "manual",
+            originalReferralReceivedAt: (received?.receivedAt ?? withdrawnAt).toISOString(),
+            withdrawnAt: withdrawnAt.toISOString(),
+            ...(await referralPatientFields(tx, id, cur.patientId)),
+          },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

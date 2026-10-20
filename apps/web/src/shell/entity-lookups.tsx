@@ -7,7 +7,7 @@ import type {
   EntityLookupOption,
 } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSession } from "./session";
 
@@ -146,6 +146,40 @@ async function loadMembers(
         searchLabel: m.displayName ?? m.email ?? m.membershipId,
         description: m.email ?? m.status,
       })),
+    nextCursor: null,
+  };
+}
+
+/**
+ * Care-team staff for the assign dialog: GET /orgs/{id}/care-team-staff (patient.assign, allowlisted
+ * fields — name and role labels, no email), so a clinician who may assign but lacks `member.manage` can
+ * still pick someone. Option ids are membership ids with the user id in metadata, like loadMembers.
+ */
+class StaffLookupForbiddenError extends Error {}
+
+async function loadCareTeamStaff(
+  client: ApiClient,
+  organizationId: string,
+  input: EntityLookupLoadInput,
+): Promise<EntityLookupLoadResult> {
+  if (!organizationId) return { options: [], nextCursor: null };
+  const { data, error, response } = await client.GET("/api/v1/orgs/{id}/care-team-staff", {
+    params: {
+      path: { id: organizationId },
+      query: { ...(input.query ? { q: input.query } : {}), limit: input.limit },
+    },
+  });
+  if (error) throw response?.status === 403 ? new StaffLookupForbiddenError() : error;
+  return {
+    options: (data?.staff ?? []).map((m) => {
+      const name = m.displayName ?? "Unnamed staff member";
+      return {
+        id: m.membershipId,
+        metadata: { userId: m.userId },
+        label: optionLabel(name, m.roleLabels.join(", ") || null),
+        searchLabel: name,
+      };
+    }),
     nextCursor: null,
   };
 }
@@ -399,6 +433,41 @@ export function MembershipLookupField(props: LookupProps & { idKind?: MemberIdKi
       {...rest}
       loadOptions={loadOptions}
       placeholder={props.placeholder ?? "Search staff by name or email..."}
+    />
+  );
+}
+
+export function CareTeamStaffLookupField(props: LookupProps): JSX.Element {
+  const client = useApiClient();
+  const session = useSession();
+  const organizationId = session?.organizationId ?? "";
+  const [forbidden, setForbidden] = useState(false);
+  const loadOptions = useCallback(
+    async (input: EntityLookupLoadInput) => {
+      try {
+        const result = await loadCareTeamStaff(client, organizationId, input);
+        setForbidden(false);
+        return result;
+      } catch (err) {
+        // A 403 is a permission answer, not an outage: say so instead of the generic "Lookup unavailable".
+        if (err instanceof StaffLookupForbiddenError) {
+          setForbidden(true);
+          return { options: [], nextCursor: null };
+        }
+        throw err;
+      }
+    },
+    [client, organizationId],
+  );
+  return (
+    <EntityLookupField
+      {...props}
+      loadOptions={loadOptions}
+      // The search input already carries the browser's own clear (x); a second button doubled it.
+      clearable={false}
+      error={props.error ?? (forbidden ? "You don't have permission to look up staff." : undefined)}
+      hint={props.hint ?? "Search by name. Up to 25 shown."}
+      placeholder={props.placeholder ?? "Search staff by name..."}
     />
   );
 }

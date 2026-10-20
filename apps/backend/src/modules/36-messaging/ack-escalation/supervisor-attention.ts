@@ -13,12 +13,16 @@ export const SUPERVISOR_UNPAGED_OPS_KIND = "m36.ack.supervisor_unpaged" as const
 export const SUPERVISOR_PAGE_FAILED_OPS_KIND = "m36.ack.supervisor_page_failed" as const;
 export const UNWATCHED_OPS_KIND = "m36.ack.failed_unreachable_unwatched" as const;
 
-/** Why the supervisors are being told. `unwatched` = unreachable and still open after its deadline (G-5). */
+/**
+ * Why the supervisors are being told. `unwatched` = unreachable and still open after its deadline (G-5). `assignee_departed` = WP 5.9
+ * (ADR-0084): the person it waits on has left and offboarding found nobody eligible to take it.
+ */
 export type SupervisorAttentionReason =
   | "ladder_exhausted"
   | "route_unavailable"
   | "failed_unreachable"
-  | "unwatched";
+  | "unwatched"
+  | "assignee_departed";
 
 export const SUPERVISOR_ATTENTION_TEXT: Readonly<Record<SupervisorAttentionReason, string>> = {
   ladder_exhausted:
@@ -29,6 +33,8 @@ export const SUPERVISOR_ATTENTION_TEXT: Readonly<Record<SupervisorAttentionReaso
     "A clinical message could not be delivered to anyone and nobody is known to have received it; it needs a supervisor",
   unwatched:
     "A clinical message that could not be delivered is still waiting and past its deadline; it needs a supervisor",
+  assignee_departed:
+    "A clinical message is waiting on a person who has left and nobody eligible could take it; it needs a supervisor",
 };
 
 /** Shape of `buildPlatformOpsNoticeSink`'s notice, restated so this module does not import bootstrap internals. */

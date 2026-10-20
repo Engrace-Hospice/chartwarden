@@ -45,6 +45,7 @@ import {
   ensureRevocation,
 } from "./discharge";
 import { asAnyone } from "./http";
+import { COP27_NAMES } from "./names";
 import {
   type DemoPatientSpec,
   ensureDirectPatient,
@@ -72,17 +73,11 @@ const OTHER_HOSPICE = "Blue Ridge Demo Hospice (fictional)";
 const OUTBOX_POLL_MS = 2_000;
 const OUTBOX_POLL_ATTEMPTS = 90;
 
-const spec = (
-  n: string,
-  firstName: string,
-  dob: string,
-  sex: "female" | "male",
-): DemoPatientSpec => ({
-  marker: `DEMO-COP27-${n}`,
-  firstName,
-  dob,
-  sex,
-});
+const spec = (n: string, dob: string, sex: "female" | "male"): DemoPatientSpec => {
+  const [firstName, lastName] = COP27_NAMES[n] ?? [];
+  if (!firstName || !lastName) throw new Error(`no COP27 demo name for scenario ${n}`);
+  return { marker: `DEMO-COP27-${n}`, firstName, lastName, dob, sex };
+};
 
 /** An election date `daysAgo` before today, clamped to [2026-10-01, today] so the addendum is mandatory. */
 const fy27ElectionDate = (cal: SeedCalendar, daysAgo: number): string =>
@@ -216,7 +211,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "referral only (intake inbox)",
     run: ({ ctx, report, apply }) =>
       runScenario(report, "01 referral", apply, (run) =>
-        ensureReferralOnly(run, ctx, spec("01", "Rhea", "1941-04-17", "female")),
+        ensureReferralOnly(run, ctx, spec("01", "1941-04-17", "female")),
       ),
   },
   {
@@ -225,11 +220,7 @@ export const SCENARIOS: readonly Scenario[] = [
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "02 intake", apply, async (run) => {
         requireOrgSetup(ctx, run);
-        const intake = await ensureIntakePatient(
-          run,
-          ctx,
-          spec("02", "Ivy", "1938-02-11", "female"),
-        );
+        const intake = await ensureIntakePatient(run, ctx, spec("02", "1938-02-11", "female"));
         await ensureAdmission(run, ctx, {
           patient: intake.patient,
           intakeAdmissionId: intake.admissionId,
@@ -250,7 +241,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("03", "Julian", "1940-07-04", "male"),
+          spec("03", "1940-07-04", "male"),
           minDate(cal.today, "2026-07-15"),
         );
         await ensureRecertCtiSigned(run, ctx, cal, adm);
@@ -281,7 +272,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("04", "Nora", "1944-03-22", "female"),
+          spec("04", "1944-03-22", "female"),
           election,
         );
         await ensureRecertCtiSigned(run, ctx, cal, adm);
@@ -311,7 +302,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("05", "Otis", "1939-12-01", "male"),
+          spec("05", "1939-12-01", "male"),
           fy27ElectionDate(cal, 4),
         );
         await ensureRecertCtiSigned(run, ctx, cal, adm);
@@ -329,7 +320,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("06", "Paula", "1946-08-15", "female"),
+          spec("06", "1946-08-15", "female"),
           election,
         );
         await ensureRecertCtiSigned(run, ctx, cal, adm);
@@ -375,7 +366,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "active today (ordinary intake) — addendum refused by the representative",
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "07 addendum refused", apply, async (run) => {
-        const adm = await activeIntake(run, ctx, cal, spec("07", "Quinn", "1937-05-30", "male"));
+        const adm = await activeIntake(run, ctx, cal, spec("07", "1937-05-30", "male"));
         await ensureCarePlan(run, ctx, adm);
         await ensureVisits(run, ctx, cal, adm, 4);
         await ensureAddendumDraft(run, ctx, adm.id);
@@ -406,7 +397,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("08", "Rosa", "1936-10-09", "female"),
+          spec("08", "1936-10-09", "female"),
           cal.rel(-80),
           2,
         );
@@ -429,7 +420,7 @@ export const SCENARIOS: readonly Scenario[] = [
           run,
           ctx,
           cal,
-          spec("09", "Saul", "1934-01-27", "male"),
+          spec("09", "1934-01-27", "male"),
           cal.rel(-50),
           3,
         );
@@ -451,7 +442,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "live discharge (no longer terminally ill) with the physician discharge order",
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "10 live discharge", apply, async (run) => {
-        const adm = await activeIntake(run, ctx, cal, spec("10", "Tobias", "1945-06-18", "male"));
+        const adm = await activeIntake(run, ctx, cal, spec("10", "1945-06-18", "male"));
         await ensureLiveDischarge(run, ctx, cal, adm);
       }),
   },
@@ -460,7 +451,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "for-cause discharge completed by the physician cosign",
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "11 for-cause discharge", apply, async (run) => {
-        const adm = await activeIntake(run, ctx, cal, spec("11", "Uma", "1950-02-02", "female"));
+        const adm = await activeIntake(run, ctx, cal, spec("11", "1950-02-02", "female"));
         await ensureForCauseDischarge(run, ctx, cal, adm);
       }),
   },
@@ -469,7 +460,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "death discharge with place of death — the open addendum settles",
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "12 death", apply, async (run) => {
-        const adm = await activeIntake(run, ctx, cal, spec("12", "Victor", "1933-11-11", "male"));
+        const adm = await activeIntake(run, ctx, cal, spec("12", "1933-11-11", "male"));
         await ensureAddendumDraft(run, ctx, adm.id);
         await ensureDeathDischarge(run, ctx, cal, adm);
         await verifyAddendumSettled(run, ctx, adm);
@@ -480,7 +471,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "revocation — the open addendum settles",
     run: ({ ctx, cal, report, apply }) =>
       runScenario(report, "13 revocation", apply, async (run) => {
-        const adm = await activeIntake(run, ctx, cal, spec("13", "Wanda", "1948-04-04", "female"));
+        const adm = await activeIntake(run, ctx, cal, spec("13", "1948-04-04", "female"));
         await ensureAddendumDraft(run, ctx, adm.id);
         await ensureRevocation(run, ctx, cal, adm);
         await verifyAddendumSettled(run, ctx, adm);

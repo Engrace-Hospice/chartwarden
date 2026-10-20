@@ -166,6 +166,10 @@ import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/bi
 import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import {
+  type OffboardingBindingInput as _OffboardingBindingInput,
+  buildOffboardingService as _buildOffboardingService,
+} from "./offboarding/binding";
 import type { buildOnCallDirectoryDeps as _buildOnCallDirectoryDeps } from "./oncall-directory/binding";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
@@ -183,6 +187,12 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import {
+  type RetentionGovernanceDeps as _RetentionGovernanceDeps,
+  createRetentionGovernanceService as _createRetentionGovernanceService,
+} from "./governance/retention-governance-service";
+import { registerOffboardingRoutes as _registerOffboardingRoutes } from "./routes/offboarding-routes";
+import { registerRetentionGovernanceRoutes as _registerRetentionGovernanceRoutes } from "./routes/retention-governance-routes";
 import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
@@ -249,6 +259,17 @@ export function mountMessagingRoutes(
     idgDiscussions?: ReturnType<typeof _buildIdgDiscussionDeps>;
     /** WP 5.5 (ADR-0083): the device and session manager; `disconnectSession` closes a session's sockets on every api node. Always mounted. */
     sessionDevices?: Pick<_SessionDeviceBindingInput, "disconnectSession" | "warn">;
+    /**
+     * WP 5.9 (ADR-0084): workforce offboarding. The composition root supplies the sweeps the deactivation event already runs and the ack
+     * service / alert emitter of the supervisor reassign; the session revoke is the WP 5.5 service built here. Omitted => not mounted
+     * (no database or no acknowledgment binding).
+     */
+    offboarding?: Omit<_OffboardingBindingInput, "db" | "sessionDevices">;
+    /**
+     * WP 5.6 (ADR-0086, PROPOSED): retention view and legal-hold apply / release. The composition root supplies M4's hold seam and the audit
+     * reader; omitted => not mounted (no database).
+     */
+    retentionGovernance?: Omit<_RetentionGovernanceDeps, "db">;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -337,9 +358,24 @@ export function mountMessagingRoutes(
     }),
   });
   // WP 5.5 (ADR-0083) - list/revoke staff sessions (self-service and the security officer's variant). No tenant flag: a security control.
-  _registerSessionDeviceRoutes(app, {
-    service: _buildSessionDeviceService({ db, ...(opts.sessionDevices ?? {}) }),
-  });
+  const sessionDeviceService = _buildSessionDeviceService({ db, ...(opts.sessionDevices ?? {}) });
+  _registerSessionDeviceRoutes(app, { service: sessionDeviceService });
+  // WP 5.9 (ADR-0084) - preview and run the offboarding of a departed user; reuses the session revoke above. No tenant flag: a security control.
+  if (opts.offboarding) {
+    _registerOffboardingRoutes(app, {
+      service: _buildOffboardingService({
+        db,
+        sessionDevices: sessionDeviceService,
+        ...opts.offboarding,
+      }),
+    });
+  }
+  // WP 5.6 (ADR-0086) - retention overview and legal holds. No tenant flag: a compliance control.
+  if (opts.retentionGovernance) {
+    _registerRetentionGovernanceRoutes(app, {
+      service: _createRetentionGovernanceService({ db, ...opts.retentionGovernance }),
+    });
+  }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();

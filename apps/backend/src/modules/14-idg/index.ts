@@ -1,9 +1,10 @@
 // apps/backend/src/modules/14-idg — M14 (Interdisciplinary Group / IDG) backend module surface.
 //
 import type { DbClient } from "@wardenx/db";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
 import { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
+import type { PacketBuildQueuePort } from "./jobs/packet-build-queue";
 import type { IdgCaseloadResolver } from "./routes/caseload-scope";
 import type { IdgRouteEnrichmentPorts } from "./routes/idg-enrichment";
 import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
@@ -22,6 +23,10 @@ export function mountIdgRoutes(
   enrichment?: IdgRouteEnrichmentPorts,
   /** GAP-128 — the per-patient caseload resolver, bound at the composition root to M5's real `CaseloadProvider`. */
   caseload?: IdgCaseloadResolver,
+  /** On-demand packet build producer (the `idg.packets-cron` queue); unbound ⇒ the build route only flips status. */
+  packetBuildQueue?: PacketBuildQueuePort,
+  /** Per-route limiter for the build route (createRouteRateLimit at the composition root). */
+  packetBuildRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
 ): void {
   const backend = createDbIdgBackend(
     db,
@@ -30,7 +35,13 @@ export function mountIdgRoutes(
     enrichment?.siteDisplay,
   );
   _registerM14Abac({ resolver: backend });
-  _registerM14Routes(app, { service: backend, enrichment, ...(caseload ? { caseload } : {}) });
+  _registerM14Routes(app, {
+    service: backend,
+    enrichment,
+    ...(caseload ? { caseload } : {}),
+    ...(packetBuildQueue ? { packetBuildQueue } : {}),
+    ...(packetBuildRateLimit ? { packetBuildRateLimit } : {}),
+  });
 }
 
 export { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
@@ -252,6 +263,11 @@ export {
   type Idg7PacketCarePlanContext,
   type Idg7PacketPort,
   type PacketBuildWorkerDeps,
+  runOnDemandPacketBuild,
   runPacketBuildCron,
 } from "./jobs/packet-build";
+export {
+  type PacketBuildQueuePort,
+  createBullmqPacketBuildQueuePort,
+} from "./jobs/packet-build-queue";
 export { M14_PLATFORM_JOB_ID, wireM14Tenancy } from "./wiring";

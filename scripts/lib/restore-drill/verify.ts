@@ -199,7 +199,11 @@ export async function hashVerifyAll(
         {
           db: handle.db,
           cipher: createMessageBodyCipher({ kek }),
-          holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set<string>() }),
+          // hash_verify only; the retention scan (and so the hold port) is not exercised here
+          messageHolds: {
+            activeHolds: async () => [],
+            openCertificate: async () => ({ id: "", created: false }),
+          },
           sampleLimit: FULL_COVERAGE,
           randomSampleSize: FULL_COVERAGE,
         },

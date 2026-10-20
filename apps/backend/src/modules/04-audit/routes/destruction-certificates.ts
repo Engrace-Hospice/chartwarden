@@ -1,4 +1,11 @@
-import { type AuditContext, audit, decodeCursor, encodeCursor, resolveLimit } from "@wardenx/audit";
+import {
+  type AuditContext,
+  audit,
+  decodeCursor,
+  encodeCursor,
+  isMessagingOnlyCriteria,
+  resolveLimit,
+} from "@wardenx/audit";
 // apps/backend/src/modules/04-audit/routes/destruction-certificates.ts — GAP-003 the §6
 // destruction-certificate surface (M4 spec §4.2-4.3, §6, §10.5).
 //
@@ -94,7 +101,7 @@ function toCertificateView(row: typeof CERT.$inferSelect) {
  *  matching is the safe direction here — see file header). A hold with no `resourceKinds`
  *  restriction covers everything; one that lists `resourceKinds` covers `dataClass` only when it
  *  names it (mirrors `createDrizzleAuditEraserPorts.legalHoldFor`'s conservative substring match). */
-function holdCoversDataClass(
+export function holdCoversDataClass(
   criteria: LegalHoldCriteria,
   dataClass: string,
   range: { start: Date; end: Date },
@@ -111,6 +118,9 @@ function holdCoversDataClass(
       return false;
     }
   }
+  // ADR-0086 (proposed): a messaging-only hold protects `message.<class>` data and nothing else, so it must not
+  // block an audit-class certificate (it would otherwise read as "no resourceKinds => covers everything").
+  if (isMessagingOnlyCriteria(criteria) && !dataClass.startsWith("message.")) return false;
   if (!criteria.resourceKinds || criteria.resourceKinds.length === 0) return true;
   return criteria.resourceKinds.some((k) => dataClass.includes(k) || k.includes(dataClass));
 }

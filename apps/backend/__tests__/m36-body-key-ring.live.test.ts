@@ -56,6 +56,12 @@ import { runHashVerifyForOrg } from "../src/modules/36-messaging/jobs/integrity-
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { appRoleConnectionString } from "./_live-app-role";
 
+// these suites run hash_verify only; the retention scan is not exercised
+const NO_MESSAGE_HOLDS = {
+  activeHolds: async () => [],
+  openCertificate: async () => ({ id: "", created: false }),
+};
+
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
@@ -487,7 +493,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
       {
         db: handle.db,
         cipher: ringCipher,
-        holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set() }),
+        messageHolds: NO_MESSAGE_HOLDS,
         sampleLimit: 1000,
         randomSampleSize: 100,
       },
@@ -598,6 +604,47 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
       ).rows[0].n,
     ).toBe(1);
     await admin.query(`DELETE FROM message WHERE id=$1`, [m.messageId]);
+  });
+
+  it("backfill skips a message under an active legal hold (migration 1138 guard), counts it, and migrates the rest", async () => {
+    const dm = await dmOf(legacyService, ORG_A, "a1", "a2");
+    const held = await send(legacyService, ORG_A, dm.channelId, "a1", "held legacy body");
+    const free = await send(legacyService, ORG_A, dm.channelId, "a1", "free legacy body");
+    const holdId = (
+      await admin.query(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+         VALUES ($1,'wp56-backfill','{"channelIds":[]}'::jsonb,'backfill vs hold suite',$2) RETURNING id`,
+        [ORG_A, users.a1],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO legal_hold_message (organization_id, legal_hold_id, message_id) VALUES ($1,$2,$3)`,
+      [ORG_A, holdId, held.messageId],
+    );
+    const report = await backfill(ORG_A);
+    expect(report.tables.message.skippedLegalHold).toBe(1);
+    expect(report.tables.message.migrated).toBeGreaterThanOrEqual(1);
+    expect(report.complete).toBe(false);
+    expect(report.remainingLegacy.message).toBe(1);
+    const rows = await rowsOf("message", ORG_A);
+    expect(rows.find((r) => r.id === held.messageId)?.v).toBe(1);
+    expect(rows.find((r) => r.id === free.messageId)?.v).toBe(2);
+    expect(
+      (
+        await admin.query(
+          `SELECT coalesce(sum((context->>'skippedLegalHold')::int),0)::int AS n FROM audit_event
+            WHERE event_type='m36.body_backfill.batch' AND resource_id=$1`,
+          [report.runId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    await admin.query(`UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1`, [
+      holdId,
+    ]);
+    const after = await backfill(ORG_A);
+    expect(after.tables.message.skippedLegalHold).toBe(0);
+    expect(after.complete).toBe(true);
+    expect((await rowsOf("message", ORG_A)).find((r) => r.id === held.messageId)?.v).toBe(2);
   });
 
   it("rotation: a new DEK version seals new bodies, old ring bodies stay readable by their recorded version", async () => {
@@ -729,7 +776,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     const verifyDeps = {
       db: handle.db,
       cipher: ringCipher,
-      holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set<string>() }),
+      messageHolds: NO_MESSAGE_HOLDS,
       sampleLimit: 1000,
       randomSampleSize: 100,
     };

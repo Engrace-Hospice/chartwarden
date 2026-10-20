@@ -206,3 +206,25 @@ describe("Modal aria-describedby", () => {
     );
   });
 });
+
+describe("Modal scrim dismissal", () => {
+  it("closes on a scrim click by default and ignores it with dismissOnScrim={false} (Escape still closes)", async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <Modal open onClose={onClose} ariaLabel="Test dialog">
+        <button type="button">Inside</button>
+      </Modal>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    rerender(
+      <Modal open onClose={onClose} dismissOnScrim={false} ariaLabel="Test dialog">
+        <button type="button">Inside</button>
+      </Modal>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});

@@ -4,9 +4,11 @@
 // an AdmissionAbacResolver over the SAME dataset so M6's §4.6 ABAC predicates resolve a resource's
 // owner facts (patient / signer ids) without a cross-module schema import. Pure-ish: no clock except
 // the injected `now()` so version/date math is deterministic in tests.
+
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@wardenx/types";
 import { WardenXError } from "@wardenx/types";
+import type { ActorSite } from "../actor-site";
 import {
   DEFAULT_ORG_TIME_ZONE,
   computeF2fWindow,
@@ -407,6 +409,8 @@ export interface ReferralNoteView {
   readonly id: string;
   readonly referralId: string;
   readonly authorId: string | null;
+  /** Server-resolved in-org author name on reads (no email); absent when unresolved or system-authored. */
+  readonly authorDisplayName?: string | null;
   readonly content: string;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -441,6 +445,9 @@ export interface ReferralReadView extends SummaryRow {
   readonly externalReferralId: string | null;
   readonly priority: string;
   readonly assignedToUserId: string | null;
+  /** Server-resolved in-org display name of `assignedToUserId` (name only, never email); absent when unassigned
+   *  or when the membership no longer resolves — the client then shows a neutral "Staff member". */
+  readonly assignedToDisplayName?: string | null;
   readonly receivedAt: string;
   readonly reviewedAt: string | null;
   readonly qualifiedAt: string | null;
@@ -896,6 +903,8 @@ export interface AdmissionRouteService {
     id: string,
     ifVersion: number,
     actorUserId: string,
+    /** The creating actor's single default site (see `actor-site.ts`), stamped on the new patient; omit when unsited. */
+    actorSite?: ActorSite,
   ): Promise<MutationResult & { patientId: string }>;
   qualifyReferral(
     organizationId: string,
@@ -1945,8 +1954,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       rec.version += 1;
       return summary(rec);
     },
-    async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
+    async createReferralPatient(organizationId, id, ifVersion, actorUserId, actorSite) {
       void actorUserId;
+      void actorSite;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       const patientId = nextId("patient");

@@ -4,9 +4,9 @@
  * Built to be run by a human against a deployed environment that holds demo data only (including
  * production while it has no real patients). Every write goes through the same routes the web app uses, so
  * permissions, ABAC, state machines, the outbox and the audit trail all apply; the script never touches the
- * database. It is additive and idempotent: each demo patient's legal last name is its marker
- * (`DEMO-COP27-NN`), every step first looks for its own effect, and nothing that existed before is modified
- * or deleted.
+ * database. It is additive and idempotent: each demo patient has a realistic fictional name and is
+ * re-found by its marker (`DEMO-COP27-NN`, the referral's externalReferralId), every step first looks for its own effect,
+ * and nothing that existed before is modified or deleted.
  *
  * Scenarios (dates relative to today in the service location's timezone):
  *   01 referral only (intake inbox)

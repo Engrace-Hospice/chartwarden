@@ -50,6 +50,7 @@ import type {
   ProposalResourceKind,
 } from "../consumers/admission-event-applier";
 import { decideAdmissionEvent } from "../consumers/admission-event-applier";
+import { referralPatientFields } from "../referral-patient-fields";
 
 const ADM = schema.admissions;
 const EP = schema.electionPeriods;
@@ -448,7 +449,11 @@ export function createDrizzleM6ApplierGateway(
         // decision core documents). The external_message_ref merge preserves the ingest provenance
         // and adds THIS proposal's id as the durable idempotency marker.
         const [existing] = await tx
-          .select({ receivedAt: REF.receivedAt, externalMessageRef: REF.externalMessageRef })
+          .select({
+            receivedAt: REF.receivedAt,
+            externalMessageRef: REF.externalMessageRef,
+            patientId: REF.patientId,
+          })
           .from(REF)
           .where(
             and(
@@ -505,6 +510,7 @@ export function createDrizzleM6ApplierGateway(
             withdrawnVia: action.withdrawnVia,
             originalReferralReceivedAt: existing.receivedAt.toISOString(),
             withdrawnAt: at.toISOString(),
+            ...(await referralPatientFields(tx, action.referralId, existing.patientId)),
           },
           organizationId,
           aggregateKind: "referral",

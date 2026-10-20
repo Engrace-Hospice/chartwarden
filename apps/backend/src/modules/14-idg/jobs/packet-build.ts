@@ -80,7 +80,7 @@ import type {
   PacketFlaggedEventDigest,
   PacketSnapshot,
 } from "@wardenx/types";
-import { and, eq, inArray, lt, lte, ne } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, ne, sql } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
 import { readSinceLastIdgEntry } from "../consumers/since-last-idg-cache";
@@ -520,6 +520,42 @@ async function dueMeetingsForOrg(
   }));
 }
 
+/** One meeting by id for the on-demand build: the same row shape and status filter as `dueMeetingsForOrg`
+ *  but NO lookahead (the coordinator asked for it now, however far out it is). */
+async function meetingForBuild(
+  tx: DbClient,
+  organizationId: string,
+  meetingId: string,
+): Promise<DueMeeting | null> {
+  const [r] = await tx
+    .select({
+      id: MTG.id,
+      locationId: MTG.locationId,
+      status: MTG.status,
+      version: MTG.version,
+      scheduledStart: MTG.scheduledStart,
+      coordinatorMembershipId: MTG.coordinatorMembershipId,
+    })
+    .from(MTG)
+    .where(
+      and(
+        eq(MTG.id, meetingId),
+        eq(MTG.organizationId, organizationId),
+        inArray(MTG.status, ["scheduled", "packets_building"] as never),
+      ),
+    )
+    .limit(1);
+  if (!r) return null;
+  return {
+    meetingId: r.id,
+    locationId: r.locationId,
+    status: r.status as "scheduled" | "packets_building",
+    version: r.version,
+    scheduledStart: r.scheduledStart,
+    coordinatorMembershipId: r.coordinatorMembershipId,
+  };
+}
+
 /** §2.3 D9 — the platform-floor post-discharge wrap-up window, per LOCATION (`idg_recurring_policy`),
  *  never below the 7-day platform floor even if a row is mis-seeded under it. */
 async function wrapUpDaysForLocation(
@@ -800,6 +836,12 @@ async function buildOnePatientPacket(
       { organizationId, userId: "" },
       async (txRaw) => {
         const tx = txRaw as unknown as DbClient;
+        // Serialise concurrent runners (hourly cron + on-demand job, or two replicas) per (meeting, patient):
+        // the table has no unique index on the pair, so without this both would insert a row and both would
+        // request a render. The lock is released with the tx.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`idg-packet:${meetingId}:${candidate.patientId}`}, 0))`,
+        );
         const [existing] = await tx
           .select({ id: PKT.id })
           .from(PKT)
@@ -811,40 +853,28 @@ async function buildOnePatientPacket(
             ),
           )
           .limit(1);
+        // The packet row and its `render_requested` event commit in ONE tx, so a row that exists was already
+        // rendered-for: re-building would only re-publish a duplicate. A crash-resume therefore still renders
+        // every patient it never reached (no row yet), and skips the ones it did.
+        if (existing) return existing.id;
         const coverSummaryLayer1 = layer1CoverSummary(snapshot);
-        let id: string;
-        if (existing) {
-          await tx
-            .update(PKT)
-            .set({
-              builtAt: asOf,
-              sinceCursorIso,
-              builtSnapshot: snapshot,
-              disciplineViews,
-              coverSummaryLayer1,
-              updatedAt: asOf,
-            })
-            .where(eq(PKT.id, existing.id));
-          id = existing.id;
-        } else {
-          const [row] = await tx
-            .insert(PKT)
-            .values({
-              organizationId,
-              providerEntityId: candidate.providerEntityId,
-              locationId,
-              idgMeetingId: meetingId,
-              patientId: candidate.patientId,
-              admissionId: candidate.admissionId,
-              builtAt: asOf,
-              sinceCursorIso,
-              builtSnapshot: snapshot,
-              disciplineViews,
-              coverSummaryLayer1,
-            })
-            .returning({ id: PKT.id });
-          id = row!.id;
-        }
+        const [row] = await tx
+          .insert(PKT)
+          .values({
+            organizationId,
+            providerEntityId: candidate.providerEntityId,
+            locationId,
+            idgMeetingId: meetingId,
+            patientId: candidate.patientId,
+            admissionId: candidate.admissionId,
+            builtAt: asOf,
+            sinceCursorIso,
+            builtSnapshot: snapshot,
+            disciplineViews,
+            coverSummaryLayer1,
+          })
+          .returning({ id: PKT.id });
+        const id = row!.id;
         await deps.outbox.publish(tx, {
           eventName: "m14.packet.render_requested",
           payload: {
@@ -910,11 +940,21 @@ async function processDueMeeting(
         .from(MTG)
         .where(eq(MTG.id, meeting.meetingId))
         .limit(1);
-      if (!row || row.status !== "scheduled") return; // raced with another tick/the on-demand route
-      await tx
+      if (!row || row.status !== "scheduled") return; // raced with another tick/the on-demand job
+      // Conditional on status AND version: of two concurrent runners only one row is updated, and only that
+      // runner publishes, so `build_started` is never double-emitted.
+      const flipped = await tx
         .update(MTG)
         .set({ status: "packets_building", version: row.version + 1, updatedAt: now })
-        .where(eq(MTG.id, meeting.meetingId));
+        .where(
+          and(
+            eq(MTG.id, meeting.meetingId),
+            eq(MTG.status, "scheduled"),
+            eq(MTG.version, row.version),
+          ),
+        )
+        .returning({ id: MTG.id });
+      if (flipped.length === 0) return;
       await deps.outbox.publish(tx, {
         eventName: "m14.packets.build_started",
         payload: { meetingId: meeting.meetingId, includedPatientCount: candidates.length },
@@ -1028,9 +1068,10 @@ async function processDueMeeting(
           patientId: result.patientId,
           reason: result.reason,
           // NO automatic retry: the meeting still flips `packets_building → packets_ready` below (spec §2.2/§1435 —
-          // one bad patient must not hold the whole IDG meeting hostage past its T-24h window), so the next tick
-          // does NOT re-select it. Recovery is the coordinator's on-demand `POST /meetings/:id/packets/build`
-          // (idempotent on `(meeting_id, patient_id)`, spec §1215 `willRetry=false` DLQ semantics). SPEC AMBIGUITY
+          // one bad patient must not hold the whole IDG meeting hostage past its T-24h window), so neither the next
+          // tick nor the on-demand `POST /meetings/:id/packets/build` re-selects it (the machine forbids BUILD_PACKETS
+          // from `packets_ready`). Per-patient upserts are idempotent on `(meeting_id, patient_id)`, spec §1215
+          // `willRetry=false` DLQ semantics; a retry from `packets_ready` is not a supported path. SPEC AMBIGUITY
           // flagged: §1435 says "once all per-patient jobs complete" -> ready, §1197/§1215 give the per-patient
           // retry to the queue's own attempts (not modelled here); this worker builds inline, so a failure is final.
           willRetry: false,
@@ -1051,10 +1092,18 @@ async function processDueMeeting(
       .limit(1);
     if (!row || row.status !== "packets_building") return;
     transitionMeeting("packets_building", { type: "PACKETS_READY", builtPacketCount: builtCount });
-    await tx
+    const readied = await tx
       .update(MTG)
       .set({ status: "packets_ready", version: row.version + 1, updatedAt: now })
-      .where(eq(MTG.id, meeting.meetingId));
+      .where(
+        and(
+          eq(MTG.id, meeting.meetingId),
+          eq(MTG.status, "packets_building"),
+          eq(MTG.version, row.version),
+        ),
+      )
+      .returning({ id: MTG.id });
+    if (readied.length === 0) return; // a concurrent runner already flipped it and published `ready`
     await deps.outbox.publish(tx, {
       eventName: "m14.packets.ready",
       payload: {
@@ -1103,4 +1152,22 @@ export async function runPacketBuildCron(deps: PacketBuildWorkerDeps): Promise<v
         `${failures.map((f) => f.organizationId).join(", ")}`,
     );
   }
+}
+
+/** The on-demand build the coordinator's `POST /meetings/:id/packets/build` enqueues (job `on-demand` on the
+ *  `idg.packets-cron` queue): same `processDueMeeting` as the hourly cron, but for ONE meeting with no T-24h
+ *  lookahead. A meeting that is gone or no longer `scheduled`/`packets_building` (cancelled, already ready,
+ *  live) is a no-op, so a stale or replayed job can never rebuild or regress a meeting. */
+export async function runOnDemandPacketBuild(
+  deps: PacketBuildWorkerDeps,
+  args: { readonly organizationId: string; readonly meetingId: string },
+): Promise<void> {
+  const now = (deps.now ?? (() => new Date()))();
+  const meeting = await withOrgContext(
+    deps.db,
+    { organizationId: args.organizationId, userId: "" },
+    (tx) => meetingForBuild(tx as unknown as DbClient, args.organizationId, args.meetingId),
+  );
+  if (!meeting) return;
+  await processDueMeeting(deps, args.organizationId, meeting, now);
 }

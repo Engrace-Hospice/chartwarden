@@ -198,8 +198,8 @@ async function recordPrivacyFlags(patientId: string, flags: readonly string[]): 
   await db.end();
 }
 
-const HOSPICE_MD = "11111111-0000-4000-8000-000000000001"; // Eleanor Whitfield MD, NPI 1003000001 (db:seed:mdm)
-const ATTENDING = "11111111-0000-4000-8000-000000000002"; // Marcus Delgado DO, NPI 1003000002
+const HOSPICE_MD = "11111111-0000-4000-8000-000000000001"; // Samuel Harris MD (persona Dr. Sam Harris), NPI 1003000001 (db:seed:mdm)
+const ATTENDING = "11111111-0000-4000-8000-000000000002"; // Marcus Tillman DO, NPI 1003000002
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
 const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-structure
 
@@ -318,7 +318,7 @@ async function admitAndActivate(
   const ctiMd = await signer.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
     params: { path: { id: ctiId } },
     body: {
-      signingPhysicianName: "Eleanor Whitfield MD",
+      signingPhysicianName: "Samuel Harris MD",
       signingPhysicianNpi: "1003000001",
       narrative: CTI_NARRATIVE,
       ifVersion: 0,

@@ -165,9 +165,12 @@ passes. To run it end to end against a local model:
 5. **Review** in the web app at `/intake` (F-237): the queue, then the side-by-side workspace — page image
    with each value's box, per-field accept / edit / reject after a source-view check, the stage-5 vision
    result, and the 42 CFR Part 2 SUD banner (confirm / reject before completing).
-6. **ICD-10-CM** (F-238, for diagnosis coding checks): `bun run db:load:icd10cm` with `DATABASE_ADMIN_URL`
-   set — downloads the CDC/NCHS FY2026 + FY2027 releases (checksum-pinned, cached in `.cache/`) into M38.
-   Without it the intake job skips the coding checks and says so (`coding.status: icd10cm_not_loaded`).
+6. **ICD-10-CM** (F-238, for diagnosis coding checks): `db:seed:all` already seeds a small ICD-10-CM and LOINC
+   starter subset (`scripts/db/lib/terminology-starter-set.ts`) so the pickers work offline; DocLens coding checks
+   then run against that subset. `bun run db:load:icd10cm` with `DATABASE_ADMIN_URL` set — downloads the CDC/NCHS
+   FY2026 + FY2027 releases (checksum-pinned, cached in `.cache/`) into M38 and replaces the subset in place.
+   On a database with no ICD-10-CM version at all the intake job skips the coding checks and says so
+   (`coding.status: icd10cm_not_loaded`).
    The docling-worker OCRs with Tesseract by default (`DOCLING_OCR_ENGINE=easyocr` to switch back).
    A synthetic 21-page complex referral packet + answer key lives in
    `apps/backend/__tests__/fixtures/doclens-complex-packet/` (regenerate with
