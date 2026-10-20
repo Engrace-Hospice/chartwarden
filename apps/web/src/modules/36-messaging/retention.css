@@ -1,0 +1,121 @@
+/* M36 WP 5.6 - retention and legal holds: flat rows on the shared kit's tokens (no card grid, no shadows). State is a word, never colour alone. */
+.wx-retention {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-retention-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-retention-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-retention-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  align-items: start;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-retention-row:last-child {
+  border-bottom: 0;
+}
+
+.wx-retention-main,
+.wx-retention-meta {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wx-retention-title {
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-retention-count {
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+}
+
+.wx-retention-detail {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-retention-status {
+  min-height: 1.25rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-retention-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.wx-retention-error {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-retention-dialog {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-retention-dialog h2 {
+  margin: 0;
+}
+
+.wx-retention-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-retention-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* One column below tablet width; touch targets stay at least 44 px high. */
+@media (max-width: 47.99rem) {
+  .wx-retention-row {
+    grid-template-columns: 1fr;
+  }
+
+  .wx-retention-actions button,
+  .wx-retention-dialog-actions button,
+  .wx-retention-row button {
+    min-height: 2.75rem;
+  }
+}
