@@ -23,7 +23,8 @@
 //       soft-removes to `excused`, `removeActionItem` transitions to `cancelled`, and `removeAgendaItem` is a
 //       tenant-checked no-op (the append-only agenda has neither a DELETE grant nor a tombstone column);
 //   (3) `idg_patient_packet` (PE/location/patient/admission NOT NULL) is built by the §2.4 packet WORKER, not
-//       the route lifecycle — `buildPackets` only drives the meeting state + emits; the decision inclusion
+//       the route lifecycle — `buildPackets` only drives the meeting state + emits; the build route then enqueues
+//       an `on-demand` job on `idg.packets-cron` (jobs/packet-build-queue.ts) that runs the real build; the decision inclusion
 //       gate reads the packet set (authoritative) OR a patient-scoped agenda item (the Phase-1 signal);
 //   (4) decision payloads are persisted exactly as route validation accepted them; amendment diffs and
 //       packet snapshots remain structural until their dedicated authoring flows land;
@@ -1347,6 +1348,9 @@ export function createDbIdgBackend(
     async buildPackets(orgId, _userId, id): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const m = await lockMeeting(tx, id);
+        // Already building (a crashed/stuck build, or a double click): no transition (the machine allows
+        // BUILD_PACKETS only from `scheduled`), no second `build_started`; the route re-enqueues the build.
+        if (m.status === "packets_building") return toMeetingView(m);
         const pkts = await tx.select({ id: PKT.id }).from(PKT).where(eq(PKT.idgMeetingId, id));
         const n = pkts.length;
         transitionMeeting(m.status, { type: "BUILD_PACKETS", includedPatientCount: n });
@@ -1357,6 +1361,8 @@ export function createDbIdgBackend(
           .where(and(eq(MTG.id, id), eq(MTG.status, m.status), eq(MTG.version, m.version)))
           .returning({ id: MTG.id });
         if (!updated) throw staleRowError(m.version);
+        // `includedPatientCount` is the packet rows that exist at the flip (0 for a first build), not the §2.3 D9
+        // inclusion count: that needs M6 and is resolved by the worker, which does not re-emit `build_started`.
         await emit(tx, orgId, "m14.packets.build_started", "idg_meeting", id, {
           meetingId: id,
           includedPatientCount: n,

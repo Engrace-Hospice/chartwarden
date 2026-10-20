@@ -29,6 +29,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
+import { Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import IORedis from "ioredis";
 import { Client } from "pg";
@@ -64,11 +65,16 @@ import type { IdgWriteOutboxPort } from "../src/modules/14-idg/idg-route-service
 import {
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  M14_QUEUES,
+  createBullmqPacketBuildQueuePort,
+  createDbIdgBackend,
   runCarryForwardCron,
+  runOnDemandPacketBuild,
   runPacketBuildCron,
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
 import { recomputeCarryForwardCountsForMeeting } from "../src/modules/14-idg/jobs/carry-forward-count";
+import { processPacketsBuildJob } from "../src/modules/14-idg/jobs/cron-workers";
 import { idgTriageCarePlanChangesForOrg } from "../src/modules/19-oncall/index";
 import { idgQualityFlaggedEventsForOrg } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -86,6 +92,8 @@ const ROLES = [
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const ORG_D = "55555555-5555-4555-8555-555555555555"; // on-demand build test: isolated org
+const ORG_E = "66666666-6666-4666-8666-666666666666"; // concurrent-runner test: isolated org
 const ORG_C = "44444444-4444-4444-4444-444444444444"; // carry-forward tests: isolated so sibling tests' meetings/items never interfere
 const MEMBER = "33333333-3333-3333-3333-33333333aaaa"; // idg tables carry no membership FK — literal is fine
 
@@ -1464,5 +1472,144 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         ).rejects.toThrow(/idg_agenda_item_carry_forward_uq/);
       });
     });
+
+    it("on-demand: route flip -> enqueue -> worker builds a meeting 72h out (beyond the cron lookahead) to " +
+      "packets_ready with exactly one ready event", async () => {
+      await seedOrgProviderLocation(ORG_D, "org-d");
+      const patientId = await seedPatient(ORG_D, "Dana", "Lee");
+      const admissionId = await seedAdmission(ORG_D, patientId, "active", 40);
+      await seedLocPeriod(ORG_D, admissionId);
+      await seedActiveBenefitPeriod(ORG_D, admissionId, 10);
+      await seedSignedCarePlan(ORG_D, patientId, admissionId);
+      const meetingId = await seedMeeting(ORG_D, "scheduled", 72);
+      const deps = {
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_D }] },
+        redis,
+        ...m6m7Ports(),
+      };
+
+      // The hourly cron ignores a meeting 72h out: this is exactly the gap the button used to leave.
+      await runPacketBuildCron(deps);
+      expect(await meetingStatus(meetingId)).toBe("scheduled");
+
+      const connection = parseRedisUrl(REDIS_URL as string);
+      const queue = new Queue(M14_QUEUES.packetsBuild, { connection });
+      const worker = new Worker(
+        M14_QUEUES.packetsBuild,
+        (job) => processPacketsBuildJob(job, deps),
+        {
+          connection,
+        },
+      );
+      try {
+        // The route path: createDbIdgBackend over the real NOBYPASSRLS role + real catalog-validating publisher.
+        const backend = createDbIdgBackend(handle.db, outbox);
+        const view = await backend.buildPackets(ORG_D, MEMBER, meetingId);
+        expect(view.status).toBe("packets_building");
+        await createBullmqPacketBuildQueuePort(queue).enqueue({
+          organizationId: ORG_D,
+          meetingId,
+        });
+
+        const deadline = Date.now() + 30_000;
+        while ((await meetingStatus(meetingId)) !== "packets_ready" && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        expect(await meetingStatus(meetingId)).toBe("packets_ready");
+        expect(await packetFor(meetingId, patientId)).not.toBeNull();
+        const events = await eventsFor(meetingId);
+        expect(events.filter((e) => e === "m14.packets.ready")).toHaveLength(1);
+        expect(events.filter((e) => e === "m14.packets.build_started")).toHaveLength(1);
+
+        // packets_ready stays a 409 for the route (the machine forbids a rebuild).
+        await expect(backend.buildPackets(ORG_D, MEMBER, meetingId)).rejects.toMatchObject({
+          statusCode: 409,
+        });
+      } finally {
+        await worker.close();
+        await queue.close();
+      }
+    }, 60_000);
+
+    it("two concurrent runners build one packet and request one render per patient", async () => {
+      await seedOrgProviderLocation(ORG_E, "org-e");
+      const patients: string[] = [];
+      for (const [first, last] of [
+        ["Eve", "One"],
+        ["Fay", "Two"],
+      ] as const) {
+        const patientId = await seedPatient(ORG_E, first, last);
+        const admissionId = await seedAdmission(ORG_E, patientId, "active", 40);
+        await seedLocPeriod(ORG_E, admissionId);
+        await seedActiveBenefitPeriod(ORG_E, admissionId, 10);
+        await seedSignedCarePlan(ORG_E, patientId, admissionId);
+        patients.push(patientId);
+      }
+      const meetingId = await seedMeeting(ORG_E, "scheduled", 72);
+      const deps = {
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_E }] },
+        redis,
+        ...m6m7Ports(),
+      };
+      const args = { organizationId: ORG_E, meetingId };
+      await Promise.all([runOnDemandPacketBuild(deps, args), runOnDemandPacketBuild(deps, args)]);
+
+      expect(await meetingStatus(meetingId)).toBe("packets_ready");
+      for (const patientId of patients) {
+        const { rows } = await admin.query(
+          "SELECT count(*)::int AS n FROM idg_patient_packet WHERE idg_meeting_id=$1 AND patient_id=$2",
+          [meetingId, patientId],
+        );
+        expect(rows[0].n).toBe(1);
+        const { rows: renders } = await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m14.packet.render_requested' AND payload->>'meetingId'=$1 AND payload->>'patientId'=$2",
+          [meetingId, patientId],
+        );
+        expect(renders[0].n).toBe(1);
+      }
+      const events = await eventsFor(meetingId);
+      expect(events.filter((e) => e === "m14.packets.ready")).toHaveLength(1);
+      expect(events.filter((e) => e === "m14.packets.build_started")).toHaveLength(1);
+    }, 60_000);
+
+    it("a job that fails permanently does not pin its id: a re-enqueue runs again (real BullMQ)", async () => {
+      const connection = parseRedisUrl(REDIS_URL as string);
+      const queueName = `h1-retry-${randomUUID()}`;
+      const queue = new Queue(queueName, { connection });
+      let runs = 0;
+      const worker = new Worker(
+        queueName,
+        async () => {
+          runs += 1;
+          if (runs <= 2) throw new Error("boom"); // both attempts of the first job
+        },
+        { connection },
+      );
+      const job = { organizationId: ORG_D, meetingId: randomUUID() };
+      const port = createBullmqPacketBuildQueuePort(queue, { retryDelayMs: 50 });
+      const until = async (cond: () => Promise<boolean> | boolean) => {
+        const deadline = Date.now() + 15_000;
+        while (!(await cond()) && Date.now() < deadline)
+          await new Promise((r) => setTimeout(r, 50));
+        expect(await cond()).toBe(true);
+      };
+      try {
+        await port.enqueue(job);
+        const id = `build-${job.organizationId}-${job.meetingId}`;
+        await until(async () => (await (await queue.getJob(id))?.getState()) === "failed");
+        expect(runs).toBe(2);
+        await port.enqueue(job); // used to be silently ignored: the failed job still held the id
+        await until(() => runs >= 3);
+        await until(async () => (await queue.getJob(id)) === undefined);
+      } finally {
+        await worker.close();
+        await queue.obliterate({ force: true });
+        await queue.close();
+      }
+    }, 60_000);
   },
 );
