@@ -87,7 +87,7 @@ Verified in the repo today:
    rewrite of any hashed column, enforced at the retention-scan DELETE and by a BEFORE DELETE backstop trigger). A message under an
    active hold: can be redacted-masked (so the hold never forces a patient-harm exposure) but its cipher cannot be destroyed; a
    hold does not block edits inside the window (the revision chain preserves both). The full messaging hold/retention design is its own
-   ADR (plan `02` §8, before Phase 5, **earlier if the retention scan is made live**); this ADR fixes only the interaction rules
+   ADR, now drafted as [ADR-0086](ADR-0086-messaging-retention-and-legal-hold.md) (Proposed, not built); this ADR fixes only the interaction rules
    above so Phase 1 does not paint that ADR into a corner.
 10. **Integrity.** `message_revision.body_sha256` is the same plaintext-SHA-256 construct. `runHashVerify` is extended to verify
     revisions and must be **scheduled and proven** (WP 1.9); a seeded tampered revision must be detected and recorded.
