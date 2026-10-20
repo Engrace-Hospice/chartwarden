@@ -142,7 +142,10 @@ export interface ReapRunResult {
   readonly reaped: number;
   /** Rows kept because their object could not be destroyed; the next tick retries them. */
   readonly failed: number;
-  /** Retained objects NOT destroyed because their message is under an active legal hold (ADR-0086); retried once the hold is released. */
+  /**
+   * Retained objects skipped by the pre-destroy hold re-check (ADR-0086); retried once the hold is released. Rows already excluded at
+   * candidate-read time because their message is held are not counted.
+   */
   readonly skippedLegalHold: number;
 }
 
@@ -1251,8 +1254,9 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       if (!objectKey) continue;
       try {
         // A hold can land after the candidates were read: look again, in a short tx that takes the shared hold lock (a concurrent
-        // apply waits for it), immediately before the irreversible step. Residual: a hold applied between this commit and the
-        // destroy (ADR-0086 known limit (g)).
+        // apply waits for it). The lock is released at commit, before destroyObject, so a hold applied after this check can still lose
+        // the bytes: the residual window is up to the storage destroy deadline (REAP_DESTROY_DEADLINE_MS plus abort grace), accepted
+        // as ADR-0086 known limit (g).
         if (row.messageId && (await isHeldNow(orgId, row.messageId))) {
           result.skippedLegalHold += 1;
           continue;
