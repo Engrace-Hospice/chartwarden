@@ -6,8 +6,9 @@
 --     the seam is the id. The message FK is composite (organization_id, message_id) and cascades.
 --   * Backstop: BEFORE DELETE and BEFORE UPDATE OF body_cipher on `message` refuse (23001) a message with an overlay row whose hold is
 --     active, whoever runs the statement (the destruction credential, a tenant eraser, an out-of-band delete). SECURITY DEFINER owned by
---     wardenx_admin with a pinned search_path so it sees the overlay and the hold whatever RLS context the caller carries (a missing
+--     wardenx_admin with a pinned search_path (pg_catalog first) so it sees the overlay and the hold whatever RLS context the caller carries (a missing
 --     GUC must not read as "no hold"). The FK cascade from channel delete runs the per-row BEFORE DELETE trigger too, so it is covered.
+--     The hold is joined on its own organization too: an overlay row naming another tenant's hold uuid cannot make a message undeletable.
 --     Not covered, stated plainly: DROP / TRUNCATE or session_replication_role = replica by a superuser (procedural control).
 --     Consequence: editing the body of a HELD message is refused (body_cipher is rewritten on edit); the revision chain is unaffected.
 --   * Messaging-only: no audit_event row is held by this overlay (ADR-0086 D5).
@@ -55,13 +56,15 @@ CREATE TRIGGER "legal_hold_message_audit" AFTER UPDATE OR DELETE ON legal_hold_m
 CREATE OR REPLACE FUNCTION message_legal_hold_guard() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = pg_catalog, public
 AS $$
 BEGIN
   IF EXISTS (
        SELECT 1
          FROM legal_hold_message h
-         JOIN legal_hold l ON l.id = h.legal_hold_id AND l.status = 'active'
+         JOIN legal_hold l ON l.id = h.legal_hold_id
+                          AND l.organization_id = h.organization_id
+                          AND l.status = 'active'
         WHERE h.organization_id = OLD.organization_id
           AND h.message_id = OLD.id
      ) THEN

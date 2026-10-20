@@ -112,7 +112,10 @@ describe("applyLegalHoldInTx / releaseLegalHoldInTx", () => {
 
   it("release counts from the hold's own criteria, audits and publishes", async () => {
     auditMock.mockClear();
-    const { tx } = stubTx([[{ id: "h1", status: "active", criteria: { channelIds: [CH] } }], []]);
+    const { tx } = stubTx([
+      [{ id: "h1", status: "active", criteria: { channelIds: [CH] } }],
+      [{ id: "h1" }],
+    ]);
     const publish = vi.fn(async () => undefined);
     const countRestored = vi.fn(async () => 5);
     const out = await releaseLegalHoldInTx(tx, { outbox: { publish } }, CTX, {
@@ -158,6 +161,24 @@ describe("applyLegalHoldInTx / releaseLegalHoldInTx", () => {
         input,
       ),
     ).rejects.toMatchObject({ code: "ALREADY_RELEASED", statusCode: 409 });
+  });
+});
+
+describe("releaseLegalHoldInTx concurrency", () => {
+  it("the loser of a concurrent release (conditional update matches no row) gets 409 and writes no audit or outbox", async () => {
+    auditMock.mockClear();
+    const { tx } = stubTx([[{ id: "h1", status: "active", criteria: { channelIds: [CH] } }], []]);
+    const publish = vi.fn(async () => undefined);
+    await expect(
+      releaseLegalHoldInTx(tx, { outbox: { publish } }, CTX, {
+        organizationId: ORG,
+        holdId: "h1",
+        reason: "no longer required",
+        countRestored: async () => 5,
+      }),
+    ).rejects.toMatchObject({ code: "ALREADY_RELEASED", statusCode: 409 });
+    expect(auditMock).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 });
 

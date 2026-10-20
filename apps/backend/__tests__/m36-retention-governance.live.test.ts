@@ -36,22 +36,24 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
+import { M4_OUTBOX_EVENTS } from "../src/modules/04-audit/events-by-m4";
 import {
   activeLegalHolds,
   createMessagingGovernanceHoldPort,
   openMessageCertificate,
+  releaseLegalHoldInTx,
 } from "../src/modules/04-audit/messaging-hold-workflow";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retention-scan";
 import { appRoleConnectionString } from "./_live-app-role";
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M4_OUTBOX_EVENTS } from "../src/modules/04-audit/events-by-m4";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -80,9 +82,32 @@ const REASON = "Litigation hold per counsel, matter 2026-114";
 const BASE = "/api/v1/messaging/governance";
 /** The only keys a governance response may carry (the contract in packages/types/src/messaging-retention.ts). */
 const ALLOWED_KEYS = new Set([
-  "classes", "class", "period_years", "source", "eligible", "held", "capped", "certificate_id", "certificate_status",
-  "next_scan_at", "last_scan_at", "destruction_built", "holds", "id", "name", "status", "scope", "channel_ids",
-  "user_ids", "patient_ids", "org_wide", "placed_by", "placed_at", "released_at", "held_messages", "hold_id",
+  "classes",
+  "class",
+  "period_years",
+  "source",
+  "eligible",
+  "held",
+  "capped",
+  "certificate_id",
+  "certificate_status",
+  "next_scan_at",
+  "last_scan_at",
+  "destruction_built",
+  "holds",
+  "id",
+  "name",
+  "status",
+  "scope",
+  "channel_ids",
+  "user_ids",
+  "patient_ids",
+  "org_wide",
+  "placed_by",
+  "placed_at",
+  "released_at",
+  "held_messages",
+  "hold_id",
   "eligible_on_release",
 ]);
 
@@ -170,9 +195,10 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     });
     expect(res.statusCode).toBe(200);
     const sessionId = (
-      await admin.query("SELECT id FROM session WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", [
-        person.userId,
-      ])
+      await admin.query(
+        "SELECT id FROM session WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [person.userId],
+      )
     ).rows[0].id as string;
     await admin.query("UPDATE session SET active_organization_id=$1 WHERE id=$2", [org, sessionId]);
     if (stepUp) {
@@ -417,7 +443,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(dto).toMatchObject({ status: "active", held_messages: 4 });
     expect(dto.scope).toMatchObject({ channel_ids: [chA], org_wide: false });
     expect(
-      await count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [holdA]),
+      await count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [
+        holdA,
+      ]),
     ).toBe(4);
     const applied = await rows<{ context: { reason: string; matchedRecordCount: number } }>(
       "SELECT context FROM audit_event WHERE event_type='data.legal_hold_applied' AND resource_id=$1",
@@ -442,18 +470,35 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(read.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("LIST COUNT: held_messages is the materialised overlay count (one grouped query); preview keeps the exact live count", async () => {
+    const lagging = await oldMessage(chA, 0); // sent after the hold: no overlay row until the next scan
+    try {
+      const list = await gov("GET", "/legal-holds", officerLogin);
+      const entry = (list.json() as { holds: { id: string; held_messages: number }[] }).holds.find(
+        (h) => h.id === holdA,
+      );
+      expect(entry?.held_messages).toBe(4);
+      const preview = await gov("GET", `/legal-holds/${holdA}/release-preview`, officerLogin);
+      expect((preview.json() as { held_messages: number }).held_messages).toBe(5);
+    } finally {
+      await admin.query("DELETE FROM message WHERE id=$1", [lagging]);
+    }
+  });
+
   it("BACKSTOP: editing a held message is a typed 409 (not a 500) and the body is untouched", async () => {
-    const before = await rows<{ sha: string }>("SELECT body_sha256 AS sha FROM message WHERE id=$1", [
-      freshMsg,
-    ]);
+    const before = await rows<{ sha: string }>(
+      "SELECT body_sha256 AS sha FROM message WHERE id=$1",
+      [freshMsg],
+    );
     const res = await call("PATCH", `/api/v1/messaging/messages/${freshMsg}`, authorLogin, {
       body: "an attempt to rewrite a held message",
     });
     expect(res.statusCode, res.body).toBe(409);
     expect(res.json().code ?? res.json().error?.code).toBe("MESSAGE_UNDER_LEGAL_HOLD");
-    const after = await rows<{ sha: string }>("SELECT body_sha256 AS sha FROM message WHERE id=$1", [
-      freshMsg,
-    ]);
+    const after = await rows<{ sha: string }>(
+      "SELECT body_sha256 AS sha FROM message WHERE id=$1",
+      [freshMsg],
+    );
     expect(after).toEqual(before);
   });
 
@@ -465,12 +510,18 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(missing.statusCode).toBe(404);
     expect(Object.keys(foreign.json()).sort()).toEqual(Object.keys(missing.json()).sort());
     const body = { reason: REASON, confirmed_eligible_count: 0 };
-    expect((await gov("POST", `/legal-holds/${holdA}/release`, outsiderLogin, body)).statusCode).toBe(404);
-    expect((await gov("POST", `/legal-holds/${unknown}/release`, officerLogin, body)).statusCode).toBe(404);
+    expect(
+      (await gov("POST", `/legal-holds/${holdA}/release`, outsiderLogin, body)).statusCode,
+    ).toBe(404);
+    expect(
+      (await gov("POST", `/legal-holds/${unknown}/release`, officerLogin, body)).statusCode,
+    ).toBe(404);
     const theirs = await gov("GET", "/legal-holds", outsiderLogin);
     expect((theirs.json() as { holds: unknown[] }).holds).toHaveLength(0);
     expect(
-      await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [holdA]),
+      await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [
+        holdA,
+      ]),
     ).toBe(1);
   });
 
@@ -518,7 +569,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       ["bereavement", 7],
       ["operational", 1],
     ]);
-    expect(first.classes.every((c) => c.source === "platform_default" && c.eligible === null)).toBe(true);
+    expect(first.classes.every((c) => c.source === "platform_default" && c.eligible === null)).toBe(
+      true,
+    );
     expect(first.last_scan_at).toBeNull();
     expect(first.destruction_built).toBe(false);
     const next = new Date(first.next_scan_at);
@@ -569,7 +622,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(stale.statusCode).toBe(409);
     expect(stale.body).toContain("RELEASE_PREVIEW_STALE");
     expect(
-      await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [holdA]),
+      await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [
+        holdA,
+      ]),
     ).toBe(1);
     expect(
       await count(
@@ -578,11 +633,16 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       ),
     ).toBe(0);
 
-    const ok = await gov("POST", `/legal-holds/${holdA}/release`, officerLogin, {
-      reason: "Matter settled, counsel confirmed in writing",
-      confirmed_eligible_count: 3,
-    });
-    expect(ok.statusCode, ok.body).toBe(200);
+    // Two concurrent releases: one winner (200), one loser (409 ALREADY_RELEASED), exactly one audit row (asserted below).
+    const releaseOnce = () =>
+      gov("POST", `/legal-holds/${holdA}/release`, officerLogin, {
+        reason: "Matter settled, counsel confirmed in writing",
+        confirmed_eligible_count: 3,
+      });
+    const raced = await Promise.all([releaseOnce(), releaseOnce()]);
+    expect(raced.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    const ok = raced.find((r) => r.statusCode === 200) as (typeof raced)[number];
+    expect(raced.find((r) => r.statusCode === 409)?.body).toContain("ALREADY_RELEASED");
     expect(ok.json()).toMatchObject({ id: holdA, status: "released", held_messages: 0 });
     const released = await rows<{ context: { reason: string; restoredRecordCount: number } }>(
       "SELECT context FROM audit_event WHERE event_type='data.legal_hold_released' AND resource_id=$1",
@@ -613,6 +673,54 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       confirmed_eligible_count: 3,
     });
     expect(blanks.statusCode, blanks.body).toBe(422);
+  });
+
+  it("RELEASE RACE (deterministic): two transactions that both read the hold as active release it once - one winner, one audit row, a 409 for the loser", async () => {
+    const raceHold = (
+      await admin.query(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason)
+         VALUES ($1,'race','{"channelIds":[],"origin":"messaging_governance"}'::jsonb,'litigation hold race') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
+    let arrived = 0;
+    let open!: () => void;
+    const both = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    // countRestored runs after the active read and before the UPDATE: hold both transactions there, then let them race the UPDATE.
+    const release = (tag: string) =>
+      withOrgContext<DbClient, unknown>(
+        handle.db as never,
+        { organizationId: ORG, userId: author.userId },
+        (tx) =>
+          releaseLegalHoldInTx(
+            tx,
+            {},
+            { organizationId: ORG, userId: author.userId, correlationId: `race-${tag}` },
+            {
+              organizationId: ORG,
+              holdId: raceHold,
+              reason: "race release",
+              countRestored: async () => {
+                arrived += 1;
+                if (arrived === 2) open();
+                await both;
+                return 0;
+              },
+            },
+          ),
+      );
+    const settled = await Promise.allSettled([release("a"), release("b")]);
+    expect(settled.filter((s) => s.status === "fulfilled")).toHaveLength(1);
+    const loser = settled.find((s) => s.status === "rejected") as PromiseRejectedResult;
+    expect(loser.reason).toMatchObject({ code: "ALREADY_RELEASED", statusCode: 409 });
+    expect(
+      await count(
+        "SELECT count(*)::int AS n FROM audit_event WHERE event_type='data.legal_hold_released' AND resource_id=$1",
+        [raceHold],
+      ),
+    ).toBe(1);
   });
 
   it("BACKSTOP lifts with the hold: the same edit succeeds once the only covering hold is released", async () => {
@@ -652,7 +760,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     const patientHold = await m4Hold("M4 patient hold", { patientIds: [SUBJECT_A] });
     const channelHold = await m4Hold("M4 channel hold", { channelIds: [chC] });
 
-    const list = (await gov("GET", "/legal-holds", officerLogin)).json() as { holds: { id: string }[] };
+    const list = (await gov("GET", "/legal-holds", officerLogin)).json() as {
+      holds: { id: string }[];
+    };
     expect(list.holds.map((h) => h.id)).not.toContain(patientHold);
     expect(list.holds.map((h) => h.id)).not.toContain(channelHold);
     for (const id of [patientHold, channelHold]) {
@@ -664,7 +774,9 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       });
       expect(release.statusCode, release.body).toBe(404);
       expect(
-        await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [id]),
+        await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [
+          id,
+        ]),
       ).toBe(1);
     }
 
@@ -688,13 +800,16 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
         [placedId],
       ),
     ).toBe(1);
-    const listed = (await gov("GET", "/legal-holds", officerLogin)).json() as { holds: { id: string }[] };
+    const listed = (await gov("GET", "/legal-holds", officerLogin)).json() as {
+      holds: { id: string }[];
+    };
     expect(listed.holds.map((h) => h.id)).toContain(placedId);
     const preview = await gov("GET", `/legal-holds/${placedId}/release-preview`, officerLogin);
     expect(preview.statusCode, preview.body).toBe(200);
     const released = await gov("POST", `/legal-holds/${placedId}/release`, officerLogin, {
       reason: REASON,
-      confirmed_eligible_count: (preview.json() as { eligible_on_release: number }).eligible_on_release,
+      confirmed_eligible_count: (preview.json() as { eligible_on_release: number })
+        .eligible_on_release,
     });
     expect(released.statusCode, released.body).toBe(200);
   });
@@ -702,7 +817,15 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
   it("NO PII: every response carried only contract keys (no body, no name, no email)", () => {
     const stray = [...seenKeys].filter((k) => !ALLOWED_KEYS.has(k));
     expect(stray).toEqual([]);
-    for (const banned of ["body", "body_cipher", "display_name", "email", "first_name", "last_name", "patient_name"]) {
+    for (const banned of [
+      "body",
+      "body_cipher",
+      "display_name",
+      "email",
+      "first_name",
+      "last_name",
+      "patient_name",
+    ]) {
       expect(seenKeys.has(banned), banned).toBe(false);
     }
   });

@@ -28,12 +28,21 @@ export interface LegalHoldCriteriaShape {
   readonly origin?: string;
 }
 
-/** True when a hold names messaging selectors and NO audit selector (`patientIds`/`resourceKinds`): it protects
- *  messages only, so it neither covers an audit row-group nor reads as org-wide to a non-messaging reader. */
+/** `criteria.origin` of a hold placed through M36's governance apply route (mirrors MESSAGING_GOVERNANCE_HOLD_ORIGIN in
+ *  @wardenx/types, which this package cannot import; a backend test pins the two equal). */
+export const MESSAGING_GOVERNANCE_ORIGIN_MARKER = "messaging_governance";
+
+/** True when a hold protects messages only: it neither covers an audit row-group nor reads as org-wide to a non-messaging
+ *  reader (M10 HOPE retention, M34 legalHoldClear's patient scope). That is (a) messaging selectors (`channelIds`/`userIds`)
+ *  and no audit selector, or (b) a governance-marked hold with NO `patientIds` (the org-wide governance hold is stored as
+ *  `{resourceKinds:["message"], origin}`; "message" names no audit resource). A governance hold WITH `patientIds` stays
+ *  patient-scoped: it legitimately holds that patient's other records too. */
 export function isMessagingOnlyCriteria(criteria: unknown): boolean {
   const c = (criteria ?? {}) as LegalHoldCriteriaShape;
+  const noPatients = (c.patientIds?.length ?? 0) === 0;
+  if (c.origin === MESSAGING_GOVERNANCE_ORIGIN_MARKER && noPatients) return true;
   const messaging = (c.channelIds?.length ?? 0) > 0 || (c.userIds?.length ?? 0) > 0;
-  return messaging && (c.patientIds?.length ?? 0) === 0 && (c.resourceKinds?.length ?? 0) === 0;
+  return messaging && noPatients && (c.resourceKinds?.length ?? 0) === 0;
 }
 
 const toMs = (iso: string): number => Date.parse(iso);

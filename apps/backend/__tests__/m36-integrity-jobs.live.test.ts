@@ -572,6 +572,8 @@ describe.skipIf(!DB_URL)(
           { userIds: [uB] },
           { channelIds: [ids.ctH, ids.dm], dateRange: { from: ago(8, 2.5), to: ago(7.9) } },
           { resourceKinds: ["audit_event"] },
+          // the org-wide governance hold: marker + resourceKinds only, no selector => holds EVERY message (SQL and pure agree)
+          { resourceKinds: ["message"], origin: "messaging_governance" },
           {},
         ];
         for (const criteria of scopes) {

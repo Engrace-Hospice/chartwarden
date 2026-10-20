@@ -7,6 +7,8 @@
  *                  same organisation is untouched by the guard; both succeed once the M4 hold is released (the one existing UPDATE).
  *                  The tenant app role's own body_cipher rewrite (an edit) of a held message is refused the same way.
  *   4. ERASER      the M36 tenant eraser refuses cleanly (DegradedError, nothing destroyed) while a hold is active, and proceeds after release.
+ *   4b. ERASER     it also refuses for an active hold with ZERO overlay rows (the overlay can lag the live criteria).
+ *   4c. GUARD      an overlay row naming ANOTHER tenant's active hold does not make the message undeletable (org-matched join).
  *   5. PERMISSION  messaging.retention.manage is in the catalog table and granted to the three roles.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
@@ -184,6 +186,38 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     await setHoldStatus("released");
     const done = await store.destroyTenantDek(ORG_A);
     expect(done.bodiesRendered).toBe(before);
+  });
+
+  it("the tenant eraser also refuses for an active hold with no overlay rows (overlay lag), and proceeds after release", async () => {
+    await setHoldStatus("released");
+    const bare = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+         VALUES ($1, 'wp56-no-overlay', '{"resourceKinds":["message"],"origin":"messaging_governance"}'::jsonb, 'overlay not yet materialised', $2) RETURNING id`,
+        [ORG_A, author],
+      )
+    )[0].id;
+    expect(await kit.count("SELECT count(*)::int AS n FROM legal_hold_message WHERE legal_hold_id=$1", [bare])).toBe(0);
+    const store = createDrizzleMessagingEraseStore(kit.handle.db);
+    await expect(store.destroyTenantDek(ORG_A)).rejects.toBeInstanceOf(DegradedError);
+    await expect(store.deleteStructuralRows(ORG_A)).rejects.toBeInstanceOf(DegradedError);
+    await kit.one("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [bare]);
+    await expect(store.destroyTenantDek(ORG_A)).resolves.toBeDefined();
+  });
+
+  it("an overlay row naming another tenant's active hold does not make the message undeletable", async () => {
+    await setHoldStatus("released");
+    const authorB = await kit.seedUser("author-b", ORG_B);
+    const foreign = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+         VALUES ($1, 'other-tenant', '{"channelIds":[]}'::jsonb, 'another tenant hold', $2) RETURNING id`,
+        [ORG_B, authorB],
+      )
+    )[0].id;
+    const m = await mkMessage();
+    expect((await hold(m, foreign)).error).toBeNull();
+    expect((await asRole("destruction", `${DELETE} RETURNING id`, [m])).rows).toHaveLength(1);
   });
 
   it("registers messaging.retention.manage in the permission table (compliance category)", async () => {

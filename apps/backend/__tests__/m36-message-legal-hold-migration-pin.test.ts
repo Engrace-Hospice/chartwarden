@@ -59,9 +59,10 @@ describe("migration 1138 message legal hold", () => {
   });
 
   it("backstops DELETE and body_cipher UPDATE with a pinned SECURITY DEFINER guard on 23001", () => {
-    expect(sql).toMatch(/message_legal_hold_guard\(\) RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog/);
+    expect(sql).toMatch(/message_legal_hold_guard\(\) RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public/);
     expect(sql).toContain("USING ERRCODE = '23001'");
     expect(sql).toContain("l.status = 'active'");
+    expect(sql).toContain("JOIN legal_hold l ON l.id = h.legal_hold_id AND l.organization_id = h.organization_id AND l.status = 'active'");
     expect(sql).toContain("ALTER FUNCTION message_legal_hold_guard() OWNER TO wardenx_admin");
     expect(sql).toContain('BEFORE DELETE ON "message"');
     expect(sql).toContain('BEFORE UPDATE OF "body_cipher" ON "message"');

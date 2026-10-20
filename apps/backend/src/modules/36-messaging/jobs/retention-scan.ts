@@ -87,6 +87,29 @@ export async function count(tx: DbClient, where: SQL): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+/**
+ * Materialised overlay rows per hold, in ONE grouped query over `legal_hold_message` (unique index leads with legal_hold_id). Holds with
+ * no rows are absent from the map. This is the cheap list-screen count: it may lag the live criteria until the next scan.
+ */
+export async function overlayCountsByHold(
+  tx: DbClient,
+  orgId: string,
+  holdIds: readonly string[],
+): Promise<ReadonlyMap<string, number>> {
+  if (holdIds.length === 0) return new Map();
+  const rows = await rowsOf<{ legal_hold_id: string; n: number }>(
+    tx,
+    sql`SELECT legal_hold_id, count(*)::int AS n FROM legal_hold_message
+         WHERE organization_id = ${orgId}::uuid
+           AND legal_hold_id IN (${sql.join(
+             holdIds.map((i) => sql`${i}::uuid`),
+             sql`, `,
+           )})
+         GROUP BY legal_hold_id`,
+  );
+  return new Map(rows.map((r) => [r.legal_hold_id, Number(r.n)]));
+}
+
 /** Insert missing overlay rows for one hold, bounded; returns rows inserted. Org-explicit and idempotent (ON CONFLICT DO NOTHING). */
 export async function materialiseHold(
   tx: DbClient,

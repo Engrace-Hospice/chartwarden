@@ -113,11 +113,18 @@ export async function releaseLegalHoldInTx(
     .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.id, id)))
     .limit(1);
   if (!hold) throw new NotFoundError("legal_hold", id);
-  if (hold.status === "released") {
-    throw new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
-  }
+  const alreadyReleased = () =>
+    new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
+  if (hold.status === "released") throw alreadyReleased();
   const restoredRecordCount = await input.countRestored(hold.criteria as LegalHoldCriteria);
-  await tx.update(HOLD).set({ status: "released", releasedAt: new Date() }).where(eq(HOLD.id, id));
+  // Conditional update: of two concurrent releases that both read 'active', only one matches the row once the other commits,
+  // so there is one winner, one audit row and one outbox event; the loser gets the same conflict as a sequential repeat.
+  const [won] = await tx
+    .update(HOLD)
+    .set({ status: "released", releasedAt: new Date() })
+    .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.id, id), eq(HOLD.status, "active")))
+    .returning({ id: HOLD.id });
+  if (!won) throw alreadyReleased();
   await audit(tx, auditContext, {
     eventType: "data.legal_hold_released",
     resourceKind: "legal_hold",

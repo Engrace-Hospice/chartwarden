@@ -1,6 +1,10 @@
 // WP 5.6 security review: `criteria.origin = "messaging_governance"` marks holds placed through M36's governance apply route. It is
 // provenance, NOT a selector: every criteria reader must ignore it, and the governance seam must see only marked holds.
-import { holdCoversGroup, isMessagingOnlyCriteria } from "@wardenx/audit";
+import {
+  MESSAGING_GOVERNANCE_ORIGIN_MARKER,
+  holdCoversGroup,
+  isMessagingOnlyCriteria,
+} from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 import { messageHeldBy } from "@wardenx/messaging";
 import { MESSAGING_GOVERNANCE_HOLD_ORIGIN } from "@wardenx/types";
@@ -46,25 +50,36 @@ describe("origin marker is provenance, not a selector", () => {
     expect(hasSelector(MARK)).toBe(false);
     expect(hasSelector({ channelIds: [CH], ...MARK })).toBe(true);
   });
-  it("isMessagingOnlyCriteria / holdCoversGroup ignore the marker", () => {
-    expect(isMessagingOnlyCriteria(MARK)).toBe(false);
+  it("the audit package's marker equals the types constant", () => {
+    expect(MESSAGING_GOVERNANCE_ORIGIN_MARKER).toBe(MESSAGING_GOVERNANCE_HOLD_ORIGIN);
+  });
+  it("isMessagingOnlyCriteria: a marked hold without patients protects messages only; patientIds keep it patient-scoped", () => {
     expect(isMessagingOnlyCriteria({ channelIds: [CH], ...MARK })).toBe(true);
+    expect(isMessagingOnlyCriteria({ resourceKinds: ["message"], ...MARK })).toBe(true);
+    expect(isMessagingOnlyCriteria({ resourceKinds: ["message"] })).toBe(false);
+    expect(isMessagingOnlyCriteria({ patientIds: [ID], ...MARK })).toBe(false);
+    expect(isMessagingOnlyCriteria({ patientIds: [ID], channelIds: [CH], ...MARK })).toBe(false);
+  });
+  it("holdCoversGroup: an org-wide governance hold covers no audit group; a patient-scoped one still does", () => {
     expect(holdCoversGroup(MARK, group)).toBe(false);
-    expect(holdCoversGroup({ resourceKinds: ["message"], ...MARK }, group)).toBe(true);
+    expect(holdCoversGroup({ resourceKinds: ["message"], ...MARK }, group)).toBe(false);
     expect(holdCoversGroup({ channelIds: [CH], ...MARK }, group)).toBe(false);
+    expect(holdCoversGroup({ patientIds: [ID], ...MARK }, group)).toBe(true);
   });
-  it("holdCoversDataClass is unchanged by the marker", () => {
-    for (const c of [{ resourceKinds: ["message"] }, { channelIds: [CH] }]) {
-      const marked = { ...c, ...MARK };
-      expect(holdCoversDataClass(marked, "message.operational", { from: new Date(0), to: new Date() } as never)).toBe(
-        holdCoversDataClass(c, "message.operational", { from: new Date(0), to: new Date() } as never),
-      );
-    }
+  it("holdCoversDataClass: message classes still held, audit classes not, by an org-wide governance hold", () => {
+    const range = { start: new Date(0), end: new Date() };
+    const org = { resourceKinds: ["message"], ...MARK };
+    expect(holdCoversDataClass(org, "message.operational", range)).toBe(true);
+    expect(holdCoversDataClass(org, "audit_event.compliance", range)).toBe(false);
+    expect(holdCoversDataClass({ resourceKinds: ["message"] }, "message.operational", range)).toBe(true);
   });
-  it("legalHoldScopeOf: marker neither makes a hold org-wide nor drops it", () => {
+  it("legalHoldScopeOf: an org-wide governance hold is messagingHeld, never orgWide; a patient one scopes to the patient", () => {
     expect(legalHoldScopeOf([{ channelIds: [CH], ...MARK }])).toEqual(legalHoldScopeOf([{ channelIds: [CH] }]));
     expect(legalHoldScopeOf([{ patientIds: [ID], ...MARK }]).patientIds.has(ID)).toBe(true);
-    expect(legalHoldScopeOf([{ resourceKinds: ["message"], ...MARK }]).orgWide).toBe(true);
+    const org = legalHoldScopeOf([{ resourceKinds: ["message"], ...MARK }]);
+    expect(org.orgWide).toBe(false);
+    expect(org.messagingHeld).toBe(true);
+    expect(legalHoldScopeOf([{ resourceKinds: ["message"] }]).orgWide).toBe(true);
   });
   it("messageHeldBy: marker neither widens a channel hold nor narrows an org-wide one", () => {
     expect(messageHeldBy({ channelIds: [CH], ...MARK }, facts)).toBe(true);

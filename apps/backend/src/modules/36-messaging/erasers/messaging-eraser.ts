@@ -103,7 +103,6 @@ export function createDrizzleMessagingEraseStore(
   deps: DrizzleMessagingEraseDeps = {},
 ): MessagingEraseStore {
   const LH = schema.legalHolds;
-  const LHM = schema.legalHoldMessages;
   const CH = schema.channels;
   const CM = schema.channelMembers;
   const MSG = schema.messages;
@@ -284,22 +283,25 @@ export function createDrizzleMessagingEraseStore(
   }
 
   /**
-   * ADR-0086 (PROPOSED): a message under an ACTIVE legal hold cannot be rewritten or deleted (migration 1138's backstop trigger raises 23001
-   * mid-statement). Look first, before any key is destroyed or any row touched, and fail cleanly and retryably (release the hold, then
-   * retry) instead of dying on a trigger halfway through the erase.
+   * ADR-0086 (PROPOSED): refuse while ANY active legal hold exists for the org (the same any-active-hold gate M34's tenant-key
+   * destruction applies). The tenant erase is irreversible and org-wide, so it does not try to decide which holds are "messaging
+   * relevant": the overlay can lag the live criteria (a hold placed through M4's own route, or a message sent after the hold, has no
+   * overlay row until the next scan), and a gate keyed on overlay rows would let the erase through exactly then. Migration 1138's
+   * trigger is only the last-resort backstop. Look first, before any key is destroyed or any row touched, and fail cleanly and
+   * retryably (release the hold, then retry) instead of dying on a trigger halfway through the erase.
    */
   async function assertNoActiveMessageHold(orgId: string): Promise<void> {
     const [held] = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
       tx
-        .select({ n: sql<number>`count(*)::int` })
-        .from(LHM)
-        .innerJoin(LH, and(eq(LH.id, LHM.legalHoldId), eq(LH.status, "active")))
-        .where(eq(LHM.organizationId, orgId)),
+        .select({ id: LH.id })
+        .from(LH)
+        .where(and(eq(LH.organizationId, orgId), eq(LH.status, "active")))
+        .limit(1),
     );
-    if (held && held.n > 0) {
+    if (held) {
       throw new DegradedError(
         "legal-hold",
-        `${held.n} message(s) are under an active legal hold; refusing to erase the tenant's messages (release the hold, then retry)`,
+        "the organisation has an active legal hold; refusing to erase the tenant's messages (release the hold, then retry)",
       );
     }
   }
