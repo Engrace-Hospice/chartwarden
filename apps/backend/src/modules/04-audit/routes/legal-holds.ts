@@ -204,7 +204,10 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
     { preHandler: [legalHoldManage, legalHoldStepUp] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
-      const body = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
+      const parsed = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
+      // `origin` is the governance provenance marker: only M36's apply route may stamp it, never a request body.
+      const { origin: _origin, ...bodyCriteria } = parsed.criteria;
+      const body = { ...parsed, criteria: bodyCriteria };
       if (!hasSelector(body.criteria)) {
         throw new WardenXError(
           "EMPTY_CRITERIA",

@@ -12,6 +12,7 @@ import {
   type ApplyMessageLegalHoldRequest,
   MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
   MESSAGE_RETENTION_CLASSES,
+  MESSAGING_GOVERNANCE_HOLD_ORIGIN,
   type MessageLegalHoldDto,
   type MessageLegalHoldListDto,
   type MessageLegalHoldReleasePreviewDto,
@@ -41,6 +42,8 @@ export interface GovernanceCriteria {
   readonly userIds?: readonly string[];
   readonly resourceKinds?: readonly string[];
   readonly dateRange?: { readonly from: string; readonly to: string };
+  /** Provenance marker, not a selector: the port only returns holds carrying it. */
+  readonly origin?: string;
 }
 
 export interface GovernanceHoldRow {
@@ -175,8 +178,11 @@ function criteriaOf(body: ApplyMessageLegalHoldRequest): GovernanceCriteria {
       },
     ]);
   }
-  if (body.org_wide === true) return { resourceKinds: [ORG_WIDE_RESOURCE_KIND] };
+  if (body.org_wide === true) {
+    return { resourceKinds: [ORG_WIDE_RESOURCE_KIND], origin: MESSAGING_GOVERNANCE_HOLD_ORIGIN };
+  }
   return {
+    origin: MESSAGING_GOVERNANCE_HOLD_ORIGIN,
     ...(channelIds.length > 0 ? { channelIds } : {}),
     ...(userIds.length > 0 ? { userIds } : {}),
     ...(patientIds.length > 0 ? { patientIds } : {}),

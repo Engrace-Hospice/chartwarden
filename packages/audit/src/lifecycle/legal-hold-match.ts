@@ -24,6 +24,8 @@ export interface LegalHoldCriteriaShape {
    *  no `audit_event` row, so a hold carrying ONLY these (plus, optionally, a dateRange) covers no audit group. */
   readonly channelIds?: readonly string[];
   readonly userIds?: readonly string[];
+  /** Provenance marker (`messaging_governance`), NOT a selector: it never widens or narrows a hold. */
+  readonly origin?: string;
 }
 
 /** True when a hold names messaging selectors and NO audit selector (`patientIds`/`resourceKinds`): it protects

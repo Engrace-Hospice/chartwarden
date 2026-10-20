@@ -147594,6 +147594,9 @@
                                   "format": "uuid",
                                   "type": "string"
                                 }
+                              },
+                              "origin": {
+                                "type": "string"
                               }
                             }
                           },
@@ -147765,6 +147768,9 @@
                           "format": "uuid",
                           "type": "string"
                         }
+                      },
+                      "origin": {
+                        "type": "string"
                       }
                     }
                   },

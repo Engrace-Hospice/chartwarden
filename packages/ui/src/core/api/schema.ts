@@ -61849,6 +61849,7 @@ export interface operations {
                                 resourceKinds?: string[];
                                 channelIds?: string[];
                                 userIds?: string[];
+                                origin?: string;
                             };
                             status: "active" | "released";
                             reason: string;
@@ -61887,6 +61888,7 @@ export interface operations {
                         resourceKinds?: string[];
                         channelIds?: string[];
                         userIds?: string[];
+                        origin?: string;
                     };
                     reason: string;
                 };

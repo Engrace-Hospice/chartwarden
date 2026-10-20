@@ -56,6 +56,10 @@ Each run checks hold criteria live against messages (so supremacy never depends 
 
 The message destruction executor; redaction of held messages; the thread "Legal hold" chip; audit-event holding by messaging holds; any tenant-configurable period.
 
+## Known limits
+
+Apply materialises at most four batches (20,000 rows) synchronously and the weekly scan completes the rest. Until then the backstop trigger does not cover not-yet-materialised messages: an edit of such a message is not refused by the trigger. The scan's live criteria check, the plan-only scan and the M34 any-active-hold gate for tenant erasure still hold, so nothing is destroyed or erased in that window.
+
 ## Open human items
 
 - Compliance sign-off on this design and on the conservative patient scope.

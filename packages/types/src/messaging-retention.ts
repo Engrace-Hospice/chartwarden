@@ -11,6 +11,9 @@ export const MESSAGE_LEGAL_HOLD_RELEASE_STEP_UP_KEY = "messaging.legal_hold.rele
 
 /** A hold or release needs a written reason of at least this many characters. */
 export const MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH = 10;
+/** `legal_hold.criteria.origin` of a hold placed through the governance apply route. NOT a selector: readers ignore it; only the
+ *  governance seam filters on it, so `messaging.retention.manage` never sees or releases a hold placed under `legalhold.manage`. */
+export const MESSAGING_GOVERNANCE_HOLD_ORIGIN = "messaging_governance";
 
 /** The message retention classes, and the M4 certificate data class the scan files for each (`message.<class>`). */
 export const MESSAGE_RETENTION_CLASSES = ["care_related", "bereavement", "operational"] as const;

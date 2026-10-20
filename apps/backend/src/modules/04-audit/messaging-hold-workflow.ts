@@ -7,8 +7,8 @@
 // transaction (`withOrgContext`), the permission/step-up gates and the match count.
 import { type AuditContext, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
-import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { MESSAGING_GOVERNANCE_HOLD_ORIGIN, NotFoundError, WardenXError } from "@wardenx/types";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
 const HOLD = schema.legalHolds;
@@ -218,7 +218,13 @@ const toSummary = (r: typeof HOLD.$inferSelect): LegalHoldSummary => ({
   releasedAt: r.releasedAt,
 });
 
-/** The org's newest holds (active and released). Org-filtered in addition to RLS. */
+/** True when `criteria` carries the governance marker (placed through M36's apply route, not M4's own). */
+export const isGovernanceHold = (criteria: unknown): boolean =>
+  typeof criteria === "object" &&
+  criteria !== null &&
+  (criteria as { origin?: unknown }).origin === MESSAGING_GOVERNANCE_HOLD_ORIGIN;
+
+/** The org's newest governance-placed holds (active and released); M4-placed holds are invisible here. Org-filtered in addition to RLS. */
 export async function listLegalHolds(
   tx: DbClient,
   organizationId: string,
@@ -227,13 +233,18 @@ export async function listLegalHolds(
   const rows = await tx
     .select()
     .from(HOLD)
-    .where(eq(HOLD.organizationId, organizationId))
+    .where(
+      and(
+        eq(HOLD.organizationId, organizationId),
+        sql`${HOLD.criteria}->>'origin' = ${MESSAGING_GOVERNANCE_HOLD_ORIGIN}`,
+      ),
+    )
     .orderBy(desc(HOLD.appliedAt), desc(HOLD.id))
     .limit(limit);
   return rows.map(toSummary);
 }
 
-/** One hold of this org, or null (unknown and another tenant's id are the same answer). */
+/** One governance-placed hold of this org, or null (unknown, another tenant's and an M4-placed id are the same answer). */
 export async function getLegalHold(
   tx: DbClient,
   organizationId: string,
@@ -244,7 +255,7 @@ export async function getLegalHold(
     .from(HOLD)
     .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.id, id)))
     .limit(1);
-  return row ? toSummary(row) : null;
+  return row && isGovernanceHold(row.criteria) ? toSummary(row) : null;
 }
 
 /** Status of the given certificates (id -> status), for the retention overview. */
@@ -289,6 +300,10 @@ export function createMessagingGovernanceHoldPort(deps: { readonly outbox?: M4Ou
         readonly countRestored: () => Promise<number>;
       },
     ): Promise<{ readonly restoredRecordCount: number }> {
+      // Defence in depth: the service already resolved the hold through `get`, but release must never reach an M4-placed hold.
+      if (!(await getLegalHold(tx, input.organizationId, input.holdId))) {
+        throw new NotFoundError("legal_hold", input.holdId);
+      }
       const out = await releaseLegalHoldInTx(tx, deps, auditContext, {
         ...input,
         countRestored: () => input.countRestored(),

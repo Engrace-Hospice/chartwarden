@@ -616,6 +616,83 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     expect(res.statusCode, res.body).toBe(200);
   });
 
+  it("ORIGIN: holds placed through M4 (legalhold.manage) are invisible to and unreleasable by messaging.retention.manage; the scan still honours them", async () => {
+    // M4's POST /legal-holds writes exactly this row (no `origin`): inserted as the owner so the suite needs no legalhold.* grants.
+    const m4Hold = async (name: string, criteria: object) =>
+      (
+        await rows<{ id: string }>(
+          `INSERT INTO legal_hold (organization_id, name, criteria, reason, applied_by)
+           VALUES ($1,$2,$3::jsonb,$4,$5) RETURNING id`,
+          [ORG, name, JSON.stringify(criteria), REASON, officer.userId],
+        )
+      )[0]?.id as string;
+    const careEligible = async () => {
+      const o = (await gov("GET", "/retention", officerLogin)).json() as {
+        classes: { class: string; eligible: number | null; held: number | null }[];
+      };
+      return o.classes.find((c) => c.class === "care_related");
+    };
+    const scan = () =>
+      runRetentionScanForOrg(
+        {
+          db: handle.db as never,
+          messageHolds: { activeHolds: activeLegalHolds, openCertificate: openMessageCertificate },
+        },
+        ORG,
+      );
+    await scan();
+    const before = await careEligible();
+
+    const patientHold = await m4Hold("M4 patient hold", { patientIds: [SUBJECT_A] });
+    const channelHold = await m4Hold("M4 channel hold", { channelIds: [chC] });
+
+    const list = (await gov("GET", "/legal-holds", officerLogin)).json() as { holds: { id: string }[] };
+    expect(list.holds.map((h) => h.id)).not.toContain(patientHold);
+    expect(list.holds.map((h) => h.id)).not.toContain(channelHold);
+    for (const id of [patientHold, channelHold]) {
+      const preview = await gov("GET", `/legal-holds/${id}/release-preview`, officerLogin);
+      expect(preview.statusCode, preview.body).toBe(404);
+      const release = await gov("POST", `/legal-holds/${id}/release`, officerLogin, {
+        reason: REASON,
+        confirmed_eligible_count: 0,
+      });
+      expect(release.statusCode, release.body).toBe(404);
+      expect(
+        await count("SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND status='active'", [id]),
+      ).toBe(1);
+    }
+
+    // Enforcement is unchanged: the scan honours ALL active holds, so chC's past-window message is withheld.
+    await scan();
+    const after = await careEligible();
+    expect(after?.eligible).toBe((before?.eligible ?? 0) - 1);
+    expect(after?.held).toBe((before?.held ?? 0) + 1);
+
+    // A hold placed through the governance route still lists, previews and releases as before, with the marker stamped.
+    const placed = await gov("POST", "/legal-holds", officerLogin, {
+      name: "Governance-placed",
+      reason: REASON,
+      channel_ids: [chOps],
+    });
+    expect(placed.statusCode, placed.body).toBe(201);
+    const placedId = (placed.json() as { id: string }).id;
+    expect(
+      await count(
+        "SELECT count(*)::int AS n FROM legal_hold WHERE id=$1 AND criteria->>'origin'='messaging_governance'",
+        [placedId],
+      ),
+    ).toBe(1);
+    const listed = (await gov("GET", "/legal-holds", officerLogin)).json() as { holds: { id: string }[] };
+    expect(listed.holds.map((h) => h.id)).toContain(placedId);
+    const preview = await gov("GET", `/legal-holds/${placedId}/release-preview`, officerLogin);
+    expect(preview.statusCode, preview.body).toBe(200);
+    const released = await gov("POST", `/legal-holds/${placedId}/release`, officerLogin, {
+      reason: REASON,
+      confirmed_eligible_count: (preview.json() as { eligible_on_release: number }).eligible_on_release,
+    });
+    expect(released.statusCode, released.body).toBe(200);
+  });
+
   it("NO PII: every response carried only contract keys (no body, no name, no email)", () => {
     const stray = [...seenKeys].filter((k) => !ALLOWED_KEYS.has(k));
     expect(stray).toEqual([]);
