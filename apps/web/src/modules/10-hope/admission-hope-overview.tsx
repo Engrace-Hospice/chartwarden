@@ -179,6 +179,8 @@ export function AdmissionHopeOverview(): JSX.Element {
     );
   }
 
+  const needsAttention = summaryNeedsAttention(state.summary);
+
   return (
     <DetailPageLayout
       header={
@@ -234,20 +236,22 @@ export function AdmissionHopeOverview(): JSX.Element {
           <div>
             <h2 style={sectionTitle}>Workflow overview</h2>
             <p style={bodyText}>
-              {(state.summary.highestSeverity ?? "none") === "none"
-                ? "HOPE is up to date. No HOPE action is currently required."
-                : "Review HOPE items that need attention for this admission."}
+              {needsAttention
+                ? "Review HOPE items that need attention for this admission."
+                : "HOPE is up to date. No HOPE action is currently required."}
             </p>
           </div>
           <StatusPill
             label={summaryLabel(state)}
             tone={
-              (state.summary.highestSeverity ?? "none") === "none"
-                ? "success"
-                : (ATTENTION_TONE[severityToAttention(state.summary.highestSeverity ?? "none")] ??
-                  "warning")
+              needsAttention
+                ? (state.summary.highestSeverity ?? "none") === "none"
+                  ? "warning"
+                  : (ATTENTION_TONE[severityToAttention(state.summary.highestSeverity ?? "none")] ??
+                    "warning")
+                : "success"
             }
-            glyph={(state.summary.highestSeverity ?? "none") === "none" ? "check-circle" : "alert"}
+            glyph={needsAttention ? "alert" : "check-circle"}
           />
         </section>
 
@@ -536,6 +540,17 @@ function attentionGuidance(item: WorkflowTimepoint): string {
   if (attention.state === "due" || attention.state === "due_soon")
     return `Window closes ${fmtDate(attention.deadline ?? item.windowEnd)}.`;
   return attention.message ?? guidanceFor(item);
+}
+
+/** One signal for the sentence, the pill tone and the pill label, so they cannot disagree. */
+function summaryNeedsAttention(summary: WorkflowState["summary"]): boolean {
+  return (
+    (summary.highestSeverity ?? "none") !== "none" ||
+    summary.actionableCount > 0 ||
+    summary.overdueCount > 0 ||
+    (summary.dueSoonCount ?? 0) > 0 ||
+    (summary.workflowIssueCount ?? 0) > 0
+  );
 }
 
 function summaryLabel(state: WorkflowState): string {

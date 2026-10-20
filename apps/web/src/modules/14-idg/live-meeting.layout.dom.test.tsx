@@ -34,6 +34,7 @@ const decision = (wasQuorate: boolean) => ({
 
 let roster: Record<string, unknown>[] = [];
 let decisions: Record<string, unknown>[] = [];
+let meetingStatus = "live";
 let calls: { method: string; path: string; body: unknown }[] = [];
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -80,7 +81,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     id: MEETING,
     organizationId: "org-1",
     locationId: "loc-1",
-    status: "live",
+    status: meetingStatus,
     scheduledStart: "2026-08-27T09:00:00.000Z",
     scheduledEnd: "2026-08-27T10:00:00.000Z",
     adjournedAt: null,
@@ -112,6 +113,7 @@ const mount = (session = SESSION) =>
   );
 
 beforeEach(() => {
+  meetingStatus = "live";
   roster = [];
   decisions = [];
   calls = [];
@@ -129,6 +131,18 @@ describe("Live meeting — three-pane redesign", () => {
     expect((await screen.findAllByText("Carry-forward")).length).toBeGreaterThan(0);
     // Action items for this meeting come from GET /idg/action-items.
     await waitFor(() => expect(screen.getByText(/^Due /)).toBeTruthy());
+  });
+
+  it("is titled Live only while the meeting is live", async () => {
+    mount();
+    expect(await screen.findByRole("heading", { level: 1, name: "Live IDG Meeting" })).toBeTruthy();
+    cleanup();
+    meetingStatus = "adjourned";
+    mount();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "IDG Meeting — Adjourned" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Live IDG Meeting" })).toBeNull();
   });
 
   it("shows the missing disciplines when the roster is short", async () => {

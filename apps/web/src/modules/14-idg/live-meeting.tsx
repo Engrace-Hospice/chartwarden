@@ -79,6 +79,7 @@ import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 import { MeetingProgress } from "./idg-page-kit";
 import "./live-meeting.css";
 import { useSession } from "../../shell/session";
+import { loadStaffNames } from "./idg-people";
 import { PacketCompact, usePacketDetail } from "./packet-content";
 import { useLiveRefresh } from "./use-live-refresh";
 
@@ -184,12 +185,6 @@ function f2fPill(i: RecertItem): { label: string; tone: StatusTone } {
   }
 }
 
-interface MemberRow {
-  membershipId: string;
-  displayName: string | null;
-  email: string | null;
-}
-
 type Dialog =
   | { kind: "none" }
   | { kind: "attendance" }
@@ -197,6 +192,15 @@ type Dialog =
   | { kind: "decision" }
   | { kind: "action-item"; decisionId: string | null }
   | { kind: "adjourn" };
+
+/** The heading follows the meeting's state: "Live" only while it is live. */
+function meetingTitle(status: string | undefined): string {
+  if (status === undefined || status === "live") return "Live IDG Meeting";
+  if (status === "adjourned") return "IDG Meeting — Adjourned";
+  if (status === "cancelled") return "IDG Meeting — Cancelled";
+  if (status === "rescheduled") return "IDG Meeting — Rescheduled";
+  return "IDG Meeting";
+}
 
 export function LiveMeeting(): JSX.Element {
   const client = useApiClient();
@@ -386,19 +390,12 @@ export function LiveMeeting(): JSX.Element {
   useEffect(() => {
     if (!orgId) return;
     let active = true;
-    void client
-      .GET("/api/v1/orgs/{id}/members", { params: { path: { id: orgId }, query: {} } })
-      .then((r) => {
-        if (!active) return;
-        const map = new Map<string, string>();
-        const rows = (r.data as { members?: MemberRow[] } | undefined)?.members;
-        for (const m of Array.isArray(rows) ? rows : []) {
-          const label = m.displayName ?? m.email;
-          if (label) map.set(m.membershipId, label);
-        }
-        setNames(map);
-      })
-      .catch(() => undefined);
+    void loadStaffNames(client, orgId).then((rows) => {
+      if (!active) return;
+      const map = new Map<string, string>();
+      for (const m of rows) map.set(m.membershipId, m.displayName ?? "Unnamed staff member");
+      setNames(map);
+    });
     return () => {
       active = false;
     };
@@ -625,7 +622,7 @@ export function LiveMeeting(): JSX.Element {
       <div className="wx-with-rail-main">
         <header className="wx-page-head">
           <div className="wx-idg-live-head-main">
-            <h1 style={{ fontSize: "1.875rem" }}>Live IDG Meeting</h1>
+            <h1 style={{ fontSize: "1.875rem" }}>{meetingTitle(meeting?.status)}</h1>
             {meeting ? (
               <p className="wx-idg-live-meta">
                 <span>

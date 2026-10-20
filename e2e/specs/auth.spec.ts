@@ -21,10 +21,10 @@ test.describe("Authentication", () => {
   test("denied path: wrong password shows an inline error, no navigation", async ({ page }) => {
     const account = ADMIN_ACCOUNT();
     await page.goto("/login");
-    await page.getByPlaceholder("you@agency.org").fill(account.email);
-    await page.getByPlaceholder("••••••••••").fill("definitely-the-wrong-password");
+    await page.getByLabel("Username or Email").fill(account.email);
+    await page.getByLabel("Password", { exact: true }).fill("definitely-the-wrong-password");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText("Sign-in failed. Check your email and password.")).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Invalid username/email or password." })).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
   });
 

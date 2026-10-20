@@ -34,6 +34,7 @@ import {
   rescheduleMeeting,
   submitAmendment,
 } from "./idg-api";
+import { CareTeamStaffLookupField } from "../../shell/entity-lookups";
 import { attendanceDisciplineLabel } from "./idg-disciplines";
 import "./idg-lifecycle.css";
 
@@ -439,12 +440,14 @@ export function ActionItemModal({
   const client = useApiClient();
   const { busy, error, run } = useCeremony<ActionItemView>(open, onCreated, onClose);
   const [assignee, setAssignee] = useState("");
+  const [assigneeLabel, setAssigneeLabel] = useState("");
   const [patientId, setPatientId] = useState("");
   const [dueDate, setDueDate] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setAssignee("");
+    setAssigneeLabel("");
     setPatientId(patients.length === 1 ? (patients[0]?.id ?? "") : "");
     // A week out — the D8 default a coordinator overrides rather than types from scratch.
     const d = new Date();
@@ -463,10 +466,15 @@ export function ActionItemModal({
     >
       <div style={shell}>
         <h2 style={title}>Assign an action item</h2>
-        <TextField
-          label="Assign to (membership id)"
+        <CareTeamStaffLookupField
+          label="Assign to"
           value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
+          valueLabel={assigneeLabel}
+          appearance="modal"
+          onChange={(value, option) => {
+            setAssignee(value);
+            setAssigneeLabel(option?.searchLabel ?? "");
+          }}
         />
         <SelectField
           label="Patient (optional)"

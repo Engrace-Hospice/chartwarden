@@ -1,5 +1,5 @@
 // IDG Schedule — the "Schedule Meeting" write (POST /idg/meetings) and the name rendering that
-// replaced short ids (coordinator via /orgs/{id}/members, patient via `patient.displayName`).
+// replaced short ids (coordinator via /orgs/{id}/care-team-staff, patient via `patient.displayName`).
 // Asserts on RECORDED FETCH CALLS (method, path, body), like idg-writes.dom.test.tsx.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
@@ -58,11 +58,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       { id: LOC_OUT, name: "Restricted Campus", status: "active" },
     ], nextCursor: null });
   }
-  if (path === "/api/v1/orgs/org-1/members")
+  if (path === "/api/v1/orgs/org-1/care-team-staff")
     return json({
-      members: [
-        { membershipId: ME, userId: "u1", displayName: "Dana Coordinator", email: null },
-        { membershipId: OTHER, userId: "u2", displayName: "Omar Other", email: null },
+      staff: [
+        { membershipId: ME, userId: "u1", displayName: "Dana Coordinator", roleLabels: [] },
+        { membershipId: OTHER, userId: "u2", displayName: "Omar Other", roleLabels: [] },
       ],
     });
   if (path === "/api/v1/idg/schedule")
@@ -209,6 +209,28 @@ describe("IDG schedule — Schedule Meeting", () => {
     expect(picker.textContent).toContain("Main Campus");
     expect(picker.textContent).not.toContain("Restricted Campus");
     expect(screen.queryByRole("button", { name: /^Schedule Meeting$/ })).toBeNull();
+  });
+
+  it("opens the actor's own site, not the first one by name, when the URL names no location", async () => {
+    mount(
+      "/idg/schedule",
+      <IdgSchedule />,
+      "/idg/schedule",
+      { ...SESSION, orgWidePatientScope: true, locationIds: [LOC_OUT] },
+    );
+    const picker = (await screen.findByLabelText("Location")) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe(LOC_OUT));
+  });
+
+  it("falls back to the first site when the actor's own sites are not among those offered", async () => {
+    mount(
+      "/idg/schedule",
+      <IdgSchedule />,
+      "/idg/schedule",
+      { ...SESSION, orgWidePatientScope: true, locationIds: ["not-a-listed-site"] },
+    );
+    const picker = (await screen.findByLabelText("Location")) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe(LOC));
   });
 
   it("renders a non-disclosing forbidden state with retry and back navigation", async () => {

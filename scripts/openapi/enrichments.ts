@@ -6961,7 +6961,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/orgs/:id/care-team-staff": {
     summary:
-      "Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign; bound org only; q = name substring, limit 1-200, default 25)",
+      "Staff lookup for the care-team assign dialog — id, display name and role labels only, no email/phone (patient.assign or idg.read; bound org only; q = name substring, limit 1-200, default 25)",
     query: M5ECareTeamStaffQuerySchema,
     response: M5ECareTeamStaffListResponseSchema,
   },

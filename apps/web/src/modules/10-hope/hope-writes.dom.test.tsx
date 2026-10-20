@@ -427,6 +427,13 @@ describe("#91 — the patient timeline can record and recompute", () => {
     expect(sentBody().scheduleId).toBeUndefined();
   });
 
+  it("lists timepoints without an Author column the server can never fill, and counts one correctly", async () => {
+    mount(`/patients/${PATIENT}/hope`, "/patients/:patientId/hope", <PatientHopeTimeline />);
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "RFA" })).toBeTruthy());
+    expect(screen.queryByRole("columnheader", { name: "Author" })).toBeNull();
+    expect(screen.getByText(/^1 timepoint$/)).toBeTruthy();
+  });
+
   it("Recompute schedules POSTs the §4.1 route-20 admin write", async () => {
     mount(`/patients/${PATIENT}/hope`, "/patients/:patientId/hope", <PatientHopeTimeline />);
     await waitFor(() =>

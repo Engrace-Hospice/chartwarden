@@ -33,7 +33,11 @@ import {
   stateLabel,
 } from "./orders-status";
 import { ResendResult, ResendTransmission } from "./resend-transmission";
-import { type ResendOutcome, transmissionFailureLabel } from "./resend-transmission-api";
+import {
+  type ResendOutcome,
+  notSentInfoLabel,
+  transmissionFailureLabel,
+} from "./resend-transmission-api";
 
 interface OrderDetailView {
   id: string;
@@ -672,10 +676,18 @@ export function OrderDetail(): JSX.Element {
               <>
                 <dt style={dt}>Transmission</dt>
                 <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(row.transmissionStatus)}
-                    tone={TRANSMISSION_TONE[row.transmissionStatus] ?? "neutral"}
-                  />
+                  {row.transmissionStatus === "failed" &&
+                  notSentInfoLabel(row.transmissionFailureReason) ? (
+                    <StatusPill
+                      label={notSentInfoLabel(row.transmissionFailureReason)}
+                      tone="progress"
+                    />
+                  ) : (
+                    <StatusPill
+                      label={stateLabel(row.transmissionStatus)}
+                      tone={TRANSMISSION_TONE[row.transmissionStatus] ?? "neutral"}
+                    />
+                  )}
                 </dd>
                 {row.transmissionFailureReason ? (
                   <>

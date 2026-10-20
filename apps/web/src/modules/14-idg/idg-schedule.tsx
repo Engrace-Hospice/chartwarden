@@ -22,7 +22,7 @@ import {
 //
 // "Schedule Meeting" (POST /idg/meetings, idg.schedule) opens ScheduleMeetingModal; the SERVER decides
 // permission (a 403 is surfaced in the dialog), overlap and the time rules — no frontend authz. The
-// coordinator is an id on the read; names resolve from GET /orgs/{id}/members (short-id fallback).
+// coordinator is an id on the read; names resolve from GET /orgs/{id}/care-team-staff (short-id fallback).
 // Reads GET /api/v1/idg/schedule + GET /api/v1/locations via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -140,8 +140,12 @@ export function IdgSchedule(): JSX.Element {
     };
   }, [client, locationsRetry, session?.locationIds, session?.orgWidePatientScope]);
 
-  // No `?location=` → open the first site rather than a permanently empty screen.
-  const firstLocationId = locations?.[0]?.id;
+  // No `?location=` → open the actor's own site when they have one, else the first, rather than a
+  // permanently empty screen (the first by name is often not where the actor works).
+  const ownLocationIds = session?.locationIds;
+  const firstLocationId = (
+    locations?.find((l) => ownLocationIds?.includes(l.id)) ?? locations?.[0]
+  )?.id;
   useEffect(() => {
     if (!location && firstLocationId) {
       setParams({ location: firstLocationId }, { replace: true });
