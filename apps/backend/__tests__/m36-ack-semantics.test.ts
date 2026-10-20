@@ -112,6 +112,12 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.10 (ADR-0077) the snooze lookup port's comment: a snooze never applies where an acknowledgment request is open (a read of its existence, never a receipt)",
   "apps/web/src/modules/36-messaging/snooze-control.tsx":
     "WP 4.10 (ADR-0077) the header snooze control: it explains that a conversation with an acknowledgment request cannot be snoozed (words only, no receipt)",
+  "apps/backend/src/modules/36-messaging/routes/offboarding-routes.ts":
+    "WP 5.9 (ADR-0084) workforce offboarding: the execute route names the supervisor-reassign keys it calls through (a comment); it acknowledges nothing",
+  "apps/web/src/modules/36-messaging/offboarding-wording.ts":
+    "WP 5.9 (ADR-0084) the offboarding checklist's words: requests waiting on a departed person; nothing is acknowledged here",
+  "apps/web/src/modules/36-messaging/offboarding-workflow.tsx":
+    "WP 5.9 (ADR-0084) the offboarding checklist: it links an unmoved request to the supervisors' queue and acknowledges nothing",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };
@@ -135,6 +141,8 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.12 (ADR-0080) the read-only on-call directory: it imports the escalation router guard from the ack-escalation directory and never writes or labels an acknowledgment",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
+  "apps/backend/src/modules/36-messaging/offboarding/":
+    "WP 5.9 (ADR-0084) workforce offboarding: it moves the waiting acknowledgment requests of a departed person through the supervisor reassign and counts the acknowledged ones; it acknowledges nothing and labels no receipt",
 };
 
 /** The schema owns the retired column; the test files below pin that it stays NULL. */

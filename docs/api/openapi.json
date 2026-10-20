@@ -173544,6 +173544,436 @@
         }
       }
     },
+    "/api/v1/messaging/governance/offboarding/{userId}": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceOffboardingByUserId",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user_id",
+                    "items",
+                    "done",
+                    "total",
+                    "complete",
+                    "blocked_by"
+                  ],
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "state",
+                          "count",
+                          "acted",
+                          "needs_person"
+                        ],
+                        "properties": {
+                          "key": {
+                            "anyOf": [
+                              {
+                                "const": "sessions_devices",
+                                "type": "string"
+                              },
+                              {
+                                "const": "channel_memberships",
+                                "type": "string"
+                              },
+                              {
+                                "const": "tasks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoffs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent_untracked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "oncall_seats",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scheduled_sends",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reminders_snoozes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drafts",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "done",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_person",
+                                "type": "string"
+                              },
+                              {
+                                "const": "kept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "advisory",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acted": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "needs_person": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "done": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "blocked_by": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sessions_devices",
+                            "type": "string"
+                          },
+                          {
+                            "const": "channel_memberships",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tasks",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoffs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_sent",
+                            "type": "string"
+                          },
+                          {
+                            "const": "urgent_untracked",
+                            "type": "string"
+                          },
+                          {
+                            "const": "oncall_seats",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scheduled_sends",
+                            "type": "string"
+                          },
+                          {
+                            "const": "reminders_snoozes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "drafts",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/offboarding/{userId}/execute": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceOffboardingByUserIdExecute",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user_id",
+                    "items",
+                    "done",
+                    "total",
+                    "complete",
+                    "blocked_by"
+                  ],
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "state",
+                          "count",
+                          "acted",
+                          "needs_person"
+                        ],
+                        "properties": {
+                          "key": {
+                            "anyOf": [
+                              {
+                                "const": "sessions_devices",
+                                "type": "string"
+                              },
+                              {
+                                "const": "channel_memberships",
+                                "type": "string"
+                              },
+                              {
+                                "const": "tasks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "handoffs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_assigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent_untracked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "oncall_seats",
+                                "type": "string"
+                              },
+                              {
+                                "const": "scheduled_sends",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reminders_snoozes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "drafts",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "done",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_person",
+                                "type": "string"
+                              },
+                              {
+                                "const": "kept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "advisory",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acted": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "needs_person": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "done": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "blocked_by": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sessions_devices",
+                            "type": "string"
+                          },
+                          {
+                            "const": "channel_memberships",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tasks",
+                            "type": "string"
+                          },
+                          {
+                            "const": "handoffs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ack_sent",
+                            "type": "string"
+                          },
+                          {
+                            "const": "urgent_untracked",
+                            "type": "string"
+                          },
+                          {
+                            "const": "oncall_seats",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scheduled_sends",
+                            "type": "string"
+                          },
+                          {
+                            "const": "reminders_snoozes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "drafts",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/governance/sessions": {
       "get": {
         "operationId": "getApiV1MessagingGovernanceSessions",

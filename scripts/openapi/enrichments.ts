@@ -1416,6 +1416,8 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+// M36 WP 5.9 workforce offboarding (ADR-0084, PROPOSED).
+import { OffboardingResponseSchema as M36OffboardingResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/offboarding-typebox";
 // M36 WP 4.12 on-call directory.
 import {
   OnCallCoverageQuerySchema as M36OnCallCoverageQuerySchema,
@@ -10126,6 +10128,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404",
     response: M36DeviceRevokeResponseSchema,
+  },
+
+  // workforce offboarding (WP 5.9, ADR-0084 PROPOSED)
+  "GET /api/v1/messaging/governance/offboarding/:userId": {
+    summary:
+      "Security officer: dry run of a departed user's offboarding in the officer's organisation (messaging.offboarding.manage). Returns, per item (sessions and devices, channel memberships, tasks, handoffs, acknowledgment requests assigned and sent, untracked urgent messages, on-call seats, scheduled sends, reminders and snoozes, drafts), a state (pending, needs_person, kept, advisory, done) and counts. Nothing changes. Counts and fixed keys only: no name, message or patient. A user who has not left is 409 OFFBOARDING_USER_ACTIVE; an unknown user and another tenant's user are the same 404. Audited as m36.offboarding.viewed. Not cached",
+    response: M36OffboardingResponseSchema,
+  },
+  "POST /api/v1/messaging/governance/offboarding/:userId/execute": {
+    summary:
+      "Security officer: run a departed user's offboarding (messaging.offboarding.manage + messaging.read + messaging.review, the supervisor-reassign keys, + a fresh step-up for `messaging.offboarding.execute`, else 403 STEP_UP_REQUIRED). Idempotent and resumable: every step recounts the live rows, so a repeat finishes what a partial failure left and changes nothing otherwise (`acted` is 0). Order: sessions and endpoints (the ADR-0083 revoke), memberships, tasks, handoffs, acknowledgment requests (the ADR-0078 supervisor reassign with reason assignee_unable_to_sign_in; one nobody can take stays assigned and visible with one supervisor alert), scheduled sends, reminders and snoozes removed; drafts and past messages kept. Returns the same shape as the preview with the state after the run (`needs_person` and `failed` items keep `complete` false). Audited as m36.offboarding.executed with counts only",
+    response: M36OffboardingResponseSchema,
   },
 
   // alerts (§4.2)

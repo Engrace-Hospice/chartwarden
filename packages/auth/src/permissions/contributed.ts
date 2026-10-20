@@ -358,6 +358,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 5.9 (ADR-0084, PROPOSED): preview and run the offboarding of a departed user in the organisation (security officer). The execute
+  //     route also demands a fresh step-up and the supervisor-reassign keys; migration 1131 grants it to the full-catalog admin roles only. ---
+  "messaging.offboarding.manage": {
+    resource: "workforce_offboarding",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
