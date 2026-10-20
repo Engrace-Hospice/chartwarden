@@ -7998,6 +7998,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached */
+        get: operations["getApiV1Devices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke one of the caller's own sessions, in one transaction: the session is deleted (its next REST call is 401 and a socket handshake with it is refused), every endpoint linked to it is expired, and an `m36.session.revoked` audit row is written; then the session's live sockets are closed on every api node. `current:true` means the caller revoked the session making this request and must sign in again. A session that is not the caller's, an unknown id and one already revoked are the same 404 (no existence oracle; a repeat is a 404). If closing the sockets fails the revoke still stands and the realtime re-check ends the socket within a minute */
+        delete: operations["deleteApiV1DevicesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/attestation": {
         parameters: {
             query?: never;
@@ -14652,6 +14686,40 @@ export interface paths {
         put: operations["putApiV1MessagingGlobalsearchSettings"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security officer: another user's staff sessions bound to the officer's organisation (messaging.sessions.manage). Same fields as GET /devices. A user with no sessions in this organisation, an unknown user and another tenant's user are all an empty list (never an error, never another tenant's data). Audited as m36.session.admin_listed. Not cached */
+        get: operations["getApiV1MessagingGovernanceSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/governance/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404 */
+        delete: operations["deleteApiV1MessagingGovernanceSessionsById"];
         options?: never;
         head?: never;
         patch?: never;
@@ -48553,6 +48621,68 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        devices: {
+                            id: string;
+                            label: string;
+                            current: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            last_used_at: string;
+                            push_registered: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1DevicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        revoked: true;
+                        current: boolean;
+                        push_endpoints_expired: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1DevicesAttestation: {
         parameters: {
             query?: never;
@@ -68318,6 +68448,70 @@ export interface operations {
                             changedAt: string | null;
                             effectiveReady: boolean;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGovernanceSessions: {
+        parameters: {
+            query: {
+                user_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        devices: {
+                            id: string;
+                            label: string;
+                            current: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            last_used_at: string;
+                            push_registered: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingGovernanceSessionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        revoked: true;
+                        current: boolean;
+                        push_endpoints_expired: number;
                     };
                 };
             };
@@ -95480,8 +95674,8 @@ export interface operations {
                             state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                             disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                             callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                            inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                            source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                            inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                            source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                             chiefComplaintSnomed: string | null;
                             openedAt: string;
                             firstResponseAt: string | null;
@@ -95512,7 +95706,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     providerEntityId: string;
-                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                     callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
                     callerDisplayName?: string;
                     callerPhoneE164?: string;
@@ -95579,8 +95773,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -95654,7 +95848,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -95728,8 +95922,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -95803,7 +95997,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -95984,8 +96178,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96059,7 +96253,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -96134,8 +96328,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96209,7 +96403,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -96276,8 +96470,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96351,7 +96545,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -96470,8 +96664,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96545,7 +96739,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -96618,8 +96812,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96693,7 +96887,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -96827,8 +97021,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -96902,7 +97096,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -97005,8 +97199,8 @@ export interface operations {
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
-                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin" | "m36_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         firstResponseAt: string | null;
@@ -97080,7 +97274,7 @@ export interface operations {
                         providerEntityId: string;
                         state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
                         callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
-                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                         chiefComplaintSnomed: string | null;
                         openedAt: string;
                         onCallShiftId: string;
@@ -97168,7 +97362,7 @@ export interface operations {
                     providerEntityId: string;
                     /** Format: date-time */
                     paperOriginalOpenedAt: string;
-                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure" | "inbound_afterhours_request";
                     callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
                     /** Format: uuid */
                     patientId?: string;

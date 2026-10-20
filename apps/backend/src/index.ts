@@ -290,6 +290,7 @@ import {
   createRealtimeEmitter,
   createRealtimeTelemetry,
   realtimeClientKey,
+  sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -786,6 +787,7 @@ import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-p
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
+  buildAfterHoursRequestedConsumer,
   buildDrizzleEscalationRouterReads,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
@@ -4911,6 +4913,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
+            // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
+            // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
+            sessionDevices: {
+              ...(realtimeEmitter
+                ? {
+                    disconnectSession: (sessionId: string) =>
+                      realtimeEmitter.disconnectRoom(sessionRoom(sessionId)),
+                  }
+                : {}),
+              warn: (event, context) => app.log.warn(context, event),
+            },
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
@@ -10728,6 +10741,21 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // which M36 resolves through its seam. Binding one here and not there would give the same
             // alert two carriers with different retry semantics.
           }),
+          // ADR-0082 - `m36.afterhours_triage.requested`: M36 asks for a triage call by id; M19 decides and
+          // always answers. The same patient reads the tier-1 router uses (patient-in-org + provider entity),
+          // over the M5 PatientReader seam resolved lazily. Flag-off: M36 publishes nothing.
+          buildAfterHoursRequestedConsumer({
+            db: dbHandle.db,
+            ports: m19TriggerPorts,
+            deliveryPorts: m19TriggerPorts,
+            outbox: m19OutboxPublisher,
+            afterHoursReads: buildDrizzleEscalationRouterReads({
+              db: dbHandle.db,
+              patientReader: () => getPatientReader(),
+              siteReader: buildFoundationSiteReader(),
+              listProviderEntityIds: buildOrgProviderEntityLister(dbHandle.db),
+            }),
+          }),
           // §4.5 path 1 / §4.8 `m19.shift-sync.debounced` (m19 `handlers-unbound` group, #248; F-155's own
           // finding, now built). Bumps the org's `on_call_roster_sync_queue` debounce window forward; the
           // reconciliation itself runs on the separate scheduled drain worker registered above — see
@@ -11848,6 +11876,8 @@ function bindCallerModule(
       readonly organizationId: string | null;
       readonly aggregateKind: string;
       readonly aggregateId: string;
+      /** Optional caller-chosen `outbox_event.id` (see {@link OutboxPublishInput.eventId}). */
+      readonly eventId?: string;
     },
   ): Promise<void>;
 } {

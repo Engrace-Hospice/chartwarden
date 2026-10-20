@@ -84,10 +84,11 @@ states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6
 | Unacknowledged-urgent queue, escalation ladder visualiser | Queue built (`unacknowledged-queue.tsx`, ADR-0076, supervisor reassign); ladder visualiser absent | 4.9 |
 | Delivery-failure / unreachable state | Card state built (ADR-0071); per-route attempts log absent | 4.5 |
 | Notification policy, quiet-hours safety floor (tenant, web) | Backend floor built (ADR-0073); admin preferences/quiet-hours exist; no web policy or preferences screen | 4.6 |
-| On-call "who is covering now" directory, role-based send | Backend built flag-off (ADR-0080 and ADR-0081, Proposed); web screen absent; M19 router not bound | 4.12 (built flag-off) |
+| On-call "who is covering now" directory, role-based send | Backend built flag-off (ADR-0080 and ADR-0081, Accepted by the product owner 2026-10-19); web screen absent; M19 router not bound | 4.12 (built flag-off) |
 | Snooze, fallback card, drill log, deep-link landing | Deep-link landing (ADR-0075) and snooze/reminders (ADR-0077) built; fallback card and drill-log screens absent (runbook only) | 4.8, 4.10, 4.11 |
 | Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
-| Device/session manager, retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.5, 5.6 |
+| Device/session manager | Built (ADR-0083, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
+| Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 |
 | Export approval, break-glass review, offboarding workflow | Absent | 5.7–5.9 |
 | Recovery rehearsal report | CLI drill only | 5.10 |
 | Smart inbox, analytics, voice, language, AI panel, partner share | Absent | 6.1–6.6 |

@@ -258,6 +258,13 @@ export const M19_ERROR_STATUS = {
    *  M19 PHI row needs `provider_entity_id` NOT NULL, so the delivery dead-letters for a human rather than
    *  anchoring an operational call to a guessed tenancy (the D10 posture, unchanged). */
   DELIVERY_FAILURE_PROVIDER_ENTITY_UNRESOLVED: 422,
+  /** ADR-0082 — an `m36.afterhours_triage.requested` whose id fields are missing or not uuids. Dead-letters
+   *  for a human; nothing is guessed. */
+  AFTERHOURS_PAYLOAD_INVALID: 422,
+  /** ADR-0082 — the request names a patient that does not resolve in the envelope's organization (another
+   *  tenant's, or unknown). Refused, never opened: the frozen outcome contract has no "refused" arm, so the
+   *  M36 link row stays unanswered and the sender sees "triage call not confirmed". */
+  AFTERHOURS_PATIENT_NOT_IN_ORG: 422,
 } as const;
 
 /** A machine-readable M19 domain failure code (§2.3 / §7). */

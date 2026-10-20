@@ -55,6 +55,9 @@ export interface OutboxPublishInput {
   readonly callerModule: string;
   /** When the event occurred; defaults to `new Date()` at publish time. */
   readonly occurredAt?: Date;
+  /** Optional `outbox_event.id` (uuid) chosen by the caller, so it can store the id of the event it publishes in the same
+   *  transaction (the port returns void). Omitted: the table default. Not allowed with a null organization. */
+  readonly eventId?: string;
 }
 
 /**
@@ -77,6 +80,8 @@ export function buildBootOutboxCatalog(
   return buildOutboxEventCatalog([M1_OUTBOX_EVENTS, ...moduleContributions]);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Build the OutboxPublishPort. Each `publish` runs the shared dispatcher against `catalog`; on success its
  * injected persister inserts the `outbox_event` row through the caller's `tx` (`event_type` = the event
@@ -95,6 +100,9 @@ export function buildTxOutboxPublisher(
 ): OutboxPublishPort {
   return {
     async publish(tx, input) {
+      if (input.eventId !== undefined && (input.organizationId === null || !UUID_RE.test(input.eventId))) {
+        throw new Error("outbox publish: eventId must be a uuid and needs an organization");
+      }
       await publishOutboxEvent(
         {
           eventName: input.eventName,
@@ -104,6 +112,7 @@ export function buildTxOutboxPublisher(
           aggregateId: input.aggregateId,
           callerModule: input.callerModule,
           occurredAt: input.occurredAt ?? new Date(),
+          ...(input.eventId === undefined ? {} : { eventId: input.eventId }),
         },
         async (record) => {
           if (record.organizationId === null) {
@@ -118,6 +127,7 @@ export function buildTxOutboxPublisher(
             return;
           }
           await tx.insert(schema.outboxEvents).values({
+            ...(record.eventId === undefined ? {} : { id: record.eventId }),
             eventType: record.eventName,
             organizationId: record.organizationId,
             aggregateKind: record.aggregateKind,

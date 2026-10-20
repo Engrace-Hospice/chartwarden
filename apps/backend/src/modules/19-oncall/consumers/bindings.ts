@@ -76,7 +76,7 @@ const HISTORY = schema.triageCallStateHistory;
 const ESCALATION = schema.triageEscalation;
 
 /** §3.3 — a machine-opened call names no acting membership. */
-const CONSUMER_USER_ID = "";
+export const CONSUMER_USER_ID = "";
 
 export interface OncallTriggerConsumerDeps {
   readonly db: DbClient;
@@ -132,10 +132,14 @@ export function stateHistoryPort(): StateHistoryPort {
 }
 
 /** Insert the machine-opened call and run its §2.4 effects, in one transaction. */
-async function openMachineCall(
+export async function openMachineCall(
   deps: OncallTriggerConsumerDeps,
-  draft: MachineOpenedCallDraft,
+  draft: Omit<MachineOpenedCallDraft, "admissionId"> & {
+    readonly admissionId: MachineOpenedCallDraft["admissionId"] | null;
+  },
   at: Date,
+  /** Runs in the SAME transaction as the insert, only when this delivery created the row. */
+  alongside?: (tx: DbClient, callId: TriageCallId) => Promise<void>,
 ): Promise<void> {
   await withOrgContext(
     deps.db,
@@ -214,6 +218,7 @@ async function openMachineCall(
           `m19 inbound trigger: a machine-opened call declared column effect(s) [${Object.keys(patch).join(", ")}]; a machine open has no responder and must set none`,
         );
       }
+      await alongside?.(tx, call.id as TriageCallId);
     },
   );
 }
@@ -227,7 +232,7 @@ async function openMachineCall(
  * coverage gap must be recorded even if M36 is down, and §2.7 D-D's status-endpoint fallback is the
  * designed answer to that outage.
  */
-async function publishCoverageGap(
+export async function publishCoverageGap(
   deps: OncallTriggerConsumerDeps,
   gap: {
     readonly organizationId: OrgId;
@@ -236,6 +241,8 @@ async function publishCoverageGap(
     readonly gapEndsAt: IsoInstant;
     readonly discipline: "clinical_rn";
   },
+  /** Runs in the SAME transaction as the gap event. */
+  alongside?: (tx: DbClient) => Promise<void>,
 ): Promise<void> {
   await withOrgContext(
     deps.db,
@@ -255,6 +262,7 @@ async function publishCoverageGap(
           discipline: gap.discipline,
         },
       });
+      await alongside?.(tx as DbClient);
     },
   );
   await deps.alerts

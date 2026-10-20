@@ -96,7 +96,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 | 5.2 | Reconnect sync | (header chip) | web | `messaging.read` | — | `GET /channels/:id/messages?after=` built | partial. `realtime-banner.tsx` ("Live updates paused"); no Live / Catching up chip; `after` cursor use in `use-thread.ts` unverified |
 | 5.3 | Camera capture | (composer sheet) | web | `messaging.send` | — | attachments routes built | missing (no `capture` input in `attachment-composer.tsx`) |
 | 5.4 | Responsive/touch evidence | all | web | — | — | none | missing (evidence, not code) |
-| 5.5 | Devices and sessions | `/messaging/devices`; `/messaging/governance/sessions` | web | self; `messaging.sessions.manage` **new** | — | `GET/DELETE /devices` **new**; `/notifications/endpoints` built | missing (no matching route, screen or web file found) |
+| 5.5 | Devices and sessions | `/messaging/devices`; `/messaging/governance/sessions` | web | self; `messaging.sessions.manage` **new** | — | `GET/DELETE /devices` built (ADR-0083, proposed); `/notifications/endpoints` built | built (web), without the app lock and the bulk "Sign out everywhere else" (open for SEC). `device-manager.tsx`, `session-governance.tsx`; step-up on the officer revoke; the officer names a person by user id |
 | 5.6 | Retention and legal hold | `/messaging/governance/retention` | web | `messaging.retention.manage` **new** | — | `/legal-holds` built (generic); `GET/PUT /messaging/retention` **new** | missing (no matching route, screen or web file found) |
 | 5.7 | Export request and approval | `/messaging/governance/exports` | web | `messaging.export.request`, `messaging.export.approve` **new** | `export`+ | `POST/GET /exports`, `…/{approve,deny,revoke}` **new** | missing (no matching route, screen or web file found) |
 | 5.8 | Break-glass request and review | `/messaging/governance/break-glass` | web | `messaging.breakglass.request`, `…review` **new** | `breakglass`+ | `POST /break-glass`, `GET /break-glass/reviews`, `POST …/:id/review` **new** | missing (no matching route, screen or web file found) |
@@ -273,7 +273,7 @@ Content is tenant-authored, contains no patient data, and is the page the flag-o
 - **A11y:** printable (`@media print`), high contrast, large type. **PHI:** none.
 - **Acceptance:** axe + keyboard; offline render test; live: drill create is audited. Evidence = runbook `docs/runbooks/messaging-escalation-fallback.md`.
 
-### 4.12 (built flag-off; ADRs proposed) On-call "who is covering now" directory with role-based send
+### 4.12 (built flag-off; ADRs Accepted by the product owner 2026-10-19) On-call "who is covering now" directory with role-based send
 
 ```
 On call now (Team A)  as of 14:07 (America/Los_Angeles)    [Role ▾ RN]
@@ -291,7 +291,7 @@ On call now (Team A)  as of 14:07 (America/Los_Angeles)    [Role ▾ RN]
 - **Acceptance:** axe + keyboard; live: shift-boundary and DST cases through the real router. **Blockers:** a real M19 router and a named M19 owner
   ([`brief-m19-owner.md`](./brief-m19-owner.md)); an ADR for role recipients; clinical-lead sign-off on who may be addressed by role.
 
-#### 4.12b Role-based send ("Message on-call role"), PROPOSED in [ADR-0081](../adr/ADR-0081-messaging-role-send.md)
+#### 4.12b Role-based send ("Message on-call role"), Accepted by the product owner 2026-10-19 in [ADR-0081](../adr/ADR-0081-messaging-role-send.md)
 
 ```
 Composer (care-team conversation)      [Poll] [Urgent clinical] [Message on-call role]   [ ] Needs a response
@@ -552,7 +552,7 @@ the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on wh
 
 | Area | TigerConnect (marketing, unverified) | Parity target | Hospice-specific advantage we add | Pri | WP |
 |---|---|---|---|---|---|
-| Role-based messaging | Message a role or on-call person, not a phone | Address "on-call RN" and get a person | Server resolves at send time with schedule zone, **sender confirms the resolved person**, request stores role + person; coverage gap is explicit, never silent | P0 | 4.3 (built seam) + **4.12** (**4.12b**, ADR-0081 PROPOSED: built flag-off, fail-closed; real M19 router still required) |
+| Role-based messaging | Message a role or on-call person, not a phone | Address "on-call RN" and get a person | Server resolves at send time with schedule zone, **sender confirms the resolved person**, request stores role + person; coverage gap is explicit, never silent | P0 | 4.3 (built seam) + **4.12** (**4.12b**, ADR-0081 Accepted by the product owner 2026-10-19: built flag-off, fail-closed; real M19 router still required) |
 | Priority alerts | Priority levels with distinct alerting | Routine / important / urgent / Critical, distinct tone | **Closed-loop acknowledgment with audit**: opened ≠ taken; aide = receipt only; permanent "not the emergency path" | P0 | 4.1, 4.2 (built), G1, G2 |
 | Escalation | Auto-escalate unanswered alerts | Timed tier escalation, backup routing | Visible **ladder visualiser**, supervisor queue with "shown N of M", `failed_unreachable`, restart-safe timers, exactly-once | P0 | 4.4 (built), 4.5, 4.9 |
 | Scheduling | On-call schedules integrated | Read M19 roster | Honest "who covers now" with shift/time-zone correctness; **after-hours triage line routing** into M19 `triage_call` | P0 | **4.12**, **4.13** |
@@ -578,8 +578,8 @@ calls, family notification, equipment pickup, bereavement referral, each owned a
 |---|---|---|
 | Reassign limits; supervisor override and take-over (G1, 4.9) | Clinical lead | Open in brief §3 and §5 |
 | Safety-floor list and locked quiet-hours rows (4.6) | Clinical lead | Decides what can never be silenced |
-| Role-based recipients and who may address a role (4.12) | Clinical lead + ADR-0081 (PROPOSED) + M19 owner | Built flag-off and fail-closed (ADR-0081); changes who is paged; no tenant role holds `messaging.oncall.send` until the clinical lead decides |
-| After-hours triage routing into M19 `triage_call` (4.13) | M19 owner (E1) + clinical lead (E2, E4, E5) + compliance (E5) + [ADR-0082](../adr/ADR-0082-messaging-after-hours-triage-routing.md) (PROPOSED) | Nothing built; decision brief [`brief-wp-4-13-after-hours-triage.md`](./brief-wp-4-13-after-hours-triage.md); depends on 4.12 / ADR-0081 |
+| Role-based recipients and who may address a role (4.12) | Decided 2026-10-19 by the product owner (ADR-0081 Accepted; clinical-lead concurrence not separately recorded; M19 owner interim) | Built flag-off and fail-closed (ADR-0081); changes who is paged; no tenant role holds `messaging.oncall.send` until the clinical lead decides |
+| After-hours triage routing into M19 `triage_call` (4.13) | M19 owner (E1) + clinical lead (E2, E4, E5) + compliance (E5) + [ADR-0082](../adr/ADR-0082-messaging-after-hours-triage-routing.md) (PROPOSED); E1, E2, E4, E5 answered by the product owner 2026-10-19, clinical-lead concurrence on E4 and compliance and security concurrence on E5 not recorded | Nothing built; decision brief [`brief-wp-4-13-after-hours-triage.md`](./brief-wp-4-13-after-hours-triage.md); depends on 4.12 / ADR-0081 |
 | Message retention classes and legal-hold overlay (5.6) | **New ADR** (ADR-0051 pattern) + compliance | Plan 02 §8 |
 | Export format and approval roles (5.7) | Compliance + **new ADR** | |
 | Break-glass eligibility, durations, review SLA (5.8) | Compliance + clinical lead | Matrix says "conditional" |

@@ -39,6 +39,9 @@ import {
 } from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
+const uuidString = Type.String({
+  pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+});
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
 const handoffCause = Type.Union(HANDOFF_UNACCEPTED_CAUSES.map((cause) => Type.Literal(cause)));
@@ -427,6 +430,23 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   ...ACK_EVENT_ENTRIES,
+  {
+    eventName: "m36.afterhours_triage.requested",
+    moduleOwner: "m36",
+    description:
+      "An after-hours role send asked M19 to open (or join) a triage call for a patient (ADR-0082, PROPOSED, flag-off). Id-only: the message, its acknowledgment request, the patient and one instant - no text, no name, no body. Published in the urgent send's own transaction; the organization comes from the envelope. M19 replies with m19.afterhours_triage.outcome.",
+    payloadSchema: Type.Object(
+      {
+        messageId: uuidString,
+        requestId: uuidString,
+        patientId: uuidString,
+        occurredAt: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m19"],
+    isOutboxOnly: true,
+  },
   {
     eventName: "m36.promotion.requested",
     moduleOwner: "m36",

@@ -112,3 +112,28 @@ export interface RoleSendResponse {
   readonly role: OnCallDirectoryRole;
   readonly created: boolean;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// After-hours triage routing, ADR-0082 (PROPOSED), slice S1: flag, outcome vocabulary and event name only. Nothing reads the flag yet.
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/** Tenant flag (absent = off). Off is the uniform 404; no event, no link row, no thread line. */
+export const AFTERHOURS_TRIAGE_FLAG_KEY = "messaging.afterhours_triage";
+
+/**
+ * The flags that must ALL be on with `messaging.afterhours_triage` (ADR-0082 decision 8): role send, response tracking, urgent clinical
+ * messages and SBAR. Checked in the service before any router call or publish (slice S3); this is only the list.
+ */
+export const AFTERHOURS_TRIAGE_REQUIRED_FLAG_KEYS = [
+  "messaging.role_send",
+  "messaging.ack_requests",
+  "messaging.urgent_clinical",
+  "messaging.sbar",
+] as const;
+
+/** What M19 answered for a request (closed list; the CHECK in migration 1131 mirrors it). `triage_call_id` exists for the first two. */
+export const AFTERHOURS_TRIAGE_OUTCOMES = ["opened", "coalesced", "no_coverage"] as const;
+export type AfterHoursTriageOutcome = (typeof AFTERHOURS_TRIAGE_OUTCOMES)[number];
+
+/** The id-only outbox event M36 publishes for an after-hours send (consumed by M19). */
+export const AFTERHOURS_TRIAGE_REQUESTED_EVENT = "m36.afterhours_triage.requested";

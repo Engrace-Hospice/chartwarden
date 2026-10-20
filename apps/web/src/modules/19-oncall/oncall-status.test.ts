@@ -97,6 +97,7 @@ const ALL_SOURCES = [
   "geofence_anomaly",
   "m36_delivery_failure",
   "paper_origin",
+  "m36_afterhours_request",
 ] as const;
 
 describe("M19 call-state tone map (§2.2.1 / §6.6)", () => {
@@ -202,13 +203,14 @@ describe("M19 disposition + source vocabulary (D6)", () => {
 });
 
 describe("M19 intake pickers exclude the machine-only vocabulary", () => {
-  it("drops the three D10 inbound channels from the human picker", () => {
-    expect(INBOUND_CHANNELS).toHaveLength(7);
+  it("drops the D10 inbound channels from the human picker", () => {
+    expect(INBOUND_CHANNELS).toHaveLength(8);
     expect(HUMAN_INBOUND_CHANNELS).toEqual(["phone", "sms", "email", "portal_message"]);
     for (const machineOnly of [
       "inbound_visit_failure",
       "inbound_evv_anomaly",
       "inbound_alert_failure",
+      "inbound_afterhours_request",
     ]) {
       expect(INBOUND_CHANNELS).toContain(machineOnly);
       expect(HUMAN_INBOUND_CHANNELS).not.toContain(machineOnly);
