@@ -156,3 +156,10 @@ describe("M3-T02 floor enforcement helpers (§2.4)", () => {
     expect(satisfiesFloor("registered_nurse", [])).toBe(true);
   });
 });
+
+describe("WP 5.6 (ADR-0086) messaging.retention.manage reaches NEW tenants' compliance officer", () => {
+  it("the compliance_officer template grants it by default (migration 1138 only covers existing roles)", () => {
+    const template = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer");
+    expect(template?.grants).toContain("messaging.retention.manage");
+  });
+});

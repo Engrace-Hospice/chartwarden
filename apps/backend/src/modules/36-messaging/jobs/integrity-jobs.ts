@@ -11,18 +11,15 @@
 // matters first: a held message is withheld from the plan.
 import { randomUUID } from "node:crypto";
 import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import type { DbClient } from "@wardenx/db";
 import {
   type HashMismatchEvent,
   type HashVerifyRunResult,
   type HashVerifySampleRow,
-  type RetentionCandidate,
   messageBodySha256,
-  planRetentionDestruction,
   runHashVerify,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { and, eq, lt } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "../body-key-ring";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { countLegacyBodiesInTx } from "./body-backfill";
@@ -34,21 +31,24 @@ import {
   readPreviousRun,
   sampleRows,
 } from "./integrity-sampling";
+import type { MessageHoldPort } from "./retention-hold-sql";
+
+export {
+  MESSAGE_RETENTION_YEARS,
+  RETENTION_SCAN_BATCH_LIMIT,
+  type RetentionScanRunResult,
+  runRetentionScanForOrg,
+} from "./retention-scan";
 
 export { HASH_VERIFY_SAMPLE_LIMIT };
 
 type Db = DbClient;
 
-/** The org's active legal-hold scope (M4's published read; bound at the composition root). */
-export interface ActiveHoldScope {
-  readonly orgWide: boolean;
-  readonly patientIds: ReadonlySet<string>;
-}
-
 export interface M36IntegrityJobDeps {
   readonly db: Db;
   readonly cipher: MessageBodyCipher;
-  readonly holdScopeForOrg: (organizationId: string) => Promise<ActiveHoldScope>;
+  /** M4's message-hold seam (active holds + pending certificates), bound at the composition root. */
+  readonly messageHolds: MessageHoldPort;
   readonly now?: () => Date;
   readonly newRunId?: () => string;
   /** Rotation and recent-pass rows per table per run. Defaults to {@link HASH_VERIFY_SAMPLE_LIMIT}; tests inject small ones. */
@@ -58,13 +58,6 @@ export interface M36IntegrityJobDeps {
   /** How far before the previous run's start the recent pass reaches. Defaults to {@link HASH_VERIFY_RECENT_OVERLAP_MS}. */
   readonly recentOverlapMs?: number;
 }
-
-/** Candidates examined per org per weekly scan. */
-export const RETENTION_SCAN_BATCH_LIMIT = 5000;
-
-/** Years a message is retained, by channel retention class. care_related/bereavement follow ADR-0004 (7y). */
-// ponytail: `operational` (announcements) is provisional until the messaging retention ADR fixes it.
-export const MESSAGE_RETENTION_YEARS = { care_related: 7, bereavement: 7, operational: 1 } as const;
 
 /** What the audit row for a failed GCM/auth decode records as the "computed" hash (never body text). */
 export const DECRYPT_FAILED = "decrypt-failed";
@@ -83,10 +76,6 @@ export const SUPPRESSED_ID_RECORD_LIMIT = 50;
  * 64-hex value, so the earlier empty-string sentinel made the eraser's UPDATE fail on a real database.
  */
 export const ERASED_BODY_SHA256 = "0".repeat(64);
-
-const MSG = schema.messages;
-const REV = schema.messageRevisions;
-const CH = schema.channels;
 
 function jobContext(organizationId: string, runId: string) {
   return {
@@ -233,83 +222,6 @@ export async function runHashVerifyForOrg(
         ...(previous.ignoredNonSystemRuns > 0
           ? { ignoredNonSystemRuns: previous.ignoredNonSystemRuns }
           : {}),
-      },
-    });
-    return result;
-  });
-}
-
-export interface RetentionScanRunResult {
-  readonly runId: string;
-  readonly candidates: number;
-  readonly toDestroy: number;
-  readonly skippedLegalHold: number;
-  /** Ids the plan would destroy; the scan itself deletes nothing. */
-  readonly toDestroyMessageIds: readonly string[];
-}
-
-function windowEnd(now: Date, years: number): Date {
-  const d = new Date(now);
-  d.setUTCFullYear(d.getUTCFullYear() - years);
-  return d;
-}
-
-/** One org's weekly retention scan: plan only, hold-aware, recorded as one `m36.retention_scan.run` row. */
-export async function runRetentionScanForOrg(
-  deps: M36IntegrityJobDeps,
-  orgId: string,
-): Promise<RetentionScanRunResult> {
-  const runId = (deps.newRunId ?? randomUUID)();
-  const now = (deps.now ?? (() => new Date()))();
-  const holds = await deps.holdScopeForOrg(orgId);
-  return withOrgContext(deps.db, systemOrgContext(orgId), async (tx) => {
-    const db = tx as unknown as Db;
-    const candidates: (RetentionCandidate & { subjectId: string | null })[] = [];
-    for (const [retentionClass, years] of Object.entries(MESSAGE_RETENTION_YEARS)) {
-      const end = windowEnd(now, years);
-      const rows = await db
-        .select({ id: MSG.id, channelId: MSG.channelId, subjectId: CH.subjectId })
-        .from(MSG)
-        .innerJoin(CH, and(eq(CH.organizationId, MSG.organizationId), eq(CH.id, MSG.channelId)))
-        .where(
-          and(
-            eq(MSG.organizationId, orgId),
-            eq(CH.retentionClass, retentionClass as keyof typeof MESSAGE_RETENTION_YEARS),
-            lt(MSG.createdAt, end),
-          ),
-        )
-        .orderBy(MSG.createdAt, MSG.id)
-        .limit(RETENTION_SCAN_BATCH_LIMIT);
-      for (const r of rows) {
-        candidates.push({
-          messageId: r.id,
-          channelId: r.channelId,
-          retentionClass,
-          windowEnd: end.toISOString(),
-          // Conservative, like M10's read of the same scope: an org-wide hold withholds everything.
-          legalHold: holds.orgWide || (r.subjectId !== null && holds.patientIds.has(r.subjectId)),
-          subjectId: r.subjectId,
-        });
-      }
-    }
-    const plan = planRetentionDestruction(candidates);
-    const result: RetentionScanRunResult = {
-      runId,
-      candidates: candidates.length,
-      toDestroy: plan.toDestroy.length,
-      skippedLegalHold: plan.skippedLegalHold,
-      toDestroyMessageIds: plan.toDestroy.map((c) => c.messageId),
-    };
-    await audit(tx as unknown as AuditExecutor, jobContext(orgId, runId), {
-      eventType: "m36.retention_scan.run",
-      resourceKind: "message_retention_run",
-      resourceId: runId,
-      outcome: "success",
-      context: {
-        runId,
-        candidates: result.candidates,
-        toDestroy: result.toDestroy,
-        skippedLegalHold: result.skippedLegalHold,
       },
     });
     return result;

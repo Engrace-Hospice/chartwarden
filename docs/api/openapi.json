@@ -147592,6 +147592,23 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              "channelIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "userIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "origin": {
+                                "type": "string"
                               }
                             }
                           },
@@ -147667,7 +147684,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+        "summary": "Apply a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED); 422 EMPTY_CRITERIA if no selector given (patientIds, dateRange, resourceKinds, channelIds or userIds)",
         "parameters": [],
         "responses": {
           "200": {
@@ -147749,6 +147766,23 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "channelIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "userIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "origin": {
+                        "type": "string"
                       }
                     }
                   },
@@ -147769,7 +147803,7 @@
         "tags": [
           "04-audit"
         ],
-        "summary": "Release a legal hold (§10.6)",
+        "summary": "Release a legal hold (§10.6) — fresh step-up required (403 STEP_UP_REQUIRED)",
         "parameters": [
           {
             "name": "id",
@@ -173556,6 +173590,493 @@
         }
       }
     },
+    "/api/v1/messaging/governance/legal-holds": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceLegalholds",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: the organisation's legal holds (messaging.retention.manage) with scope ids (channels, users, patients, or org-wide) and the number of messages each active hold covers now. Hold names are shown; no message, name or patient. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "holds"
+                  ],
+                  "properties": {
+                    "holds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "status",
+                          "scope",
+                          "placed_by",
+                          "placed_at",
+                          "released_at",
+                          "held_messages"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "released",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scope": {
+                            "type": "object",
+                            "required": [
+                              "channel_ids",
+                              "user_ids",
+                              "patient_ids",
+                              "org_wide"
+                            ],
+                            "properties": {
+                              "channel_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "user_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "patient_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "org_wide": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          "placed_by": {
+                            "type": "string"
+                          },
+                          "placed_at": {
+                            "type": "string"
+                          },
+                          "released_at": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "held_messages": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceLegalholds",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: place a legal hold on messages (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.apply`, else 403 STEP_UP_REQUIRED). Name channels, users and/or patients, or hold the whole organisation (org_wide, alone); a reason of at least 10 characters is required (422). Written through M4's seam in one transaction: the hold, its data.legal_hold_applied audit row with the reason, the m4.legal_hold.applied outbox event and a bounded materialisation of the per-message overlay (the weekly scan covers any remainder; enforcement also reads the live criteria). A held message cannot be edited (409 MESSAGE_UNDER_LEGAL_HOLD)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "scope",
+                    "placed_by",
+                    "placed_at",
+                    "released_at",
+                    "held_messages"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "released",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "channel_ids",
+                        "user_ids",
+                        "patient_ids",
+                        "org_wide"
+                      ],
+                      "properties": {
+                        "channel_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "user_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "patient_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "org_wide": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "placed_by": {
+                      "type": "string"
+                    },
+                    "placed_at": {
+                      "type": "string"
+                    },
+                    "released_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "name",
+                  "reason"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "channel_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "user_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "patient_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  },
+                  "org_wide": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/legal-holds/{id}/release": {
+      "post": {
+        "operationId": "postApiV1MessagingGovernanceLegalholdsByIdRelease",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: release a legal hold (messaging.retention.manage + a fresh step-up for `messaging.legal_hold.release`, else 403 STEP_UP_REQUIRED). A reason of at least 10 characters (422) and the eligible count the officer saw in the preview; the server recomputes and a different number is 409 RELEASE_PREVIEW_STALE with nothing changed. 404 unknown or another tenant's hold, 409 ALREADY_RELEASED. Audited as data.legal_hold_released with the reason. No clock extension: messages are eligible again on their original clock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "scope",
+                    "placed_by",
+                    "placed_at",
+                    "released_at",
+                    "held_messages"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "released",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "channel_ids",
+                        "user_ids",
+                        "patient_ids",
+                        "org_wide"
+                      ],
+                      "properties": {
+                        "channel_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "user_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "patient_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "org_wide": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "placed_by": {
+                      "type": "string"
+                    },
+                    "placed_at": {
+                      "type": "string"
+                    },
+                    "released_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason",
+                  "confirmed_eligible_count"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "confirmed_eligible_count": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/legal-holds/{id}/release-preview": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceLegalholdsByIdReleasepreview",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: what releasing a hold would do (messaging.retention.manage): held_messages and eligible_on_release (past their retention window and held by no other active hold). Another tenant's or an unknown hold is 404. Read-audited. Not cached",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hold_id",
+                    "held_messages",
+                    "eligible_on_release"
+                  ],
+                  "properties": {
+                    "hold_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "held_messages": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "eligible_on_release": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/governance/offboarding/{userId}": {
       "get": {
         "operationId": "getApiV1MessagingGovernanceOffboardingByUserId",
@@ -173971,6 +174492,146 @@
                           }
                         ]
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/governance/retention": {
+      "get": {
+        "operationId": "getApiV1MessagingGovernanceRetention",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Compliance officer: message retention view (messaging.retention.manage). Per class (care_related 7y, bereavement 7y, operational 1y, platform defaults, read-only) the counts the last weekly scan planned (eligible, held, capped) and the pending M4 destruction certificate it opened; the next scan time (Sunday 02:00 UTC); destruction_built is false, so an approved certificate destroys nothing yet. Ids, counts and dates only. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "classes",
+                    "next_scan_at",
+                    "last_scan_at",
+                    "destruction_built"
+                  ],
+                  "properties": {
+                    "classes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "class",
+                          "period_years",
+                          "source",
+                          "eligible",
+                          "held",
+                          "capped",
+                          "certificate_id",
+                          "certificate_status"
+                        ],
+                        "properties": {
+                          "class": {
+                            "anyOf": [
+                              {
+                                "const": "care_related",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "period_years": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "source": {
+                            "const": "platform_default",
+                            "type": "string"
+                          },
+                          "eligible": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "held": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capped": {
+                            "type": "boolean"
+                          },
+                          "certificate_id": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "certificate_status": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "next_scan_at": {
+                      "type": "string"
+                    },
+                    "last_scan_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "destruction_built": {
+                      "const": false,
+                      "type": "boolean"
                     }
                   }
                 }

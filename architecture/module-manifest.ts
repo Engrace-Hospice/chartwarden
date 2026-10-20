@@ -295,6 +295,7 @@ export const MODULES: ModuleDef[] = [
       "message_acknowledgment_request",
       "message_acknowledgment_event",
       "message_thread_access_grant",
+      "legal_hold_message",
       "messaging_review_item",
       "chart_promotion_request",
       "tenant_handoff_policy",

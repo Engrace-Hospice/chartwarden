@@ -88,7 +88,11 @@ describe("evaluateHopeRetention", () => {
 
 describe("legalHoldScopeOf — conservative M4 hold projection", () => {
   it("is empty with no active holds", () => {
-    expect(legalHoldScopeOf([])).toEqual({ orgWide: false, patientIds: new Set() });
+    expect(legalHoldScopeOf([])).toEqual({
+      orgWide: false,
+      messagingHeld: false,
+      patientIds: new Set(),
+    });
   });
   it("scopes down to the patients a hold names", () => {
     const s = legalHoldScopeOf([{ patientIds: ["a", "b"] }, { patientIds: ["c"], dateRange: {} }]);
@@ -99,5 +103,21 @@ describe("legalHoldScopeOf — conservative M4 hold projection", () => {
     expect(legalHoldScopeOf([{ resourceKinds: ["encounter"] }]).orgWide).toBe(true);
     expect(legalHoldScopeOf([{ patientIds: [] }]).orgWide).toBe(true);
     expect(legalHoldScopeOf([null]).orgWide).toBe(true);
+  });
+  it("does not read a messaging-only (channelIds/userIds) hold as org-wide or as a patient hold", () => {
+    const id = "44444444-4444-4444-8444-444444444444";
+    expect(legalHoldScopeOf([{ channelIds: [id] }, { userIds: [id], dateRange: {} }])).toEqual({
+      orgWide: false,
+      messagingHeld: true,
+      patientIds: new Set(),
+    });
+    expect(legalHoldScopeOf([{ channelIds: [id], patientIds: ["p"] }]).patientIds).toEqual(
+      new Set(["p"]),
+    );
+  });
+  it("reports messagingHeld so the M34 tenant-key gate still blocks under a messaging-only hold", () => {
+    const id = "44444444-4444-4444-8444-444444444444";
+    expect(legalHoldScopeOf([{ channelIds: [id] }]).messagingHeld).toBe(true);
+    expect(legalHoldScopeOf([{ patientIds: ["p"] }]).messagingHeld).toBe(false);
   });
 });

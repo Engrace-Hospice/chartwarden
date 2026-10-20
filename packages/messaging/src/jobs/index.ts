@@ -8,3 +8,4 @@
 export * from "./queues";
 export * from "./processors";
 export * from "./ports";
+export * from "./message-held-by";

@@ -12,6 +12,8 @@ const FOCUSABLE =
 export interface ModalProps {
   open: boolean;
   onClose?: () => void;
+  /** Whether a click on the scrim calls onClose. Default true; pass false while the card holds typed input (Escape still closes). */
+  dismissOnScrim?: boolean;
   /** Accessible dialog label (the title text). */
   ariaLabel: string;
   /** Use role="alertdialog" for invariant blockers / destructive ceremonies. Default "dialog". */
@@ -29,6 +31,7 @@ export interface ModalProps {
 export function Modal({
   open,
   onClose,
+  dismissOnScrim = true,
   ariaLabel,
   role = "dialog",
   width = "32rem",
@@ -117,13 +120,13 @@ export function Modal({
         type="button"
         aria-label="Close"
         tabIndex={-1}
-        onClick={onClose}
+        onClick={dismissOnScrim ? onClose : undefined}
         style={{
           position: "absolute",
           inset: 0,
           border: "none",
           background: "transparent",
-          cursor: onClose ? "pointer" : "default",
+          cursor: onClose && dismissOnScrim ? "pointer" : "default",
         }}
       />
       {/* The dialog card is the focus-trap root (tabIndex -1 is programmatic-focus only). */}

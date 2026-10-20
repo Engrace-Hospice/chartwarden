@@ -63,7 +63,7 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     moduleOwner: "m36",
     defaultRetentionClass: "operational",
     description:
-      "A weekly message retention scan completed per tenant (runId, candidates, toDestroy, skippedLegalHold). Counts only; the scan plans and never deletes, and a legal-held message is withheld from the plan.",
+      "A weekly message retention scan completed per tenant (runId, candidates, toDestroy, skippedLegalHold, eligibleByClass, heldByClass, capped, heldByHold, materialised, certificates). Ids and counts only; the scan plans and never deletes, a legal-held message is withheld from the plan, and per-class pending M4 certificates are opened.",
     denylistCategories: [],
     isPartTwoEligible: false,
   },

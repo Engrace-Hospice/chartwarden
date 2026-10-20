@@ -366,6 +366,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 5.6 (ADR-0086, PROPOSED): apply and release a legal hold on messages and read the retention view (compliance officer). Apply and
+  //     release each demand a fresh step-up and a written reason; migration 1138 grants it to compliance_officer, administrator and org_admin. ---
+  "messaging.retention.manage": {
+    resource: "message_retention",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---

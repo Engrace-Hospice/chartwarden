@@ -21,12 +21,15 @@ interface DraftEnvelope {
   readonly value: unknown;
 }
 
-type DraftOwner = { readonly userId: string; readonly organizationId: string } | null | undefined;
+export type StepUpDraftOwner =
+  | { readonly userId: string; readonly organizationId: string }
+  | null
+  | undefined;
 
 /** `org|user|action|resourceId` — a draft is only ever visible to the same org, user, action and record.
  *  Null when there is no session to scope to (nothing is stashed then). */
 export function stepUpDraftKey(
-  owner: DraftOwner,
+  owner: StepUpDraftOwner,
   action: string,
   resourceId: string,
 ): string | null {
@@ -101,7 +104,7 @@ export function clearStepUpDraft(key: string | null): void {
 
 /** The resource id of this user's pending draft for `action`, so a list screen can reopen its modal after
  *  the step-up round trip. Null when there is none. */
-export function findStepUpDraftResourceId(owner: DraftOwner, action: string): string | null {
+export function findStepUpDraftResourceId(owner: StepUpDraftOwner, action: string): string | null {
   const prefix = stepUpDraftKey(owner, action, "");
   if (prefix === null) return null;
   try {
@@ -121,4 +124,64 @@ export function takeStepUpDraft<T>(key: string): T | null {
   const value = peekStepUpDraft<T>(key);
   clearStepUpDraft(key);
   return value;
+}
+
+// A draft alone is not proof the user is coming back: they may have abandoned the step-up. The step-up card
+// records a ONE-SHOT, short-lived "verified, returning to <path>" marker; a screen reopens its stashed modal only
+// when that marker names its own path, and otherwise discards the stale draft.
+const RETURN_KEY = "wx.step-up-returned";
+const RETURN_TTL_MS = 2 * 60_000;
+
+/** Called by the step-up page once freshness is recorded, just before it navigates to `returnTo`. */
+export function markStepUpReturn(returnTo: string): void {
+  try {
+    window.sessionStorage.setItem(RETURN_KEY, JSON.stringify({ at: Date.now(), path: returnTo }));
+  } catch {
+    // Non-fatal: the user simply gets no auto-reopened modal.
+  }
+}
+
+/** True when a fresh marker names `path`. Does not consume (render-safe); call `clearStepUpReturn` in an effect. */
+export function peekStepUpReturn(path: string): boolean {
+  try {
+    const raw = window.sessionStorage.getItem(RETURN_KEY);
+    if (raw === null) return false;
+    const m = JSON.parse(raw) as { at?: unknown; path?: unknown };
+    return typeof m.at === "number" && Date.now() - m.at <= RETURN_TTL_MS && m.path === path;
+  } catch {
+    return false;
+  }
+}
+
+export function clearStepUpReturn(): void {
+  try {
+    window.sessionStorage.removeItem(RETURN_KEY);
+  } catch {
+    // Non-fatal.
+  }
+}
+
+/** Drop every stashed draft of `action` that belongs to this owner (an abandoned step-up). */
+export function discardStepUpDrafts(owner: StepUpDraftOwner, action: string): void {
+  const MAX_DRAFTS = 20; // a clear that silently fails must not spin forever
+  for (let n = 0; n < MAX_DRAFTS; n += 1) {
+    const id = findStepUpDraftResourceId(owner, action);
+    if (id === null) return;
+    clearStepUpDraft(stepUpDraftKey(owner, action, id));
+  }
+}
+
+/** Forget every stashed step-up draft and the return marker (sign-out, screen lock): a draft can carry free text and must not outlive the session. */
+export function clearAllStepUpDrafts(): void {
+  try {
+    const mine: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const k = window.sessionStorage.key(i);
+      if (k?.startsWith(DRAFT_PREFIX)) mine.push(k);
+    }
+    for (const k of mine) window.sessionStorage.removeItem(k);
+  } catch {
+    // Non-fatal.
+  }
+  clearStepUpReturn();
 }

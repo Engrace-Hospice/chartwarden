@@ -639,7 +639,7 @@ export const patientAssignmentRole = pgEnum("patient_assignment_role", [
   "md",
   "volunteer",
   "bereavement",
-  // Non-clinical: the actor who created the patient from a referral (migration 1137).
+  // Non-clinical: the actor who created the patient from a referral (migration 1138).
   "admitting_staff",
 ]);
 
