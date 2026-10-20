@@ -358,6 +358,7 @@ import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope"
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   activeLegalHolds,
+  createMessagingGovernanceHoldPort,
   openMessageCertificate,
 } from "./modules/04-audit/messaging-hold-workflow";
 import { linkCaregiverToUserInTx } from "./modules/05-patient/caregiver-user-link";
@@ -4932,6 +4933,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            // WP 5.6 (ADR-0086) - retention overview and legal holds: M4's hold seam (apply/release in the caller's tx) and the audit reader.
+            retentionGovernance: {
+              holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
+              auditQuery: createDbAuditQuery(dbHandle.db),
+            },
             globalSearch: {
               keys: m36SearchKeys,
               ...(m36NameExclusions ? { exclusions: m36NameExclusions } : {}),

@@ -187,7 +187,12 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import {
+  type RetentionGovernanceDeps as _RetentionGovernanceDeps,
+  createRetentionGovernanceService as _createRetentionGovernanceService,
+} from "./governance/retention-governance-service";
 import { registerOffboardingRoutes as _registerOffboardingRoutes } from "./routes/offboarding-routes";
+import { registerRetentionGovernanceRoutes as _registerRetentionGovernanceRoutes } from "./routes/retention-governance-routes";
 import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
@@ -260,6 +265,11 @@ export function mountMessagingRoutes(
      * (no database or no acknowledgment binding).
      */
     offboarding?: Omit<_OffboardingBindingInput, "db" | "sessionDevices">;
+    /**
+     * WP 5.6 (ADR-0086, PROPOSED): retention view and legal-hold apply / release. The composition root supplies M4's hold seam and the audit
+     * reader; omitted => not mounted (no database).
+     */
+    retentionGovernance?: Omit<_RetentionGovernanceDeps, "db">;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -358,6 +368,12 @@ export function mountMessagingRoutes(
         sessionDevices: sessionDeviceService,
         ...opts.offboarding,
       }),
+    });
+  }
+  // WP 5.6 (ADR-0086) - retention overview and legal holds. No tenant flag: a compliance control.
+  if (opts.retentionGovernance) {
+    _registerRetentionGovernanceRoutes(app, {
+      service: _createRetentionGovernanceService({ db, ...opts.retentionGovernance }),
     });
   }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own

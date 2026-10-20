@@ -63,23 +63,23 @@ export interface RetentionScanRunResult {
   }[];
 }
 
-function windowEnd(now: Date, years: number): Date {
+export function windowEnd(now: Date, years: number): Date {
   const d = new Date(now);
   d.setUTCFullYear(d.getUTCFullYear() - years);
   return d;
 }
 
-const FROM_MESSAGE = sql`FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id`;
+export const FROM_MESSAGE = sql`FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id`;
 
 /** Past-window rows of one class in one org (the base every query narrows). */
-const pastWindow = (orgId: string, cls: string, end: Date): SQL =>
+export const pastWindow = (orgId: string, cls: string, end: Date): SQL =>
   sql`m.organization_id = ${orgId}::uuid AND c.retention_class = ${cls} AND m.created_at < ${end.toISOString()}::timestamptz`;
 
 async function rowsOf<T extends Record<string, unknown>>(tx: DbClient, query: SQL): Promise<T[]> {
   return (await tx.execute<T>(query)).rows as T[];
 }
 
-async function count(tx: DbClient, where: SQL): Promise<number> {
+export async function count(tx: DbClient, where: SQL): Promise<number> {
   const [row] = await rowsOf<{ n: number }>(
     tx,
     sql`SELECT count(*)::int AS n ${FROM_MESSAGE} WHERE ${where}`,
@@ -88,7 +88,7 @@ async function count(tx: DbClient, where: SQL): Promise<number> {
 }
 
 /** Insert missing overlay rows for one hold, bounded; returns rows inserted. Org-explicit and idempotent (ON CONFLICT DO NOTHING). */
-async function materialiseHold(
+export async function materialiseHold(
   tx: DbClient,
   orgId: string,
   hold: ActiveMessageHold,

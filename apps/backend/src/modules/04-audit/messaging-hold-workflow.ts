@@ -8,7 +8,7 @@
 import { type AuditContext, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
 const HOLD = schema.legalHolds;
@@ -195,4 +195,105 @@ export async function openMessageCertificate(
     .returning({ id: CERT.id });
   if (!row) throw new Error("destruction_certificate insert returned no row");
   return { id: row.id, created: true };
+}
+
+/** One legal hold as the messaging governance screen reads it (the free-text reason stays in the audit row). */
+export interface LegalHoldSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly criteria: LegalHoldCriteria;
+  readonly status: "active" | "released";
+  readonly appliedBy: string | null;
+  readonly appliedAt: Date;
+  readonly releasedAt: Date | null;
+}
+
+const toSummary = (r: typeof HOLD.$inferSelect): LegalHoldSummary => ({
+  id: r.id,
+  name: r.name,
+  criteria: r.criteria as LegalHoldCriteria,
+  status: r.status,
+  appliedBy: r.appliedBy,
+  appliedAt: r.appliedAt,
+  releasedAt: r.releasedAt,
+});
+
+/** The org's newest holds (active and released). Org-filtered in addition to RLS. */
+export async function listLegalHolds(
+  tx: DbClient,
+  organizationId: string,
+  limit: number,
+): Promise<readonly LegalHoldSummary[]> {
+  const rows = await tx
+    .select()
+    .from(HOLD)
+    .where(eq(HOLD.organizationId, organizationId))
+    .orderBy(desc(HOLD.appliedAt), desc(HOLD.id))
+    .limit(limit);
+  return rows.map(toSummary);
+}
+
+/** One hold of this org, or null (unknown and another tenant's id are the same answer). */
+export async function getLegalHold(
+  tx: DbClient,
+  organizationId: string,
+  id: string,
+): Promise<LegalHoldSummary | null> {
+  const [row] = await tx
+    .select()
+    .from(HOLD)
+    .where(and(eq(HOLD.organizationId, organizationId), eq(HOLD.id, id)))
+    .limit(1);
+  return row ? toSummary(row) : null;
+}
+
+/** Status of the given certificates (id -> status), for the retention overview. */
+export async function certificateStatuses(
+  tx: DbClient,
+  organizationId: string,
+  ids: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: CERT.id, status: CERT.status })
+    .from(CERT)
+    .where(and(eq(CERT.organizationId, organizationId), inArray(CERT.id, [...ids])));
+  return new Map(rows.map((r) => [r.id, r.status]));
+}
+
+/**
+ * The hold seam M36's governance routes call (ADR-0086, WP 5.6), bound at the composition root with M4's outbox. M36 declares the matching
+ * port interface itself (structural typing), so it imports nothing from here.
+ */
+export function createMessagingGovernanceHoldPort(deps: { readonly outbox?: M4OutboxPort }) {
+  return {
+    list: listLegalHolds,
+    get: getLegalHold,
+    activeHolds: activeLegalHolds,
+    certificateStatuses,
+    async apply(
+      tx: DbClient,
+      auditContext: AuditContext,
+      input: Omit<ApplyLegalHoldInput, "criteria"> & { readonly criteria: unknown },
+    ): Promise<{ readonly id: string }> {
+      const row = await applyLegalHoldInTx(tx, deps, auditContext, {
+        ...input,
+        criteria: input.criteria as LegalHoldCriteria,
+      });
+      return { id: row.id };
+    },
+    async release(
+      tx: DbClient,
+      auditContext: AuditContext,
+      input: Omit<ReleaseLegalHoldInput, "countRestored"> & {
+        readonly countRestored: () => Promise<number>;
+      },
+    ): Promise<{ readonly restoredRecordCount: number }> {
+      const out = await releaseLegalHoldInTx(tx, deps, auditContext, {
+        ...input,
+        countRestored: () => input.countRestored(),
+      });
+      return { restoredRecordCount: out.restoredRecordCount };
+    },
+  };
 }
