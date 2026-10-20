@@ -128,6 +128,7 @@ export * from "./messaging/communication-tasks";
 export * from "./messaging/clinical-handoffs";
 export * from "./messaging/message-acknowledgments";
 export * from "./messaging/message-thread-access-grants";
+export * from "./messaging/legal-hold-messages";
 export * from "./messaging/review-items";
 export * from "./messaging/chart-promotion-requests";
 export * from "./messaging/message-revisions";
