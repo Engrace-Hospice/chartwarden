@@ -1,18 +1,38 @@
 // M36 WP 5.6 (ADR-0086, PROPOSED) - the retention and legal-hold screen against a mocked network boundary: the per-class view (plan-only wording, never
 // scanned, capped, certificate), the hold list, place (validation, step-up with stashed input), release (preview then a second confirmation that
 // sends the count seen, a stale count re-shown, step-up), the 403 / error states, free text rendered as text, keyboard and axe.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { stashStepUpDraft } from "../../shell/step-up-redirect";
+import { markStepUpReturn, stashStepUpDraft, stepUpDraftKey } from "../../shell/step-up-redirect";
+import { APPLY_ACTION, RELEASE_ACTION } from "./legal-hold-drafts";
 import { RetentionGovernance } from "./retention-governance";
+import { useLegalHolds } from "./use-retention";
 
 const CH = "11111111-1111-4111-8111-111111111111";
 const HOLD = "22222222-2222-4222-8222-222222222222";
+const ME = "99999999-9999-4999-8999-999999999999";
+const ORG = "org-1";
+const PATH = "/messaging/governance/retention";
+const owner = (userId = ME, organizationId = ORG) => ({ userId, organizationId });
+const createKey = (o = owner()) => stepUpDraftKey(o, APPLY_ACTION, "new");
+const releaseKey = (o = owner(), id = HOLD) => stepUpDraftKey(o, RELEASE_ACTION, id);
+/** What the step-up page does on success, just before it navigates back. */
+const comeBackFromStepUp = () => markStepUpReturn(PATH);
 
 const cls = (
   c: RetentionClassDto["class"],
@@ -61,7 +81,7 @@ interface Routes {
   release?: () => Reply;
   apply?: () => Reply;
 }
-function mount(routes: Routes, userId = "99999999-9999-4999-8999-999999999999") {
+function mount(routes: Routes, userId = ME, organizationId = ORG) {
   const GET = vi.fn((path: string, _init?: unknown): Promise<Reply> => {
     if (path.endsWith("/retention")) return Promise.resolve(routes.retention?.() ?? ok(OVERVIEW));
     if (path.endsWith("/release-preview")) return Promise.resolve(routes.preview?.() ?? fail(500));
@@ -78,13 +98,13 @@ function mount(routes: Routes, userId = "99999999-9999-4999-8999-999999999999") 
     <output data-testid="where">{useLocation().pathname + useLocation().search}</output>
   );
   const view = render(
-    <MemoryRouter initialEntries={["/messaging/governance/retention"]}>
+    <MemoryRouter initialEntries={[PATH]}>
       <ApiClientProvider
         client={
           { GET, POST, PUT: writes[0], PATCH: writes[1], DELETE: writes[2] } as unknown as ApiClient
         }
       >
-        <SessionProvider session={{ userId, organizationId: "org-1" }}>
+        <SessionProvider session={{ userId, organizationId }}>
           <main>
             <RetentionGovernance />
             <Where />
@@ -274,6 +294,7 @@ describe("Legal holds tab", () => {
       expect(screen.getByTestId("where").textContent).toContain("/step-up?returnTo="),
     );
     cleanup();
+    comeBackFromStepUp();
     mount({ holds: () => ok({ holds: [] }) });
     await openHolds();
     const again = await screen.findByRole("dialog", { name: "Place a legal hold" });
@@ -361,6 +382,7 @@ describe("Legal holds tab", () => {
       expect(screen.getByTestId("where").textContent).toContain("/step-up?returnTo="),
     );
     cleanup();
+    comeBackFromStepUp();
     mount({ preview });
     await openHolds();
     const back = await screen.findByRole("dialog", { name: "Release legal hold" });
@@ -397,7 +419,6 @@ describe("Legal holds tab", () => {
 });
 
 describe("Who placed a hold, and returning after step-up", () => {
-  const ME = "99999999-9999-4999-8999-999999999999";
   const OTHER = "ab12cd34-0000-4000-8000-000000000000";
 
   it("shows You for the signed-in user and a labelled short id (never a bare uuid) for others", async () => {
@@ -421,7 +442,8 @@ describe("Who placed a hold, and returning after step-up", () => {
 
   it("returning from step-up lands on Legal holds and reopens the release dialog at step one, prefilled", async () => {
     const preview = () => ok({ hold_id: HOLD, held_messages: 41, eligible_on_release: 7 });
-    stashStepUpDraft("messaging-legal-hold-release", { holdId: HOLD, reason: "Matter settled" });
+    stashStepUpDraft(releaseKey(), { holdId: HOLD, reason: "Matter settled" });
+    comeBackFromStepUp();
     mount({ preview });
     const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
     expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
@@ -435,7 +457,7 @@ describe("Who placed a hold, and returning after step-up", () => {
   });
 
   it("returning from step-up with a stashed place draft lands on Legal holds", async () => {
-    stashStepUpDraft("messaging-legal-hold-create", {
+    stashStepUpDraft(createKey(), {
       name: "Case A",
       reason: "Subpoena",
       orgWide: false,
@@ -443,6 +465,7 @@ describe("Who placed a hold, and returning after step-up", () => {
       users: CH,
       patients: "",
     });
+    comeBackFromStepUp();
     mount({});
     await screen.findByRole("dialog", { name: "Place a legal hold" });
     expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
@@ -456,5 +479,388 @@ describe("Who placed a hold, and returning after step-up", () => {
     expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
       "true",
     );
+  });
+});
+
+const deferred = <T,>() => {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+const PREVIEW_7 = () => ok({ hold_id: HOLD, held_messages: 41, eligible_on_release: 7 });
+
+describe("Step-up drafts are scoped and only reopen on a genuine return", () => {
+  const draft = {
+    name: "Case A",
+    reason: "Subpoena",
+    orgWide: false,
+    channels: "",
+    users: CH,
+    patients: "",
+  };
+  const OTHER_USER = "aaaaaaaa-0000-4000-8000-000000000000";
+
+  it("another user's draft is invisible, even right after a genuine return", async () => {
+    stashStepUpDraft(createKey(owner(OTHER_USER)), draft);
+    stashStepUpDraft(releaseKey(owner(OTHER_USER)), { holdId: HOLD, reason: "Matter settled" });
+    comeBackFromStepUp();
+    mount({ preview: PREVIEW_7 });
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("another organization's draft for the same user is invisible", async () => {
+    stashStepUpDraft(createKey(owner(ME, "org-2")), draft);
+    comeBackFromStepUp();
+    mount({});
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("an abandoned draft does not pop a dialog open on a later normal visit, and is cleaned up", async () => {
+    stashStepUpDraft(createKey(), draft);
+    stashStepUpDraft(releaseKey(), { holdId: HOLD, reason: "Matter settled" });
+    mount({ preview: PREVIEW_7 });
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    await openHolds();
+    await screen.findByRole("list", { name: "Legal holds" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(window.sessionStorage.length).toBe(0));
+  });
+
+  it("a return marker for another page does not reopen anything", async () => {
+    stashStepUpDraft(createKey(), draft);
+    markStepUpReturn("/somewhere/else");
+    mount({});
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the marker is one-shot: a second visit after a genuine return finds no dialog", async () => {
+    stashStepUpDraft(createKey(), draft);
+    comeBackFromStepUp();
+    mount({ holds: () => ok({ holds: [] }) });
+    await screen.findByRole("dialog", { name: "Place a legal hold" });
+    cleanup();
+    mount({ holds: () => ok({ holds: [] }) });
+    await screen.findByRole("list", { name: "Retention by message class" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a genuine return reopens the place dialog filled, and cancelling it drops the draft", async () => {
+    stashStepUpDraft(createKey(), draft);
+    comeBackFromStepUp();
+    mount({ holds: () => ok({ holds: [] }) });
+    const dialog = await screen.findByRole("dialog", { name: "Place a legal hold" });
+    expect((within(dialog).getByLabelText(/^Name/) as HTMLInputElement).value).toBe("Case A");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("a resumed release dialog opens once and does not refetch the list", async () => {
+    stashStepUpDraft(releaseKey(), { holdId: HOLD, reason: "Matter settled" });
+    comeBackFromStepUp();
+    const { GET } = mount({ preview: PREVIEW_7 });
+    const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
+    expect(GET.mock.calls.filter(([p]) => p.endsWith("/legal-holds")).length).toBe(1);
+    expect(screen.getByRole("dialog", { name: "Release legal hold" })).toBe(dialog);
+  });
+});
+
+describe("Stale-while-revalidate and focus", () => {
+  it("after placing, the list is never replaced by a spinner while it refetches", async () => {
+    const slow = deferred<Reply>();
+    let reads = 0;
+    const { GET } = mount({ holds: () => ok({ holds: [hold()] }), apply: () => ok({}) });
+    const user = userEvent.setup();
+    await openHolds();
+    await screen.findByRole("list", { name: "Legal holds" });
+    GET.mockImplementation((path: string) => {
+      if (path.endsWith("/legal-holds")) {
+        reads += 1;
+        return slow.promise;
+      }
+      return Promise.resolve(ok(OVERVIEW));
+    });
+    await user.click(screen.getByRole("button", { name: "Place legal hold" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^Name/), "Case B");
+    await user.type(within(dialog).getByLabelText(/^Reason/), "Subpoena received");
+    await user.type(within(dialog).getByLabelText(/^Channel ids/), CH);
+    await user.click(within(dialog).getByRole("button", { name: "Place hold" }));
+    await waitFor(() => expect(reads).toBe(1));
+    expect(screen.getByRole("list", { name: "Legal holds" })).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Loading" })).toBeNull();
+    await act(async () => slow.resolve(ok({ holds: [hold(), hold({ id: CH, name: "Case B" })] })));
+    expect(await screen.findByText("Case B")).toBeTruthy();
+  });
+
+  it("after a place, focus lands on the result announcement, not on the page body", async () => {
+    mount({ holds: () => ok({ holds: [] }), apply: () => ok({}) });
+    const user = userEvent.setup();
+    await openHolds();
+    await screen.findByText("No legal holds");
+    await user.click(screen.getByRole("button", { name: "Place legal hold" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^Name/), "All");
+    await user.type(within(dialog).getByLabelText(/^Reason/), "Regulator inquiry");
+    await user.click(within(dialog).getByLabelText("Hold every message in the organization"));
+    await user.click(within(dialog).getByRole("button", { name: "Place hold" }));
+    const status = await screen.findByText("Legal hold placed.");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("after a release (the Release button disappears), focus lands on the result announcement", async () => {
+    let released = false;
+    mount({
+      holds: () =>
+        ok({
+          holds: [
+            released ? hold({ status: "released", released_at: "2026-10-10T00:00:00Z" }) : hold(),
+          ],
+        }),
+      preview: PREVIEW_7,
+      release: () => {
+        released = true;
+        return ok({});
+      },
+    });
+    const user = userEvent.setup();
+    await openHolds();
+    await user.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const first = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(first).findByText(/7 messages/);
+    await user.type(within(first).getByLabelText(/^Reason for release/), "Matter settled");
+    await user.click(within(first).getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: /now$/ }));
+    const status = await screen.findByText("Legal hold released.");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+    await screen.findByText("Released");
+    expect(screen.queryByRole("button", { name: /Release hold/ })).toBeNull();
+  });
+
+  it("cancelling the release dialog returns focus to the Release button", async () => {
+    mount({ preview: PREVIEW_7 });
+    const user = userEvent.setup();
+    await openHolds();
+    const trigger = await screen.findByRole("button", { name: /Release hold/ });
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(dialog).findByText(/7 messages/);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("changing step moves focus to the new step heading, and the stale count is an alert", async () => {
+    let n = 7;
+    let stale = true;
+    mount({
+      preview: () => ok({ hold_id: HOLD, held_messages: 41, eligible_on_release: n }),
+      release: () => {
+        if (!stale) return ok({});
+        stale = false;
+        n = 9;
+        return fail(409, { error: { code: "RELEASE_PREVIEW_STALE" } });
+      },
+    });
+    const user = userEvent.setup();
+    await openHolds();
+    await user.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const first = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(first).findByText(/7 messages/);
+    expect(first.querySelector("[aria-live]")?.textContent).toContain("7 messages");
+    await user.type(within(first).getByLabelText(/^Reason for release/), "Matter settled");
+    await user.click(within(first).getByRole("button", { name: "Continue" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Confirm release" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(confirm).getByRole("heading", { name: "Confirm release" }),
+      ),
+    );
+    await user.click(within(confirm).getByRole("button", { name: /now$/ }));
+    const alert = await within(confirm).findByRole("alert");
+    expect(alert.textContent).toMatch(/The count changed.*9 messages will become eligible/);
+    await user.click(within(confirm).getByRole("button", { name: "Back" }));
+    const back = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(back).getByRole("heading", { name: "Release legal hold" }),
+      ),
+    );
+  });
+});
+
+describe("Tabs keyboard", () => {
+  it("ArrowLeft goes to the previous tab (wrapping), Home and End jump, and focus follows", async () => {
+    mount({});
+    const retention = await screen.findByRole("tab", { name: "Retention" });
+    fireEvent.keyDown(retention, { key: "ArrowLeft" });
+    const holds = screen.getByRole("tab", { name: "Legal holds" });
+    expect(holds.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(holds);
+    fireEvent.keyDown(holds, { key: "Home" });
+    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Retention" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "Legal holds" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Legal holds" }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Retention" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  it("only the selected tab points at a panel that exists, and that panel is focusable", async () => {
+    mount({});
+    const retention = await screen.findByRole("tab", { name: "Retention" });
+    const panel = screen.getByRole("tabpanel");
+    expect(retention.getAttribute("aria-controls")).toBe(panel.id);
+    expect(screen.getByRole("tab", { name: "Legal holds" }).hasAttribute("aria-controls")).toBe(
+      false,
+    );
+    expect(panel.getAttribute("tabindex")).toBe("0");
+    expect(panel.getAttribute("aria-labelledby")).toBe(retention.id);
+  });
+});
+
+describe("Double submits, cancel while busy, preview retry", () => {
+  it("a double-click on Place hold sends one request", async () => {
+    const gate = deferred<Reply>();
+    const { POST } = mount({ holds: () => ok({ holds: [] }) });
+    POST.mockImplementation(() => gate.promise);
+    const user = userEvent.setup();
+    await openHolds();
+    await screen.findByText("No legal holds");
+    await user.click(screen.getByRole("button", { name: "Place legal hold" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^Name/), "All");
+    await user.type(within(dialog).getByLabelText(/^Reason/), "Regulator inquiry");
+    await user.click(within(dialog).getByLabelText("Hold every message in the organization"));
+    await user.dblClick(within(dialog).getByRole("button", { name: "Place hold" }));
+    expect(POST).toHaveBeenCalledTimes(1);
+    await act(async () => gate.resolve(ok({})));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cancel and Escape are ignored while placing; the dialog closes only on the answer", async () => {
+    const gate = deferred<Reply>();
+    const { POST } = mount({ holds: () => ok({ holds: [] }) });
+    POST.mockImplementation(() => gate.promise);
+    const user = userEvent.setup();
+    await openHolds();
+    await screen.findByText("No legal holds");
+    await user.click(screen.getByRole("button", { name: "Place legal hold" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^Name/), "All");
+    await user.type(within(dialog).getByLabelText(/^Reason/), "Regulator inquiry");
+    await user.click(within(dialog).getByLabelText("Hold every message in the organization"));
+    await user.click(within(dialog).getByRole("button", { name: "Place hold" }));
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Place a legal hold" })).toBeTruthy();
+    await act(async () => gate.resolve(ok({})));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByText("Legal hold placed.")).toBeTruthy();
+  });
+
+  it("a double-click on the confirm button releases once, and Back/Escape are inert meanwhile", async () => {
+    const gate = deferred<Reply>();
+    const { POST } = mount({ preview: PREVIEW_7 });
+    POST.mockImplementation(() => gate.promise);
+    const user = userEvent.setup();
+    await openHolds();
+    await user.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const first = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(first).findByText(/7 messages/);
+    await user.type(within(first).getByLabelText(/^Reason for release/), "Matter settled");
+    await user.click(within(first).getByRole("button", { name: "Continue" }));
+    const confirm = await screen.findByRole("alertdialog");
+    await user.dblClick(within(confirm).getByRole("button", { name: /now$/ }));
+    await user.click(within(confirm).getByRole("button", { name: "Back" }));
+    await user.keyboard("{Escape}");
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alertdialog", { name: "Confirm release" })).toBeTruthy();
+    await act(async () => gate.resolve(ok({})));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Legal hold released.")).toBeTruthy();
+  });
+
+  it("a failed preview offers Retry, and Retry fills in the count", async () => {
+    let attempts = 0;
+    mount({ preview: () => (attempts++ === 0 ? fail(500) : PREVIEW_7()) });
+    const user = userEvent.setup();
+    await openHolds();
+    await user.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(dialog).findByText("Could not count the messages this release frees.");
+    await user.click(within(dialog).getByRole("button", { name: "Retry count" }));
+    expect(await within(dialog).findByText(/7 messages will become eligible/)).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Retry count" })).toBeNull();
+  });
+
+  it("closing the release dialog before the preview lands applies nothing and does not throw", async () => {
+    const gate = deferred<Reply>();
+    const { GET } = mount({});
+    const real = GET.getMockImplementation();
+    GET.mockImplementation((path: string, init?: unknown) =>
+      path.endsWith("/release-preview") ? gate.promise : (real?.(path, init) as Promise<Reply>),
+    );
+    const user = userEvent.setup();
+    await openHolds();
+    await user.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await act(async () => gate.resolve(PREVIEW_7()));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("useLegalHolds refetch race", () => {
+  const wrap =
+    (client: unknown) =>
+    ({ children }: { children: React.ReactNode }) => (
+      <ApiClientProvider client={client as ApiClient}>{children}</ApiClientProvider>
+    );
+
+  it("only the newest response applies: a slow older read cannot overwrite a newer one", async () => {
+    const slowOld = deferred<Reply>();
+    let n = 0;
+    const GET = vi.fn((_p: string) => {
+      n += 1;
+      return n === 1
+        ? slowOld.promise
+        : Promise.resolve(ok({ holds: [hold({ id: CH, name: "Newer" })] }));
+    });
+    const { result } = renderHook(() => useLegalHolds(), { wrapper: wrap({ GET }) });
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
+    act(() => result.current.reload());
+    await waitFor(() => {
+      const v = result.current.view;
+      expect(v.status === "ready" && v.data[0]?.name).toBe("Newer");
+    });
+    await act(async () => slowOld.resolve(ok({ holds: [hold({ name: "Older" })] })));
+    const v = result.current.view;
+    expect(v.status === "ready" && v.data[0]?.name).toBe("Newer");
+  });
+
+  it("the mapped view keeps its identity between renders so effects keyed on it do not refire", async () => {
+    const GET = vi.fn(() => Promise.resolve(ok({ holds: [hold()] })));
+    const { result, rerender } = renderHook(() => useLegalHolds(), { wrapper: wrap({ GET }) });
+    await waitFor(() => expect(result.current.view.status).toBe("ready"));
+    const before = result.current.view;
+    rerender();
+    expect(result.current.view).toBe(before);
   });
 });

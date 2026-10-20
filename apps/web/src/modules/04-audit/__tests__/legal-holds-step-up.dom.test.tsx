@@ -6,6 +6,11 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";
+import {
+  markStepUpReturn,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../../shell/step-up-redirect";
 import { LegalHolds } from "../legal-holds";
 
 const PATH = "/compliance/legal-holds";
@@ -96,6 +101,7 @@ describe("M4 legal holds step-up routing", () => {
     expect(writeCount).toBe(1);
 
     cleanup();
+    markStepUpReturn(PATH); // what the step-up page records on success
     mount();
     await waitFor(() =>
       expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Jones hold"),
@@ -112,6 +118,55 @@ describe("M4 legal holds step-up routing", () => {
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(STEP_UP_URL));
 
     cleanup();
+    markStepUpReturn(PATH); // what the step-up page records on success
+    mount();
+    await waitFor(() =>
+      expect((screen.getByLabelText("Release reason") as HTMLTextAreaElement).value).toBe(REASON),
+    );
+  });
+});
+
+describe("M4 legal holds: scoped drafts and genuine returns", () => {
+  const OWNER = { userId: "u", organizationId: "o" };
+  const stashRelease = (owner = OWNER) =>
+    stashStepUpDraft(stepUpDraftKey(owner, "audit.legal_hold.release", HOLD.id), {
+      holdId: HOLD.id,
+      reason: REASON,
+    });
+
+  it("an abandoned release draft does not reopen the hold on a later ordinary visit, and is cleaned", async () => {
+    stashRelease();
+    mount();
+    await waitFor(() => expect(screen.getByText("Smith litigation")).toBeTruthy());
+    expect(screen.queryByLabelText("Release reason")).toBeNull();
+    await waitFor(() => expect(window.sessionStorage.length).toBe(0));
+  });
+
+  it("an abandoned apply draft does not pop the modal open", async () => {
+    stashStepUpDraft(stepUpDraftKey(OWNER, "audit.legal_hold.apply", "new"), {
+      name: "Jones hold",
+      reason: "Regulator preservation request",
+      patientIds: "",
+      resourceKinds: "patient",
+      from: "",
+      to: "",
+    });
+    mount();
+    await waitFor(() => expect(screen.getByText("Smith litigation")).toBeTruthy());
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("another user's draft is invisible even right after a genuine return", async () => {
+    stashRelease({ userId: "someone-else", organizationId: "o" });
+    markStepUpReturn(PATH);
+    mount();
+    await waitFor(() => expect(screen.getByText("Smith litigation")).toBeTruthy());
+    expect(screen.queryByLabelText("Release reason")).toBeNull();
+  });
+
+  it("a genuine return reopens the release with its reason", async () => {
+    stashRelease();
+    markStepUpReturn(PATH);
     mount();
     await waitFor(() =>
       expect((screen.getByLabelText("Release reason") as HTMLTextAreaElement).value).toBe(REASON),

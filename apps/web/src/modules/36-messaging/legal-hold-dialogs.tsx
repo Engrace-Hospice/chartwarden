@@ -3,39 +3,23 @@
 // officer saw. A stale count (409 RELEASE_PREVIEW_STALE) shows the new count and asks again. A stale step-up stashes what was typed and sends the
 // officer through the step-up page. Names and reasons are free text and are only ever rendered as text.
 import {
-  MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
   type ApplyMessageLegalHoldRequest,
+  MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
   type MessageLegalHoldDto,
 } from "@wardenx/types";
 import { Button, Modal, TextAreaField, TextField } from "@wardenx/ui";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   clearStepUpDraft,
-  peekStepUpDraft,
   stashStepUpDraft,
   stepUpRedirectFor,
 } from "../../shell/step-up-redirect";
+import type { CreateDraft, ReleaseDraft } from "./legal-hold-drafts";
 import * as W from "./retention-wording";
 import type { ActionResult, LegalHoldActions } from "./use-retention";
-
-export const CREATE_DRAFT_KEY = "messaging-legal-hold-create";
-export const RELEASE_DRAFT_KEY = "messaging-legal-hold-release";
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export interface CreateDraft {
-  readonly name: string;
-  readonly reason: string;
-  readonly orgWide: boolean;
-  readonly channels: string;
-  readonly users: string;
-  readonly patients: string;
-}
-export interface ReleaseDraft {
-  readonly holdId: string;
-  readonly reason: string;
-}
+import { UUID_RE } from "./uuid";
 
 const splitIds = (text: string): string[] =>
   text
@@ -63,25 +47,43 @@ const EMPTY_DRAFT: CreateDraft = {
   patients: "",
 };
 
+/** True while mounted: an answer that lands after the dialog is gone must not navigate, announce or clear a draft. */
+function useAlive(): { readonly current: boolean } {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  return alive;
+}
+
 export function CreateHoldDialog({
   actions,
+  initial,
+  draftKey,
   onClose,
   onPlaced,
 }: {
   readonly actions: LegalHoldActions;
+  /** The draft stashed before a step-up, only when the user is genuinely back from it. */
+  readonly initial: CreateDraft | null;
+  readonly draftKey: string | null;
   readonly onClose: () => void;
   readonly onPlaced: () => void;
 }): JSX.Element {
-  const [draft, setDraft] = useState<CreateDraft>(
-    () => peekStepUpDraft<CreateDraft>(CREATE_DRAFT_KEY) ?? EMPTY_DRAFT,
-  );
+  const [draft, setDraft] = useState<CreateDraft>(initial ?? EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const alive = useAlive();
   const goStepUp = useStepUpNavigation();
   const detailId = useId();
   const set = (patch: Partial<CreateDraft>): void => setDraft((d) => ({ ...d, ...patch }));
 
   const submit = async (): Promise<void> => {
+    if (inFlight.current) return;
     const lists = {
       channel_ids: splitIds(draft.channels),
       user_ids: splitIds(draft.users),
@@ -92,7 +94,7 @@ export function CreateHoldDialog({
       [W.USER_IDS_LABEL, lists.user_ids],
       [W.PATIENT_IDS_LABEL, lists.patient_ids],
     ];
-    const badList = checks.find(([, ids]) => ids.some((id) => !UUID.test(id)));
+    const badList = checks.find(([, ids]) => ids.some((id) => !UUID_RE.test(id)));
     const hasScope = draft.orgWide || Object.values(lists).some((l) => l.length > 0);
     const problem =
       draft.name.trim().length === 0
@@ -111,17 +113,20 @@ export function CreateHoldDialog({
     const body: ApplyMessageLegalHoldRequest = draft.orgWide
       ? { name: draft.name.trim(), reason: draft.reason.trim(), org_wide: true }
       : { name: draft.name.trim(), reason: draft.reason.trim(), ...lists };
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     const result: ActionResult = await actions.apply(body);
+    inFlight.current = false;
+    if (!alive.current) return;
     setBusy(false);
     if (result.kind === "ok") {
-      clearStepUpDraft(CREATE_DRAFT_KEY);
+      clearStepUpDraft(draftKey);
       onPlaced();
       return;
     }
     if (result.kind === "step_up") {
-      stashStepUpDraft(CREATE_DRAFT_KEY, draft);
+      stashStepUpDraft(draftKey, draft);
       if (!goStepUp(result.error)) setError(W.STEP_UP_TEXT);
       return;
     }
@@ -129,7 +134,8 @@ export function CreateHoldDialog({
   };
 
   const cancel = (): void => {
-    clearStepUpDraft(CREATE_DRAFT_KEY);
+    if (inFlight.current) return; // the request is out: closing now would hide its outcome
+    clearStepUpDraft(draftKey);
     onClose();
   };
 
@@ -145,7 +151,7 @@ export function CreateHoldDialog({
         className="wx-retention-dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!busy) void submit();
+          void submit();
         }}
       >
         <h2>{W.CREATE_TITLE}</h2>
@@ -204,7 +210,7 @@ export function CreateHoldDialog({
           </p>
         ) : null}
         <div className="wx-retention-dialog-actions">
-          <Button type="button" tone="secondary" onClick={cancel}>
+          <Button type="button" tone="secondary" aria-disabled={busy} onClick={cancel}>
             {W.CANCEL_LABEL}
           </Button>
           <Button type="submit" tone="primary" aria-disabled={busy}>
@@ -221,45 +227,71 @@ type Step = "reason" | "confirm";
 export function ReleaseHoldDialog({
   hold,
   actions,
+  initialReason,
+  draftKey,
   onClose,
   onReleased,
 }: {
   readonly hold: MessageLegalHoldDto;
   readonly actions: LegalHoldActions;
+  /** The reason stashed before a step-up, only when the user is genuinely back from it. */
+  readonly initialReason: string;
+  readonly draftKey: string | null;
   readonly onClose: () => void;
   readonly onReleased: () => void;
 }): JSX.Element {
-  const [reason, setReason] = useState(() => {
-    const d = peekStepUpDraft<ReleaseDraft>(RELEASE_DRAFT_KEY);
-    return d?.holdId === hold.id ? d.reason : "";
-  });
+  const [reason, setReason] = useState(initialReason);
   const [step, setStep] = useState<Step>("reason");
   const [count, setCount] = useState<number | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const previewSeq = useRef(0);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstStep = useRef(true);
+  const alive = useAlive();
   const goStepUp = useStepUpNavigation();
   const detailId = useId();
 
-  const loadPreview = async (): Promise<number | null> => {
+  // Only the newest preview applies; a dialog that is gone applies nothing.
+  const loadPreview = useCallback(async (): Promise<number | null> => {
+    previewSeq.current += 1;
+    const mine = previewSeq.current;
+    setPreviewFailed(false);
     const preview = await actions.preview(hold.id);
+    if (mine !== previewSeq.current) return null;
     setPreviewFailed(preview === null);
     if (preview) setCount(preview.eligible_on_release);
     return preview?.eligible_on_release ?? null;
-  };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the preview is read once per opened dialog
+  }, [actions, hold.id]);
   useEffect(() => {
     void loadPreview();
-  }, [hold.id]);
+    return () => {
+      previewSeq.current += 1;
+    };
+  }, [loadPreview]);
+
+  // The content is keyed on the step, so a step change replaces the focused control: land on the new heading.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `step` is the trigger, not a value the effect reads
+  useEffect(() => {
+    if (firstStep.current) {
+      firstStep.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [step]);
 
   const cancel = (): void => {
-    clearStepUpDraft(RELEASE_DRAFT_KEY);
+    if (inFlight.current) return;
+    clearStepUpDraft(draftKey);
     onClose();
   };
 
   const confirm = async (): Promise<void> => {
-    if (count === null) return;
+    if (count === null || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     setStale(false);
@@ -267,15 +299,18 @@ export function ReleaseHoldDialog({
       reason: reason.trim(),
       confirmed_eligible_count: count,
     });
+    inFlight.current = false;
+    if (!alive.current) return;
     setBusy(false);
     if (result.kind === "ok") {
-      clearStepUpDraft(RELEASE_DRAFT_KEY);
+      clearStepUpDraft(draftKey);
       onReleased();
     } else if (result.kind === "step_up") {
-      stashStepUpDraft(RELEASE_DRAFT_KEY, { holdId: hold.id, reason } satisfies ReleaseDraft);
+      stashStepUpDraft(draftKey, { holdId: hold.id, reason } satisfies ReleaseDraft);
       if (!goStepUp(result.error)) setError(W.STEP_UP_TEXT);
     } else if (result.kind === "stale") {
       const fresh = await loadPreview();
+      if (!alive.current) return;
       if (fresh === null) setError(W.PREVIEW_FAILED);
       else setStale(true);
     } else {
@@ -294,17 +329,24 @@ export function ReleaseHoldDialog({
       onClose={cancel}
       width="36rem"
     >
-      <div className="wx-retention-dialog">
-        <h2>{title}</h2>
+      <div className="wx-retention-dialog" key={step}>
+        <h2 ref={headingRef} tabIndex={-1}>
+          {title}
+        </h2>
         {step === "reason" ? (
           <>
-            <p id={detailId} className="wx-retention-detail">
+            <p id={detailId} className="wx-retention-detail" aria-live="polite">
               {count === null
                 ? previewFailed
                   ? W.PREVIEW_FAILED
                   : W.PREVIEW_LOADING
                 : W.previewText(count)}
             </p>
+            {count === null && previewFailed ? (
+              <Button type="button" tone="secondary" size="sm" onClick={() => void loadPreview()}>
+                {W.PREVIEW_RETRY_LABEL}
+              </Button>
+            ) : null}
             <TextAreaField
               label={W.RELEASE_REASON_LABEL}
               hint={W.REASON_HINT}
@@ -331,22 +373,32 @@ export function ReleaseHoldDialog({
         ) : (
           <>
             <p id={detailId} className="wx-retention-detail">
-              {stale && count !== null ? W.staleText(count) : W.confirmText(hold.name, count ?? 0)}
+              {W.confirmText(hold.name, count ?? 0)}
             </p>
+            {stale && count !== null ? (
+              <p className="wx-retention-error" role="alert">
+                {W.staleText(count)}
+              </p>
+            ) : null}
             {error ? (
               <p className="wx-retention-error" role="alert">
                 {error}
               </p>
             ) : null}
             <div className="wx-retention-dialog-actions">
-              <Button type="button" tone="secondary" onClick={() => setStep("reason")}>
+              <Button
+                type="button"
+                tone="secondary"
+                aria-disabled={busy}
+                onClick={() => !inFlight.current && setStep("reason")}
+              >
                 {W.BACK_LABEL}
               </Button>
               <Button
                 type="button"
                 tone="danger"
                 aria-disabled={busy}
-                onClick={() => !busy && void confirm()}
+                onClick={() => void confirm()}
               >
                 {W.confirmActionLabel(hold.name)}
               </Button>

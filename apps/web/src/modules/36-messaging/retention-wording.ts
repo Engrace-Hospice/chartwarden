@@ -35,8 +35,20 @@ export const heldText = (n: number | null): string =>
       : `${n} messages held by a legal hold`;
 export const CAPPED_TEXT = "Counts stop at the scan limit; more messages may be eligible.";
 export const CERTIFICATE_NONE = "No destruction certificate open.";
+// The server sends the M4 certificate status as a plain string; an unrecognised value reads as a neutral word, never the raw enum.
+const CERTIFICATE_STATUS_WORDING: Readonly<Record<string, string>> = {
+  pending: "Pending approval",
+  approved: "Approved",
+  rejected: "Rejected",
+  executed: "Executed",
+  partial_refused: "Partly refused",
+  held: "Held",
+};
+export const CERTIFICATE_STATUS_UNKNOWN = "Status not recognised";
+export const certificateStatusLabel = (status: string): string =>
+  CERTIFICATE_STATUS_WORDING[status] ?? CERTIFICATE_STATUS_UNKNOWN;
 export const certificateText = (status: string): string =>
-  `Destruction certificate: ${status}. Approving it destroys nothing yet.`;
+  `Destruction certificate: ${certificateStatusLabel(status).toLowerCase()}. Approving it destroys nothing yet.`;
 export const certificateIdText = (id: string): string => `Certificate ${id}`;
 export const NEVER_SCANNED = "No scan has run yet. Counts appear after the first scan.";
 export const lastScanText = (when: string): string => `Last scan ${when}`;
@@ -55,6 +67,7 @@ export const HOLD_STATUS = {
 export const heldMessagesText = (n: number): string =>
   n === 1 ? "1 message held" : `${n} messages held`;
 export const placedText = (by: string, at: string): string => `Placed by ${by} on ${at}`;
+export const PLACED_BY_YOU = "you";
 export const shortUserId = (id: string): string => `user ${id.slice(0, 8)}`;
 export const releasedText = (at: string): string => `Released ${at}`;
 export const releaseLabel = (hold: Pick<MessageLegalHoldDto, "name">): string =>
@@ -73,7 +86,7 @@ export function scopeText(scope: MessageLegalHoldDto["scope"]): string {
 
 export const CREATE_TITLE = "Place a legal hold";
 export const CREATE_DETAIL =
-  "A hold keeps matching messages out of the retention plan. It does not change a message's class or period.";
+  "A hold keeps matching messages out of the retention plan. It does not change a message's class or period. A channel or person hold covers the messages in that channel or sent by that person. A patient hold also covers that patient's other records and every bereavement channel. Holding the whole organization covers all messages only.";
 export const NAME_LABEL = "Name";
 export const REASON_LABEL = "Reason";
 export const REASON_HINT = "At least 10 characters. It is kept in the audit trail.";
@@ -110,4 +123,5 @@ export const confirmActionLabel = (name: string): string => `Release hold ${name
 export const staleText = (n: number): string =>
   `The count changed while you were deciding. ${previewText(n)} Confirm again to release.`;
 export const RELEASE_FAILED = "The hold could not be released. Nothing was changed; try again.";
+export const PREVIEW_RETRY_LABEL = "Retry count";
 export const RELEASE_ANNOUNCEMENT = "Legal hold released.";
