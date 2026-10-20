@@ -43,6 +43,8 @@ export interface OutboxRecord {
   readonly aggregateKind: string;
   readonly aggregateId: string;
   readonly occurredAt: Date;
+  /** Caller-supplied `outbox_event.id` (uuid), when the producer must know the id of the row it publishes. */
+  readonly eventId?: string;
 }
 
 /**
@@ -61,6 +63,8 @@ export interface PublishOutboxEventInput {
   readonly occurredAt: Date;
   /** The module emitting the event, e.g. `m1` — surfaced in namespace-mismatch errors (M01-F12). */
   readonly callerModule: string;
+  /** Optional caller-supplied outbox event id, passed through to the persister unchanged. */
+  readonly eventId?: string;
 }
 
 /**
@@ -114,5 +118,6 @@ export async function publishOutboxEvent(
     aggregateKind: input.aggregateKind,
     aggregateId: input.aggregateId,
     occurredAt: input.occurredAt,
+    ...(input.eventId === undefined ? {} : { eventId: input.eventId }),
   });
 }

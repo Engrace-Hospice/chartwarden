@@ -127,6 +127,7 @@ const MACHINE_OPENED_SOURCES: readonly TriageCallSource[] = [
   "late_checkout",
   "geofence_anomaly",
   "m36_delivery_failure",
+  "m36_afterhours_request",
 ];
 
 /**

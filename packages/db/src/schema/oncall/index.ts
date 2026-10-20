@@ -59,3 +59,4 @@ export * from "./triage-escalations"; // triage_escalation
 export * from "./triage-call-state-history"; // triage_call_state_history (append-only)
 export * from "./triage-paper-reentry-worklist"; // triage_paper_reentry_worklist (M19-F08 BCP)
 export * from "./on-call-roster-sync-queue"; // on_call_roster_sync_queue (§4.8 debounce table, F-155/#248)
+export * from "./triage-afterhours-decision"; // triage_afterhours_decision (ADR-0082 S2 redelivery guard)

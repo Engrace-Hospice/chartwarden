@@ -242,6 +242,7 @@ exports.MODULES = [
       "clinical_handoff_event",
       "message_acknowledgment_request",
       "message_acknowledgment_event",
+      "message_thread_access_grant",
       "messaging_review_item",
       "chart_promotion_request",
       "tenant_handoff_policy",
@@ -254,6 +255,7 @@ exports.MODULES = [
       "message_revision",
       "message_draft",
       "scheduled_message",
+      "message_afterhours_triage_link",
       "message_snooze",
       "message_reminder",
       "message_attachment",
@@ -685,6 +687,7 @@ exports.MODULES = [
     ownedTables: [
       "external_triage_vendor",
       "on_call_roster_sync_queue", // §4.8 m19.shift-sync.debounced debounce table (F-155, #248)
+      "triage_afterhours_decision", // ADR-0082 S2: durable per-request decision record (redelivery guard)
       "on_call_shift",
       "tenant_oncall_policy",
       "triage_call",
