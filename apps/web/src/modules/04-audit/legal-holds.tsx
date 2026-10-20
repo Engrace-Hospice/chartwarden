@@ -77,9 +77,23 @@ interface HoldResume {
   release: ReleaseDraft | null;
 }
 
+const CREATE_DRAFT_FIELDS = [
+  "name",
+  "reason",
+  "patientIds",
+  "resourceKinds",
+  "from",
+  "to",
+] as const;
+const isCreateDraft = (v: unknown): v is CreateDraft =>
+  typeof v === "object" &&
+  v !== null &&
+  CREATE_DRAFT_FIELDS.every((k) => typeof (v as Record<string, unknown>)[k] === "string");
+
 /** This owner's stashed drafts (read once, never cleared here). */
 function readResume(owner: StepUpDraftOwner): HoldResume {
-  const create = peekStepUpDraft<CreateDraft>(createDraftKey(owner));
+  const peeked = peekStepUpDraft<Record<string, unknown>>(createDraftKey(owner));
+  const create = isCreateDraft(peeked) ? peeked : null;
   const holdId = findStepUpDraftResourceId(owner, RELEASE_ACTION);
   const stored = holdId
     ? peekStepUpDraft<{ reason?: unknown }>(releaseDraftKey(owner, holdId))
@@ -106,6 +120,8 @@ export function LegalHolds(): JSX.Element {
   const [resume] = useState<HoldResume>(() =>
     returning ? readResume(owner) : { create: null, release: null },
   );
+  // One-shot prefill for the dialogs: consumed on close/success so a later open starts empty (`resume` stays for `load`).
+  const [prefill, setPrefill] = useState<HoldResume>(resume);
   const resumedRelease = useRef(false);
   const [showCreate, setShowCreate] = useState(() => resume.create !== null);
 
@@ -260,10 +276,11 @@ export function LegalHolds(): JSX.Element {
           selected ? (
             <HoldDetail
               hold={selected}
-              initialReason={resume.release?.holdId === selected.id ? resume.release.reason : ""}
+              initialReason={prefill.release?.holdId === selected.id ? prefill.release.reason : ""}
               draftKey={releaseDraftKey(owner, selected.id)}
               onClose={() => {
                 clearStepUpDraft(releaseDraftKey(owner, selected.id));
+                setPrefill((p) => ({ ...p, release: null }));
                 setSelected(null);
               }}
               onReleased={handleReleased}
@@ -274,13 +291,15 @@ export function LegalHolds(): JSX.Element {
       />
       {showCreate ? (
         <CreateHoldModal
-          initial={resume.create}
+          initial={prefill.create}
           draftKey={createDraftKey(owner)}
           onClose={() => {
             clearStepUpDraft(createDraftKey(owner));
+            setPrefill((p) => ({ ...p, create: null }));
             setShowCreate(false);
           }}
           onCreated={(count) => {
+            setPrefill((p) => ({ ...p, create: null }));
             setShowCreate(false);
             toast.show(`Hold applied — ${count} record(s) matched.`, { tone: "success" });
             void load();
@@ -670,7 +689,12 @@ function CreateHoldModal({
   ]);
 
   return (
-    <Modal open onClose={onClose} ariaLabel="Apply a legal hold">
+    <Modal
+      open
+      onClose={onClose}
+      dismissOnScrim={name.trim() === "" && reason.trim() === ""}
+      ariaLabel="Apply a legal hold"
+    >
       <div style={modalContentStyle}>
         <div>
           <h2 style={modalTitleStyle}>Apply a legal hold</h2>

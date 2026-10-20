@@ -30,13 +30,20 @@ const splitIds = (text: string): string[] =>
 function useStepUpNavigation(): (error: unknown) => boolean {
   const navigate = useNavigate();
   const location = useLocation();
-  return (error) => {
-    const to = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
-    if (!to) return false;
-    navigate(to);
-    return true;
-  };
+  return useCallback(
+    (error) => {
+      const to = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
+      if (!to) return false;
+      navigate(to);
+      return true;
+    },
+    [navigate, location.pathname, location.search],
+  );
 }
+
+/** A refusal reads as what it is (session over vs not permitted), not as a generic failure. */
+const deniedText = (result: Extract<ActionResult, { kind: "denied" }>): string =>
+  result.code === 401 ? W.SIGN_IN : W.DENIED;
 
 const EMPTY_DRAFT: CreateDraft = {
   name: "",
@@ -130,7 +137,13 @@ export function CreateHoldDialog({
       if (!goStepUp(result.error)) setError(W.STEP_UP_TEXT);
       return;
     }
-    setError(result.kind === "invalid" ? W.CREATE_INVALID : W.CREATE_FAILED);
+    setError(
+      result.kind === "denied"
+        ? deniedText(result)
+        : result.kind === "invalid"
+          ? W.CREATE_INVALID
+          : W.CREATE_FAILED,
+    );
   };
 
   const cancel = (): void => {
@@ -145,6 +158,7 @@ export function CreateHoldDialog({
       ariaLabel={W.CREATE_TITLE}
       ariaDescribedBy={detailId}
       onClose={cancel}
+      dismissOnScrim={draft.name.trim() === "" && draft.reason.trim() === ""}
       width="36rem"
     >
       <form
@@ -166,7 +180,7 @@ export function CreateHoldDialog({
         />
         <TextAreaField
           label={W.REASON_LABEL}
-          hint={W.REASON_HINT}
+          hint={`${W.REASON_HINT} ${W.REASON_PRIVACY_HINT}`}
           rows={3}
           value={draft.reason}
           onChange={(e) => set({ reason: e.target.value })}
@@ -223,6 +237,10 @@ export function CreateHoldDialog({
 }
 
 type Step = "reason" | "confirm";
+type PreviewResult =
+  | { readonly kind: "ok"; readonly count: number }
+  | { readonly kind: "failed" }
+  | { readonly kind: "superseded" };
 
 export function ReleaseHoldDialog({
   hold,
@@ -255,16 +273,17 @@ export function ReleaseHoldDialog({
   const goStepUp = useStepUpNavigation();
   const detailId = useId();
 
-  // Only the newest preview applies; a dialog that is gone applies nothing.
-  const loadPreview = useCallback(async (): Promise<number | null> => {
+  // Only the newest preview applies; a dialog that is gone, or a call overtaken by a newer one, is "superseded".
+  const loadPreview = useCallback(async (): Promise<PreviewResult> => {
     previewSeq.current += 1;
     const mine = previewSeq.current;
     setPreviewFailed(false);
     const preview = await actions.preview(hold.id);
-    if (mine !== previewSeq.current) return null;
+    if (mine !== previewSeq.current) return { kind: "superseded" };
     setPreviewFailed(preview === null);
-    if (preview) setCount(preview.eligible_on_release);
-    return preview?.eligible_on_release ?? null;
+    if (!preview) return { kind: "failed" };
+    setCount(preview.eligible_on_release);
+    return { kind: "ok", count: preview.eligible_on_release };
   }, [actions, hold.id]);
   useEffect(() => {
     void loadPreview();
@@ -299,8 +318,25 @@ export function ReleaseHoldDialog({
       reason: reason.trim(),
       confirmed_eligible_count: count,
     });
+    if (!alive.current) {
+      inFlight.current = false;
+      return;
+    }
+    if (result.kind === "stale") {
+      // Stay busy until the new count lands, so a second click cannot send the old one.
+      const fresh = await loadPreview();
+      inFlight.current = false;
+      if (!alive.current || fresh.kind === "superseded") return;
+      setBusy(false);
+      if (fresh.kind === "ok") {
+        setStale(true);
+      } else {
+        setCount(null); // never confirm a count that is known stale
+        setStep("reason"); // the preview retry lives on the first step
+      }
+      return;
+    }
     inFlight.current = false;
-    if (!alive.current) return;
     setBusy(false);
     if (result.kind === "ok") {
       clearStepUpDraft(draftKey);
@@ -308,13 +344,8 @@ export function ReleaseHoldDialog({
     } else if (result.kind === "step_up") {
       stashStepUpDraft(draftKey, { holdId: hold.id, reason } satisfies ReleaseDraft);
       if (!goStepUp(result.error)) setError(W.STEP_UP_TEXT);
-    } else if (result.kind === "stale") {
-      const fresh = await loadPreview();
-      if (!alive.current) return;
-      if (fresh === null) setError(W.PREVIEW_FAILED);
-      else setStale(true);
     } else {
-      setError(W.RELEASE_FAILED);
+      setError(result.kind === "denied" ? deniedText(result) : W.RELEASE_FAILED);
     }
   };
 
@@ -327,6 +358,7 @@ export function ReleaseHoldDialog({
       ariaLabel={title}
       ariaDescribedBy={detailId}
       onClose={cancel}
+      dismissOnScrim={reason.trim() === ""}
       width="36rem"
     >
       <div className="wx-retention-dialog" key={step}>

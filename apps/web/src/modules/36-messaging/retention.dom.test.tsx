@@ -864,3 +864,167 @@ describe("useLegalHolds refetch race", () => {
     expect(result.current.view).toBe(before);
   });
 });
+
+describe("Review round 2: one-shot prefill, failed reloads, stale re-preview, refusals, scrim", () => {
+  const draft = {
+    name: "Case A",
+    reason: "Subpoena received",
+    orgWide: false,
+    channels: "",
+    users: CH,
+    patients: "",
+  };
+  const placeButton = () => screen.getByRole("button", { name: "Place legal hold" });
+  const closeScrim = () => fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  const reasonOf = (d: HTMLElement) =>
+    (within(d).getByLabelText(/^Reason for release/) as HTMLTextAreaElement).value;
+
+  it("a resumed place draft prefills once: after a successful place, reopening starts empty", async () => {
+    stashStepUpDraft(createKey(), draft);
+    comeBackFromStepUp();
+    mount({ holds: () => ok({ holds: [] }), apply: () => ok({}) });
+    const first = await screen.findByRole("dialog", { name: "Place a legal hold" });
+    expect((within(first).getByLabelText(/^Name/) as HTMLInputElement).value).toBe("Case A");
+    fireEvent.click(within(first).getByRole("button", { name: "Place hold" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(placeButton());
+    const again = await screen.findByRole("dialog", { name: "Place a legal hold" });
+    expect((within(again).getByLabelText(/^Name/) as HTMLInputElement).value).toBe("");
+    expect((within(again).getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("a resumed release reason prefills once: after Cancel, reopening Release starts empty", async () => {
+    stashStepUpDraft(releaseKey(), { holdId: HOLD, reason: "Matter settled" });
+    comeBackFromStepUp();
+    mount({ preview: PREVIEW_7 });
+    const first = await screen.findByRole("dialog", { name: "Release legal hold" });
+    expect(reasonOf(first)).toBe("Matter settled");
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const again = await screen.findByRole("dialog", { name: "Release legal hold" });
+    expect(reasonOf(again)).toBe("");
+  });
+
+  it("a stashed place draft of the wrong shape is ignored", async () => {
+    stashStepUpDraft(createKey(), { name: 7, reason: null });
+    comeBackFromStepUp();
+    mount({ holds: () => ok({ holds: [] }) });
+    await screen.findByRole("tab", { name: "Retention" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a failed reload after a place keeps the list and offers Retry; Retry recovers", async () => {
+    let reads = 0;
+    mount({
+      holds: () => {
+        reads += 1;
+        return reads === 2 ? fail(500) : ok({ holds: [hold()] });
+      },
+      apply: () => ok({}),
+    });
+    const user = userEvent.setup();
+    await openHolds();
+    await screen.findByRole("list", { name: "Legal holds" });
+    await user.click(placeButton());
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^Name/), "Case B");
+    await user.type(within(dialog).getByLabelText(/^Reason/), "Subpoena received");
+    await user.type(within(dialog).getByLabelText(/^Channel ids/), CH);
+    await user.click(within(dialog).getByRole("button", { name: "Place hold" }));
+    expect(await screen.findByText("Could not load this section.")).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Legal holds" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("Could not load this section.")).toBeNull());
+    expect(screen.getByRole("list", { name: "Legal holds" })).toBeTruthy();
+  });
+
+  it("Retry from the error view shows the loading state", async () => {
+    const slow = deferred<Reply>();
+    let reads = 0;
+    mount({ holds: () => (reads++ === 0 ? fail(500) : (slow.promise as unknown as Reply)) });
+    await openHolds();
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("status", { name: "Loading" })).toBeTruthy();
+    expect(screen.queryByText("Could not load this section.")).toBeNull();
+  });
+
+  it("after a stale count the confirm button stays busy until the new count lands", async () => {
+    const second = deferred<Reply>();
+    let previews = 0;
+    const { POST } = mount({
+      preview: () => (previews++ === 0 ? PREVIEW_7() : (second.promise as unknown as Reply)),
+      release: () => fail(409, { error: { code: "RELEASE_PREVIEW_STALE" } }),
+    });
+    await openHolds();
+    fireEvent.click(await screen.findByRole("button", { name: /Release hold/ }));
+    const first = await screen.findByRole("dialog", { name: "Release legal hold" });
+    await within(first).findByText(/7 messages/);
+    fireEvent.change(within(first).getByLabelText(/^Reason for release/), {
+      target: { value: "Matter settled" },
+    });
+    fireEvent.click(within(first).getByRole("button", { name: "Continue" }));
+    fireEvent.click(await screen.findByRole("button", { name: /now$/ }));
+    await waitFor(() => expect(previews).toBe(2));
+    const confirm = screen.getByRole("button", { name: /now$/ });
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(confirm);
+    expect(POST).toHaveBeenCalledTimes(1); // the old count was not sent again
+    await act(async () =>
+      second.resolve(ok({ hold_id: HOLD, held_messages: 41, eligible_on_release: 9 })),
+    );
+    expect(await screen.findByText(/The count changed.*9 messages/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /now$/ }).getAttribute("aria-disabled")).toBe(
+      "false",
+    );
+  });
+
+  it("a refusal reads as sign-in (401) or not permitted (403), not as a generic failure", async () => {
+    let status = 401;
+    mount({ holds: () => ok({ holds: [] }), apply: () => fail(status) });
+    await openHolds();
+    await screen.findByText("No legal holds");
+    const fillAndPlace = (): HTMLElement => {
+      fireEvent.click(placeButton());
+      const dialog = screen.getByRole("dialog");
+      fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: "Case" } });
+      fireEvent.change(within(dialog).getByLabelText(/^Reason/), {
+        target: { value: "Subpoena received" },
+      });
+      fireEvent.change(within(dialog).getByLabelText(/^Channel ids/), { target: { value: CH } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Place hold" }));
+      return dialog;
+    };
+    const d401 = fillAndPlace();
+    expect((await within(d401).findByRole("alert")).textContent).toContain("Sign in again");
+    fireEvent.click(within(d401).getByRole("button", { name: "Cancel" }));
+    status = 403;
+    const d403 = fillAndPlace();
+    expect((await within(d403).findByRole("alert")).textContent).toContain("not permitted");
+  });
+
+  it("a scrim click does not discard typed text; an empty dialog still closes on it; Escape closes", async () => {
+    mount({ holds: () => ok({ holds: [] }) });
+    await openHolds();
+    await screen.findByText("No legal holds");
+    fireEvent.click(placeButton());
+    closeScrim();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(placeButton());
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Reason/), {
+      target: { value: "Subpoena received" },
+    });
+    closeScrim();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the place dialog warns not to put patient identifiers in the reason", async () => {
+    mount({ holds: () => ok({ holds: [] }) });
+    await openHolds();
+    await screen.findByText("No legal holds");
+    fireEvent.click(placeButton());
+    expect(screen.getByText(/Do not include patient names or identifiers/)).toBeTruthy();
+  });
+});

@@ -170,3 +170,18 @@ export function discardStepUpDrafts(owner: StepUpDraftOwner, action: string): vo
     clearStepUpDraft(stepUpDraftKey(owner, action, id));
   }
 }
+
+/** Forget every stashed step-up draft and the return marker (sign-out, screen lock): a draft can carry free text and must not outlive the session. */
+export function clearAllStepUpDrafts(): void {
+  try {
+    const mine: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const k = window.sessionStorage.key(i);
+      if (k?.startsWith(DRAFT_PREFIX)) mine.push(k);
+    }
+    for (const k of mine) window.sessionStorage.removeItem(k);
+  } catch {
+    // Non-fatal.
+  }
+  clearStepUpReturn();
+}

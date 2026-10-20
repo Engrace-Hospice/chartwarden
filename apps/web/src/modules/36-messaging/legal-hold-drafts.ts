@@ -35,9 +35,23 @@ export const createDraftKey = (owner: StepUpDraftOwner): string | null =>
 export const releaseDraftKey = (owner: StepUpDraftOwner, holdId: string): string | null =>
   stepUpDraftKey(owner, RELEASE_ACTION, holdId);
 
+const isCreateDraft = (v: unknown): v is CreateDraft => {
+  if (typeof v !== "object" || v === null) return false;
+  const d = v as Record<string, unknown>;
+  return (
+    typeof d.name === "string" &&
+    typeof d.reason === "string" &&
+    typeof d.orgWide === "boolean" &&
+    typeof d.channels === "string" &&
+    typeof d.users === "string" &&
+    typeof d.patients === "string"
+  );
+};
+
 /** Read (never clear) this owner's pending drafts. Call once, from a state initialiser. */
 export function readResume(owner: StepUpDraftOwner): HoldResume {
-  const create = peekStepUpDraft<CreateDraft>(createDraftKey(owner));
+  const peeked = peekStepUpDraft<unknown>(createDraftKey(owner));
+  const create = isCreateDraft(peeked) ? peeked : null;
   const holdId = findStepUpDraftResourceId(owner, RELEASE_ACTION);
   const stored = holdId
     ? peekStepUpDraft<{ reason?: unknown }>(releaseDraftKey(owner, holdId))
