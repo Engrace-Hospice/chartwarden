@@ -49,6 +49,28 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
   let consumer: ReturnType<typeof buildAfterHoursRequestedConsumer>;
   const seeded: Record<string, Seed> = {};
 
+  /** The consumer over the given trigger ports (a test may wrap them to interleave a rival delivery). */
+  const makeConsumer = (ports: ReturnType<typeof createDrizzleInboundTriggerPorts>) => {
+    const txPublisher = buildTxOutboxPublisher(
+      buildBootOutboxCatalog([M19_OUTBOX_EVENTS, M36_OUTBOX_EVENTS]),
+    );
+    return buildAfterHoursRequestedConsumer({
+      db: handle.db,
+      ports,
+      deliveryPorts: ports,
+      afterHoursReads: buildDrizzleEscalationRouterReads({
+        db: handle.db,
+        patientReader: () => createPatientReader(createDrizzlePatientReaderStore(handle.db)),
+        siteReader: buildFoundationSiteReader(),
+        listProviderEntityIds: buildOrgProviderEntityLister(handle.db),
+      }),
+      outbox: {
+        publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m19" }),
+      },
+      now: () => NOW,
+    });
+  };
+
   const request = (org: string, patientId: string) => ({
     messageId: crypto.randomUUID(),
     requestId: crypto.randomUUID(),
@@ -175,25 +197,7 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
     const url = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: url });
 
-    const txPublisher = buildTxOutboxPublisher(
-      buildBootOutboxCatalog([M19_OUTBOX_EVENTS, M36_OUTBOX_EVENTS]),
-    );
-    const ports = createDrizzleInboundTriggerPorts(handle.db);
-    consumer = buildAfterHoursRequestedConsumer({
-      db: handle.db,
-      ports,
-      deliveryPorts: ports,
-      afterHoursReads: buildDrizzleEscalationRouterReads({
-        db: handle.db,
-        patientReader: () => createPatientReader(createDrizzlePatientReaderStore(handle.db)),
-        siteReader: buildFoundationSiteReader(),
-        listProviderEntityIds: buildOrgProviderEntityLister(handle.db),
-      }),
-      outbox: {
-        publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m19" }),
-      },
-      now: () => NOW,
-    });
+    consumer = makeConsumer(createDrizzleInboundTriggerPorts(handle.db));
   }, 240_000);
 
   afterAll(async () => {
@@ -379,8 +383,11 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
       deliver(ORG_A, payload, eventId),
       deliver(ORG_A, payload, eventId),
     ]);
-    expect(settled.some((s) => s.status === "fulfilled")).toBe(true);
-    // A loser either saw the winner's row (skip) or lost the insert race and rolled back; a retry is a skip.
+    // Interleaving is not forced here (the deterministic test below does that): the loser either skipped on
+    // the winner's row (fulfilled) or lost the insert and was rejected. Never two rejections, never two answers.
+    expect(settled.filter((s) => s.status === "fulfilled").length).toBeGreaterThanOrEqual(1);
+    expect(settled.filter((s) => s.status === "rejected").length).toBeLessThanOrEqual(1);
+    // A retry of a rejected delivery is a skip.
     await deliver(ORG_A, payload, eventId);
 
     expect(await calls(ORG_A)).toHaveLength(0);
@@ -388,6 +395,58 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
       "m19.afterhours_triage.outcome",
       "m19.oncall_shift.coverage_gap",
     ]);
+  });
+
+  /** A consumer whose open-call lookup (read AFTER the replay guard) first lets a rival commit its decision. */
+  const raceConsumer = (rivalOutcome: "no_coverage" | "coalesced", eventId: string, callId: string | null) => {
+    const real = createDrizzleInboundTriggerPorts(handle.db);
+    return makeConsumer({
+      ...real,
+      findOpenMachineCallForPatient: async (...args: Parameters<typeof real.findOpenMachineCallForPatient>) => {
+        const found = await real.findOpenMachineCallForPatient(...args);
+        await admin.query(
+          `INSERT INTO triage_afterhours_decision (organization_id, source_outbox_event_id, triage_call_id, outcome)
+           VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+          [ORG_A, eventId, callId, rivalOutcome],
+        );
+        return found;
+      },
+    });
+  };
+  const deliverVia = (c: typeof consumer, payload: Record<string, unknown>, eventId: string) =>
+    c.handle({
+      id: eventId,
+      organizationId: ORG_A,
+      eventType: "m36.afterhours_triage.requested",
+      aggregateKind: "message",
+      aggregateId: String(payload.messageId),
+      payload,
+    } as never);
+
+  it("DETERMINISTIC: a rival decision committed after our read makes a no_coverage delivery reject and roll back (no outcome, no gap)", async () => {
+    const a = seeded[ORG_A] as Seed;
+    const eventId = crypto.randomUUID();
+    await expect(
+      deliverVia(raceConsumer("no_coverage", eventId, null), request(ORG_A, a.patient), eventId),
+    ).rejects.toThrow(/already recorded by a concurrent delivery/);
+
+    expect(await calls(ORG_A)).toHaveLength(0);
+    expect(await events(ORG_A)).toHaveLength(0);
+  });
+
+  it("DETERMINISTIC: the same for a coalesced delivery - rejected, nothing published, the open call untouched", async () => {
+    await seedShift(ORG_A);
+    const a = seeded[ORG_A] as Seed;
+    await deliver(ORG_A, request(ORG_A, a.patient));
+    const [open] = await calls(ORG_A);
+    const before = await events(ORG_A);
+    const eventId = crypto.randomUUID();
+    await expect(
+      deliverVia(raceConsumer("coalesced", eventId, open.id), request(ORG_A, a.patient), eventId),
+    ).rejects.toThrow(/already recorded by a concurrent delivery/);
+
+    expect(await calls(ORG_A)).toHaveLength(1);
+    expect(await events(ORG_A)).toHaveLength(before.length);
   });
 
   it("two CONCURRENT deliveries of one opening event open one call and publish one outcome", async () => {
