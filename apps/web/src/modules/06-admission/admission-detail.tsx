@@ -45,7 +45,11 @@ import {
   type UploadStage,
   verifiedUpload,
 } from "../../shell/document-workflows";
-import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
+import {
+  LocationLookupField,
+  MdmEntityLookupField,
+  ProviderEntityLookupField,
+} from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import {
   AdmissionCodesFields,
@@ -316,6 +320,8 @@ export function AdmissionDetail({
   );
   const [admissionDate, setAdmissionDate] = useState("");
   const [providerEntityId, setProviderEntityId] = useState("");
+  // Only asked for at activation, and only when the admission has no site yet (see `resolveActivationLocation`).
+  const [activationLocationId, setActivationLocationId] = useState("");
   const [hospicePhysicianId, setHospicePhysicianId] = useState("");
   const [admissionCodes, setAdmissionCodes] = useState(EMPTY_ADMISSION_CODES);
   const [electionEffectiveDate, setElectionEffectiveDate] = useState("");
@@ -544,7 +550,10 @@ export function AdmissionDetail({
     setActionError(null);
     const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
       params: { path: { id } },
-      body: { ifVersion: admission.version },
+      body: {
+        ifVersion: admission.version,
+        ...(activationLocationId ? { locationId: activationLocationId } : {}),
+      },
     });
     if (err) {
       branchError(response?.status, err?.error?.code, "Activation failed.");
@@ -553,7 +562,7 @@ export function AdmissionDetail({
     setBusy(false);
     closeCeremony();
     void load();
-  }, [id, admission, client, branchError, closeCeremony, load]);
+  }, [id, admission, activationLocationId, client, branchError, closeCeremony, load]);
 
   const acknowledgeNor = useCallback(async () => {
     if (!id) return;
@@ -2173,6 +2182,14 @@ export function AdmissionDetail({
                 All four R-AC-01 preconditions are satisfied. Activating opens active-period billing
                 and compliance tracking for this admission.
               </span>
+              {!admission?.locationId && admission?.providerEntityId ? (
+                <LocationLookupField
+                  label="Service location"
+                  providerEntityId={admission.providerEntityId}
+                  value={activationLocationId}
+                  onChange={setActivationLocationId}
+                />
+              ) : null}
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
                   {actionError}
