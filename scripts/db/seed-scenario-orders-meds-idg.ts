@@ -425,10 +425,12 @@ async function main(): Promise<void> {
   // ── M14 — IDG (documented gap: meeting seeded directly, rest driven via real API) ─────────────
   try {
     const orgId = rn.organizationId;
-    const coordinatorId = await membershipIdFor("rita@wardenx.local");
+    // The coordinator is the medical director: idg.coordinate is withheld from RNs (seed-grants).
+    const coordinatorId = await membershipIdFor("drharris@wardenx.local");
+    const ritaMembershipId = await membershipIdFor("rita@wardenx.local");
     const meetingId = await seedLiveIdgMeeting(orgId, coordinatorId);
 
-    const agenda = await rn.client.POST("/api/v1/idg/meetings/{id}/agenda", {
+    const agenda = await md.client.POST("/api/v1/idg/meetings/{id}/agenda", {
       params: { path: { id: meetingId } },
       body: {
         kind: "patient_review",
@@ -443,7 +445,7 @@ async function main(): Promise<void> {
     await seedIdgPatientPacket(orgId, meetingId, patientId, admissionId);
 
     const attendees: Array<{ email: string; membershipId: string; discipline: string }> = [
-      { email: "rita@wardenx.local", membershipId: coordinatorId, discipline: "rn_case_manager" },
+      { email: "rita@wardenx.local", membershipId: ritaMembershipId, discipline: "rn_case_manager" },
       {
         email: "mira@wardenx.local",
         membershipId: await membershipIdFor("mira@wardenx.local"),
@@ -456,18 +458,18 @@ async function main(): Promise<void> {
       },
       {
         email: "drharris@wardenx.local",
-        membershipId: await membershipIdFor("drharris@wardenx.local"),
+        membershipId: coordinatorId,
         discipline: "hospice_physician",
       },
     ];
     for (const a of attendees) {
-      await rn.client.POST("/api/v1/idg/meetings/{id}/attendance", {
+      await md.client.POST("/api/v1/idg/meetings/{id}/attendance", {
         params: { path: { id: meetingId } },
         body: { membershipId: a.membershipId, discipline: a.discipline, status: "present" },
       });
     }
 
-    const decision = await rn.client.POST("/api/v1/idg/meetings/{id}/decisions", {
+    const decision = await md.client.POST("/api/v1/idg/meetings/{id}/decisions", {
       params: { path: { id: meetingId } },
       body: {
         patientId,

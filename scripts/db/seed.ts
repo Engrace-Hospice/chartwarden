@@ -24,6 +24,7 @@ import {
 } from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
+import { roleMayHoldPermission } from "./lib/idg-role-grants";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -458,7 +459,10 @@ async function main(): Promise<void> {
 
     const keys = u.grantAll
       ? allRows.map((x) => x.key)
-      : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
+      : allRows
+          .filter((row) => u.permCats.includes(row.category as Cat))
+          .filter((row) => roleMayHoldPermission(u.roleKey, row.key))
+          .map((x) => x.key);
     for (const key of keys) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",

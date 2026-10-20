@@ -47,6 +47,7 @@ import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { anchorCareTeamSeats } from "./lib/care-team-seats";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
+import { roleMayHoldPermission } from "./lib/idg-role-grants";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -429,7 +430,8 @@ async function main(): Promise<void> {
     const ssnKeys: readonly string[] =
       (SSN_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
     const baseKeys = (ROLE_GRANT_OVERRIDES[key] ?? clinicalKeys).filter(
-      (k) => k !== "privacy.admin" || PRIVACY_ADMIN_ROLES.has(key),
+      (k) =>
+        (k !== "privacy.admin" || PRIVACY_ADMIN_ROLES.has(key)) && roleMayHoldPermission(key, k),
     );
     if (PRIVACY_ADMIN_ROLES.has(key) && !baseKeys.includes("privacy.admin")) {
       baseKeys.push("privacy.admin");
