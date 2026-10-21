@@ -122,3 +122,35 @@ describe("GAP-009 — closed registration (invite-token sign-up)", () => {
     expect(magic(open).options?.disableSignUp).toBe(false);
   });
 });
+
+describe("ADR-0049 D6 — tenant origins are matched by rule", () => {
+  const trusting = (trusted: string) =>
+    createIdentityAuth({} as never, {
+      tenantOrigins: { isTrusted: async (origin) => origin === trusted },
+    });
+  const trustedFor = (a: ReturnType<typeof createIdentityAuth>, origin: string | null, host?: string) => {
+    const fn = a.options.trustedOrigins as (request?: Request) => Promise<string[]>;
+    const request = origin
+      ? new Request(`https://${host ?? new URL(origin).host}/x`, { headers: { origin } })
+      : undefined;
+    return fn(request);
+  };
+
+  it("keeps the static allowlist in single-host mode", () => {
+    expect(Array.isArray(auth.options.trustedOrigins)).toBe(true);
+  });
+
+  it("adds the request origin only when the matcher trusts it", async () => {
+    const tenant = trusting("https://sunrise.chartwarden.com");
+    expect(await trustedFor(tenant, "https://sunrise.chartwarden.com")).toContain("https://sunrise.chartwarden.com");
+    expect(await trustedFor(tenant, "https://evil.example")).not.toContain("https://evil.example");
+    expect(await trustedFor(tenant, null)).toEqual(resolveTrustedOrigins());
+  });
+
+  it("does not trust a tenant origin on another tenant's host", async () => {
+    const tenant = trusting("https://sunrise.chartwarden.com");
+    expect(await trustedFor(tenant, "https://sunrise.chartwarden.com", "eagle.chartwarden.com")).toEqual(
+      resolveTrustedOrigins(),
+    );
+  });
+});

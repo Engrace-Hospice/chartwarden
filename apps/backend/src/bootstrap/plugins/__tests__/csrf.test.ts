@@ -199,3 +199,50 @@ describe("applyCsrfProtection — exemptions", () => {
     expect(res.headers["set-cookie"]).toBeUndefined();
   });
 });
+
+describe("applyCsrfProtection — host-only mode (ADR-0049 D4)", () => {
+  it("mints __Host-chartwarden_csrf with Secure, Path=/ and no Domain", async () => {
+    const res = await buildApp({ hostOnly: true }).inject({ method: "GET", url: "/ping" });
+    const header = ([] as string[]).concat(res.headers["set-cookie"] as string | string[]).find((c) => c.includes("csrf"));
+    expect(header).toMatch(/^__Host-chartwarden_csrf=[0-9a-f]{64}; Path=\/; SameSite=Lax; Secure$/);
+    expect(header).not.toMatch(/Domain=/i);
+  });
+
+  it("forces Secure even when secure:false is passed (the __Host- prefix requires it)", async () => {
+    const res = await buildApp({ hostOnly: true, secure: false }).inject({ method: "GET", url: "/ping" });
+    expect(String(res.headers["set-cookie"])).toContain("Secure");
+  });
+
+  it("ignores a planted legacy csrf cookie (cookie tossing from a sibling tenant)", async () => {
+    const app = buildApp({ hostOnly: true });
+    const planted = "b".repeat(64);
+    const res = await app.inject({
+      method: "POST",
+      url: "/mutate",
+      headers: { cookie: `wardenx_csrf=${planted}; __Host-better-auth.session_token=s`, "x-csrf-token": planted },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("verifies a mutation against the __Host- cookie", async () => {
+    const app = buildApp({ hostOnly: true });
+    const token = "a".repeat(64);
+    const ok = await app.inject({
+      method: "POST",
+      url: "/mutate",
+      headers: { cookie: `__Host-chartwarden_csrf=${token}; __Host-better-auth.session_token=s`, "x-csrf-token": token },
+    });
+    expect(ok.statusCode).toBe(200);
+    const bad = await app.inject({
+      method: "POST",
+      url: "/mutate",
+      headers: { cookie: `__Host-chartwarden_csrf=${token}; __Host-better-auth.session_token=s` },
+    });
+    expect(bad.statusCode).toBe(403);
+  });
+
+  it("does not mint the plain name in single-host mode's counterpart", async () => {
+    const res = await buildApp({ hostOnly: false }).inject({ method: "GET", url: "/ping" });
+    expect(String(res.headers["set-cookie"])).toMatch(/^chartwarden_csrf=/);
+  });
+});

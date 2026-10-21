@@ -20,6 +20,7 @@ import {
   createDbSessionContextStore,
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
+  createTenantOriginMatcher,
   createIdentityCredentialAdmin,
   createInMemoryFailedLoginStore,
   createLinkSessionMinter,
@@ -119,11 +120,15 @@ import {
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
+  createCachingTenantHostResolver,
+  createDbTenantHostResolver,
   createSessionAuthenticate,
+  createTenantHostGuard,
   escalationRouterDenyStub,
   getSeam,
   integrationEnabled,
   noteInMemoryBinding,
+  parseTenantBaseDomain,
   registerEraser,
   registerSeam,
   withM24LaunchGatewayDefault,
@@ -4210,12 +4215,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         activeMembershipsOf: createDbActiveMembershipLister(dbHandle.db),
       })
     : undefined;
+  // ADR-0049 / ADR-0088 — per-tenant subdomains. Unset TENANT_BASE_DOMAIN is single-host mode (the demo, dev):
+  // no guard. Set, the host → organization lookup needs the database, so a missing handle is a boot error rather
+  // than a guard that silently never runs.
+  const tenantBaseDomain = parseTenantBaseDomain();
+  if (tenantBaseDomain && !dbHandle) {
+    throw new Error("TENANT_BASE_DOMAIN is set but there is no database to resolve tenant hosts from");
+  }
+  const tenantHostResolver =
+    tenantBaseDomain && dbHandle
+      ? createCachingTenantHostResolver(createDbTenantHostResolver(dbHandle.db))
+      : undefined;
+  // The same rule decides Better Auth's trusted origins, the passkey ceremony, step-up and the realtime handshake.
+  const tenantOrigins = tenantHostResolver
+    ? createTenantOriginMatcher({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
+    : undefined;
+  const tenantHost = tenantHostResolver
+    ? createTenantHostGuard({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
+    : null;
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
         // GAP-002 — the password-reset leg of the M2 §8.1 authentication trail (the rest is the bridge's).
         auditSink: authAuditSink,
         onAuditError: authAuditErrorLogger,
+        ...(tenantOrigins ? { tenantOrigins } : {}),
       })
     : undefined;
   const authenticate = auth
@@ -4469,6 +4493,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    tenantHost,
     ...(featureFlagReader ? { featureFlagReader } : {}),
     ...(systemStatusReader ? { systemStatusReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
@@ -4676,7 +4701,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // §11 D19 (#205 hard half) — the real org activate/suspend/close capability. This is what
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
-          mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
+          mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher, (organizationId) =>
+            tenantHostResolver?.invalidateOrganization(organizationId),
+          );
           // M2 §2.2.4 / §7.7 — redeem an emailed auditor link into a scoped, read-only `auditor` session.
           // Public (the token is the credential); M3 grants the one least-privilege role inside the
           // redemption transaction; Better Auth mints the signed session cookie. Per-IP and per-org attempt
@@ -11886,6 +11913,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         // Native Socket.IO may omit Origin, but a supplied Origin is checked only against browser
         // HTTP(S) origins. Authentication below remains mandatory in either case.
         trustedOrigins: resolveWebTrustedOrigins(),
+        ...(tenantOrigins ? { tenantOrigins } : {}),
         // Behind a trusted proxy the socket address is the proxy: key on the entry that proxy appended, but only when
         // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
         clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),

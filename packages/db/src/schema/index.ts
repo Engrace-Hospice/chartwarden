@@ -7,6 +7,7 @@
 // M1-T01 — tenancy spine: organization -> provider_entity -> location (+ shared enums).
 export * from "../enums";
 export * from "./organizations";
+export * from "./organization-slug-aliases";
 export * from "./provider-entities";
 export * from "./locations";
 // M1-T02 — identity base tables (Better Auth–compatible): user, membership, session,

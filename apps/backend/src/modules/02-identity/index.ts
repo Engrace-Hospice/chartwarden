@@ -609,9 +609,11 @@ export function mountOrganizationLifecycleRoutes(
   db: DbClient,
   /** The `m2.*` outbox publisher (#205). Omitted → transition still lands, event is dropped. */
   outbox?: OrganizationLifecycleOutboxPort,
+  /** Called after a transition commits; the composition root evicts the tenant-host cache here (ADR-0049 D6). */
+  onTransitioned?: (organizationId: string) => void,
 ): void {
   _registerM2AbacPredicates();
-  _registerOrganizationLifecycleRoutes(app, _organizationLifecycleWriter(db, outbox));
+  _registerOrganizationLifecycleRoutes(app, _organizationLifecycleWriter(db, outbox, onTransitioned));
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
 // TASK-003/ARCH-007: `createDrizzleIdentityEraserStore` is the production store the composition

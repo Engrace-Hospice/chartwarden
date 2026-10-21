@@ -45,6 +45,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.userId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
+  // ADR-0049: stands in for the tenant-host guard, which stamps the org the request host resolves to.
+  const hostOrg = request.headers["x-test-host-org"];
+  if (typeof hostOrg === "string") request.context.attributes = { tenantHostOrgId: hostOrg };
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   // No `x-test-orgname` here any more. This shim used to stamp
@@ -340,6 +343,25 @@ describe("M2-T06 identity route inventory", () => {
         activeOrganizationId: "org_a",
         organizationName: "Engrace",
       });
+      await app.close();
+    });
+
+    it("ADR-0049 select-organization on a tenant host binds only that host's org (403 TENANT_HOST_MISMATCH otherwise)", async () => {
+      const { app } = makeServer({ seed });
+      const other = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { "x-test-user": "user_rn", "x-test-host-org": "org_b" },
+        payload: { organizationId: "org_a" },
+      });
+      expect([other.statusCode, other.json().error.code]).toEqual([403, "TENANT_HOST_MISMATCH"]);
+      const same = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { "x-test-user": "user_rn", "x-test-host-org": "org_a" },
+        payload: { organizationId: "org_a" },
+      });
+      expect(same.statusCode).toBe(200);
       await app.close();
     });
 

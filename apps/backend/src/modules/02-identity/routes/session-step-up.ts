@@ -251,6 +251,8 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
       webauthnChallenge: challenge.webauthnChallenge,
       assertion: body.assertion,
       totpCode: typeof body.totpCode === "string" ? body.totpCode : undefined,
+      // The host is trusted only after the tenant-host guard stamped it, so this is never a raw header read.
+      requestOrigin: request.context.attributes?.tenantHostOrgId ? `https://${request.hostname}` : undefined,
     });
     const auditCtx = auditContextFor(request, session);
 

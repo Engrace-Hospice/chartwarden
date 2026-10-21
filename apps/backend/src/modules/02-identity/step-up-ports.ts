@@ -53,6 +53,8 @@ export interface MfaVerifier {
     webauthnChallenge?: string;
     assertion?: unknown;
     totpCode?: string;
+    /** `https://<tenant host>` once the tenant-host guard has validated the request host (ADR-0049 D6); absent in single-host mode. */
+    requestOrigin?: string;
   }): Promise<{ ok: boolean; reason?: string }> | { ok: boolean; reason?: string };
 }
 

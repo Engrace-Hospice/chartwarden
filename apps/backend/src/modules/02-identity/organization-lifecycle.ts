@@ -102,10 +102,13 @@ export interface OrganizationLifecycleWriter {
 export function createDrizzleOrganizationLifecycleWriter(
   db: DbClient,
   outbox?: OrganizationLifecycleOutboxPort,
+  /** Called AFTER the transition commits (ADR-0049 D6: evicts the tenant-host cache so a suspended or closed
+   *  tenant's host stops resolving at once, not after the cache TTL). */
+  onTransitioned?: (organizationId: string) => void,
 ): OrganizationLifecycleWriter {
   return {
     async transition(organizationId, event, ctx) {
-      return withOrgContext(db, { organizationId, userId: ctx.actorUserId }, async (tx) => {
+      const result = await withOrgContext(db, { organizationId, userId: ctx.actorUserId }, async (tx) => {
         const [row] = await tx
           .select({ status: schema.organizations.status })
           .from(schema.organizations)
@@ -162,6 +165,8 @@ export function createDrizzleOrganizationLifecycleWriter(
 
         return { status: to, sessionsRevoked };
       });
+      onTransitioned?.(organizationId);
+      return result;
     },
 
     async getStatus(organizationId) {

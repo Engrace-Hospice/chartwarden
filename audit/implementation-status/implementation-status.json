@@ -18,8 +18,8 @@
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 18,
-        "covered": 18
+        "tables": 19,
+        "covered": 19
       }
     },
     {

@@ -196,7 +196,7 @@ export function createDbMfaVerifier(db: DbClient): MfaVerifier {
   const webauthn = createWebauthnAssertionVerifier(createDbPasskeyCredentialStore(db));
   const totp = createTotpStepUpVerifier(createDbTotpEnrolmentStore(db));
   return {
-    async verify({ userId, factor, webauthnChallenge, assertion, totpCode }) {
+    async verify({ userId, factor, webauthnChallenge, assertion, totpCode, requestOrigin }) {
       if (factor === "totp") {
         if (!totpCode) return { ok: false, reason: "totp_code_missing" };
         return totp.verify({ userId, totpCode });
@@ -213,7 +213,9 @@ export function createDbMfaVerifier(db: DbClient): MfaVerifier {
           userId,
           expectedChallenge: webauthnChallenge,
           assertion,
-          expectedOrigin: resolvePasskeyOrigins(),
+          expectedOrigin: requestOrigin
+            ? [...resolvePasskeyOrigins(), requestOrigin]
+            : resolvePasskeyOrigins(),
           expectedRPID: resolvePasskeyRpId(),
         });
       }

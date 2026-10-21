@@ -210,3 +210,9 @@ export {
   createLinkSessionMinter,
   linkSessionPlugin,
 } from "./link-session";
+
+export {
+  type TenantOriginMatcher,
+  type TenantOriginResolver,
+  createTenantOriginMatcher,
+} from "./tenant-origin";
