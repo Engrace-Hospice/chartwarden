@@ -53,7 +53,7 @@ describe("M13 witness signing key (TASK-008)", () => {
     };
     const devToken = buildWitnessAttestationToken(
       claims,
-      "wardenx-m13-witness-secret-dev-only-do-not-use-in-prod",
+      "chartwarden-m13-witness-secret-dev-only-do-not-use-in-prod",
     );
     const result = verifyWitnessAttestationToken({
       token: devToken,

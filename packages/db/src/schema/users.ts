@@ -49,7 +49,7 @@ export const users = pgTable(
     ),
     usernameReserved: check(
       "user_username_not_reserved",
-      sql`${t.username} IS NULL OR ${t.username} NOT IN ('admin', 'administrator', 'root', 'security', 'support', 'system', 'wardenx')`,
+      sql`${t.username} IS NULL OR ${t.username} NOT IN ('admin', 'administrator', 'root', 'security', 'support', 'system', 'wardenx', 'chartwarden')`,
     ),
   }),
 );
