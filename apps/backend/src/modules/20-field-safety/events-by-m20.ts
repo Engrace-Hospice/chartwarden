@@ -199,7 +199,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       loopIteration: Count,
       emergencyContactCallInitiated: Bool,
       psapJurisdictionId: IdOrNull,
-      wardenxOpsPaged: Bool,
+      // Renamed from `wardenxOpsPaged`; persisted rows keep the legacy key forever, so both stay optional.
+      chartwardenOpsPaged: Type.Optional(Bool),
+      wardenxOpsPaged: Type.Optional(Bool),
     }),
     // F-132 (#248) — m34 REMOVED: M34's own spec never names M20 anywhere ("Depends on"/"Consumed by"
     // enumerate 1,2,3,4,22,36 and 1,2,3,4,22,23,24,29,33,35 respectively — M20 is absent from both), and
