@@ -3,6 +3,7 @@
 // (a rejection needs a note). It never shows message content. The buttons are hidden for the person's own request; the server stays the authority and
 // refuses it as well. The justification and the note are staff free text and are only ever rendered as text.
 import {
+  MESSAGING_EXPORT_APPROVE_STEP_UP_KEY,
   MESSAGING_EXPORT_DECISION_NOTE_MAX,
   type MessagingExportJobDetailDto,
   type MessagingExportJobSummaryDto,
@@ -11,11 +12,22 @@ import { Button, EmptyState, PageHeader, TextAreaField } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
+import {
+  clearStepUpDraft,
+  findStepUpDraftResourceId,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import { LoadGate, StatusChip, formatTime, useFailureText, useNow } from "./export-common";
 import * as W from "./export-wording";
 import { useOnlineStatus } from "./offline-banner";
 import { useExportActions, useExportDetail, usePendingExports } from "./use-export";
 import "./export.css";
+
+const DECIDE_ACTION = MESSAGING_EXPORT_APPROVE_STEP_UP_KEY;
+const DECIDE_ACTIONS: readonly string[] = [DECIDE_ACTION];
 
 const who = (job: MessagingExportJobSummaryDto): string => job.requestedByName ?? job.requestedBy;
 
@@ -52,22 +64,30 @@ function DetailBody({
   const own = me !== undefined && me === detail.requestedBy;
   const pending = detail.status === "pending_approval";
   const statusRef = useRef<HTMLOutputElement>(null);
-  const [note, setNote] = useState("");
+  const owner = useStepUpOwner();
+  const draftKey = stepUpDraftKey(owner, DECIDE_ACTION, detail.id);
+  // A typed note survives the step-up round trip (sessionStorage, short TTL, never in the URL).
+  const [note, setNote] = useState(() => peekStepUpDraft<{ note?: string }>(draftKey)?.note ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   const decide = async (kind: "approve" | "reject"): Promise<void> => {
-    if (busy || !online || own) return;
+    if (inFlight.current || !online || own) return;
     const trimmed = note.trim();
     if (kind === "reject" && trimmed === "") return setMessage(W.NOTE_REQUIRED);
     if (trimmed.length > MESSAGING_EXPORT_DECISION_NOTE_MAX) return setMessage(W.NOTE_TOO_LONG);
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     const body = trimmed === "" ? {} : { note: trimmed };
     const result = await (kind === "approve"
       ? actions.approve(detail.id, body)
       : actions.reject(detail.id, body));
+    inFlight.current = false;
     setBusy(false);
+    if (result.kind === "ok") clearStepUpDraft(draftKey);
+    if (result.kind === "step_up") stashStepUpDraft(draftKey, { note });
     setMessage(
       result.kind === "ok"
         ? kind === "approve"
@@ -75,7 +95,8 @@ function DetailBody({
           : W.REJECTED_DONE
         : failureText(result),
     );
-    if (result.kind === "ok" || result.kind === "conflict") reload();
+    if (result.kind === "ok" || result.kind === "conflict" || result.kind === "not_available")
+      reload();
     statusRef.current?.focus();
   };
 
@@ -88,9 +109,9 @@ function DetailBody({
       <h2>{W.justificationHeading}</h2>
       <p className="wx-export-text">{detail.justification}</p>
       {!pending ? (
-        <p className="wx-export-detail">
-          {detail.decisionNote ? `${W.DECIDED_NOTE_LABEL}: ${detail.decisionNote}` : null}
-        </p>
+        detail.decisionNote ? (
+          <p className="wx-export-detail">{`${W.DECIDED_NOTE_LABEL}: ${detail.decisionNote}`}</p>
+        ) : null
       ) : (
         <form
           className="wx-export-form"
@@ -176,7 +197,12 @@ function Detail({
 }
 
 export function ExportApprovals(): JSX.Element {
-  const [selected, setSelected] = useState<string | null>(null);
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, DECIDE_ACTIONS);
+  // Back from the step-up page mid-decision: reopen that request so the stashed note is restored.
+  const [selected, setSelected] = useState<string | null>(() =>
+    returning ? findStepUpDraftResourceId(owner, DECIDE_ACTION) : null,
+  );
   const { view, reload } = usePendingExports();
   const now = useNow();
   const listRef = useRef<HTMLDivElement>(null);

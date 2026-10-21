@@ -56,6 +56,8 @@ export function buildPatientPrivacyFlagReader(db: DbClient): PatientPrivacyFlagR
           sexClass: toSexClass(r.sexAssignedAtBirth),
           // An invalidated snapshot is stale by M5's own marker — its flags are not active facts.
           privacyFlags: r.invalidatedAt === null ? (r.flags ?? []) : [],
+          // The empty list above is "stale", not "none": say so, so a fail-closed consumer can tell the two apart.
+          ...(r.invalidatedAt === null ? {} : { privacyFlagsStale: true as const }),
         }));
       });
     },

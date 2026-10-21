@@ -46,10 +46,15 @@ export const MESSAGING_EXPORT_DECISION_NOTE_MAX = 1000;
 
 /** D4: the link lives this long after the artefact is ready (CHECK `message_export_job_expiry_24h`, DATABASE clock). */
 export const EXPORT_LINK_TTL_HOURS = 24;
-/** Abuse bounds (D4): live jobs per requester, jobs requested in a rolling day, messages per job (over the cap = 409 EXPORT_TOO_LARGE, never truncated). */
+/** Abuse bounds (D4): live jobs per requester, jobs requested in a rolling day, messages per job (over the cap the BUILD fails EXPORT_TOO_LARGE after approval, never truncated). */
 export const EXPORT_MAX_LIVE_PER_USER = 3;
 export const EXPORT_MAX_PER_DAY = 10;
 export const EXPORT_MAX_MESSAGES = 50_000;
+/**
+ * D4: the plaintext JSON of one artefact is at most this many bytes (below the 256 MB whole-object read cap of the download path, which also holds
+ * the AES-GCM overhead), so a built artefact is always downloadable. Over it the BUILD fails EXPORT_TOO_LARGE; nothing is truncated.
+ */
+export const EXPORT_MAX_ARTEFACT_BYTES = 200 * 1024 * 1024;
 /** D5: the optional date range is at most this many days (CHECK `message_export_job_range_max`). */
 export const EXPORT_MAX_RANGE_DAYS = 366;
 
@@ -59,7 +64,7 @@ export const EXPORT_ALREADY_DECIDED_CODE = "EXPORT_ALREADY_DECIDED";
 export const EXPORT_NOT_READY_CODE = "EXPORT_NOT_READY";
 /** The link has expired: 409. */
 export const EXPORT_EXPIRED_CODE = "EXPORT_EXPIRED";
-/** The scope holds more than EXPORT_MAX_MESSAGES messages: 409; narrow the scope or range. */
+/** The scope holds more than EXPORT_MAX_MESSAGES messages or EXPORT_MAX_ARTEFACT_BYTES of text: the build FAILS with this code (failure_code); narrow the scope or range and ask again. */
 export const EXPORT_TOO_LARGE_CODE = "EXPORT_TOO_LARGE";
 /** The live or daily cap is reached: 429. */
 export const EXPORT_LIMIT_CODE = "EXPORT_LIMIT";

@@ -9261,6 +9261,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const m36ExportBuildWorkers = registerM36ExportBuildWorker({
         connection: queueConnection,
         builder: m36Export.builder,
+        // The closed code and the error class only (never a message): an unexpected build failure is otherwise invisible to operations.
+        onFailed: (info) => app.log.warn(info, "M36 export build failed"),
       });
       attachDlqAlertsToAll(m36ExportBuildWorkers, "m36");
       app.addHook("onClose", async () => {
@@ -9272,6 +9274,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const m36ExportExpiryWorkers = registerM36ExportExpiryWorker({
         connection: queueConnection,
         expireForOrg: m36Export.sweep.expireForOrg,
+        // An approved export whose build job was lost (queue flushed) is enqueued again; the job id makes a live duplicate a no-op.
+        staleApprovedForOrg: m36Export.sweep.staleApprovedForOrg,
+        ...(m36ExportBuildEnqueuer ? { enqueue: m36ExportBuildEnqueuer.enqueue } : {}),
         activeOrgs: buildActiveOrgEnumerator({
           platformDb: platformDbHandle.db,
           auditBypass: m34PlatformBypassAuditor,

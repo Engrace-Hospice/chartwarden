@@ -130,6 +130,13 @@ describe("migration 1147 restricted export", () => {
     );
   });
 
+  it("the job guard binds the requester (insert) and the decider (approve/reject) to app.user_id", () => {
+    const actor = "IS DISTINCT FROM nullif(current_setting('app.user_id', true), '')::uuid";
+    expect(sql).toContain(`IF NEW.requested_by ${actor} THEN`);
+    expect(sql).toContain(`IF NEW.decided_by ${actor} THEN`);
+    expect(sql.match(/message_export_job_actor/g)?.length).toBe(2);
+  });
+
   it("every guard is SECURITY INVOKER and the audit functions leave the free text and the wrapped key out", () => {
     for (const fn of ["message_export_job_guard", "message_export_download_guard"]) {
       expect(sql).toMatch(
@@ -161,5 +168,6 @@ describe("migration 1147 restricted export", () => {
       for (const t of TABLES) expect(m, `${f} ${t}`).toContain(`"${t}"`);
     }
     expect(read("scripts/check-tenancy.ts")).toContain("message_export_download_guard");
+    expect(read("scripts/check-tenancy.ts")).toContain("message_export_job_guard");
   });
 });

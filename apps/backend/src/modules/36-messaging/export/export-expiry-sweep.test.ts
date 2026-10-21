@@ -6,7 +6,7 @@ import {
   type ExportExpiryStore,
   createExportExpirySweep,
 } from "./export-expiry-sweep";
-import { exportExpiryTick } from "./export-worker";
+import { exportBuildJob, exportExpiryTick } from "./export-worker";
 
 const ORG = "o1";
 
@@ -21,6 +21,7 @@ function store(ids: string[]) {
         .map((id) => ({ id, artefactKey: `messaging-export/${id}.enc` })),
     expire: async (_o, id) => ready.delete(id),
     failStuckBuilds: async () => 2,
+    staleApproved: async () => [],
   };
   return { s, ready };
 }
@@ -92,6 +93,43 @@ describe("exportExpiryTick", () => {
     expect(await exportExpiryTick({ activeOrgs: orgs("a", "c"), expireForOrg })).toEqual({
       expired: 2,
       timedOut: 0,
+      reenqueued: 0,
+    });
+  });
+
+  it("re-enqueues every stale approved job of every org, once each, through the idempotent enqueuer", async () => {
+    const enqueue = vi.fn(async () => undefined);
+    const staleApprovedForOrg = vi.fn(async (o: string) => (o === "a" ? ["j1", "j2"] : ["j3"]));
+    const out = await exportExpiryTick({
+      activeOrgs: orgs("a", "c"),
+      expireForOrg: async () => ({ expired: 0, timedOut: 0 }),
+      staleApprovedForOrg,
+      enqueue,
+    });
+    expect(out.reenqueued).toBe(3);
+    expect(enqueue.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+      { organizationId: "a", jobId: "j1" },
+      { organizationId: "a", jobId: "j2" },
+      { organizationId: "c", jobId: "j3" },
+    ]);
+  });
+});
+
+describe("exportBuildJob", () => {
+  it("reports the closed code and error class of a failed build, never a message", async () => {
+    const onFailed = vi.fn();
+    const builder = {
+      buildJob: async () => ({
+        outcome: "failed" as const,
+        failureCode: "EXPORT_BUILD_FAILED",
+        errorName: "RangeError",
+      }),
+    };
+    await exportBuildJob(builder, { organizationId: "o", jobId: "j" }, onFailed);
+    expect(onFailed).toHaveBeenCalledWith({
+      jobId: "j",
+      failureCode: "EXPORT_BUILD_FAILED",
+      errorName: "RangeError",
     });
   });
 });

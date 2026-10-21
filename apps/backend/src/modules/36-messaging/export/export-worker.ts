@@ -4,7 +4,8 @@
 //   · `messaging.export_expiry_sweep` (hourly) fans out over the active orgs and expires every ready export past its link. Flag-independent.
 // A build never throws for a build failure (the job row records the closed failure code); a throw here means the claim itself could not run, and
 // BullMQ retries it (a retry after a successful claim finds the job past `approved` and does nothing).
-// ponytail: an approved job whose enqueue was lost (Redis flush) waits; add a re-enqueue pass in the sweep if that is ever observed.
+// An approved job whose enqueue was lost (Redis flush) is re-enqueued by the hourly sweep once it is EXPORT_APPROVED_REENQUEUE_MINUTES old (the BullMQ job
+// id is the export job id, so a live duplicate is a no-op; a failed leftover with that id is removed first so the add takes).
 import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
@@ -67,6 +68,8 @@ export function createExportBuildEnqueuer(connection: ConnectionOptions): {
   return {
     queue,
     async enqueue(data) {
+      const leftover = await queue.getJob(data.jobId);
+      if (leftover && (await leftover.isFailed())) await leftover.remove();
       await queue.add("build", data, {
         jobId: data.jobId,
         attempts,
@@ -78,22 +81,39 @@ export function createExportBuildEnqueuer(connection: ConnectionOptions): {
 }
 
 /** One build job: the builder returns its outcome (ready / failed / skipped); only an unexpected throw fails the BullMQ job. */
+export interface ExportBuildFailureInfo {
+  readonly jobId: string;
+  readonly failureCode: string;
+  readonly errorName: string;
+}
+
 export async function exportBuildJob(
   builder: Pick<ExportBuilder, "buildJob">,
   data: ExportBuildJobData,
+  onFailed?: (info: ExportBuildFailureInfo) => void,
 ) {
   if (!data?.organizationId || !data?.jobId) throw new Error("export build: bad job data");
-  return builder.buildJob(data.organizationId, data.jobId);
+  const outcome = await builder.buildJob(data.organizationId, data.jobId);
+  // Class and closed code only, never a message: an error text can carry content.
+  if (outcome.outcome === "failed") {
+    onFailed?.({
+      jobId: data.jobId,
+      failureCode: outcome.failureCode,
+      errorName: outcome.errorName,
+    });
+  }
+  return outcome;
 }
 
 export function registerM36ExportBuildWorker(deps: {
   readonly connection: ConnectionOptions;
   readonly builder: Pick<ExportBuilder, "buildJob">;
+  readonly onFailed?: (info: ExportBuildFailureInfo) => void;
 }): Worker[] {
   return [
     new Worker(
       MESSAGING_QUEUES.exportBuild,
-      (job) => exportBuildJob(deps.builder, job.data as ExportBuildJobData),
+      (job) => exportBuildJob(deps.builder, job.data as ExportBuildJobData, deps.onFailed),
       {
         connection: deps.connection,
         concurrency: MESSAGING_QUEUE_PARAMETERS[MESSAGING_QUEUES.exportBuild].concurrency,
@@ -106,17 +126,28 @@ export interface M36ExportExpiryWorkerDeps
   extends Pick<M36IntegrityWorkerDeps, "activeOrgs" | "onError"> {
   readonly connection: ConnectionOptions;
   readonly expireForOrg: (orgId: string) => Promise<ExportExpirySweepResult>;
+  /** Approved jobs old enough that their build job was probably lost; each is re-enqueued by `enqueue`. Both absent => no re-enqueue pass. */
+  readonly staleApprovedForOrg?: (orgId: string) => Promise<readonly string[]>;
+  readonly enqueue?: EnqueueExportBuild;
 }
 
 /** One tick: expire the ready exports past their link in every active org. An org failing fails the tick after the others ran. */
 export async function exportExpiryTick(
-  deps: Pick<M36ExportExpiryWorkerDeps, "activeOrgs" | "onError" | "expireForOrg">,
-): Promise<ExportExpirySweepResult> {
-  const totals = { expired: 0, timedOut: 0 };
+  deps: Pick<
+    M36ExportExpiryWorkerDeps,
+    "activeOrgs" | "onError" | "expireForOrg" | "staleApprovedForOrg" | "enqueue"
+  >,
+): Promise<ExportExpirySweepResult & { readonly reenqueued: number }> {
+  const totals = { expired: 0, timedOut: 0, reenqueued: 0 };
   await fanOutOrgs(deps, "export_expiry_sweep", async (organizationId) => {
     const result = await deps.expireForOrg(organizationId);
     totals.expired += result.expired;
     totals.timedOut += result.timedOut;
+    if (!deps.staleApprovedForOrg || !deps.enqueue) return;
+    for (const jobId of await deps.staleApprovedForOrg(organizationId)) {
+      await deps.enqueue({ organizationId, jobId });
+      totals.reenqueued += 1;
+    }
   });
   return totals;
 }

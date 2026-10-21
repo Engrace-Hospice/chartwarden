@@ -13,6 +13,8 @@
  *   9. RLS         another organisation sees and decides nothing.
  *  10. OUTBOX      every event, PHI-free payload keys; the approvers' alert consumer and the build consumer over the real rows.
  *  11. AUDIT       rows land for create / decide / ready / download; the justification, the note and the wrapped key are omitted.
+ *  12. REVIEW FIXES microsecond keyset over > one page, deleted tombstones, the message-level and stale-snapshot Part 2 gate, the actor-bound job guard,
+ *                 the quota-before-scope 429, the lost-enqueue listing, requester eligibility at build.
  *
  * Object storage is an in-memory map (the S3 binding is not reachable here); the tenant KEK, the body cipher, the data-key wrap and AES-GCM are real.
  *
@@ -49,6 +51,7 @@ import {
   createExportExpiryStore,
   createExportExpirySweep,
 } from "../src/modules/36-messaging/export/export-expiry-sweep";
+import { sudPatientsFromFacts } from "../src/modules/36-messaging/export/export-ports";
 import { createExportArtefactReader } from "../src/modules/36-messaging/export/export-reader";
 import { createExportService } from "../src/modules/36-messaging/export/export-service";
 import { createDrizzleExportStore } from "../src/modules/36-messaging/export/export-store";
@@ -108,6 +111,8 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
   let off: FastifyInstance;
   let stepUpFresh = true;
   let part2Unreadable = false;
+  const part2Stale = new Set<string>();
+  const part2Asked: string[][] = [];
   let approver: string;
   let third: string;
   let clinical: string;
@@ -137,7 +142,16 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
       openBody: (org, cipher) => bodyCipher.open(org, cipher),
       part2Patients: async (_org, ids) => {
         if (part2Unreadable) throw new Error("privacy flags unreadable");
-        return new Set(ids.filter((id) => id === PART2_PATIENT));
+        part2Asked.push([...ids]);
+        // The same mapping the production binding uses, so a stale (invalidated) snapshot fails closed here too.
+        return sudPatientsFromFacts(
+          ids.map((id) => ({
+            patientId: id,
+            privacyFlags: id === PART2_PATIENT ? ["sud"] : [],
+            ...(part2Stale.has(id) ? { privacyFlagsStale: true } : {}),
+          })),
+          ids,
+        );
       },
       putObject: async (a) => {
         objects.set(objKey(a.organizationId, a.objectKey), Buffer.from(a.bytes));
@@ -1019,7 +1033,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
       await approve(approver, id);
       part2Unreadable = true;
       try {
-        expect(await builder.buildJob(ORG_A, id)).toEqual({
+        expect(await builder.buildJob(ORG_A, id)).toMatchObject({
           outcome: "failed",
           failureCode: "EXPORT_PART2_UNKNOWN",
         });
@@ -1059,7 +1073,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
       stepUpFresh = true;
       const id = (await create(rq5, { scopeKind: "channel", channelId: big })).json().id as string;
       await approve(approver, id);
-      expect(await builder.buildJob(ORG_A, id)).toEqual({
+      expect(await builder.buildJob(ORG_A, id)).toMatchObject({
         outcome: "failed",
         failureCode: "EXPORT_TOO_LARGE",
       });
@@ -1348,6 +1362,241 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
           jobId: id,
         }),
       ).toThrow();
+    });
+  });
+
+  // ── 12: the pre-PR review fixes ──────────────────────────────────────────────────────────────────────────────────────────
+  describe("review fixes", () => {
+    const artefactOf = async (id: string) => {
+      stepUpFresh = true;
+      const res = await download((await jobRow(id)).requested_by as string, id);
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json() as {
+        manifest: Record<string, unknown>;
+        messages: Array<{ id: string; body: string }>;
+      };
+    };
+    const refer = (messageId: string, patientId: string) =>
+      kit.admin.query(
+        `INSERT INTO message_entity_reference (organization_id, message_id, reference_kind, entity_id, start_offset, end_offset)
+         VALUES ($1,$2,'patient',$3,0,1)`,
+        [ORG_A, messageId, patientId],
+      );
+    const bulkInsert = async (channel: string, rows: number, createdAtSql: string) => {
+      const sealed = await bodyCipher.seal(ORG_A, "bulk");
+      await kit.admin.query("BEGIN");
+      try {
+        await kit.admin.query("SET LOCAL session_replication_role = replica");
+        await kit.admin.query(
+          `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+           SELECT $1, $2, $3, 'user', $4, $5, ${createdAtSql} FROM generate_series(1, $6::int) AS g`,
+          [ORG_A, channel, author, sealed.cipher, sealed.sha256, rows],
+        );
+        await kit.admin.query("COMMIT");
+      } catch (err) {
+        await kit.admin.query("ROLLBACK");
+        throw err;
+      }
+    };
+
+    it("(keyset) more than one page of messages inside the same millisecond: no duplicate, none lost, database order", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      // 1 100 rows (> EXPORT_PAGE_SIZE) whose created_at differ only in microseconds.
+      await bulkInsert(
+        channel,
+        1100,
+        "date_trunc('milliseconds', now() - interval '30 days') + (g * interval '1 microsecond')",
+      );
+      const id = await buildFlow(await newRequester(), {
+        scopeKind: "channel",
+        channelId: channel,
+      });
+      expect(await jobRow(id)).toMatchObject({ status: "ready", message_count: 1100 });
+      const doc = await artefactOf(id);
+      const ids = doc.messages.map((m) => m.id);
+      expect(new Set(ids).size).toBe(1100);
+      const ordered = (
+        await kit.one<{ id: string }>(
+          "SELECT id FROM message WHERE channel_id=$1 ORDER BY created_at, id",
+          [channel],
+        )
+      ).map((r) => r.id);
+      expect(ids).toEqual(ordered);
+    }, 120_000);
+
+    it("(deleted) an author-deleted tombstone keeps its cipher but is never exported or listed", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await seedMessage(channel, `${MARKER} kept`, dayAt(3));
+      const gone = await seedMessage(channel, `${MARKER} deleted-by-author`, dayAt(2));
+      await kit.admin.query("UPDATE message SET status='deleted', deleted_at = now() WHERE id=$1", [
+        gone,
+      ]);
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message WHERE id=$1 AND octet_length(body_cipher) > 0",
+          [gone],
+        ),
+      ).toBe(1);
+      const id = await buildFlow(await newRequester(), {
+        scopeKind: "channel",
+        channelId: channel,
+      });
+      expect(await jobRow(id)).toMatchObject({ message_count: 1, part2_excluded: 0 });
+      const got = await artefactOf(id);
+      expect(JSON.stringify(got)).not.toContain("deleted-by-author");
+      expect(got.messages.map((m) => m.id)).not.toContain(gone);
+    });
+
+    it("(part 2) a message that references a flagged patient is left out and counted, whatever the channel kind", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await seedMessage(channel, `${MARKER} plain-talk`, dayAt(3));
+      const sud = await seedMessage(channel, `${MARKER} sud-discussion`, dayAt(2));
+      await refer(sud, PART2_PATIENT);
+      const ok = await seedMessage(channel, `${MARKER} other-patient`, dayAt(1));
+      await refer(ok, PATIENT);
+      const id = await buildFlow(await newRequester(), {
+        scopeKind: "channel",
+        channelId: channel,
+      });
+      expect(await jobRow(id)).toMatchObject({
+        status: "ready",
+        message_count: 2,
+        part2_excluded: 1,
+      });
+      const got = await artefactOf(id);
+      expect(JSON.stringify(got)).not.toContain("sud-discussion");
+      expect(got.messages).toHaveLength(2);
+    });
+
+    it("(part 2) a location channel exports normally: its subject (a location id) never reaches the flag reader", async () => {
+      const locationId = randomUUID();
+      const channel = await mkChannel(kit, "location", locationId, [author]);
+      await seedMessage(channel, `${MARKER} loc-1`, dayAt(2));
+      part2Asked.length = 0;
+      const id = await buildFlow(await newRequester(), {
+        scopeKind: "channel",
+        channelId: channel,
+      });
+      expect(await jobRow(id)).toMatchObject({
+        status: "ready",
+        message_count: 1,
+        part2_excluded: 0,
+      });
+      expect(part2Asked.flat()).not.toContain(locationId);
+    });
+
+    it("(part 2, fail closed) an invalidated privacy snapshot fails the build EXPORT_PART2_UNKNOWN instead of reading as not-SUD", async () => {
+      const stale = randomUUID();
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const m = await seedMessage(channel, `${MARKER} refs-stale`, dayAt(2));
+      await refer(m, stale);
+      part2Stale.add(stale);
+      try {
+        stepUpFresh = true;
+        const requester = await newRequester();
+        const made = await create(requester, { scopeKind: "channel", channelId: channel });
+        const id = made.json().id as string;
+        await approve(approver, id);
+        expect(await builder.buildJob(ORG_A, id)).toMatchObject({
+          outcome: "failed",
+          failureCode: "EXPORT_PART2_UNKNOWN",
+        });
+      } finally {
+        part2Stale.delete(stale);
+      }
+    });
+
+    it("(database guard) a request or a decision recorded for another user than app.user_id is refused", async () => {
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const rq = await newRequester();
+      const forgedInsert = await appTx(approver, ORG_A, (q) =>
+        q(
+          `INSERT INTO message_export_job (organization_id, requested_by, scope_kind, channel_id, justification)
+           VALUES ($1,$2,'channel',$3,$4)`,
+          [ORG_A, rq, channel, WHY],
+        ),
+      );
+      expect(forgedInsert).toMatch(/message_export_job_actor/);
+      const id = (await create(rq, { scopeKind: "channel", channelId: channel })).json()
+        .id as string;
+      // `third` is logged in but names `approver` as the decider.
+      const forgedDecision = await appTx(third, ORG_A, (q) =>
+        q("UPDATE message_export_job SET status='approved', decided_by=$2 WHERE id=$1", [
+          id,
+          approver,
+        ]),
+      );
+      expect(forgedDecision).toMatch(/message_export_job_actor/);
+      expect((await jobRow(id)).status).toBe("pending_approval");
+      // The honest decision by the logged-in user still goes through.
+      const honest = await appTx(
+        third,
+        ORG_A,
+        (q) =>
+          q("UPDATE message_export_job SET status='approved', decided_by=$2 WHERE id=$1", [
+            id,
+            third,
+          ]),
+        true,
+      );
+      expect(honest).toBeNull();
+      expect((await jobRow(id)).status).toBe("approved");
+    });
+
+    it("(quota) a full quota is the same 429 for a real and an unknown scope", async () => {
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const rq = await newRequester();
+      for (let i = 0; i < 3; i += 1) {
+        expect((await create(rq, { scopeKind: "channel", channelId: channel })).statusCode).toBe(
+          201,
+        );
+      }
+      const real = await create(rq, { scopeKind: "channel", channelId: channel });
+      const unknown = await create(rq, { scopeKind: "channel", channelId: randomUUID() });
+      expect([real.statusCode, unknown.statusCode]).toEqual([429, 429]);
+      expect(errorCode(unknown)).toBe("EXPORT_LIMIT");
+    });
+
+    it("(lost enqueue) the sweep lists an approved job older than 15 minutes, and only that", async () => {
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const rq = await newRequester();
+      const old = (await create(rq, { scopeKind: "channel", channelId: channel })).json()
+        .id as string;
+      const young = (await create(rq, { scopeKind: "channel", channelId: channel })).json()
+        .id as string;
+      await approve(approver, old);
+      await approve(approver, young);
+      await withGuardOff(() =>
+        kit.admin.query(
+          "UPDATE message_export_job SET decided_at = decided_at - interval '20 minutes' WHERE id=$1",
+          [old],
+        ),
+      );
+      const stale = await sweep().staleApprovedForOrg(ORG_A);
+      expect(stale).toContain(old);
+      expect(stale).not.toContain(young);
+      // Once built it is no longer approved, so it is not listed again.
+      await builder.buildJob(ORG_A, old);
+      expect(await sweep().staleApprovedForOrg(ORG_A)).not.toContain(old);
+    });
+
+    it("(eligibility at build) a requester deactivated after approval fails the build EXPORT_REQUESTER_INELIGIBLE and stores nothing", async () => {
+      stepUpFresh = true;
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const requester = await newRequester();
+      const id = (await create(requester, { scopeKind: "channel", channelId: channel })).json()
+        .id as string;
+      await approve(approver, id);
+      await kit.admin.query("UPDATE membership SET status='revoked' WHERE user_id=$1", [requester]);
+      expect(await builder.buildJob(ORG_A, id)).toMatchObject({
+        outcome: "failed",
+        failureCode: "EXPORT_REQUESTER_INELIGIBLE",
+      });
+      expect(await jobRow(id)).toMatchObject({ status: "failed", artefact_key: null });
+      expect(objects.has(objKey(ORG_A, `messaging-export/${id}.enc`))).toBe(false);
     });
   });
 });

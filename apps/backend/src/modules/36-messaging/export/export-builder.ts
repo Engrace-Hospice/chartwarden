@@ -1,11 +1,13 @@
-// M36 WP 5.7 (ADR-0089, PROPOSED), D3-D6 - the artefact builder. For one APPROVED job: claim it (approved -> building), resolve the scope, leave out
-// the held and the Part 2 gated messages (counted, never listed), fail closed over the message cap, page the rest with a keyset (bounded reads),
-// open each body, build `{manifest, messages}` (attachment METADATA only), seal it under a fresh data key wrapped by the tenant KEK, store the
-// ciphertext, and move building -> ready. Any failure moves building -> failed with a closed code; no plaintext is ever in an error or a log.
+// M36 WP 5.7 (ADR-0089, PROPOSED), D3-D6 - the artefact builder. For one APPROVED job: claim it (approved -> building), re-check the requester is
+// still eligible, resolve the scope, leave out the held messages and the Part 2 gated ones (counted, never listed: a channel whose subject patient is
+// flagged, and any message that REFERENCES a flagged patient), fail closed over the message and byte caps, page the rest with a keyset on database
+// TEXT timestamps (microseconds survive), open each body, build `{manifest, messages}` (attachment METADATA only), seal it under a fresh data key
+// wrapped by the tenant KEK, store the ciphertext, and move building -> ready. Any failure moves building -> failed with a closed code; no plaintext is ever in an error or a log.
 // Idempotent: a job already past `approved` claims nothing and the call is a no-op.
 // ponytail: the JSON document is assembled in memory (at most EXPORT_MAX_MESSAGES bodies); stream-encrypt if the cap is ever raised.
 import {
   EXPORT_LINK_TTL_HOURS,
+  EXPORT_MAX_ARTEFACT_BYTES,
   EXPORT_MAX_MESSAGES,
   EXPORT_TOO_LARGE_CODE,
   MESSAGING_EXPORT_FORMAT,
@@ -13,11 +15,13 @@ import {
   type MessagingExportManifest,
 } from "@chartwarden/types";
 import { ExportCryptoError, type ExportKeyWrap, sealArtefact, sha256Hex } from "./export-crypto";
+import { EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS } from "./export-ports";
 
 export const EXPORT_PAGE_SIZE = 500;
 export const EXPORT_FAIL_DECRYPT = "EXPORT_DECRYPT_FAILED";
 export const EXPORT_FAIL_KEY = "EXPORT_KEY_UNAVAILABLE";
 export const EXPORT_FAIL_PART2 = "EXPORT_PART2_UNKNOWN";
+export const EXPORT_FAIL_REQUESTER = "EXPORT_REQUESTER_INELIGIBLE";
 export const EXPORT_FAIL_STORE = "EXPORT_STORE_FAILED";
 export const EXPORT_FAIL_BUILD = "EXPORT_BUILD_FAILED";
 export const EXPORT_OBJECT_PREFIX = "messaging-export";
@@ -38,7 +42,7 @@ export interface ExportJobRow {
 export interface ExportChannel {
   readonly id: string;
   readonly kind: string;
-  /** The subject patient of the channel (any kind that names one); null otherwise. */
+  /** The channel's subject column. A PATIENT id only for EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS; a location or role id for the other kinds. */
   readonly subjectId: string | null;
 }
 
@@ -47,6 +51,8 @@ export interface ExportMessageRow {
   readonly channelId: string;
   readonly authorUserId: string | null;
   readonly createdAt: Date;
+  /** The database text of `created_at` (full microseconds): the keyset cursor is built from this, never from `createdAt`. */
+  readonly createdAtText: string;
   readonly bodyKind: string;
   readonly status: string;
   readonly bodyCipher: Buffer;
@@ -67,11 +73,15 @@ export interface ExportMessageQuery {
   readonly from: Date | null;
   /** Exclusive. */
   readonly to: Date | null;
-  readonly until: Date;
+  /** A database timestamptz TEXT (the database clock at the start of the build). */
+  readonly until: string;
+  /** Part 2 flagged patients: a message referencing one of them is left out of `page` and counted in `count().part2`. */
+  readonly part2PatientIds: readonly string[];
 }
 
 export interface ExportCursor {
-  readonly createdAt: Date;
+  /** The `createdAtText` of the last row seen. */
+  readonly createdAtText: string;
   readonly id: string;
 }
 
@@ -80,12 +90,21 @@ export interface ExportBuildStore {
   /** approved -> building; null when the job is not `approved` (already claimed, decided otherwise, or unknown): the build is a no-op. */
   claim(organizationId: string, jobId: string): Promise<ExportJobRow | null>;
   channelsFor(organizationId: string, job: ExportJobRow): Promise<readonly ExportChannel[]>;
-  /** Messages with a readable body in the query, and how many of them a legal hold covers (held is a subset of total). */
+  /** The DATABASE clock (text for SQL, Date for the manifest). */
+  dbNow(organizationId: string): Promise<{ readonly text: string; readonly date: Date }>;
+  /** Whether the requester is still an active, non-excluded-category user (rechecked at claim: an approval does not outlive eligibility). */
+  requesterEligible(organizationId: string, userId: string): Promise<boolean>;
+  /** The distinct patient ids the in-scope messages reference (`part2PatientIds` is ignored). */
+  referencedPatients(organizationId: string, query: ExportMessageQuery): Promise<readonly string[]>;
+  /**
+   * Messages with a readable, not author-deleted body in the query; how many of them a legal hold covers (held is a subset of total); and how many
+   * NOT held ones reference a `part2PatientIds` patient (part2, disjoint from held).
+   */
   count(
     organizationId: string,
     query: ExportMessageQuery,
-  ): Promise<{ readonly total: number; readonly held: number }>;
-  /** The next page, oldest first, held messages excluded, strictly after `after`. */
+  ): Promise<{ readonly total: number; readonly held: number; readonly part2: number }>;
+  /** The next page, oldest first, held and Part 2 referencing messages excluded, strictly after `after`. */
   page(
     organizationId: string,
     query: ExportMessageQuery,
@@ -134,13 +153,15 @@ export interface ExportBuilderDeps {
     readonly organizationId: string;
     readonly objectKey: string;
   }) => Promise<void>;
-  readonly now?: () => Date;
+  /** The plaintext byte cap; defaults to EXPORT_MAX_ARTEFACT_BYTES (a test seam). */
+  readonly maxArtefactBytes?: number;
 }
 
 export type ExportBuildOutcome =
   | { readonly outcome: "skipped" }
   | { readonly outcome: "ready"; readonly messageCount: number }
-  | { readonly outcome: "failed"; readonly failureCode: string };
+  /** `errorName` is the class name of what went wrong (never its message): for operations, safe to log. */
+  | { readonly outcome: "failed"; readonly failureCode: string; readonly errorName: string };
 
 class ExportBuildFailure extends Error {
   constructor(readonly failureCode: string) {
@@ -167,31 +188,45 @@ function failureCodeOf(error: unknown): string {
 }
 
 export function createExportBuilder(deps: ExportBuilderDeps) {
-  const now = deps.now ?? (() => new Date());
+  const isPatientSubject = (c: ExportChannel): c is ExportChannel & { subjectId: string } =>
+    c.subjectId !== null &&
+    (EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS as readonly string[]).includes(c.kind);
 
-  async function split(organizationId: string, channels: readonly ExportChannel[]) {
-    const subjects = [...new Set(channels.flatMap((c) => (c.subjectId ? [c.subjectId] : [])))];
+  /**
+   * Which patients are Part 2 flagged among (a) the subject patients of care_team / bereavement channels and (b) every patient any in-scope
+   * message references. One reader call; a throw (or a reader that reports a stale snapshot) fails the build closed.
+   */
+  async function split(
+    organizationId: string,
+    channels: readonly ExportChannel[],
+    window: Omit<ExportMessageQuery, "channelIds" | "part2PatientIds">,
+  ) {
+    const referenced = await deps.store.referencedPatients(organizationId, {
+      ...window,
+      channelIds: channels.map((c) => c.id),
+      part2PatientIds: [],
+    });
+    const candidates = [
+      ...new Set([...channels.filter(isPatientSubject).map((c) => c.subjectId), ...referenced]),
+    ];
     let flagged: ReadonlySet<string> = new Set();
-    if (subjects.length > 0) {
+    if (candidates.length > 0) {
       try {
-        flagged = await deps.part2Patients(organizationId, subjects);
+        flagged = await deps.part2Patients(organizationId, candidates);
       } catch {
         throw new ExportBuildFailure(EXPORT_FAIL_PART2);
       }
     }
-    // Every channel that names a subject patient is gated (a channel-scoped export can name a bereavement or any other kind), not only care_team.
-    const gated = (c: ExportChannel) => c.subjectId !== null && flagged.has(c.subjectId);
+    const gated = (c: ExportChannel) => isPatientSubject(c) && flagged.has(c.subjectId);
     return {
       allowed: channels.filter((c) => !gated(c)).map((c) => c.id),
       gated: channels.filter(gated).map((c) => c.id),
+      flagged: [...flagged],
     };
   }
 
-  async function collect(
-    organizationId: string,
-    query: ExportMessageQuery,
-    expected: number,
-  ): Promise<unknown[]> {
+  // Bounded by EXPORT_MAX_MESSAGES only: a hold released between the count and a page may add rows, which the manifest then counts as listed.
+  async function collect(organizationId: string, query: ExportMessageQuery): Promise<unknown[]> {
     const out: unknown[] = [];
     let after: ExportCursor | null = null;
     while (query.channelIds.length > 0) {
@@ -220,34 +255,40 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
               scanState: a.scanState,
             })),
         });
-        // A page that outgrows the count (cannot, given `until`) must not run away.
-        if (out.length > Math.max(expected, 0) || out.length > EXPORT_MAX_MESSAGES) {
-          throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
-        }
+        if (out.length > EXPORT_MAX_MESSAGES) throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
       }
       const last = rows[rows.length - 1];
       if (!last || rows.length < EXPORT_PAGE_SIZE) break;
-      after = { createdAt: last.createdAt, id: last.id };
+      after = { createdAtText: last.createdAtText, id: last.id };
     }
     return out;
   }
 
   async function build(job: ExportJobRow): Promise<ExportBuildOutcome> {
     const { organizationId } = job;
-    const startedAt = now();
+    if (!(await deps.store.requesterEligible(organizationId, job.requestedBy))) {
+      throw new ExportBuildFailure(EXPORT_FAIL_REQUESTER);
+    }
+    const startedAt = await deps.store.dbNow(organizationId);
     const { from, to } = windowOf(job);
+    const window = { from, to, until: startedAt.text };
     const channels = await deps.store.channelsFor(organizationId, job);
-    const { allowed, gated } = await split(organizationId, channels);
-    const window = { from, to, until: startedAt };
-    const allowedCount = await deps.store.count(organizationId, { ...window, channelIds: allowed });
+    const { allowed, gated, flagged } = await split(organizationId, channels, window);
+    const allowedQuery = { ...window, channelIds: allowed, part2PatientIds: flagged };
+    const allowedCount = await deps.store.count(organizationId, allowedQuery);
     const gatedCount =
       gated.length > 0
-        ? await deps.store.count(organizationId, { ...window, channelIds: gated })
-        : { total: 0, held: 0 };
-    const included = allowedCount.total - allowedCount.held;
+        ? await deps.store.count(organizationId, {
+            ...window,
+            channelIds: gated,
+            part2PatientIds: [],
+          })
+        : { total: 0, held: 0, part2: 0 };
+    const included = allowedCount.total - allowedCount.held - allowedCount.part2;
     if (included > EXPORT_MAX_MESSAGES) throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
+    const part2Excluded = gatedCount.total + allowedCount.part2;
 
-    const messages = await collect(organizationId, { ...window, channelIds: allowed }, included);
+    const messages = await collect(organizationId, allowedQuery);
     const manifest: MessagingExportManifest = {
       manifestVersion: MESSAGING_EXPORT_MANIFEST_VERSION,
       format: MESSAGING_EXPORT_FORMAT,
@@ -262,14 +303,18 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
       },
       requestedBy: job.requestedBy,
       approvedBy: job.decidedBy,
-      generatedAt: startedAt.toISOString(),
+      generatedAt: startedAt.date.toISOString(),
       // The authoritative instant is the row's expires_at (DB clock, stamped at ready); this is the same 24 h from generation.
-      expiresAt: new Date(startedAt.getTime() + EXPORT_LINK_TTL_HOURS * 3_600_000).toISOString(),
+      expiresAt: new Date(
+        startedAt.date.getTime() + EXPORT_LINK_TTL_HOURS * 3_600_000,
+      ).toISOString(),
       messageCount: messages.length,
       heldExcluded: allowedCount.held,
-      part2Excluded: gatedCount.total,
+      part2Excluded,
     };
     const plaintext = Buffer.from(JSON.stringify({ manifest, messages }), "utf8");
+    if (plaintext.length > (deps.maxArtefactBytes ?? EXPORT_MAX_ARTEFACT_BYTES))
+      throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
     const artefactSha256 = sha256Hex(plaintext);
 
     const { dek, wrapped } = await deps.keys.mint(organizationId);
@@ -293,7 +338,7 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
         wrappedDek: wrapped,
         messageCount: messages.length,
         heldExcluded: allowedCount.held,
-        part2Excluded: gatedCount.total,
+        part2Excluded,
       });
     } catch (error) {
       await deps.deleteObject?.({ organizationId, objectKey: artefactKey }).catch(() => undefined);
@@ -311,7 +356,11 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
       } catch (error) {
         const failureCode = failureCodeOf(error);
         await deps.store.fail(organizationId, jobId, failureCode);
-        return { outcome: "failed", failureCode };
+        return {
+          outcome: "failed",
+          failureCode,
+          errorName: error instanceof Error ? error.name : "unknown",
+        };
       }
     },
   };

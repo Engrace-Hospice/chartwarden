@@ -3,7 +3,7 @@
 // Lives at the app root like m36-attachment-storage.ts because it reaches M22's object store (M36 does not depend on M22).
 //   · object store: the per-tenant `tenant-<orgId>` bucket through the SAME MinIO/S3 config as attachments; without MINIO_* every call is a typed 503.
 //   · keys: the platform KEK adapter M34 uses (`M34_TENANT_KEK`); without it the build fails closed (EXPORT_BUILD_FAILED) and a download is refused.
-//   · Part 2: M5's privacy flags through the `PatientPrivacyFlagReader` seam; an unreadable flag fails the build (never "not SUD").
+//   · Part 2: M5's privacy flags through the `PatientPrivacyFlagReader` seam; an unreadable or invalidated (stale) flag fails the build (never "not SUD").
 import type { DbClient } from "@chartwarden/db";
 import { DegradedError } from "@chartwarden/types";
 import { getSeam } from "./bootstrap/index";
@@ -24,21 +24,23 @@ import {
   createExportExpiryStore,
   createExportExpirySweep,
 } from "./modules/36-messaging/export/export-expiry-sweep";
+import {
+  type PrivacyFlagFact,
+  sudPatientsFromFacts,
+} from "./modules/36-messaging/export/export-ports";
 import { createExportArtefactReader } from "./modules/36-messaging/export/export-reader";
 import type { HintOutboxPort } from "./modules/36-messaging/message-hint-events";
 import type { MessageBodyCipher } from "./modules/36-messaging/messaging-write-core";
 
-/** A stored artefact is read whole to decrypt it: refuse an object beyond this (the build caps messages, not bytes). */
-const EXPORT_MAX_ARTEFACT_BYTES = 256 * 1024 * 1024;
+/** A stored artefact is read whole to decrypt it: refuse an object beyond this. The build caps the plaintext below it (EXPORT_MAX_ARTEFACT_BYTES), so a built artefact always fits. */
+const EXPORT_READ_MAX_BYTES = 256 * 1024 * 1024;
 
 interface PrivacyFlagReaderShape {
   roomingFactsFor(input: {
     organizationId: string;
     patientIds: readonly string[];
-  }): Promise<readonly { patientId: string; privacyFlags: readonly string[] }[]>;
+  }): Promise<readonly PrivacyFlagFact[]>;
 }
-
-const SUD_PRIVACY_FLAG = "sud";
 
 export function buildM36ExportBinding(deps: {
   readonly db: DbClient;
@@ -75,7 +77,7 @@ export function buildM36ExportBinding(deps: {
   const deleteObject = (a: { organizationId: string; objectKey: string }) =>
     attachments.destroyObject(a);
   const getObject = (a: { organizationId: string; objectKey: string }) =>
-    attachments.readBytes({ ...a, maxBytes: EXPORT_MAX_ARTEFACT_BYTES });
+    attachments.readBytes({ ...a, maxBytes: EXPORT_READ_MAX_BYTES });
 
   const builder = createExportBuilder({
     store: createExportBuildStore({ db: deps.db, outbox: deps.outbox }),
@@ -84,14 +86,7 @@ export function buildM36ExportBinding(deps: {
     part2Patients: async (organizationId, patientIds) => {
       const reader = getSeam("PatientPrivacyFlagReader") as unknown as PrivacyFlagReaderShape;
       const facts = await reader.roomingFactsFor({ organizationId, patientIds });
-      const byPatient = new Map(facts.map((f) => [f.patientId, f.privacyFlags] as const));
-      return new Set(
-        patientIds.filter((id) => {
-          const flags = byPatient.get(id);
-          if (!flags) throw new Error("privacy flags unreadable"); // fail closed: never "not SUD"
-          return flags.includes(SUD_PRIVACY_FLAG);
-        }),
-      );
+      return sudPatientsFromFacts(facts, patientIds);
     },
     putObject,
     deleteObject,

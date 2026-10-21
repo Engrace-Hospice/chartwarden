@@ -3,6 +3,7 @@
 // guard trigger nulls `wrapped_dek`, so even an undeleted object is unreadable. Publishes `m36.export.expired` (PHI-free). Flag-independent:
 // an artefact must expire even when the feature is switched off. Keyset-paged on the job id, MAX_PAGES per org per tick like the break-glass
 // sweep. A failed delete leaves the job `ready` (retried next tick) and fails the org's run after the others were attempted.
+// It also lists the `approved` exports old enough that their build enqueue was lost, for the worker tick to enqueue again.
 // It also fails an export stuck in `building` past EXPORT_BUILD_TIMEOUT_MINUTES (a worker that died mid-build), so it cannot sit there forever.
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
@@ -15,6 +16,8 @@ const J = schema.messageExportJobs;
 export const EXPIRY_SWEEP_BATCH = 100;
 export const MAX_PAGES = 25;
 export const EXPORT_BUILD_TIMEOUT_MINUTES = 30;
+/** An `approved` job this old has had its build enqueued long ago: the enqueue was lost (queue flushed), so the sweep enqueues it again. */
+export const EXPORT_APPROVED_REENQUEUE_MINUTES = 15;
 export const EXPORT_FAIL_TIMEOUT = "EXPORT_BUILD_TIMEOUT";
 
 /** The database half of the sweep (each call its own tenant transaction). */
@@ -29,6 +32,8 @@ export interface ExportExpiryStore {
   expire(organizationId: string, jobId: string): Promise<boolean>;
   /** building -> failed for builds older than the timeout; returns how many. */
   failStuckBuilds(organizationId: string): Promise<number>;
+  /** Ids of `approved` jobs decided more than EXPORT_APPROVED_REENQUEUE_MINUTES ago (DB clock), oldest first, at most `limit`. */
+  staleApproved(organizationId: string, limit: number): Promise<readonly string[]>;
 }
 
 export function createExportExpiryStore(deps: {
@@ -78,6 +83,22 @@ export function createExportExpiryStore(deps: {
           at: new Date(),
         });
         return true;
+      }),
+    staleApproved: (organizationId, limit) =>
+      inTx(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ id: J.id })
+          .from(J)
+          .where(
+            and(
+              eq(J.organizationId, organizationId),
+              eq(J.status, "approved"),
+              sql`${J.decidedAt} <= now() - make_interval(mins => ${EXPORT_APPROVED_REENQUEUE_MINUTES})`,
+            ),
+          )
+          .orderBy(asc(J.decidedAt))
+          .limit(limit);
+        return rows.map((r) => r.id);
       }),
     failStuckBuilds: (organizationId) =>
       inTx(organizationId, async (tx) => {
@@ -140,6 +161,9 @@ export function createExportExpirySweep(deps: ExportExpirySweepDeps) {
       }
       return { expired, timedOut };
     },
+    /** Approved exports whose build job was probably lost (see EXPORT_APPROVED_REENQUEUE_MINUTES); the caller enqueues each. */
+    staleApprovedForOrg: (organizationId: string) =>
+      deps.store.staleApproved(organizationId, EXPIRY_SWEEP_BATCH),
   };
 }
 

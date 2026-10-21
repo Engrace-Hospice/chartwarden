@@ -165,7 +165,7 @@ function RequestDialog({
         : result.kind === "not_available"
           ? W.NOT_AVAILABLE
           : result.kind === "invalid"
-            ? W.JUSTIFICATION_INVALID
+            ? W.INVALID_TEXT
             : result.kind === "conflict"
               ? conflictText(result.code)
               : result.kind === "denied"
@@ -266,10 +266,10 @@ function RequestDialog({
           </p>
         ) : null}
         <div className="wx-export-actions">
-          <Button type="button" tone="secondary" onClick={close}>
+          <Button type="button" tone="secondary" size="lg" onClick={close}>
             {W.CANCEL_DIALOG_LABEL}
           </Button>
-          <Button type="submit" tone="primary" disabled={busy || !online}>
+          <Button type="submit" tone="primary" size="lg" disabled={busy || !online}>
             {W.SUBMIT_LABEL}
           </Button>
         </div>

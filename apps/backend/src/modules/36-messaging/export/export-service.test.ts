@@ -312,6 +312,14 @@ describe("create", () => {
     expect(await codeOf(daily.service.create(asRequester, BODY))).toBe("EXPORT_LIMIT:429");
   });
 
+  it("a full quota is the same 429 for a real and an unknown scope (no existence oracle)", async () => {
+    const { service } = setup();
+    for (let i = 0; i < 3; i += 1) await service.create(asRequester, BODY);
+    const unknown = { ...BODY, channelId: "99999999-9999-4999-8999-999999999999" };
+    expect(await codeOf(service.create(asRequester, BODY))).toBe("EXPORT_LIMIT:429");
+    expect(await codeOf(service.create(asRequester, unknown))).toBe("EXPORT_LIMIT:429");
+  });
+
   it("writes nothing and throws when no outbox is bound", async () => {
     const { service, world } = setup({ noOutbox: true });
     await expect(service.create(asRequester, BODY)).rejects.toThrow(/outbox/);

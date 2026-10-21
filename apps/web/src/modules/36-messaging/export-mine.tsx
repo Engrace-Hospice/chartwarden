@@ -12,6 +12,7 @@ import {
   canDownload,
   formatTime,
   useFailureText,
+  useMayDownload,
   useNow,
 } from "./export-common";
 import { ExportRequest } from "./export-request";
@@ -40,6 +41,8 @@ function Row({
 }): JSX.Element {
   const online = useOnlineStatus();
   const busy = busyId !== null;
+  const mayDownload = useMayDownload();
+  const downloadable = canDownload(job.status, job.expiresAt, now);
   const scopeId = job.scope.channelId ?? job.scope.patientId ?? "";
   return (
     <li className="wx-export-row">
@@ -72,7 +75,10 @@ function Row({
             {busyId === job.id ? W.CANCELLING : W.CANCEL_LABEL}
           </Button>
         ) : null}
-        {canDownload(job.status, job.expiresAt, now) ? (
+        {downloadable && !mayDownload ? (
+          <span className="wx-export-detail">{W.DOWNLOAD_NOT_PERMITTED}</span>
+        ) : null}
+        {downloadable && mayDownload ? (
           <Button
             type="button"
             tone="primary"
@@ -94,18 +100,22 @@ export function ExportMine(): JSX.Element {
   const failureText = useFailureText();
   const now = useNow();
   const statusRef = useRef<HTMLOutputElement>(null);
+  const inFlight = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const run: React.ComponentProps<typeof Row>["run"] = (id, work, ok) => {
-    if (busyId !== null) return;
+    if (inFlight.current) return; // two fast clicks before the disabled state paints must send one request
+    inFlight.current = true;
     setBusyId(id);
     setMessage(null);
     void work().then((result) => {
+      inFlight.current = false;
       setBusyId(null);
       setMessage(result.kind === "ok" ? ok : failureText(result));
       // A refused or stale answer (already decided, expired) is re-read so the row shows the truth.
-      if (result.kind === "ok" || result.kind === "conflict") reload();
+      if (result.kind === "ok" || result.kind === "conflict" || result.kind === "not_available")
+        reload();
       statusRef.current?.focus();
     });
   };

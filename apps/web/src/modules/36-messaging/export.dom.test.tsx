@@ -7,15 +7,17 @@ import type {
   MessagingExportStatus,
 } from "@chartwarden/types";
 import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
+import { markStepUpReturn } from "../../shell/step-up-redirect";
 import { ExportApprovals } from "./export-approvals";
 import { ExportMine } from "./export-mine";
 import { validateDraft } from "./export-request";
+import { saveBlob } from "./use-export";
 
 const JOB = "22222222-2222-4222-8222-222222222222";
 const CHANNEL = "11111111-1111-4111-8111-111111111111";
@@ -23,6 +25,10 @@ const ME = "99999999-9999-4999-8999-999999999999";
 const OTHER = "77777777-7777-4777-8777-777777777777";
 const WHY = "Quality review of the night team handoffs";
 const HOUR = 3_600_000;
+const MINUTE = 60_000;
+const STEP_UP = { error: { code: "STEP_UP_REQUIRED" } };
+const CAN_DOWNLOAD = ["messaging.export.request", "messaging.export.download"];
+const RETURN_PATH = "/messaging/export";
 
 type Reply = { data?: unknown; error?: unknown; response?: { status: number } };
 const ok = (data: unknown): Reply => ({ data, response: { status: 200 } });
@@ -72,6 +78,14 @@ interface Routes {
   download?: () => Reply;
 }
 
+function LocationProbe(): JSX.Element {
+  const { pathname, search } = useLocation();
+  return <output data-testid="loc">{`${pathname}${search}`}</output>;
+}
+const here = (): string => screen.getByTestId("loc").textContent ?? "";
+const stashedKeys = (): string[] =>
+  Object.keys(window.sessionStorage).filter((k) => k.startsWith("wx.step-up-draft:"));
+
 function mount(
   ui: JSX.Element,
   routes: Routes = {},
@@ -99,7 +113,10 @@ function mount(
           }}
         >
           <FeatureFlagProvider flags={{ "messaging.export": opts.flag ?? true }}>
-            <main>{ui}</main>
+            <main>
+              <LocationProbe />
+              {ui}
+            </main>
           </FeatureFlagProvider>
         </SessionProvider>
       </ApiClientProvider>
@@ -198,6 +215,9 @@ describe("Request entry and dialog", () => {
     [429, { error: { code: "EXPORT_LIMIT" } }, /limit/],
     [409, { error: { code: "EXPORT_TOO_LARGE" } }, /too many messages/],
     [500, {}, /could not be requested/],
+    [400, {}, /Check the details and try again/],
+    [401, {}, /Sign in again/],
+    [403, {}, /not permitted/],
   ])("maps a %s answer without guessing a reason", async (status, error, text) => {
     mount(<ExportMine />, { post: () => fail(status, error) });
     const { user, dialog } = await fillRequest();
@@ -246,16 +266,20 @@ describe("My exports", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const created = vi.fn(() => "blob:x");
     Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
-    const { GET } = mount(<ExportMine />, {
-      mine: () =>
-        ok({
-          jobs: [
-            job({ id: "a", status: "ready", expiresAt: inHours(5) }),
-            job({ id: "b", status: "ready", expiresAt: inHours(-1) }),
-            job({ id: "c", status: "building" }),
-          ],
-        }),
-    });
+    const { GET } = mount(
+      <ExportMine />,
+      {
+        mine: () =>
+          ok({
+            jobs: [
+              job({ id: "a", status: "ready", expiresAt: inHours(5) }),
+              job({ id: "b", status: "ready", expiresAt: inHours(-1) }),
+              job({ id: "c", status: "building" }),
+            ],
+          }),
+      },
+      { permissions: CAN_DOWNLOAD },
+    );
     const list = await screen.findByRole("list", { name: "My exports" });
     expect(within(list).getAllByRole("button", { name: "Download" })).toHaveLength(1);
     expect(within(list).getAllByText("Expired")).toHaveLength(1); // the lapsed link reads as expired
@@ -270,10 +294,14 @@ describe("My exports", () => {
   });
 
   it("maps a 409 on download to plain words", async () => {
-    mount(<ExportMine />, {
-      mine: () => ok({ jobs: [job({ status: "ready", expiresAt: inHours(5) })] }),
-      download: () => fail(409, { error: { code: "EXPORT_EXPIRED" } }),
-    });
+    mount(
+      <ExportMine />,
+      {
+        mine: () => ok({ jobs: [job({ status: "ready", expiresAt: inHours(5) })] }),
+        download: () => fail(409, { error: { code: "EXPORT_EXPIRED" } }),
+      },
+      { permissions: CAN_DOWNLOAD },
+    );
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Download" }));
     expect(await screen.findByText(/link has expired/)).toBeTruthy();
@@ -372,5 +400,220 @@ describe("Approver queue", () => {
     expect(await screen.findByText(/already been decided/)).toBeTruthy();
     const result = await axe.run(container);
     expect(result.violations).toEqual([]);
+  });
+});
+
+describe("Review fixes (WP 5.7)", () => {
+  const pendingOther = {
+    pending: () => ok({ jobs: [job({ requestedBy: OTHER })] }),
+    detail: () => ok(detail({ requestedBy: OTHER })),
+  };
+  const send = (dialog: HTMLElement) =>
+    within(dialog).getByRole("button", { name: "Send for approval" });
+
+  it("a 400 is never shown as the justification message", async () => {
+    mount(<ExportMine />, { post: () => fail(400) });
+    const { user, dialog } = await fillRequest();
+    await user.click(send(dialog));
+    expect(await within(dialog).findByText("Check the details and try again.")).toBeTruthy();
+    expect(within(dialog).queryByText(/20 to 280/)).toBeNull();
+  });
+
+  it("makes the dialog Close and Send and the Retry button at least 44px tall", async () => {
+    mount(<ExportMine />, { mine: () => fail(500) });
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(retry.style.minHeight).toBe("2.875rem");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Request an export" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Close" }).style.minHeight).toBe("2.875rem");
+    expect(send(dialog).style.minHeight).toBe("2.875rem");
+  });
+
+  it("sends a patient-scope request with patientId and no channelId", async () => {
+    const { POST } = mount(<ExportMine />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Request an export" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("radio", { name: "One patient" }));
+    await user.type(within(dialog).getByLabelText(/Patient ID/), CHANNEL);
+    await user.type(within(dialog).getByLabelText(/Justification/), WHY);
+    await user.click(send(dialog));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    expect(POST).toHaveBeenCalledWith("/api/v1/messaging/export", {
+      body: { scopeKind: "patient", patientId: CHANNEL, justification: WHY },
+    });
+  });
+
+  it("stashes the request draft on step-up, redirects, and reopens the dialog with it", async () => {
+    mount(<ExportMine />, { post: () => fail(403, STEP_UP) });
+    const { user, dialog } = await fillRequest();
+    await user.click(send(dialog));
+    await waitFor(() => expect(here()).toMatch(/^\/step-up\?returnTo=/));
+    expect(here()).not.toContain(WHY); // the draft never goes in the URL
+    expect(stashedKeys()).toHaveLength(1);
+    cleanup();
+    markStepUpReturn(RETURN_PATH);
+    mount(<ExportMine />);
+    const reopened = await screen.findByRole("dialog");
+    expect((within(reopened).getByLabelText(/Justification/) as HTMLTextAreaElement).value).toBe(
+      WHY,
+    );
+    expect((within(reopened).getByLabelText(/Channel ID/) as HTMLInputElement).value).toBe(CHANNEL);
+  });
+
+  it("keeps the approver's note across step-up and clears it once the decision succeeds", async () => {
+    mount(<ExportApprovals />, { ...pendingOther, post: () => fail(403, STEP_UP) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.type(await screen.findByLabelText(/Note/), "Out of scope");
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(here()).toMatch(/^\/step-up\?returnTo=/));
+    expect(here()).not.toContain("Out");
+    expect(stashedKeys()).toHaveLength(1);
+    cleanup();
+    markStepUpReturn(RETURN_PATH);
+    const { POST } = mount(<ExportApprovals />, pendingOther);
+    const note = (await screen.findByLabelText(/Note/)) as HTMLTextAreaElement;
+    expect(note.value).toBe("Out of scope");
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(stashedKeys()).toHaveLength(0));
+  });
+
+  it("does not restore a note when the person did not come back from step-up", async () => {
+    mount(<ExportApprovals />, { ...pendingOther, post: () => fail(403, STEP_UP) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    await user.type(await screen.findByLabelText(/Note/), "Out of scope");
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(stashedKeys()).toHaveLength(1));
+    cleanup();
+    mount(<ExportApprovals />, pendingOther);
+    expect(await screen.findByRole("button", { name: "Review" })).toBeTruthy();
+    expect(stashedKeys()).toHaveLength(0);
+  });
+
+  it("sends ONE request when Approve is clicked twice before the screen updates", async () => {
+    const { POST } = mount(<ExportApprovals />, pendingOther);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    await act(async () => {
+      approve.click();
+      approve.click();
+    });
+    await waitFor(() => expect(POST).toHaveBeenCalled());
+    expect(POST).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends ONE cancel when Cancel is clicked twice before the screen updates", async () => {
+    const { POST } = mount(<ExportMine />, { mine: () => ok({ jobs: [job()] }) });
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    await act(async () => {
+      cancel.click();
+      cancel.click();
+    });
+    await waitFor(() => expect(POST).toHaveBeenCalled());
+    expect(POST).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [409, { error: { code: "EXPORT_ALREADY_DECIDED" } }],
+    [404, {}],
+  ])("re-reads the list after a %s on cancel", async (status, error) => {
+    const mine = vi.fn(() => ok({ jobs: [job()] }));
+    mount(<ExportMine />, { mine, post: () => fail(status, error) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Cancel request" }));
+    await waitFor(() => expect(mine).toHaveBeenCalledTimes(2));
+  });
+
+  it("hides Download, with a plain line, for a requester without the download permission", async () => {
+    mount(<ExportMine />, {
+      mine: () => ok({ jobs: [job({ status: "ready", expiresAt: inHours(5) })] }),
+    });
+    expect(await screen.findByText("You cannot download this export.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
+  it("sends a stale step-up on download to the step-up page", async () => {
+    mount(
+      <ExportMine />,
+      {
+        mine: () => ok({ jobs: [job({ status: "ready", expiresAt: inHours(5) })] }),
+        download: () => fail(403, STEP_UP),
+      },
+      { permissions: CAN_DOWNLOAD },
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Download" }));
+    await waitFor(() => expect(here()).toMatch(/^\/step-up\?returnTo=/));
+  });
+
+  it("revokes the object URL a few seconds after saving, and removes the anchor", () => {
+    vi.useFakeTimers();
+    try {
+      const revoke = vi.fn();
+      Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: revoke });
+      let saved: HTMLAnchorElement | undefined;
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        saved = this;
+      });
+      saveBlob(new Blob(["{}"]), "chartwarden-messaging-export-a.json");
+      expect(saved?.download).toBe("chartwarden-messaging-export-a.json");
+      expect(saved?.href).toContain("blob:x");
+      expect(document.body.contains(saved ?? null)).toBe(false);
+      expect(revoke).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(5000);
+      expect(revoke).toHaveBeenCalledWith("blob:x");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("counts the expiry down, drops Download at expiry, and stops ticking on unmount", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      const expiresAt = new Date(Date.now() + 31 * MINUTE).toISOString();
+      const { unmount } = mount(
+        <ExportMine />,
+        { mine: () => ok({ jobs: [job({ status: "ready", expiresAt })] }) },
+        { permissions: CAN_DOWNLOAD },
+      );
+      expect(await screen.findByText("Expires in 31 min")).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(2 * MINUTE);
+      });
+      expect(screen.getByText("Expires in 29 min")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(30 * MINUTE);
+      });
+      expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+      expect(screen.queryByText(/Expires in/)).toBeNull();
+      expect(screen.getByText("Expired")).toBeTruthy();
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("has no axe violations on the open request dialog, the empty state and the error state", async () => {
+    const empty = mount(<ExportMine />);
+    await screen.findByText("No exports yet");
+    expect((await axe.run(empty.container)).violations).toEqual([]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Request an export" }));
+    const dialog = await screen.findByRole("dialog");
+    expect((await axe.run(dialog)).violations).toEqual([]);
+    cleanup();
+    const failed = mount(<ExportMine />, { mine: () => fail(500) });
+    await screen.findByText("Could not load the exports.");
+    expect((await axe.run(failed.container)).violations).toEqual([]);
   });
 });

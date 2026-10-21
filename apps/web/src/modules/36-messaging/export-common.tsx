@@ -5,6 +5,7 @@ import { Button, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import { stepUpRedirectFor } from "../../shell/step-up-redirect";
 import * as W from "./export-wording";
 import type { ExportResult, LoadView } from "./use-export";
@@ -35,9 +36,14 @@ export function minutesLeft(expiresAt: string | null, now: number): number | nul
   return Math.max(1, Math.floor((at - now) / MINUTE_MS));
 }
 
-/** Ready AND the link has not run out: the only state in which Download is offered. */
+/** Ready AND the link has not run out: the only state in which Download can be offered. */
 export const canDownload = (status: MessagingExportStatus, expiresAt: string | null, now: number) =>
   status === "ready" && minutesLeft(expiresAt, now) !== null;
+
+/** Whether the signed-in person holds the download permission (the server stays the authority). */
+export function useMayDownload(): boolean {
+  return useSession()?.permissions?.includes(W.DOWNLOAD_PERMISSION) ?? false;
+}
 
 export function StatusChip({
   status,
@@ -100,7 +106,7 @@ export function LoadGate<T>({
       return (
         <div className="wx-export-error" role="alert">
           <p>{W.LOAD_FAILED}</p>
-          <Button type="button" tone="secondary" size="sm" onClick={retry}>
+          <Button type="button" tone="secondary" size="lg" onClick={retry}>
             {W.RETRY_LABEL}
           </Button>
         </div>
@@ -134,6 +140,8 @@ export function useFailureText(): (result: ExportResult<unknown>) => string | nu
       }
       case "limit":
         return W.LIMIT_TEXT;
+      case "invalid":
+        return W.INVALID_TEXT;
       case "not_available":
         return W.NOT_AVAILABLE;
       case "conflict":

@@ -231,11 +231,10 @@ export function createExportService(deps: ExportServiceDeps): ExportService {
       }
       const input = validateCreate(body);
       return store.run(actor, async (tx) => {
-        if (!(await tx.eligible(userId)) || !(await tx.scopeExists(input))) {
-          throw neutralScopeNotFound();
-        }
+        if (!(await tx.eligible(userId))) throw neutralScopeNotFound();
         await tx.lockRequester(userId);
         const counts = await tx.counts(userId);
+        // The quota answers BEFORE the scope is looked at: a full quota is the same 429 for a real and an unknown scope (no existence oracle).
         if (counts.live >= EXPORT_MAX_LIVE_PER_USER || counts.day >= EXPORT_MAX_PER_DAY) {
           throw new ChartWardenError(
             EXPORT_LIMIT_CODE,
@@ -243,6 +242,7 @@ export function createExportService(deps: ExportServiceDeps): ExportService {
             429,
           );
         }
+        if (!(await tx.scopeExists(input))) throw neutralScopeNotFound();
         const job = await tx.insertJob(userId, input);
         await publishExportEvent(outbox, tx.raw, {
           kind: "requested",

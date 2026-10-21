@@ -2,13 +2,18 @@
 // system org context (a worker is not a request). The transitions are plain guarded UPDATEs: the guard trigger on `message_export_job` owns the
 // legality (forward-only, ready needs every artefact column, failed only from building), and each UPDATE also pins the expected current status
 // so a lost race changes nothing. Held messages are excluded IN SQL with the live legal-hold predicate (the same one the retention scan uses), so
-// a hold the overlay has not materialised yet still protects the message; erased bodies (empty cipher) are not exported (D9).
+// a hold the overlay has not materialised yet still protects the message; erased bodies (empty cipher) and author-deleted tombstones (status
+// 'deleted', which keep their cipher) are not exported (D9). A message that references a Part 2 flagged patient (message_entity_reference) is left
+// out and counted, whatever channel it sits in. Times cross this boundary as database TEXT (microseconds survive; a JS Date keeps milliseconds).
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { activeLiveHolds, anyHoldPredicate } from "../jobs/retention-hold-sql";
+import { excludedMemberUserIds } from "../member-category-gate";
 import type { HintOutboxPort } from "../message-hint-events";
+import { isActiveMessagingUser } from "../messaging-route-service-db";
+import type { Tx } from "../messaging-write-core";
 import type {
   ExportAttachmentMeta,
   ExportBuildStore,
@@ -34,9 +39,18 @@ function scope(organizationId: string, query: ExportMessageQuery): SQL {
   return sql`m.organization_id = ${organizationId}::uuid
     AND m.channel_id IN (${uuidList(query.channelIds)})
     AND octet_length(m.body_cipher) > 0
-    AND m.created_at <= ${query.until.toISOString()}::timestamptz
+    AND m.status <> 'deleted'
+    AND m.created_at <= ${query.until}::timestamptz
     ${query.from ? sql`AND m.created_at >= ${query.from.toISOString()}::timestamptz` : sql``}
     ${query.to ? sql`AND m.created_at < ${query.to.toISOString()}::timestamptz` : sql``}`;
+}
+
+/** SQL boolean over alias `m`: the message references one of these (Part 2 flagged) patients; `false` when there are none. */
+function referencesFlagged(organizationId: string, patientIds: readonly string[]): SQL {
+  if (patientIds.length === 0) return sql`false`;
+  return sql`EXISTS (SELECT 1 FROM message_entity_reference r
+                      WHERE r.organization_id = ${organizationId}::uuid AND r.message_id = m.id
+                        AND r.reference_kind = 'patient' AND r.entity_id IN (${uuidList(patientIds)}))`;
 }
 
 export function createExportBuildStore(deps: {
@@ -91,16 +105,55 @@ export function createExportBuildStore(deps: {
         );
       }),
 
+    dbNow: (organizationId) =>
+      inTx(organizationId, async (tx) => {
+        const res = await tx.execute<{ t: string; d: Date | string }>(
+          sql`SELECT now()::text AS t, now() AS d`,
+        );
+        const row = res.rows[0];
+        if (!row) throw new Error("database clock unreadable");
+        return { text: row.t, date: new Date(row.d) };
+      }),
+
+    requesterEligible: (organizationId, userId) =>
+      inTx(organizationId, async (tx) => {
+        if (!(await isActiveMessagingUser(tx as unknown as Tx, organizationId, userId)))
+          return false;
+        return (
+          (await excludedMemberUserIds(tx as unknown as Tx, organizationId, [userId])).size === 0
+        );
+      }),
+
+    referencedPatients: (organizationId, query) =>
+      inTx(organizationId, async (tx) => {
+        if (query.channelIds.length === 0) return [];
+        const res = await tx.execute<{ entity_id: string }>(
+          sql`SELECT DISTINCT r.entity_id
+                FROM message m JOIN message_entity_reference r
+                  ON r.organization_id = m.organization_id AND r.message_id = m.id AND r.reference_kind = 'patient'
+               WHERE ${scope(organizationId, query)}`,
+        );
+        return res.rows.map((r) => r.entity_id);
+      }),
+
     count: (organizationId, query) =>
       inTx(organizationId, async (tx) => {
-        if (query.channelIds.length === 0) return { total: 0, held: 0 };
+        if (query.channelIds.length === 0) return { total: 0, held: 0, part2: 0 };
         const holds = await activeLiveHolds(tx, organizationId);
-        const res = await tx.execute<{ total: number; held: number }>(
-          sql`SELECT count(*)::int AS total, (count(*) FILTER (WHERE ${anyHoldPredicate(holds)}))::int AS held
+        const held = anyHoldPredicate(holds);
+        const res = await tx.execute<{ total: number; held: number; part2: number }>(
+          sql`SELECT count(*)::int AS total,
+                     (count(*) FILTER (WHERE ${held}))::int AS held,
+                     (count(*) FILTER (WHERE NOT ${held} AND ${referencesFlagged(organizationId, query.part2PatientIds)}))::int AS part2
                 FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
                WHERE ${scope(organizationId, query)}`,
         );
-        return { total: Number(res.rows[0]?.total ?? 0), held: Number(res.rows[0]?.held ?? 0) };
+        const row = res.rows[0];
+        return {
+          total: Number(row?.total ?? 0),
+          held: Number(row?.held ?? 0),
+          part2: Number(row?.part2 ?? 0),
+        };
       }),
 
     page: (organizationId, query, after: ExportCursor | null, limit) =>
@@ -112,17 +165,19 @@ export function createExportBuildStore(deps: {
           channel_id: string;
           author_user_id: string | null;
           created_at: Date | string;
+          created_at_text: string;
           body_kind: string;
           status: string;
           body_cipher: Buffer;
         }>(
-          sql`SELECT m.id, m.channel_id, m.author_user_id, m.created_at, m.body_kind, m.status, m.body_cipher
+          sql`SELECT m.id, m.channel_id, m.author_user_id, m.created_at, m.created_at::text AS created_at_text, m.body_kind, m.status, m.body_cipher
                 FROM message m JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
                WHERE ${scope(organizationId, query)}
                  AND NOT ${anyHoldPredicate(holds)}
+                 AND NOT ${referencesFlagged(organizationId, query.part2PatientIds)}
                  ${
                    after
-                     ? sql`AND (m.created_at, m.id) > (${after.createdAt.toISOString()}::timestamptz, ${after.id}::uuid)`
+                     ? sql`AND (m.created_at, m.id) > (${after.createdAtText}::timestamptz, ${after.id}::uuid)`
                      : sql``
                  }
                ORDER BY m.created_at, m.id
@@ -134,6 +189,7 @@ export function createExportBuildStore(deps: {
             channelId: r.channel_id,
             authorUserId: r.author_user_id,
             createdAt: new Date(r.created_at),
+            createdAtText: r.created_at_text,
             bodyKind: r.body_kind,
             status: r.status,
             bodyCipher: Buffer.from(r.body_cipher),

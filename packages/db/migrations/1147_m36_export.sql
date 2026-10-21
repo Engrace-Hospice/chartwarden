@@ -9,6 +9,9 @@
 --     here (wrapped_dek); the DEK is dropped at expiry. The app role holds no DELETE (only chartwarden_destruction deletes).
 --   * message_export_download: one insert-only row per download. Its guard refuses a row unless the actor (app.user_id) is the job's requester
 --     and the job is ready and unexpired NOW, so a download that cannot be recorded is refused.
+--     The guard also binds the actor: an insert needs requested_by = app.user_id and an approve/reject needs decided_by = app.user_id, so
+--     the two-person rule holds in the database even if a caller passes another user's id. System transitions (building/ready/failed/expired)
+--     do not look at the actor.
 --   * Every guard is SECURITY INVOKER: its reads run under the caller's own org RLS, so another organization's job is invisible.
 CREATE TABLE "message_export_job" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -73,6 +76,9 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp 
 DECLARE v_allowed text[];
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    IF NEW.requested_by IS DISTINCT FROM nullif(current_setting('app.user_id', true), '')::uuid THEN
+      RAISE EXCEPTION 'message_export_job_actor: a request is recorded only by its own requester' USING ERRCODE = 'check_violation';
+    END IF;
     NEW.status := 'pending_approval';
     NEW.requested_at := now();
     NEW.decided_by := NULL; NEW.decided_at := NULL; NEW.decision_note := NULL;
@@ -97,6 +103,9 @@ BEGIN
     END IF;
   ELSIF OLD.status = 'pending_approval' AND NEW.status IN ('approved', 'rejected') THEN
     v_allowed := ARRAY['status','decided_by','decided_at','decision_note'];
+    IF NEW.decided_by IS DISTINCT FROM nullif(current_setting('app.user_id', true), '')::uuid THEN
+      RAISE EXCEPTION 'message_export_job_actor: a decision is recorded only by the deciding user' USING ERRCODE = 'check_violation';
+    END IF;
     NEW.decided_at := now();
   ELSIF OLD.status = 'pending_approval' AND NEW.status = 'cancelled' THEN
     v_allowed := ARRAY['status','decided_at','decision_note'];

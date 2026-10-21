@@ -96,6 +96,9 @@ export function useExportDetail(id: string): {
   return { view, reload };
 }
 
+/** The browser starts the save asynchronously: revoking at once can cancel it, so the URL is released a little later. */
+const REVOKE_DELAY_MS = 4000;
+
 /** Saves a blob as a file through a temporary anchor. */
 export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -105,7 +108,7 @@ export function saveBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
 export interface ExportActions {

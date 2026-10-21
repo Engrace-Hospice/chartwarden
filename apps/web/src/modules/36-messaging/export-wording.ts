@@ -7,12 +7,17 @@ import {
   EXPORT_NOT_READY_CODE,
   EXPORT_TOO_LARGE_CODE,
   MESSAGING_EXPORT_APPROVE_PERMISSION,
+  MESSAGING_EXPORT_DECISION_NOTE_MAX,
+  MESSAGING_EXPORT_DOWNLOAD_PERMISSION,
+  MESSAGING_EXPORT_JUSTIFICATION_MAX,
+  MESSAGING_EXPORT_JUSTIFICATION_MIN,
   MESSAGING_EXPORT_REQUEST_PERMISSION,
   type MessagingExportStatus,
 } from "@chartwarden/types";
 
 export const REQUEST_PERMISSION = MESSAGING_EXPORT_REQUEST_PERMISSION;
 export const APPROVE_PERMISSION = MESSAGING_EXPORT_APPROVE_PERMISSION;
+export const DOWNLOAD_PERMISSION = MESSAGING_EXPORT_DOWNLOAD_PERMISSION;
 
 export const MINE_TITLE = "Message exports";
 export const BREADCRUMB = "Messaging";
@@ -51,7 +56,8 @@ export const JUSTIFICATION_LABEL = "Justification";
 export const JUSTIFICATION_HINT = "Say why you need this export. The approver reads it.";
 export const justificationCount = (n: number, min: number, max: number): string =>
   `${n} of ${max} characters (at least ${min})`;
-export const JUSTIFICATION_INVALID = "Write a justification of 20 to 280 characters.";
+export const JUSTIFICATION_INVALID = `Write a justification of ${MESSAGING_EXPORT_JUSTIFICATION_MIN} to ${MESSAGING_EXPORT_JUSTIFICATION_MAX} characters.`;
+export const INVALID_TEXT = "Check the details and try again.";
 export const SUBMIT_LABEL = "Send for approval";
 export const CANCEL_DIALOG_LABEL = "Close";
 export const OFFLINE_TEXT = "You are offline. An export cannot be requested until you reconnect.";
@@ -86,6 +92,7 @@ export const CANCEL_LABEL = "Cancel request";
 export const CANCELLING = "Cancelling…";
 export const DOWNLOAD_LABEL = "Download";
 export const DOWNLOADING = "Downloading…";
+export const DOWNLOAD_NOT_PERMITTED = "You cannot download this export.";
 export const DOWNLOAD_STARTED = "The download has started.";
 export const NOT_READY_TEXT = "The file is not ready yet.";
 export const LINK_EXPIRED_TEXT = "The download link has expired. Request the export again.";
@@ -117,7 +124,7 @@ export const justificationHeading = "Justification";
 export const DECISION_NOTE_LABEL = "Note";
 export const DECISION_NOTE_HINT = "Required when you reject. Optional when you approve.";
 export const NOTE_REQUIRED = "Write a note to reject this request.";
-export const NOTE_TOO_LONG = "The note can be at most 1000 characters.";
+export const NOTE_TOO_LONG = `The note can be at most ${MESSAGING_EXPORT_DECISION_NOTE_MAX} characters.`;
 export const APPROVE_LABEL = "Approve";
 export const REJECT_LABEL = "Reject";
 export const OWN_REQUEST = "This is your own request. Someone else has to decide it.";
