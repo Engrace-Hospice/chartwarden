@@ -13,8 +13,28 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:break-glass:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
+import { randomBytes, randomUUID } from "node:crypto";
+import { createPredicateRegistry, registerAbacRegistry } from "@chartwarden/auth";
+import { BREAK_GLASS_FLAG_KEY } from "@chartwarden/types";
+import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type LiveKit, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";
+import { buildServer } from "../src/bootstrap/index";
+import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
+import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
+import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
+import {
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+  registerMessagingRoutes,
+} from "../src/modules/36-messaging/routes/messaging-routes";
+import {
+  type LiveKit,
+  as,
+  bootLiveKit,
+  catalogOutbox,
+  headerAuth,
+  mkChannel,
+} from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a870001";
@@ -59,10 +79,16 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
   };
 
   /** Seeds a grant AND its review in one committed transaction as the superuser. */
-  const seed = async (user = grantee, ttl = "4 hours", reason = "patient_safety", text = WHY) => {
+  const seed = async (
+    user = grantee,
+    ttl = "4 hours",
+    reason = "patient_safety",
+    text = WHY,
+    onChannel = channel,
+  ) => {
     await kit.admin.query("BEGIN");
     try {
-      const id = (await kit.admin.query(GRANT_SQL, [ORG_A, channel, user, reason, text, ttl])).rows[0]
+      const id = (await kit.admin.query(GRANT_SQL, [ORG_A, onChannel, user, reason, text, ttl])).rows[0]
         .id as string;
       await kit.admin.query(REVIEW_SQL, [ORG_A, id]);
       await kit.admin.query("COMMIT");
@@ -315,5 +341,255 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
       { key: "messaging.break_glass.invoke", category: "compliance" },
       { key: "messaging.break_glass.review", category: "compliance" },
     ]);
+  });
+
+  // ── S2: the real route service. A grant opens READ visibility on its one channel and nothing else. ─────────────────────────
+  describe("S2 read access under a grant (the real route service)", () => {
+    const KEK = randomBytes(32);
+    const part2Denied = new Set<string>();
+    let part2Throws = false;
+    let careTeam: string;
+    let discipline: string;
+    let careMsg: string;
+
+    /** A fresh service per call: the flag read is cached per service, so each test pins its own flag state. */
+    const mkService = (flag: boolean | "absent") =>
+      createDbMessagingRouteService(kit.handle.db, {
+        kek: KEK,
+        outbox: catalogOutbox() as never,
+        part2Gate: {
+          allowedUserIds: async ({ userIds, patientId }) => {
+            if (part2Throws) throw new Error("consent seam down");
+            return new Set(userIds.filter((u) => !part2Denied.has(`${u}:${patientId}`)));
+          },
+        },
+        ...(flag === "absent"
+          ? {}
+          : { breakGlass: { flags: { forOrg: async () => ({ [BREAK_GLASS_FLAG_KEY]: flag }) } } }),
+      });
+    const trail = (grantId: string) =>
+      kit.one<{ read_kind: string; resource_id: string | null; item_count: number | null }>(
+        "SELECT read_kind, resource_id, item_count FROM message_break_glass_read WHERE grant_id=$1",
+        [grantId],
+      );
+    const grantOn = (ch: string, ttl = "4 hours") => seed(grantee, ttl, "patient_safety", WHY, ch);
+
+    beforeAll(async () => {
+      careTeam = channel; // the outer setup's care-team channel (one per patient)
+      discipline = await mkChannel(kit, "discipline", randomUUID(), [other]);
+      const writer = mkService(true);
+      careMsg = (
+        await writer.sendMessage(ORG_A, { channelId: careTeam, authorUserId: other, body: "care note" })
+      ).messageId;
+      await writer.sendMessage(ORG_A, { channelId: discipline, authorUserId: other, body: "team note" });
+    }, 60_000);
+
+    it("a live grant opens READ visibility on its one channel for its one holder; membership visibility is unchanged", async () => {
+      const svc = mkService(true);
+      expect(await svc.canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      const id = await grantOn(careTeam);
+      expect(await svc.canReadChannel(ORG_A, grantee, careTeam)).toBe(true);
+      // canViewChannel still decides writes, assignees and recipients: a grant never makes anyone a viewer.
+      expect(await svc.canViewChannel(ORG_A, grantee, careTeam)).toBe(false);
+      expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(false);
+      expect(await svc.canReadChannel(ORG_A, reviewer, careTeam)).toBe(false);
+      expect(await svc.canReadChannel(ORG_A, other, discipline)).toBe(true);
+      expect(await svc.canReadChannel(ORG_A, grantee, randomUUID())).toBe(false);
+      await drop(id);
+    });
+
+    it("ends with the grant: revoked, expired on the database clock, flag off or absent", async () => {
+      const id = await grantOn(careTeam);
+      expect(await mkService(true).canReadChannel(ORG_A, grantee, careTeam)).toBe(true);
+      expect(await mkService(false).canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      expect(await mkService("absent").canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      await revoke(id);
+      expect(await mkService(true).canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      await drop(id);
+      const short = await grantOn(careTeam, "1 second");
+      expect(await mkService(true).canReadChannel(ORG_A, grantee, careTeam)).toBe(true);
+      await kit.one("SELECT pg_sleep(1.3)");
+      expect(await mkService(true).canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      await drop(short);
+    });
+
+    it("never skips the Part 2 gate: a denied or unreachable consent check refuses a care-team channel, not another kind", async () => {
+      const ids = [await grantOn(careTeam), await grantOn(discipline)];
+      const svc = mkService(true);
+      part2Denied.add(`${grantee}:${PATIENT}`);
+      try {
+        expect(await svc.canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+        expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(true);
+      } finally {
+        part2Denied.clear();
+      }
+      part2Throws = true;
+      try {
+        expect(await svc.canReadChannel(ORG_A, grantee, careTeam)).toBe(false);
+      } finally {
+        part2Throws = false;
+      }
+      expect(await svc.canReadChannel(ORG_A, grantee, careTeam)).toBe(true);
+      await drop(...ids);
+    });
+
+    it("never skips the role-category refusal or an inactive user", async () => {
+      const id = await grantOn(discipline);
+      const svc = mkService(true);
+      const [role] = await kit.one<{ id: string }>(
+        `INSERT INTO role (organization_id, key, name, category, enabled)
+         VALUES ($1,$2,$2,'patient_family'::role_category,true) RETURNING id`,
+        [ORG_A, `t-pf-${randomUUID()}`],
+      );
+      const [m] = await kit.one<{ id: string }>(
+        "SELECT id FROM membership WHERE user_id=$1 AND organization_id=$2",
+        [grantee, ORG_A],
+      );
+      await kit.one(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [ORG_A, m.id, role.id],
+      );
+      expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(false);
+      await kit.one("DELETE FROM membership_role WHERE membership_id=$1 AND role_id=$2", [m.id, role.id]);
+      expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(true);
+      await kit.one("UPDATE membership SET status='suspended' WHERE id=$1", [m.id]);
+      expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(false);
+      await kit.one("UPDATE membership SET status='active' WHERE id=$1", [m.id]);
+      expect(await svc.canReadChannel(ORG_A, grantee, discipline)).toBe(true);
+      await drop(id);
+    });
+
+    it("reads under a grant leave one trail row each; a member's plain read leaves none", async () => {
+      const svc = mkService(true);
+      const id = await grantOn(careTeam);
+      const channelView = await svc.getChannel(ORG_A, grantee, careTeam);
+      expect(channelView.channelId).toBe(careTeam);
+      const page = await svc.listMessages(ORG_A, { channelId: careTeam, userId: grantee });
+      expect(page.messages).toHaveLength(1);
+      const thread = await svc.listThread(ORG_A, { channelId: careTeam, messageId: careMsg, userId: grantee });
+      expect(thread.root.messageId).toBe(careMsg);
+      const rows = await trail(id);
+      expect(rows.map((r) => r.read_kind).sort()).toEqual(["channel", "messages", "thread"]);
+      expect(rows.find((r) => r.read_kind === "messages")?.item_count).toBe(1);
+      expect(rows.find((r) => r.read_kind === "thread")?.resource_id).toBe(careMsg);
+      await svc.listMessages(ORG_A, { channelId: careTeam, userId: other });
+      expect(await trail(id)).toHaveLength(3);
+      await drop(id);
+    });
+
+    it("a read nobody may do fails closed: no live grant and not a live member", async () => {
+      const svc = mkService(true);
+      // The route would have refused both; the service refuses them too (the grant can end between the route check and the read).
+      await expect(svc.listMessages(ORG_A, { channelId: careTeam, userId: grantee })).rejects.toThrow(/ended/);
+      const short = await grantOn(careTeam, "1 second");
+      await kit.one("SELECT pg_sleep(1.3)");
+      await expect(svc.listMessages(ORG_A, { channelId: careTeam, userId: grantee })).rejects.toThrow(/ended/);
+      await expect(svc.getChannel(ORG_A, grantee, careTeam)).rejects.toThrow(/ended/);
+      await expect(
+        svc.listThread(ORG_A, { channelId: careTeam, messageId: careMsg, userId: grantee }),
+      ).rejects.toThrow(/ended/);
+      expect(await trail(short)).toHaveLength(0);
+      await drop(short);
+    });
+
+    it("the service's own write guards refuse a grantee: edit, delete, mark-read and pin", async () => {
+      const svc = mkService(true);
+      const id = await grantOn(careTeam);
+      await expect(
+        svc.editMessage(ORG_A, { userId: grantee, messageId: careMsg, body: "edited" }),
+      ).rejects.toThrow();
+      await expect(svc.deleteMessage(ORG_A, { userId: grantee, messageId: careMsg })).rejects.toThrow();
+      await expect(svc.markRead(ORG_A, { userId: grantee, messageId: careMsg })).rejects.toThrow();
+      await expect(
+        svc.pinMessage(ORG_A, { userId: grantee, channelId: careTeam, messageId: careMsg }),
+      ).rejects.toThrow();
+      expect(await kit.one("SELECT 1 FROM message WHERE channel_id=$1", [careTeam])).toHaveLength(1);
+      await drop(id);
+    });
+
+    describe("through the HTTP routes (the real ABAC predicates)", () => {
+      let server: FastifyInstance;
+      const get = (user: string, url: string) =>
+        server.inject({ method: "GET", url, headers: as(user, ORG_A) });
+      const base = () => `/api/v1/messaging/channels/${careTeam}`;
+
+      beforeAll(async () => {
+        const svc = mkService(true);
+        const registry = createPredicateRegistry();
+        const channelOf = (ctx: { organizationId?: string; userId?: string }, t: Record<string, unknown>) =>
+          typeof t.id === "string" && ctx.organizationId && ctx.userId ? t.id : null;
+        registry.register(CHANNEL_VISIBILITY_PREDICATE, async (ctx, target) => {
+          const id = channelOf(ctx, target);
+          return id ? svc.canViewChannel(ctx.organizationId as string, ctx.userId as string, id) : false;
+        });
+        registry.register(CHANNEL_VISIBILITY_READ_PREDICATE, async (ctx, target) => {
+          const id = channelOf(ctx, target);
+          return id ? svc.canReadChannel(ctx.organizationId as string, ctx.userId as string, id) : false;
+        });
+        registerAbacRegistry(registry);
+        server = buildServer({
+          db: kit.handle.db,
+          authenticate: headerAuth,
+          security: { rateLimitEnabled: false },
+          idempotencyStore: createDbIdempotencyStore(kit.handle.db),
+        });
+        registerMessagingRoutes(server, {
+          service: svc,
+          announcements: createDbAnnouncementService(kit.handle.db),
+        });
+        await server.ready();
+      });
+      afterAll(async () => {
+        await server?.close();
+      });
+
+      it("the three read GETs open for a grantee while the grant is live and close the moment it is revoked", async () => {
+        expect((await get(grantee, base())).statusCode).toBe(403);
+        const id = await grantOn(careTeam);
+        expect((await get(grantee, base())).statusCode).toBe(200);
+        const list = await get(grantee, `${base()}/messages`);
+        expect(list.statusCode).toBe(200);
+        expect(list.json().messages).toHaveLength(1);
+        expect((await get(grantee, `${base()}/messages/${careMsg}/thread`)).statusCode).toBe(200);
+        expect((await trail(id)).map((r) => r.read_kind).sort()).toEqual(["channel", "messages", "thread"]);
+        await revoke(id);
+        expect((await get(grantee, base())).statusCode).toBe(403);
+        expect((await get(grantee, `${base()}/messages`)).statusCode).toBe(403);
+        await drop(id);
+      });
+
+      it("every other route on the channel stays membership-only: send, react, pin, pins list, search", async () => {
+        const id = await grantOn(careTeam);
+        const send = await server.inject({
+          method: "POST",
+          url: `${base()}/messages`,
+          headers: as(grantee, ORG_A, randomUUID()),
+          payload: { body: "nope" },
+        });
+        expect(send.statusCode).toBe(403);
+        expect(
+          (
+            await server.inject({
+              method: "PUT",
+              url: `${base()}/messages/${careMsg}/reactions/${encodeURIComponent("👍")}`,
+              headers: as(grantee, ORG_A),
+            })
+          ).statusCode,
+        ).toBe(403);
+        expect(
+          (
+            await server.inject({
+              method: "PUT",
+              url: `${base()}/messages/${careMsg}/pin`,
+              headers: as(grantee, ORG_A),
+            })
+          ).statusCode,
+        ).toBe(403);
+        expect((await get(grantee, `${base()}/pins`)).statusCode).toBe(403);
+        expect((await get(grantee, `${base()}/search?q=care`)).statusCode).toBe(403);
+        expect(await kit.one("SELECT 1 FROM message WHERE channel_id=$1", [careTeam])).toHaveLength(1);
+        await drop(id);
+      });
+    });
   });
 });

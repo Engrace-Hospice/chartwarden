@@ -81,6 +81,12 @@ import { ackGuardName } from "./ack-requests/ack-service";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
+import {
+  type BreakGlassFlagReader,
+  type BreakGlassReadRecord,
+  createBreakGlassReadAccess,
+  recordBreakGlassRead,
+} from "./break-glass/break-glass-read-access";
 import { assertLinksMatchBody } from "./clinical-link/clinical-link-service";
 import { reconcileClinicalLinksInTx } from "./clinical-link/clinical-link-store-db";
 import { settleDraftAfterSend } from "./drafts/draft-after-send";
@@ -640,6 +646,8 @@ export function createDbMessagingRouteService(
      * instead of returning false. Only for a retrying caller (the scheduled-send dispatcher); default false.
      */
     throwOnSeamUnavailable?: boolean;
+    /** ADR-0087 (PROPOSED): the M1 flag reader for `messaging.break_glass`. Omitted => a break-glass grant is never honoured. */
+    breakGlass?: { flags?: BreakGlassFlagReader | undefined };
     /** Operational warning sink (ids only); default: silent. */
     warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
@@ -652,6 +660,14 @@ export function createDbMessagingRouteService(
 ): MessagingRouteService {
   const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
   const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
+  // ADR-0087: the READ-only grant check. Asked only by the read routes' predicate; every write keeps `canViewChannelFor` (membership).
+  const breakGlassRead = createBreakGlassReadAccess({
+    db,
+    part2Gate,
+    flags: opts.breakGlass?.flags,
+    isActiveUser: (tx, orgId, userId) => isActiveMessagingUser(tx, orgId, userId),
+    warn: opts.warn,
+  });
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
   const hydrationContext = (orgId: string, viewerUserId: string, channelKind: string) => ({
     orgId,
@@ -850,6 +866,40 @@ export function createDbMessagingRouteService(
     return channelVisibilityVerdict(orgId, userId, candidate, part2Gate, opts.warn, {
       throwOnSeamUnavailable: opts.throwOnSeamUnavailable ?? false,
     });
+  }
+
+  /**
+   * READ-only visibility (ADR-0087): `canViewChannelFor` (membership, Part 2, roster) OR a live break-glass grant. Behind the
+   * `channel_visibility_read` predicate of the read routes only. Never call this for a write, an assignee or a recipient.
+   */
+  async function canReadChannelFor(
+    orgId: string,
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    if (await canViewChannelFor(orgId, userId, channelId)) return true;
+    return breakGlassRead.canRead(orgId, userId, channelId);
+  }
+
+  /**
+   * ADR-0087 D10: leave the trail row for a read under a live grant, in the read's OWN transaction (a row that cannot be written refuses the
+   * read). A reader with no live grant who is no longer a live member is a read nobody may do (the grant ended after the route check): refuse.
+   */
+  async function recordGrantReadInTx(
+    tx: Parameters<typeof recordBreakGlassRead>[0],
+    ctx: { orgId: string; userId: string; channelId: string; channelKind: string },
+    rec: Pick<BreakGlassReadRecord, "kind" | "resourceId" | "itemCount">,
+  ): Promise<void> {
+    if (ctx.channelKind === "announcement") return; // org-wide readable; a grant is irrelevant
+    const { recorded, liveMember } = await recordBreakGlassRead(tx, {
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      channelId: ctx.channelId,
+      ...rec,
+    });
+    if (!recorded && !liveMember) {
+      throw new ForbiddenError("break-glass access to this conversation has ended");
+    }
   }
 
   /**
@@ -1146,6 +1196,11 @@ export function createDbMessagingRouteService(
           .limit(1);
         const ch = c[0];
         if (!ch) throw new NotFoundError("channel", channelId);
+        await recordGrantReadInTx(
+          tx,
+          { orgId, userId, channelId, channelKind: String(ch.kind) },
+          { kind: "channel" },
+        );
         const members = await tx
           .select({ userId: CM.userId, role: CM.role, source: CM.source })
           .from(CM)
@@ -1290,6 +1345,16 @@ export function createDbMessagingRouteService(
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
           hasMore && cursorRow ? encodeCursor(cursorRow.createdAtMicros, cursorRow.id) : undefined;
+        await recordGrantReadInTx(
+          tx,
+          {
+            orgId,
+            userId: input.userId,
+            channelId: input.channelId,
+            channelKind: String(ch[0].kind),
+          },
+          { kind: "messages", itemCount: page.length },
+        );
         return {
           messages: page,
           nextCursor,
@@ -1348,6 +1413,16 @@ export function createDbMessagingRouteService(
           input.channelId,
         );
         const last = pageRows.at(-1);
+        await recordGrantReadInTx(
+          tx,
+          {
+            orgId,
+            userId: input.userId,
+            channelId: input.channelId,
+            channelKind: String(ch[0].kind),
+          },
+          { kind: "thread", resourceId: input.messageId, itemCount: replies.length + 1 },
+        );
         return {
           root: root!,
           replies,
@@ -1358,6 +1433,7 @@ export function createDbMessagingRouteService(
     },
 
     canViewChannel: canViewChannelFor,
+    canReadChannel: canReadChannelFor,
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
     async sendMessage(orgId, rawInput) {

@@ -386,6 +386,10 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
    *  (§4.5): caseload membership for care_team, bereavement membership for bereavement, a
    *  channel-member check otherwise. NOT_FOUND channels resolve to `false` (no existence oracle). */
   canViewChannel(orgId: string, userId: string, channelId: string): Promise<boolean>;
+  /** READ-only visibility (ADR-0087, PROPOSED) - the `channel_visibility_read` predicate's resolver: `canViewChannel`, OR a live break-glass
+   *  grant on that channel (flag on, active user, no excluded role category, Part 2 gate satisfied). Asked only by the read routes; a write,
+   *  an assignee check or an alert recipient keeps `canViewChannel`. Fail closed: `false` for an unknown / cross-org channel. */
+  canReadChannel(orgId: string, userId: string, channelId: string): Promise<boolean>;
 
   // ── notification preferences & endpoints (§4.2; SELF-only) ────────────────────────────────
   /** The actor's preferences, creating the default row on first read (§4.2 GET). */

@@ -270,10 +270,16 @@ export function mountMessagingRoutes(
      * reader; omitted => not mounted (no database).
      */
     retentionGovernance?: Omit<_RetentionGovernanceDeps, "db">;
+    /**
+     * WP 5.8 (ADR-0087, PROPOSED): the M1 flag reader for `messaging.break_glass`. Omitted => a break-glass grant is never honoured
+     * (the read routes keep membership-only visibility).
+     */
+    breakGlass?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
   const service = _createDbMessagingRouteService(db, {
+    ...(opts.breakGlass ? { breakGlass: opts.breakGlass } : {}),
     ...(opts.outbox ? { outbox: opts.outbox } : {}),
     ...(opts.sendEndpointVerificationCode
       ? { sendEndpointVerificationCode: opts.sendEndpointVerificationCode }

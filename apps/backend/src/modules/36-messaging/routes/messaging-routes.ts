@@ -125,6 +125,12 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 /** The named ABAC predicate the channel-scoped routes gate on (§4.5). */
 export const CHANNEL_VISIBILITY_PREDICATE = "channel_visibility";
 
+/**
+ * ADR-0087 (PROPOSED): the READ-only variant of `channel_visibility` - membership OR a live break-glass grant. Only the channel-detail,
+ * message-list and thread GETs use it; every write, assignee and recipient check keeps `channel_visibility`, so a grant can never write.
+ */
+export const CHANNEL_VISIBILITY_READ_PREDICATE = "channel_visibility_read";
+
 /** The §4.5 `location_membership` predicate for `messaging.manage_members` (GAP-103): org_admin, or
  *  clinical_lead on a location channel of their own location. */
 export const CHANNEL_MEMBER_ADMIN_PREDICATE = "channel_member_admin";
@@ -179,6 +185,7 @@ export interface MessagingRouteDeps {
 export function registerMessagingAbacPredicates(service: MessagingRouteService): void {
   // Single-owner registry; re-boot (tests) re-points safely (mirrors M39's abac-predicates guard).
   if (!abacRegistry.has(CHANNEL_VISIBILITY_PREDICATE)) registerChannelVisibility(service);
+  if (!abacRegistry.has(CHANNEL_VISIBILITY_READ_PREDICATE)) registerChannelVisibilityRead(service);
   if (!abacRegistry.has(CHANNEL_MEMBER_ADMIN_PREDICATE)) {
     registerPredicate(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
   }
@@ -189,6 +196,14 @@ function registerChannelVisibility(service: MessagingRouteService): void {
     const channelId = typeof target.id === "string" ? target.id : null;
     if (!channelId || !context.organizationId || !context.userId) return false;
     return service.canViewChannel(context.organizationId, context.userId, channelId);
+  });
+}
+
+function registerChannelVisibilityRead(service: MessagingRouteService): void {
+  registerPredicate(CHANNEL_VISIBILITY_READ_PREDICATE, async (context, target) => {
+    const channelId = typeof target.id === "string" ? target.id : null;
+    if (!channelId || !context.organizationId || !context.userId) return false;
+    return service.canReadChannel(context.organizationId, context.userId, channelId);
   });
 }
 
@@ -271,6 +286,11 @@ const RULES_MANAGE = requirePermission("alert.rules.manage") as PreHandler;
 // the target channel (`params.id`). Defined once and reused as a preHandler.
 const VIEW_CHANNEL = requireAbac("messaging.read", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
 const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
+// ADR-0087: the three read GETs a break-glass grant opens (channel detail, message list, thread). Reads only.
+const VIEW_CHANNEL_READ = requireAbac(
+  "messaging.read",
+  CHANNEL_VISIBILITY_READ_PREDICATE,
+) as PreHandler;
 
 export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRouteDeps): void {
   const { service } = deps;
@@ -305,7 +325,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   app.get(
     "/api/v1/messaging/channels/:id",
     {
-      preHandler: [READ, VIEW_CHANNEL],
+      preHandler: [READ, VIEW_CHANNEL_READ],
       // GAP-064: the patient is the care_team channel's server-derived patient, never a client value.
       config: {
         auditRead: {
@@ -326,7 +346,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   app.get(
     "/api/v1/messaging/channels/:id/messages",
     {
-      preHandler: [READ, VIEW_CHANNEL],
+      preHandler: [READ, VIEW_CHANNEL_READ],
       // GAP-064 (spec: message reads are audited): clinical bodies are decrypted here. One aggregate
       // list-read event per page (count + filter), attributed to the care_team channel's patient.
       config: {
@@ -354,7 +374,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   app.get(
     "/api/v1/messaging/channels/:id/messages/:messageId/thread",
     {
-      preHandler: [READ, VIEW_CHANNEL],
+      preHandler: [READ, VIEW_CHANNEL_READ],
       config: {
         auditRead: {
           resourceKind: "message",
