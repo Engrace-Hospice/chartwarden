@@ -447,7 +447,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
 
     it("the roles able to UPDATE message are exactly the known set (a new one must be reviewed against the hook)", async () => {
       const r = await admin.query(
-        `SELECT rolname FROM pg_roles WHERE rolname LIKE 'wardenx\\_%' AND rolsuper = false
+        `SELECT rolname FROM pg_roles WHERE rolname LIKE 'chartwarden\\_%' AND rolsuper = false
             AND (has_table_privilege(rolname, 'message', 'UPDATE')
               OR has_any_column_privilege(rolname, 'message', 'UPDATE')) ORDER BY rolname`,
       );

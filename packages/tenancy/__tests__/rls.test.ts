@@ -61,12 +61,12 @@ describe("generateRlsPolicy (M1-T05 §3.13)", () => {
     const sql = generateRlsPolicy({
       tableName: "observation",
       orgIdColumn: "org_id",
-      appRole: "wardenx_reporting",
+      appRole: "chartwarden_reporting",
       policyName: "observation_tenant_iso",
     });
     expect(tenancyGateAccepts(sql)).toBe(true);
     expect(sql).toContain("CREATE POLICY observation_tenant_iso ON observation");
-    expect(sql).toContain("FOR ALL TO wardenx_reporting");
+    expect(sql).toContain("FOR ALL TO chartwarden_reporting");
     expect(sql).toContain("org_id = current_setting('app.org_id', true)::uuid");
   });
 

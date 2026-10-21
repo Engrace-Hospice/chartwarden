@@ -10,7 +10,7 @@
  * SELECT, DELETE on `audit_event`, so the privilege and trigger assertions are about the production role, not a superuser.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap008:legal-hold-overlay:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";

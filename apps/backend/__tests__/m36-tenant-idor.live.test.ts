@@ -117,7 +117,7 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROUTES_DIR = join(__dirname, "../src/modules/36-messaging/routes");
 const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
-const ORIGIN = "https://app.wardenx.test";
+const ORIGIN = "https://app.chartwarden.test";
 const SECRET_BODY = "WP17-SECRET-BODY-must-never-appear-in-an-error";
 const A_NAME_TOKEN = "WP17-ORG-A-PERSON";
 
@@ -2918,7 +2918,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         audit: async () => undefined,
       } as never);
       registerMessagingWebhookRoutes(probe, {
-        publicBaseUrl: "https://api.wardenx.test",
+        publicBaseUrl: "https://api.chartwarden.test",
         resolveTwilioAuthToken: () => "t",
         service: {
           recordTwilioSmsStatus: async () => {

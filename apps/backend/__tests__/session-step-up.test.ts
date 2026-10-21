@@ -57,7 +57,7 @@ function makeServer(overrides: Partial<StepUpRouteDeps> = {}) {
     verifier: createCodeVerifier("123456"),
     challenges: createInMemoryStepUpChallengeStore(),
     audit: auditSink.executor,
-    webauthnRpId: "wardenx.test",
+    webauthnRpId: "chartwarden.test",
     ...overrides,
   });
   return app;
@@ -102,7 +102,7 @@ describe("M2-T05 step-up route", () => {
       expect(initiate.statusCode).toBe(200);
       const { challengeId, webauthnChallenge } = initiate.json();
       expect(typeof challengeId).toBe("string");
-      expect(webauthnChallenge.rpId).toBe("wardenx.test");
+      expect(webauthnChallenge.rpId).toBe("chartwarden.test");
       expect(typeof webauthnChallenge.challenge).toBe("string");
 
       const verify = await app.inject({
@@ -282,7 +282,7 @@ describe("M2-T05 step-up route", () => {
         },
         challenges: createInMemoryStepUpChallengeStore(),
         audit: createInMemoryAuditExecutor().executor,
-        webauthnRpId: "wardenx.test",
+        webauthnRpId: "chartwarden.test",
       });
       const headers: Record<string, string> = { ...AUTH_HEADERS, host: "sunrise.chartwarden.com" };
       if (hostOrgHeader) headers["x-test-host-org"] = hostOrgHeader;

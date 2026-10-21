@@ -20,7 +20,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT bun run test:m36:ack-escalation:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8 container: the suite resets the public schema and the
- * wardenx_* roles, and obliterates the ack-escalation queues it uses.
+ * chartwarden_* roles, and obliterates the ack-escalation queues it uses.
  */
 import { randomUUID } from "node:crypto";
 import {

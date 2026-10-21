@@ -14,7 +14,7 @@
  *   7. LIMITS      replay with a new key is a no-op success; the pair limiter answers 429.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:ack-supervisor-reassign:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import {

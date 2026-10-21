@@ -90,7 +90,7 @@ describe("deploy/production/.env.production.example", () => {
       REDIS_URL: "redis://valkey:6379",
       ...rendered,
       POSTMARK_SERVER_TOKEN: "pm-token-0123456789abcdef",
-      POSTMARK_FROM_ADDRESS: "no-reply@mail.wardenx.health",
+      POSTMARK_FROM_ADDRESS: "no-reply@mail.chartwarden.health",
       POSTMARK_SENDER_VERIFIED: "true",
     };
     expect(collectEnvProblems(env).filter((p) => p.key.startsWith("POSTMARK_"))).toEqual([]);

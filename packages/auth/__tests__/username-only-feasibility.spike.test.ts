@@ -91,7 +91,7 @@ const schema = {
 
 function spikeProvisioningPlugin() {
   return {
-    id: "wardenx-username-feasibility-provisioning",
+    id: "chartwarden-username-feasibility-provisioning",
     endpoints: {
       provisionUsernameOnly: createAuthEndpoint.serverOnly(
         {

@@ -30,8 +30,8 @@ import type { MapperContext } from "../src";
 
 const ctx: MapperContext = {
   organizationId: "org-1",
-  tenantFhirHost: "engrace.fhir.wardenx.com",
-  identifierUriBase: "https://engrace.fhir.wardenx.com",
+  tenantFhirHost: "engrace.fhir.chartwarden.com",
+  identifierUriBase: "https://engrace.fhir.chartwarden.com",
   asOfDate: "2026-08-02T00:00:00Z",
   recipientClientId: "client-1",
   redactSudContent: false,
@@ -64,7 +64,7 @@ describe("patientMapper", () => {
       "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
     ]);
     expect(p.identifier?.[0]).toEqual({ use: "usual", system: mrnSystemUri(ctx), value: "MRN-42" });
-    expect(mrnSystemUri(ctx)).toBe("https://engrace.fhir.wardenx.com/sid/mrn");
+    expect(mrnSystemUri(ctx)).toBe("https://engrace.fhir.chartwarden.com/sid/mrn");
     expect(p.name?.[0]).toEqual({ use: "official", family: "Lovelace", given: ["Ada", "Byron"] });
     expect(p.gender).toBe("female");
     expect(p.telecom).toEqual([

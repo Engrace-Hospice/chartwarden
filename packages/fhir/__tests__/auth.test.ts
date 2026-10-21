@@ -26,7 +26,7 @@ import {
 // ── test fixtures: a real RSA keypair + a base64url JWT minter ─────────────────────────────────────────
 
 const CLIENT_ID = "client-mercy-hie";
-const AUD = "https://fhir.wardenx.com/fhir/oauth2/token";
+const AUD = "https://fhir.chartwarden.com/fhir/oauth2/token";
 const NOW = 1_800_000_000_000; // fixed injected clock
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });

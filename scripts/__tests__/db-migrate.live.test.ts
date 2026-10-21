@@ -105,7 +105,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
   }, 60_000);
 
   it("--strict detects drift before applying a later pending migration", async () => {
-    const migrationsDir = await mkdtemp(join(tmpdir(), "wardenx-migrate-strict-"));
+    const migrationsDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-strict-"));
     const first = "9001_strict_preflight_first.sql";
     const second = "9002_strict_preflight_second.sql";
     const firstTable = "migrate_strict_preflight_first";

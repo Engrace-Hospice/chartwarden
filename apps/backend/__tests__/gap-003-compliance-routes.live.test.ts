@@ -86,10 +86,10 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
       [ORG],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'gap003-live@x.test')`, [USER]);
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-gap003-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden-gap003-test'");
     const appUrl = new URL(DB_URL as string);
     appUrl.username = "chartwarden_app";
-    appUrl.password = "wardenx-gap003-test";
+    appUrl.password = "chartwarden-gap003-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
   }, 120_000);
 

@@ -4,7 +4,7 @@
  * fail-closed reader through the real actor enrichment, and tenant isolation as `chartwarden_app` (NOBYPASSRLS).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap007:grant-scope:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles. For a local PG without
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the chartwarden_* roles. For a local PG without
  * pgvector also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";

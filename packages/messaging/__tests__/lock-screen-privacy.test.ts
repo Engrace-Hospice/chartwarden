@@ -26,7 +26,7 @@ const CATEGORIES: readonly AlertCategory[] = [
   "administrative",
   "system",
 ];
-const BASE = "https://app.wardenx.example";
+const BASE = "https://app.chartwarden.example";
 const SMS_SEGMENT = 160;
 
 const PHI = [
@@ -116,9 +116,9 @@ describe("WP 4.7 - every category x channel renders PHI-free", () => {
 
 describe("WP 4.7 - the link is a fixed generic authenticated route", () => {
   const bad: ReadonlyArray<readonly [string, string, string]> = [
-    ["credentials", "https://user:pw@app.wardenx.example", "nd-1"],
-    ["query token", "https://app.wardenx.example?token=abc", "nd-1"],
-    ["fragment token", "https://app.wardenx.example/#access=abc", "nd-1"],
+    ["credentials", "https://user:pw@app.chartwarden.example", "nd-1"],
+    ["query token", "https://app.chartwarden.example?token=abc", "nd-1"],
+    ["fragment token", "https://app.chartwarden.example/#access=abc", "nd-1"],
     ["not http", "javascript:alert(1)", "nd-1"],
     ["name in id", BASE, "Jane Patient"],
     ["path traversal id", BASE, "../patients/42"],

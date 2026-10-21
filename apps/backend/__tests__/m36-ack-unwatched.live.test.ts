@@ -17,7 +17,7 @@
  *   6. G-4  the Valkey claim is `SET NX PX`: exactly one of two processes holds it until release.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... [CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT] bun run test:m36:ack-unwatched:live
- * Use a PRIVATE pgvector/pgvector:pg18 container (and a private valkey/valkey:8): the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container (and a private valkey/valkey:8): the suite resets the public schema and the chartwarden_* roles.
  */
 import { createAlertEmitter } from "@chartwarden/messaging";
 import Redis from "ioredis";

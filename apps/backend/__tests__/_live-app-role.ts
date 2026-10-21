@@ -26,7 +26,7 @@
 import type { Client } from "pg";
 
 /** The password granted to `chartwarden_app` for the duration of a live suite. Test-only, never a secret. */
-export const LIVE_APP_ROLE_PASSWORD = "wardenx_app_live_test";
+export const LIVE_APP_ROLE_PASSWORD = "chartwarden_app_live_test";
 
 /**
  * Grant `chartwarden_app` LOGIN (the migrations create it NOLOGIN) and return the connection string that logs

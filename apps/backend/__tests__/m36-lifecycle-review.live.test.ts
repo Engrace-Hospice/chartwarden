@@ -17,7 +17,7 @@
  *   9. IDOR            tenant B cannot list or act on tenant A's rows (uniform 404).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:lifecycle-review:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";

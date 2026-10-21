@@ -55,7 +55,7 @@ const CLIENT_A = "33333333-3333-4333-8333-3333f0350003";
 const CLIENT_B = "44444444-4444-4444-8444-4444f0350004";
 const SECRET_A = "a".repeat(48);
 const SECRET_B = "b".repeat(48);
-const TOKEN_URL = "https://fhir.wardenx.test/fhir/oauth2/token";
+const TOKEN_URL = "https://fhir.chartwarden.test/fhir/oauth2/token";
 
 describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
   let admin: Client;

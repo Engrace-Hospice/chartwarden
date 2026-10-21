@@ -99,10 +99,10 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
          ($2, 'Beta East', '30 Maple Road', 'Austin', 'TX', '73301', 'America/Chicago')`,
       [PE_A, PE_B],
     );
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-location-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden-location-test'");
     const appUrl = new URL(DB_URL as string);
     appUrl.username = "chartwarden_app";
-    appUrl.password = "wardenx-location-test";
+    appUrl.password = "chartwarden-location-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     registerLocationLookupRoutes(app, handle.db);

@@ -131,10 +131,10 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ]);
     tmpl.election = { templateId, versionId };
 
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx_app_test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden_app_test'");
     const runtimeUrl = new URL(DB_URL as string);
     runtimeUrl.username = "chartwarden_app";
-    runtimeUrl.password = "wardenx_app_test";
+    runtimeUrl.password = "chartwarden_app_test";
     handle = createDbClient({
       connectionString: runtimeUrl.toString(),
     });

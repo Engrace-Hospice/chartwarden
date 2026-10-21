@@ -80,7 +80,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
           alertOrMessage: redTeamAlert(category),
           channel,
           recipientUserId: "user-7",
-          baseUrl: "https://app.wardenx.example",
+          baseUrl: "https://app.chartwarden.example",
         });
         const hay = haystack(out);
         for (const token of PHI_TOKENS) {
@@ -91,7 +91,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
         // structurally: only the three allowlisted fields, all content-free.
         expect(Object.keys(out).sort()).toEqual(["deepLink", "notificationDeliveryId", "short"]);
         expect(out.notificationDeliveryId).toBe("nd-abc-123");
-        expect(out.deepLink).toBe("https://app.wardenx.example/n/nd-abc-123");
+        expect(out.deepLink).toBe("https://app.chartwarden.example/n/nd-abc-123");
         expect(out.short.length).toBeGreaterThan(0);
       }
     }
@@ -103,7 +103,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
         alertOrMessage: redTeamMessage(),
         channel,
         recipientUserId: "user-7",
-        baseUrl: "https://app.wardenx.example/",
+        baseUrl: "https://app.chartwarden.example/",
       });
       const hay = haystack(out);
       for (const token of PHI_TOKENS) {
@@ -115,7 +115,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
           : "You have a new message in ChartWarden. Sign in to view.",
       );
       // trailing-slash baseUrl is normalized (no double slash).
-      expect(out.deepLink).toBe("https://app.wardenx.example/n/nd-msg-9");
+      expect(out.deepLink).toBe("https://app.chartwarden.example/n/nd-msg-9");
     }
   });
 
@@ -125,7 +125,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
         alertOrMessage: redTeamAlert(category),
         channel: "voice",
         recipientUserId: "user-7",
-        baseUrl: "https://app.wardenx.example",
+        baseUrl: "https://app.chartwarden.example",
       });
       expect(out.short).toBe("ChartWarden field safety alert. Please open the app.");
     }
@@ -136,7 +136,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
       alertOrMessage: redTeamAlert("clinical_urgent"),
       channel: "sms",
       recipientUserId: "user-7",
-      baseUrl: "https://app.wardenx.example",
+      baseUrl: "https://app.chartwarden.example",
     });
     expect(out.short.length).toBeLessThanOrEqual(160);
   });
