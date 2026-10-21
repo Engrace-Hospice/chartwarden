@@ -98,7 +98,7 @@ export function createOrgScopedIdentityOutbox(
  * membership/invitation write". `audit_event`'s RLS policy (`audit_event_org_append`, migration 0119)
  * requires `organization_id = current_setting('app.org_id', true)::uuid`, and nothing sets that GUC outside
  * a `withOrgContext` transaction — so a bare `db` insert could never satisfy it. Confirmed empirically
- * against a real NOBYPASSRLS `wardenx_app` connection: every M2 mutation route's `audit()` call threw
+ * against a real NOBYPASSRLS `chartwarden_app` connection: every M2 mutation route's `audit()` call threw
  * "new row violates row-level security policy for table audit_event", AFTER the underlying store write had
  * already committed — so the route 500'd on a write that had, in fact, succeeded, and no audit row was ever
  * written. Migration 0119's own header names "M2's identity/step-up events" as one of the things it was

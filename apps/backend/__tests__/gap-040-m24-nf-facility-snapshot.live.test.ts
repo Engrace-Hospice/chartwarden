@@ -8,7 +8,7 @@
  * was never called. The field had no test of any kind.
  *
  * This suite drives the production `buildDrizzleM24WriteService(...).createRbArrangement` as the
- * NOBYPASSRLS `wardenx_app` role over the REAL M40 provider composed on the REAL Drizzle MDM store.
+ * NOBYPASSRLS `chartwarden_app` role over the REAL M40 provider composed on the REAL Drizzle MDM store.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m24:nf-facility-snapshot:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -25,7 +25,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-1111-1111-111111111140";
 const PE = "00000000-0000-0000-0000-000000000a40";
@@ -119,7 +119,7 @@ describe.skipIf(!DB_URL)("GAP-040 M24 NF-facility name snapshot — LIVE Postgre
       [NF_MERGED_AWAY, NF_SURVIVOR],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The REAL M40 provider over the REAL Drizzle store — the same composition the boot path builds.

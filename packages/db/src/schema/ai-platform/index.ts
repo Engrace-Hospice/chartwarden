@@ -1,7 +1,7 @@
 // @chartwarden/db — Module 32 (AI Platform) schema barrel: the thirteen `ownedTables`
 // `architecture/module-manifest.ts` gives M32, in three tenancy layers (§3.3).
 //
-// PLATFORM-SHARED (six) — no organization_id, read-all within any tenant, writes via `wardenx_admin`.
+// PLATFORM-SHARED (six) — no organization_id, read-all within any tenant, writes via `chartwarden_admin`.
 // The governance surface is deliberately world-readable inside the platform: a tenant has to be able to
 // see WHICH capabilities exist to opt in to one, and a per-tenant copy of the model registry would let
 // two tenants disagree about which model version answered.
@@ -13,7 +13,7 @@
 //   ai_hallucination_report · ai_routing_override
 //
 // MIXED (one) — ai_kill_switch_state, whose organization_id is NULLABLE and whose NULL means a
-// platform-wide kill. Read spans both; INSERT/UPDATE are tenant-only, so `wardenx_app` cannot mint a
+// platform-wide kill. Read spans both; INSERT/UPDATE are tenant-only, so `chartwarden_app` cannot mint a
 // kill that stops the capability for every other tenant.
 //
 // TWO ARE PARTITIONED MONTHLY (§3.8) and therefore carry a composite primary key declared in SQL:

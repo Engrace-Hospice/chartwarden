@@ -7,7 +7,7 @@
 // every running deployment.
 //
 // PRIVILEGE (migration 0199). Both tables are platform-shared (no `organization_id`) and were SELECT-only
-// to `wardenx_app`, with every write reserved to `wardenx_admin`. Reads here run directly on the pooled
+// to `chartwarden_app`, with every write reserved to `chartwarden_admin`. Reads here run directly on the pooled
 // handle (the `USING (true)` read policy); every WRITE goes through a `nppes_writer_*` SECURITY DEFINER
 // function owned by the dedicated `nppes_sync_writer` NOLOGIN role — the migration-0186 platform-outbox
 // pattern. There is deliberately no `withPlatformContext` envelope: the function body, not the caller's
@@ -92,7 +92,7 @@ export function createDrizzleNppesProviderCache(db: DbClient): ProviderCachePort
  * When M29's platform NPPES sync last COMPLETED, or `null` if it never has (GAP-173). M40's fallback nightly
  * delta asks this (through the composition root — M40 never reads M29's table) to decide whether M29 synced
  * recently enough that the fallback should stand down (§4.3, 25 h). `nppes_sync_run` is platform-shared and
- * SELECT-able by `wardenx_app` (`USING (true)`), so this is a plain read on the pooled handle.
+ * SELECT-able by `chartwarden_app` (`USING (true)`), so this is a plain read on the pooled handle.
  */
 export async function lastCompletedNppesSyncAt(db: DbClient): Promise<Date | null> {
   const RUN = schema.nppesSyncRun;

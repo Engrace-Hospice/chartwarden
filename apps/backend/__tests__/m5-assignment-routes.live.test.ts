@@ -1,6 +1,6 @@
 /**
  * GAP-015 — the M5 §4.3 care-team assignment routes against REAL Postgres, as the NOBYPASSRLS
- * `wardenx_app` role. `patient_assignment` had NO production writer: `caseload_or_scope` and the
+ * `chartwarden_app` role. `patient_assignment` had NO production writer: `caseload_or_scope` and the
  * CareTeamProvider could only ever be fed by dev seeds. Proves, end to end through the real routes and
  * the real Drizzle port:
  *   - POST /patients/:id/assignments writes the row, and the PRODUCTION CaseloadProvider store
@@ -41,10 +41,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";

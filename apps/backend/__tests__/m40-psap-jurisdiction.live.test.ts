@@ -1,6 +1,6 @@
 /**
  * GAP-032 - M40 `emergency_service_jurisdiction`: the TENANT-CURATED PSAP catalog the SOS terminus resolves.
- * LIVE Postgres, as the RLS-enforced `wardenx_app` role. Proves the store (create stamps verification, an edit
+ * LIVE Postgres, as the RLS-enforced `chartwarden_app` role. Proves the store (create stamps verification, an edit
  * of the number or its coverage clears it, verify restores it), the partial-unique defaults, the CHECKs, the
  * seam reader against a real polygon, and that a tenant sees neither another tenant's PSAP rows nor can write
  * into them. Gated on a live DB:
@@ -21,12 +21,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "11111111-1111-4111-8111-111111114001";

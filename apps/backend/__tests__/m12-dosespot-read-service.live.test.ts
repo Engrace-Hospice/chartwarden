@@ -5,7 +5,7 @@
  * the verbal-order timer, the refill loop and the EPCS-OFF gate, but never touch a database, so they can
  * neither prove the PRODUCTION read service returns real rows nor that RLS scopes them by tenant. This
  * drives the mounted `createDbDoseSpotBackend` (service + §4.7 ABAC resolver in one object) over the real
- * M12 tables under `withOrgContext` as the unprivileged `wardenx_app` role: the order list / active-meds /
+ * M12 tables under `withOrgContext` as the unprivileged `chartwarden_app` role: the order list / active-meds /
  * refill-inbox reads return the seeded rows, RLS denies a cross-tenant read, and every write fail-closes 501.
  *
  * Gated on a live DB (default `bun run test` skips it):
@@ -21,7 +21,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -139,10 +139,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m12r@x.test')`, [USER]);
     seeded[ORG_A] = await seedOrg(ORG_A, 1);
     seeded[ORG_B] = await seedOrg(ORG_B, 2);
-    // Prod connects as the NOBYPASSRLS `wardenx_app` role (a login role SET ROLEs to it); `withOrgContext`
-    // deliberately does NOT SET ROLE. To exercise RLS faithfully here, connect the client AS wardenx_app —
+    // Prod connects as the NOBYPASSRLS `chartwarden_app` role (a login role SET ROLEs to it); `withOrgContext`
+    // deliberately does NOT SET ROLE. To exercise RLS faithfully here, connect the client AS chartwarden_app —
     // it is NOLOGIN in the migrations, so grant LOGIN for the throwaway run.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

@@ -25,7 +25,7 @@
  *
  * WHY LIVE. The debounce claim is `SELECT ... FOR UPDATE SKIP LOCKED` against a partial-unique index; the
  * RESET semantics are an `ON CONFLICT ... DO UPDATE` only Postgres can prove; and the cross-tenant
- * isolation claim is a real RLS read on the NOBYPASSRLS `wardenx_app` role.
+ * isolation claim is a real RLS read on the NOBYPASSRLS `chartwarden_app` role.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m19:roster-sync-debounce:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -50,7 +50,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f155a19b";
 const ORG_B = "22222222-2222-4222-8222-2222f155b19b";
@@ -187,7 +187,7 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
       seeded[org] = { pe, location, member, member2 };
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     void M19_OUTBOX_EVENTS; // referenced so the catalog import is not flagged unused by a stricter lint pass
   }, 180_000);

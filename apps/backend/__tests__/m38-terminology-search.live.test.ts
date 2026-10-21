@@ -5,7 +5,7 @@
  * shared CodeSearchInput picker's value-set and billable options silently returned unfiltered results.
  *
  * Everything runs through the REAL route (full middleware chain via Fastify inject, real `terminology.read`
- * permission gate) over the REAL Drizzle store, connected as the NOBYPASSRLS `wardenx_app` role — the one tenant-
+ * permission gate) over the REAL Drizzle store, connected as the NOBYPASSRLS `chartwarden_app` role — the one tenant-
  * scoped table (`value_set_tenant_extension`) is only meaningful on that role. Data is loaded through the real
  * loader (register → stage → activate) from tiny INVENTED fixtures; no licensed content.
  *
@@ -54,10 +54,10 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const NO_PGVECTOR = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "terminology_loader",
 ];
 
@@ -184,7 +184,7 @@ describe.skipIf(!DB_URL)("M38 terminology search filters — LIVE Postgres, via 
          ('carc','X12 CARC','urn:x12:carc','public'),
          ('rarc','X12 RARC','urn:x12:rarc','public')`,
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The licence gate is the real one: LOINC loads only under an attestation (a TEST attestation on a throwaway DB).
@@ -255,15 +255,15 @@ describe.skipIf(!DB_URL)("M38 terminology search filters — LIVE Postgres, via 
     await admin?.end();
   });
 
-  it("is genuinely the NOBYPASSRLS wardenx_app role", async () => {
+  it("is genuinely the NOBYPASSRLS chartwarden_app role", async () => {
     const r = await admin.query(
-      "SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(r.rows[0]).toEqual({ rolbypassrls: false, rolsuper: false });
     const who = (await handle.db.execute("SELECT current_user AS u" as never)) as unknown as {
       rows: Array<{ u: string }>;
     };
-    expect(who.rows[0]?.u).toBe("wardenx_app");
+    expect(who.rows[0]?.u).toBe("chartwarden_app");
   });
 
   describe("billableOnly", () => {

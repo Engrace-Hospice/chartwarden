@@ -32,7 +32,7 @@ import { validatingM28Outbox } from "./_m28-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f2280001";
 const ADMIN_MEMBERSHIP = "33333333-3333-4333-8333-3333f2280003";
@@ -55,7 +55,7 @@ describe.skipIf(!DB_URL)("M28 outbox catalog — LIVE Postgres, real publisher",
     }
   }
 
-  // Read via the SUPERUSER connection, not the pooled `wardenx_app` handle: `outbox_event_org`'s RLS
+  // Read via the SUPERUSER connection, not the pooled `chartwarden_app` handle: `outbox_event_org`'s RLS
   // policy casts `current_setting('app.org_id', true)::uuid` with no NULLIF guard (the exact
   // device_attestation shape migration 0246 fixed, unaddressed here since the table's own doc says only
   // the privileged dispatcher ever reads it directly) — a bare read on a connection a prior
@@ -102,7 +102,7 @@ describe.skipIf(!DB_URL)("M28 outbox catalog — LIVE Postgres, real publisher",
       [ADMIN_MEMBERSHIP, COMPLIANCE_MEMBERSHIP],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDrizzleFhirGatewayStore(handle.db, { outbox: validatingM28Outbox() });
   }, 240_000);

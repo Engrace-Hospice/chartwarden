@@ -7,11 +7,11 @@
 //
 // RLS shape (M38-T03, §3.7): every M38 table is platform-shared reference (NON_ORG_SCOPED, read-all
 // via the `USING (true)` policy) EXCEPT `value_set_tenant_extension`, the one org-scoped table. So
-// the concept / value-set / deprecation READS run directly on the pooled `wardenx_app` handle (no
+// the concept / value-set / deprecation READS run directly on the pooled `chartwarden_app` handle (no
 // org context needed — the policy admits them), while the tenant-extension read/write/erase run
 // inside `withOrgContext` so `app.org_id` RLS scopes them to the actor's tenant. Canonical writes
 // stay impossible here — there is no INSERT/UPDATE/DELETE path to a platform table (§7.4 lockdown,
-// enforced in depth by the absent `wardenx_app` grant on those tables).
+// enforced in depth by the absent `chartwarden_app` grant on those tables).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {

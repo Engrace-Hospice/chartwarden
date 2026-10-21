@@ -1,6 +1,6 @@
 /**
  * F-225 (#248) — the portal document download is ACCOUNTED (HIPAA §164.528), proven against real Postgres
- * as the NOBYPASSRLS `wardenx_app` role, through the real M31 route, the real M22 `PortalDocumentReader`
+ * as the NOBYPASSRLS `chartwarden_app` role, through the real M31 route, the real M22 `PortalDocumentReader`
  * (Drizzle reader store + Drizzle access-log writer + the SigV4 presigner) and the real M4 read-audit hook.
  *
  * What this pins (F-221 found every one of these false on the prior code):
@@ -50,7 +50,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const USER_A = "33333333-3333-4333-8333-333333333333";
@@ -273,7 +273,7 @@ describe.skipIf(!DB_URL)("F-225 portal document access log — LIVE Postgres", (
       `INSERT INTO "user" (id,email) VALUES ($1,'a225@x.test'),($2,'b225@x.test')`,
       [USER_A, USER_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

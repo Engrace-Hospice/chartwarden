@@ -3,7 +3,7 @@
 // Three controls that prove the append-only `audit_event` log was not altered after the fact:
 //
 //   1. APPEND-ONLY VERIFICATION (§10.4, §12.3). The audit log's immutability rests on a GRANT
-//      model — the app role may INSERT (via the `wardenx_audit_writer` SECURITY DEFINER) and
+//      model — the app role may INSERT (via the `chartwarden_audit_writer` SECURITY DEFINER) and
 //      SELECT, never UPDATE/DELETE/TRUNCATE. `verifyAppendOnly()` is the assertion that holds:
 //      given a snapshot of the privileges actually granted, it returns every violation (a
 //      mutating privilege present on `audit_event` for an app role). Empty = the model holds.
@@ -25,7 +25,7 @@ import { createHash } from "node:crypto";
 export const MUTATING_PRIVILEGES = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 
 /** The roles treated as "the application" — none may mutate `audit_event` (§9.3 cross-ref). */
-export const APP_ROLES = ["wardenx_app"] as const;
+export const APP_ROLES = ["chartwarden_app"] as const;
 
 /** A snapshot of the privileges actually granted to one role on one table (from `pg_catalog`). */
 export interface GrantSnapshot {

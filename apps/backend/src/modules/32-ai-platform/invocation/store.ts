@@ -9,8 +9,8 @@ import type {
 // FOUR PORTS, SPLIT BY CREDENTIAL AND BY WHO OWNS THE FACT — the M32-T03 posture, continued:
 //
 //   · `AiBackendRegistryStore`  — `ai_model_backend` is PLATFORM-SHARED and this port is READ-ONLY.
-//     Migration 0116 grants `wardenx_app` SELECT on it, so the routing gate takes the ordinary tenant
-//     handle and needs no bypass. Registration/health writes are `wardenx_admin` work and belong to the
+//     Migration 0116 grants `chartwarden_app` SELECT on it, so the routing gate takes the ordinary tenant
+//     handle and needs no bypass. Registration/health writes are `chartwarden_admin` work and belong to the
 //     §4.1 R14–R16 admin routes, not to a pipeline that runs on every clinician keystroke.
 //   · `AiRoutingOverrideStore`  — `ai_routing_override` is TENANT-SCOPED; every method opens
 //     `withOrgContext` and RLS on `app.org_id` is what keeps one agency's sovereignty decision out of

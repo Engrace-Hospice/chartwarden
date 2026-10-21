@@ -5,8 +5,8 @@
 // tables in two and the split is a privilege boundary, not a naming convention:
 //
 //   · `ai_capability`, `ai_capability_lifecycle_event`, `ai_capability_calibration` are
-//     PLATFORM-SHARED. Migration 0116 grants `wardenx_app` SELECT and nothing else; every write goes
-//     through `wardenx_admin` on the separately-pooled platform credential, gated by the tenancy
+//     PLATFORM-SHARED. Migration 0116 grants `chartwarden_app` SELECT and nothing else; every write goes
+//     through `chartwarden_admin` on the separately-pooled platform credential, gated by the tenancy
 //     allowlist and audited by the platform-bypass auditor. That is deliberate: the AI Safety Owner is
 //     a PLATFORM role (§4.7), and a tenant connection that could promote a capability could promote it
 //     for every other tenant too.
@@ -137,7 +137,7 @@ export interface AiCapabilityRegistrationInsert {
 }
 
 /**
- * The PLATFORM-SHARED half (`wardenx_admin`, allowlisted + audited platform context).
+ * The PLATFORM-SHARED half (`chartwarden_admin`, allowlisted + audited platform context).
  *
  * `applyTransition` and `publishCalibration` are single methods rather than a patch plus an insert
  * because both are TWO writes that must not be separable: a lifecycle patch with no ledger row is a
@@ -216,7 +216,7 @@ export interface AiTenantOptInWrite {
   readonly optedOutReason?: string | null;
 }
 
-/** The TENANT-SCOPED half (`wardenx_app` under `withOrgContext`; RLS on `app.org_id`). */
+/** The TENANT-SCOPED half (`chartwarden_app` under `withOrgContext`; RLS on `app.org_id`). */
 export interface AiTenantConsentStore {
   findOptIn(organizationId: string, capabilityId: string): Promise<AiTenantOptInRow | null>;
   listOptIns(organizationId: string): Promise<readonly AiTenantOptInRow[]>;

@@ -1,6 +1,6 @@
 /**
  * M25 QIC reconsideration and escalation (hospice ADR/TPE/QIC PRD, milestone 4) - LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role, through the real services, the real M22 / M23 seams and the real catalog-validating publisher.
+ * `chartwarden_app` role, through the real services, the real M22 / M23 seams and the real catalog-validating publisher.
  *
  * Proves what the pure suites cannot: a reconsideration cannot be submitted (normal or late good cause) unless every
  * cited item is enclosed, or explained with the preclusion acknowledged, and the redetermination notice copy is
@@ -60,7 +60,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const NARRATIVE =

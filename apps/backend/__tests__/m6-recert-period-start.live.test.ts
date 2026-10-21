@@ -1,5 +1,5 @@
 /**
- * LIVE Postgres proof (real NOBYPASSRLS `wardenx_app` role, real catalog-validating publisher) that a
+ * LIVE Postgres proof (real NOBYPASSRLS `chartwarden_app` role, real catalog-validating publisher) that a
  * recertification benefit period starts on ITS OWN start date — never on the day its CTI is signed.
  *
  * The bug: `signCtiHospiceMd` flipped the next period to `active` immediately, dated from the signing day.
@@ -46,7 +46,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-1111111103a7";
 const USER = "33333333-3333-3333-3333-3333333303a7";
 const MD = "55555555-5555-5555-5555-5555555503a7";
@@ -58,7 +58,7 @@ const TODAY = localDateInTimeZone(new Date(), ORG_TZ);
 /** An instant that is `day` in the org timezone (17:00Z is daytime in New York). */
 const instantOn = (day: string): Date => new Date(`${day}T17:00:00.000Z`);
 
-describe.skipIf(!DB_URL)("M6 recert period starts on its start date — LIVE (wardenx_app)", () => {
+describe.skipIf(!DB_URL)("M6 recert period starts on its start date — LIVE (chartwarden_app)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
@@ -202,7 +202,7 @@ describe.skipIf(!DB_URL)("M6 recert period starts on its start date — LIVE (wa
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {

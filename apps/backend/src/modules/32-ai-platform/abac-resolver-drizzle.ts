@@ -9,7 +9,7 @@
 // ── TWO READS HERE ARE PLATFORM-SHARED AND TAKE NO ORG, AND THAT IS CORRECT ─────────────────────────
 //
 // `resolveCapabilityId` reads `ai_capability` and `killSwitchActive` reads `ai_kill_switch_state`. Both
-// tables are platform-shared (0116 grants `wardenx_app` SELECT), and the kill switch is DELIBERATELY read
+// tables are platform-shared (0116 grants `chartwarden_app` SELECT), and the kill switch is DELIBERATELY read
 // across the tenant boundary: §3.2.12's platform row carries `organization_id IS NULL` and stops every
 // agency, so a lookup scoped to the caller's org would answer "no switch" for exactly the switch that
 // matters most. The disjunction — this org's row OR the platform row — IS the rule (M32-T05), and running
@@ -93,7 +93,7 @@ export function buildDrizzleAiPlatformAbacResolver(
       if (deps.roleGrants === undefined) return null;
       try {
         // Membership → user, because M3's grant store is keyed on USER id (see the header). Inside
-        // `withOrgContext`: `membership` is RLS-scoped, so a bare read as the NOBYPASSRLS `wardenx_app`
+        // `withOrgContext`: `membership` is RLS-scoped, so a bare read as the NOBYPASSRLS `chartwarden_app`
         // role sees no row at all and this fallback answered `null` for everyone (GAP-096 live test).
         const [member] = await withOrgContext(db, ctx(orgId), (tx) =>
           (tx as DbClient)

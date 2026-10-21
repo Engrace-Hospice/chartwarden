@@ -33,10 +33,10 @@ export interface MdmEraserDeps {
  * never reach another tenant's rows) and reports the `.returning()` count; the three run
  * independently, exactly as the pure `eraseTenantMdm` schedules them (no FK sequencing — nothing
  * references the overlay/provisional/baa rows). Canonical entities are physically out of reach
- * here: `wardenx_app` has no canonical write grant (M40-T03, migration 0019).
+ * here: `chartwarden_app` has no canonical write grant (M40-T03, migration 0019).
  *
- * GRANT CAVEAT (0019 §7): `mdm_provisional` grants `wardenx_app` SELECT+INSERT only (promotion is
- * a wardenx_admin path), so the provisional DELETE is refused by Postgres until the erase path is
+ * GRANT CAVEAT (0019 §7): `mdm_provisional` grants `chartwarden_app` SELECT+INSERT only (promotion is
+ * a chartwarden_admin path), so the provisional DELETE is refused by Postgres until the erase path is
  * granted DELETE (or runs under the admin role). That refusal is the correct fail direction — the
  * erase fails loudly rather than certifying provisional rows destroyed while they survive.
  */

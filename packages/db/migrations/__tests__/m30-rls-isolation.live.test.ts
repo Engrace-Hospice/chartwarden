@@ -8,7 +8,7 @@
  * eraser orchestration but never touch a database, so they cannot catch a wrong policy predicate, a
  * missing WITH CHECK, a base-table grant that leaks across tenants, or a stray DELETE grant that would
  * let the request-scoped app role hard-delete compliance evidence. This test applies the actual
- * migrations to a real Postgres and exercises the policies as the unprivileged `wardenx_app` role
+ * migrations to a real Postgres and exercises the policies as the unprivileged `chartwarden_app` role
  * (no BYPASSRLS), proving:
  *
  *   - cross-tenant denial for real on all 18 org-scoped M30 tables, including the 4 monthly-RANGE
@@ -19,14 +19,14 @@
  *     NO patient-scope RLS predicate — patient-scope is the app-layer §4.7 `privacy_flag_redaction` /
  *     `part2Redisclosure` ABAC concern, deliberately NOT enforced at the RLS layer);
  *   - WITH CHECK rejects a cross-tenant write (org B cannot stamp a row with org A);
- *   - §3.7 destruction-block: wardenx_app has NO DELETE grant on ANY M30 table — SQL hard-delete by
+ *   - §3.7 destruction-block: chartwarden_app has NO DELETE grant on ANY M30 table — SQL hard-delete by
  *     the request-scoped app role is impossible; destruction runs ONLY via the M4 eraseFn under
- *     wardenx_admin, which itself REFUSES the compliance-class evidence tables (the eraser package);
+ *     chartwarden_admin, which itself REFUSES the compliance-class evidence tables (the eraser package);
  *   - ADR-0010: a session that sets only the legacy `app.current_org_id` (not the canonical
  *     `app.org_id`) sees nothing.
  *
- * M30 adds NO custom DB role — every policy/grant targets the platform-floor `wardenx_app` /
- * `wardenx_admin` (and the M4 `wardenx_audit_writer` append path), so the role-reset list below is the
+ * M30 adds NO custom DB role — every policy/grant targets the platform-floor `chartwarden_app` /
+ * `chartwarden_admin` (and the M4 `chartwarden_audit_writer` append path), so the role-reset list below is the
  * roles the FULL migration set creates, not an M30-specific one.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
@@ -43,10 +43,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
   "tenant_platform_writer",
   "report_writer", // M33's MV-wrapper/catalog-writer role (0056) — created by the full set, dropped on reset
@@ -76,7 +76,7 @@ type SeedIds = {
   cahpsDecedentSample: string;
 };
 
-// All 18 tenant-scoped M30 tables, proven through a direct base-table SELECT under wardenx_app. A
+// All 18 tenant-scoped M30 tables, proven through a direct base-table SELECT under chartwarden_app. A
 // row's `id` (the id half of the composite PK on the 4 partitioned tables) uniquely identifies org
 // A's row. The last 4 are the monthly-RANGE PARTITIONED PHI tables (incident_report / mortality_review
 // / infection_surveillance_event / cahps_decedent_sample).
@@ -112,7 +112,7 @@ const PHI_PARTITIONED = [
 
 // The §3.7 compliance-class evidence tables the eraser REFUSES to destroy (counted for the
 // certificate, never deleted). At the RLS layer this is enforced for the request-scoped role by the
-// total absence of any DELETE grant to wardenx_app — proven below table-by-table.
+// total absence of any DELETE grant to chartwarden_app — proven below table-by-table.
 const COMPLIANCE_EVIDENCE = [
   "incident_report",
   "mortality_review",
@@ -134,7 +134,7 @@ describe.skipIf(!DB_URL)(
 
     /** Run `fn` as the unprivileged app role with app.org_id = `org` (RLS enforced). */
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -399,9 +399,9 @@ describe.skipIf(!DB_URL)(
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
     // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -427,19 +427,19 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    // §3.7: NO M30 table grants DELETE (or ALL) to the request-scoped wardenx_app role — SQL
-    // hard-delete by the app role is impossible. wardenx_admin (the eraseFn role) gets GRANT ALL.
-    it("§3.7 0067 grants wardenx_app only SELECT/INSERT/UPDATE (never DELETE/ALL); admin gets ALL", () => {
+    // §3.7: NO M30 table grants DELETE (or ALL) to the request-scoped chartwarden_app role — SQL
+    // hard-delete by the app role is impossible. chartwarden_admin (the eraseFn role) gets GRANT ALL.
+    it("§3.7 0067 grants chartwarden_app only SELECT/INSERT/UPDATE (never DELETE/ALL); admin gets ALL", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0067_quality_m30_rls.sql"), "utf8");
       for (const { table } of COVERED) {
         expect(rls).toMatch(
-          new RegExp(`GRANT SELECT, INSERT, UPDATE ON "${table}" TO wardenx_app`),
+          new RegExp(`GRANT SELECT, INSERT, UPDATE ON "${table}" TO chartwarden_app`),
         );
-        expect(rls).toMatch(new RegExp(`GRANT ALL ON "${table}" TO wardenx_admin`));
+        expect(rls).toMatch(new RegExp(`GRANT ALL ON "${table}" TO chartwarden_admin`));
       }
-      // No DELETE grant to wardenx_app anywhere, and no GRANT ALL ... TO wardenx_app.
-      expect(rls).not.toMatch(/GRANT[^;]*\bDELETE\b[^;]*TO wardenx_app/i);
-      expect(rls).not.toMatch(/GRANT ALL[^;]*TO wardenx_app/i);
+      // No DELETE grant to chartwarden_app anywhere, and no GRANT ALL ... TO chartwarden_app.
+      expect(rls).not.toMatch(/GRANT[^;]*\bDELETE\b[^;]*TO chartwarden_app/i);
+      expect(rls).not.toMatch(/GRANT ALL[^;]*TO chartwarden_app/i);
     });
 
     // ── Per-table cross-tenant denial (§3.5) ─────────────────────────────────────────────────────
@@ -509,14 +509,14 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow();
     });
 
-    // ── §3.7 destruction-block: wardenx_app cannot DELETE M30 compliance evidence ────────────────
+    // ── §3.7 destruction-block: chartwarden_app cannot DELETE M30 compliance evidence ────────────────
     // The request-scoped app role has no DELETE grant on ANY M30 table; the compliance-class
     // evidence tables are additionally never deletable even by the M4 eraseFn (the eraser package
-    // REFUSES them). Here we prove the SQL-layer floor: wardenx_app DELETE → permission denied.
+    // REFUSES them). Here we prove the SQL-layer floor: chartwarden_app DELETE → permission denied.
     describe.each(COMPLIANCE_EVIDENCE)(
       "%s — §3.7 destruction-blocked at the SQL layer",
       (table) => {
-        it("wardenx_app cannot DELETE an own-org row (no DELETE grant)", async () => {
+        it("chartwarden_app cannot DELETE an own-org row (no DELETE grant)", async () => {
           const id = a[COVERED.find((c) => c.table === table)!.key];
           await expect(
             withOrg(ORG_A, () => db.query(`DELETE FROM "${table}" WHERE id = $1`, [id])),
@@ -625,7 +625,7 @@ describe.skipIf(!DB_URL)(
       const fresh = new Client({ connectionString: DB_URL });
       await fresh.connect();
       try {
-        await fresh.query("SET ROLE wardenx_app");
+        await fresh.query("SET ROLE chartwarden_app");
         await fresh.query("SELECT set_config('app.current_org_id', $1, false)", [ORG_A]);
         const r = await fresh.query("SELECT count(*)::int AS n FROM qapi_program WHERE id = $1", [
           a.qapiProgram,

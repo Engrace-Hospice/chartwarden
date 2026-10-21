@@ -152,7 +152,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * statement to the acting org (a destruction certificate can never reach across tenants). Deletes the
  * partitioned `order_record` parent via the partition-key predicate the route tier uses
  * (`patient_id` + `created_at < retentionAsOf`) — the row-delete arm of D12. The DETACH+DROP arm is a
- * DDL maintenance path that needs table-owner privileges the RLS-scoped `wardenx_app` role does not
+ * DDL maintenance path that needs table-owner privileges the RLS-scoped `chartwarden_app` role does not
  * hold, so this store always reports `partitionsDropped: 0`; a wholly-erasable partition is still fully
  * emptied row-by-row, which is destruction-equivalent (the partition shell holds no PHI).
  * Any statement the database refuses (FK restrict from a surviving row, RLS, permissions) THROWS and
@@ -237,7 +237,7 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
 
         // F-202 — the attested-recovery ledger and its two-person requests. Both carry the lab-contact NAME and the lab's
         // reference for a patient's order, so a destruction certificate must reach them (they were missing from the
-        // destruction role's grants, so erasing an order left them behind). Runs as `wardenx_destruction`: the ledger's
+        // destruction role's grants, so erasing an order left them behind). Runs as `chartwarden_destruction`: the ledger's
         // append-only trigger admits a DELETE from a member of that role and from nobody else.
         const transmissionAttestations =
           orderIds.length === 0

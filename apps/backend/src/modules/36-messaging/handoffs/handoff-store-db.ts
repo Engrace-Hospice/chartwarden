@@ -2,7 +2,7 @@
 // and the append-only `clinical_handoff_event` history.
 //
 // Writes take the caller's `tx` (the service owns the transaction and publishes the outbox event inside it). Every
-// statement names the organization on top of RLS. `wardenx_app` may UPDATE only the status columns and has no DELETE.
+// statement names the organization on top of RLS. `chartwarden_app` may UPDATE only the status columns and has no DELETE.
 // The pair index (one open handoff per sender and recipient) is the idempotency arbiter for an offer; the one-pending
 // index makes a work item belong to ONE open handoff; the closed-row and item-guard triggers are the backstop for the
 // transition rules. Resolution takes the handoff row FOR UPDATE first, so an accept racing the expiry tick serialises

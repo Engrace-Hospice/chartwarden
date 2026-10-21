@@ -10,7 +10,7 @@
  * This suite also proves the applier actually WORKS: before F-227 it threw `DEATH_CERTIFIER_INVALID` (it called
  * `discharge({reason:'death'})` with no certifier) and would have failed the catalog on `m6.discharge.death`.
  *
- * Nothing is stubbed: the REAL applier consumer and write service run as the NOBYPASSRLS `wardenx_app` role,
+ * Nothing is stubbed: the REAL applier consumer and write service run as the NOBYPASSRLS `chartwarden_app` role,
  * the REAL catalog-validating publisher writes the outbox, the REAL dispatcher delivers to M16's real consumers.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6-m16:external-death-cosign:live
@@ -66,7 +66,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -246,7 +246,7 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
           [u, org],
         );
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     registerSeam("DeathDischargeReader", createDeathDischargeReader(handle.db));
@@ -465,7 +465,7 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
   it("a second cosign, a stale version and another tenant are all refused", async () => {
     const { admissionId } = await externalDeath(ORG_A, today());
     const row = await dischargeRow(admissionId);
-    // cross-tenant: org B's context cannot see org A's discharge (RLS as wardenx_app) -> not found
+    // cross-tenant: org B's context cannot see org A's discharge (RLS as chartwarden_app) -> not found
     await expect(
       svc.cosignDischarge(ORG_B, row?.id as string, COSIGNER, Number(row?.version), DIRECTOR),
     ).rejects.toThrow();

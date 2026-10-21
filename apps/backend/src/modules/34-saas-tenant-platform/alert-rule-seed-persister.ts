@@ -3,7 +3,7 @@
 // Boot-populate the `alert_rule` platform-default rows (organization_id IS NULL) M34 contributes,
 // through the SAME migration-0193 `alert_rule_platform_upsert` SECURITY DEFINER function M36's own
 // seed persister uses (see ../36-messaging/alert-rule-seed-persister.ts for why a plain Drizzle upsert
-// cannot write a NULL-org row under `wardenx_app`).
+// cannot write a NULL-org row under `chartwarden_app`).
 //
 // GAP-057: the seed is COMPLETE. M34's two resolvers (`compliance_officer_for_tenant`,
 // `platform_security_owner`) are registered onto the emitter's resolver registry at boot (see

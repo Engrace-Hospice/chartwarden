@@ -8,7 +8,7 @@
  *
  * WX-PR-024: `m34PlatformBypassAuditor` calls `auditPlatformEvent` (a raw `tx.execute(sql\`SELECT
  * audit_writer_insert_platform_event(...)\`)` call to the migration-0187 SECURITY DEFINER function),
- * NOT the plain `audit()` helper's `tx.insert(...)` — `wardenx_app` holds no INSERT policy admitting a
+ * NOT the plain `audit()` helper's `tx.insert(...)` — `chartwarden_app` holds no INSERT policy admitting a
  * null-org `audit_event` row under real RLS. The mock tx below implements `.execute()` and reads the
  * bound parameters back off the drizzle `SQL` object's `queryChunks` (alternating raw-string chunks and
  * bound values, in the exact order they appear in the template) — an internals-coupled but minimal way

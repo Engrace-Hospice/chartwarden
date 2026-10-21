@@ -1,7 +1,7 @@
 /**
  * GAP-099 (#248) — LIVE Postgres proof that M1's PLATFORM-scoped consumer for M33's replica-lag probe
  * (`buildM1LagProbeStatusConsumer`) actually flips the shared `system_status` row, for real, as the
- * NOBYPASSRLS `wardenx_app` role (`system_status` carries no RLS at all — this proves the role's plain
+ * NOBYPASSRLS `chartwarden_app` role (`system_status` carries no RLS at all — this proves the role's plain
  * GRANT is sufficient, not that a policy predicate scopes it).
  *
  * `m33.lag.exceeded`/`.recovered` are emitted with `organizationId: null` (`m33-jobs.ts`) — the dispatcher
@@ -26,7 +26,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 describe.skipIf(!DB_URL)("GAP-099 — M1's lag-probe system-status consumer — LIVE Postgres", () => {
   let admin: Client;
@@ -56,7 +56,7 @@ describe.skipIf(!DB_URL)("GAP-099 — M1's lag-probe system-status consumer — 
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     consumer = buildM1LagProbeStatusConsumer({ db: handle.db });
   }, 120_000);

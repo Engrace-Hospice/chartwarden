@@ -5,7 +5,7 @@
 // PLATFORM-SHARED, NOT ORG-SCOPED (§3.3 / System Design §4.6). There is deliberately no
 // organization_id: the catalog is world-readable WITHIN the platform because a tenant must be able to
 // see WHICH capabilities exist in order to opt in to one, and the per-tenant answer lives in
-// `ai_tenant_opt_in_record`. Writes are `wardenx_admin` only, so a tenant can never promote a capability
+// `ai_tenant_opt_in_record`. Writes are `chartwarden_admin` only, so a tenant can never promote a capability
 // for everyone. The table is listed in check-tenancy.ts's NON_ORG_SCOPED set with that justification.
 //
 // `default_backend_key` / `allowed_backend_keys` / `fallback_chain_keys` are KEYS, not FKs, and that is

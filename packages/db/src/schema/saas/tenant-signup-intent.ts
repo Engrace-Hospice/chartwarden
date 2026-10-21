@@ -3,7 +3,7 @@
 // or `organization` exists. M34-F02 / ADR-0010: this table is DELIBERATELY org-less — it is
 // genuinely PRE-ORGANIZATION (the org/tenant_account does not exist until the intent is
 // provisioned), the one legitimate org-less exemption (§3.10): NOT tenant-scoped, so the canonical
-// `app.org_id` RLS predicate does not apply. RLS denies `wardenx_app` SELECT entirely; only
+// `app.org_id` RLS predicate does not apply. RLS denies `chartwarden_app` SELECT entirely; only
 // `tenant_platform_writer` reads it. On provisioning, the resulting `tenant_account.organization_id`
 // is bridged via `tenant_account_id` (cross-module, app-validated — M34 never imports the
 // tenant_account schema across this org-less boundary; plain uuid, no SQL FK). RLS + grants land

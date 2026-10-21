@@ -5,7 +5,7 @@
 // `redemption_count` never moved. The promo row is locked FOR UPDATE for the whole transaction, so two
 // concurrent redemptions of a one-use code serialise on the lock and the second sees the incremented count.
 //
-// The caller MUST run this on the PLATFORM tx: `wardenx_app` holds SELECT only on `promo_code` (a catalog
+// The caller MUST run this on the PLATFORM tx: `chartwarden_app` holds SELECT only on `promo_code` (a catalog
 // shared across tenants — migration 0143), so neither the row lock nor the count increment can run under
 // a tenant connection. The tenant method therefore derives its subscription server-side from the verified
 // actor org and redeems here under the platform runner.

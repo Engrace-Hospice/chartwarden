@@ -40,7 +40,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "99999999-9999-9999-9999-999999999999";
 
 describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
@@ -352,7 +352,7 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
     expect(backupDelivery?.channel).toBe("email");
   });
 
-  // ── M14 §2.7/D8 — the carry-forward COMPLIANCE alert through the REAL emitter + RLS as wardenx_app ──────────
+  // ── M14 §2.7/D8 — the carry-forward COMPLIANCE alert through the REAL emitter + RLS as chartwarden_app ──────────
   it("m14.action_item.carry_forward (the crossing) raises ONE critical typed alert to the real compliance/supervisor/admin/coordinator audience, tenant-isolated, PHI-free, idempotent on redelivery", async () => {
     const ORG2 = "88888888-8888-8888-8888-888888888888";
     await admin.query(
@@ -482,7 +482,7 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
     ).toBe(0);
   });
 
-  // ── M14 §4.10 — the REMAINING typed IDG alerts through the REAL emitter + RLS as wardenx_app ────────────────
+  // ── M14 §4.10 — the REMAINING typed IDG alerts through the REAL emitter + RLS as chartwarden_app ────────────────
   it("m14 typed alerts (packets ready / action item / non-quorate / review clock / override): real derived attendee roster + tiered audience, tenant-isolated, idempotent, PHI-free", async () => {
     const P = "77777777-7777-7777-7777-777777777777"; // primary tenant for this test (fresh: no roles from earlier tests)
     const O = "66666666-6666-6666-6666-666666666666"; // the OTHER tenant (isolation twin)

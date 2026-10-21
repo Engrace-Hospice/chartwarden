@@ -3,7 +3,7 @@
 //
 // `legal_hold` is M4-OWNED (not HELPER_ONLY, architecture/module-manifest.ts) so this file talks to
 // the table directly over Drizzle + `withOrgContext`, unlike `audit_event` itself. What a hold
-// PHYSICALLY does: `wardenx_app` holds no UPDATE/DELETE on `audit_event` (migration 0001's
+// PHYSICALLY does: `chartwarden_app` holds no UPDATE/DELETE on `audit_event` (migration 0001's
 // append-only guarantee) — a hold does not, and cannot, flip a column on every matching row. It
 // works the same way the eraser already does (`createDrizzleAuditEraserPorts.legalHoldFor`,
 // erasers/audit-eraser.ts): the hold's `criteria` is checked AT THE POINT a destruction/erasure

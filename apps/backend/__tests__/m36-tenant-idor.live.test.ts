@@ -1,5 +1,5 @@
 /**
- * M36 WP 1.7 — tenant & IDOR proof, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role (+ a real Valkey for the socket half).
+ * M36 WP 1.7 — tenant & IDOR proof, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role (+ a real Valkey for the socket half).
  *
  * An adversarial pass over every M36 route and the realtime gateway. Two organisations (A, B); inside A, members and a
  * non-member of private channels (a DM and a `location` channel). Everything runs on the real route stack: the real
@@ -11,7 +11,7 @@
  *                       patient / user id gets the SAME status and body shape as for a random uuid, and 4xx never 2xx.
  *   3. NO LEAK          no error carries A's body text, names, or user ids.
  *   4. NO WRITE         the whole battery leaves every M36 table, audit_event and outbox_event byte-identical.
- *   5. RLS AT THE DB    as `wardenx_app` with app.org_id = B: zero A rows readable, A-org INSERT / UPDATE rejected.
+ *   5. RLS AT THE DB    as `chartwarden_app` with app.org_id = B: zero A rows readable, A-org INSERT / UPDATE rejected.
  *   6. SOCKETS          (needs CHARTWARDEN_TEST_REDIS_URL) a B socket and a non-member socket receive no hint for A's channels
  *                       and cannot choose a room.
  *
@@ -115,7 +115,7 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROUTES_DIR = join(__dirname, "../src/modules/36-messaging/routes");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORIGIN = "https://app.wardenx.test";
 const SECRET_BODY = "WP17-SECRET-BODY-must-never-appear-in-an-error";
@@ -184,7 +184,7 @@ const ROUTES: Record<string, Verdict> = {
   // identical `{state:"unavailable"}` (asserted below), and the source seam is never consulted for them.
   "GET /api/v1/messaging/clinical-links/:linkId/resolve": { kind: "idor" },
   // WP 3.3 SBAR policy: an org-scoped singleton with no id to guess; org comes from the request context only (two orgs'
-  // views and writes are compared below, and the policy table's FORCE RLS is attacked as wardenx_app in m36-sbar.live).
+  // views and writes are compared below, and the policy table's FORCE RLS is attacked as chartwarden_app in m36-sbar.live).
   "GET /api/v1/messaging/sbar/policy": { kind: "scoped" },
   "PUT /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
   "DELETE /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
@@ -318,7 +318,7 @@ const ROUTES: Record<string, Verdict> = {
     reason: GLOBAL_SEARCH_SETTINGS_SUITE,
   },
   // WP 5.5 (ADR-0083): a session is acted on by its own owner (or, for the officer, within the officer's organisation); a foreign, other-tenant,
-  // unknown and already-revoked id are one 404, asserted with real Better Auth sessions as wardenx_app in m36-session-device-controls.live.
+  // unknown and already-revoked id are one 404, asserted with real Better Auth sessions as chartwarden_app in m36-session-device-controls.live.
   "GET /api/v1/devices": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
   "DELETE /api/v1/devices/:id": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
   "GET /api/v1/messaging/governance/sessions": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
@@ -3056,7 +3056,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   });
 
   // ── 5. RLS at the database, as the app role ────────────────────────────────────────────────────────────────
-  describe("RLS as the real wardenx_app role with app.org_id = B", () => {
+  describe("RLS as the real chartwarden_app role with app.org_id = B", () => {
     async function asOrgB<T>(fn: (c: Client) => Promise<T>): Promise<T> {
       const c = new Client({ connectionString: appUrl });
       await c.connect();

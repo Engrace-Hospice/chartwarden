@@ -7,7 +7,7 @@
  * REAL gap exactly where it always was: M21's own spec (D7) says a caregiver signature is "optional via
  * M22's signature flow" — a mechanism that was never going to exist. This suite proves the real, minimal
  * replacement: `buildDrizzleM21WriteService(...).captureCaregiverSignature`, run as the REAL NOBYPASSRLS
- * `wardenx_app` role (not a superuser — see `_live-app-role.ts`), against a real Postgres migrated from
+ * `chartwarden_app` role (not a superuser — see `_live-app-role.ts`), against a real Postgres migrated from
  * scratch through 0268.
  *
  * Proves:
@@ -41,7 +41,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -182,7 +182,7 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
       )
     ).rows[0].id as string;
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     readService = buildDrizzleM21ReadService(handle.db);
     writeService = buildDrizzleM21WriteService(handle.db, readService, {});
@@ -331,7 +331,7 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
   });
 
   // GAP-064 — a dispatch ships from the Location STORED on its supply request; a body naming another
-  // Location is refused (422) before eligibility, par-stock or any insert, as the real wardenx_app role.
+  // Location is refused (422) before eligibility, par-stock or any insert, as the real chartwarden_app role.
   it("GAP-064: createDispatch refuses a body locationId that is not the request's stored Location and writes no dispatch row", async () => {
     const req = await seedRequest({
       organizationId: ORG_A,

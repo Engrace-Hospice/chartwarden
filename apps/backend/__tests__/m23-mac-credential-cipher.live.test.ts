@@ -4,7 +4,7 @@
  * `POST /api/v1/billing/mac-credentials` answered 503 "the secret-cipher port is not bound" because the composition root
  * never bound `ports.secretCipher`. This drives the REAL route (Fastify + the real guards, a stand-in only for the M3
  * provider-scope and step-up predicates, as in m23-visit-charge-routes.test.ts) over the REAL write/read services on the
- * NOBYPASSRLS `wardenx_app` role and the REAL cipher built from the same env factory the composition root uses, and proves:
+ * NOBYPASSRLS `chartwarden_app` role and the REAL cipher built from the same env factory the composition root uses, and proves:
  *   - 201 on create, the stored column is an AES-GCM envelope (not the plaintext, not recoverable without the key),
  *     `client_secret_dek_version` is stamped, and neither the response, a re-read, nor the audit trail carry the secret;
  *   - the stored value round-trips through the cipher's decrypt (what the MAC submit worker will call) and only under
@@ -39,7 +39,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const OTHER_ORG = "22222222-2222-2222-2222-222222222222";
 const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

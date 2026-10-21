@@ -1,6 +1,6 @@
 /**
  * F-188 (#248) — M29's outbound operator alerts, proven to reach a PERSON on the real M36 emitter over real Postgres
- * (the real NOBYPASSRLS `wardenx_app` role, the real platform-default `alert_rule` seed, the real `alert` /
+ * (the real NOBYPASSRLS `chartwarden_app` role, the real platform-default `alert_rule` seed, the real `alert` /
  * `notification_delivery` persistence).
  *
  * Before F-188 three independent defects meant no outbound alert ever notified anyone, each proven live on this same
@@ -34,7 +34,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "99999999-9999-9999-9999-999999999999";
 const ORG_B = "88888888-8888-8888-8888-888888888888";
 const FEED = "11111111-1111-1111-1111-111111111111";

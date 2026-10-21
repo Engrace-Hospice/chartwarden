@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
  * migration 0370 added, and the migration's CHECK constraints refuse a place of death on a non-death and a
  * care setting on a transfer-in.
  *
- * Seeds as the superuser; drives every write and the seam read as the NOBYPASSRLS `wardenx_app` role.
+ * Seeds as the superuser; drives every write and the seam read as the NOBYPASSRLS `chartwarden_app` role.
  * Gated on a live DB so the default `bun run test` stays green:
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:claim-discharge-seam:live
  */
@@ -40,7 +40,7 @@ import { seedPhysicianRole } from "./_physician-signer";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";

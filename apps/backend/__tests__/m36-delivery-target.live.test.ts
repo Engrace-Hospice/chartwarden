@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.8 (ADR-0075) - the deep-link resolver, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.8 (ADR-0075) - the deep-link resolver, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `messaging.read`, the DB reader, the DB channel check, read-audit) over alert and
  * delivery rows whose payloads come from the REAL consumer (`buildM36AckNotificationsConsumer`), so the payload keys the reader

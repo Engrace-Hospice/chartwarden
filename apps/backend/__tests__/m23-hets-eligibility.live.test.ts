@@ -1,5 +1,5 @@
 /**
- * M23 §4.4 HETS 270/271 eligibility — END TO END over real Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * M23 §4.4 HETS 270/271 eligibility — END TO END over real Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real M5 `MbiUnlockReader` reads the patient's Medicare FFS `patient_payer.subscriber_id` (the MBI) under
  * RLS → the real HETS port builds the 270 → the fixture-backed SANDBOX transport answers with a synthetic 271
@@ -40,7 +40,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -58,7 +58,7 @@ const MBIS = {
   carry: "5EG4TE5MK77",
 } as const;
 
-describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   const providerOf: Record<string, string> = {};
@@ -95,7 +95,7 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
     return id;
   }
 
-  /** Run the real worker body for one patient inside the worker's own org-context tx (as wardenx_app). */
+  /** Run the real worker body for one patient inside the worker's own org-context tx (as chartwarden_app). */
   async function refresh(org: string, patientId: string): Promise<void> {
     await withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
       runEligibilityRefresh(tx as never, deps, {
@@ -317,7 +317,7 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       (await read.getHospicePeriods(actorFor(ORG_A), patient.carry as string)).rhcCarryOver,
     ).toBeNull();
 
-    // Act 2: the claim path — the same merge inside an org-scoped tx as wardenx_app, then the HIPPS split.
+    // Act 2: the claim path — the same merge inside an org-scoped tx as chartwarden_app, then the HIPPS split.
     const carry = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
       readClaimRhcCarryOver(
         tx as never,

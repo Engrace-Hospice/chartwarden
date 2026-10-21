@@ -1,5 +1,5 @@
 /**
- * GAP-010 — a break-glass invocation DURABLY notifies Compliance, LIVE Postgres as `wardenx_app`.
+ * GAP-010 — a break-glass invocation DURABLY notifies Compliance, LIVE Postgres as `chartwarden_app`.
  *
  * The production mount bound `createInMemoryComplianceNotifier` (a process-local array nothing read) and M3
  * published none of its spec'd outbox events. Now the break-glass store publishes `m3.breakglass.invoked`
@@ -30,7 +30,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-111111a01001";
 const ORG_B = "11111111-1111-4111-8111-111111b01001";
@@ -100,7 +100,7 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO "user" (id,email) VALUES ($1,'u@g010.test'),($2,'c@g010.test')`,
         [USER, COSIGNER],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       store = createDbBreakGlassStore(handle.db, publisher);
     }, 180_000);
@@ -180,7 +180,7 @@ describe.skipIf(!DB_URL)(
       );
     });
 
-    it("org B cannot read org A's outbox row (RLS as wardenx_app)", async () => {
+    it("org B cannot read org A's outbox row (RLS as chartwarden_app)", async () => {
       const event = await asUser(USER, invoke);
       const asOrgB = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await asOrgB.connect();

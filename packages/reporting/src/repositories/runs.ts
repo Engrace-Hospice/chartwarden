@@ -142,11 +142,11 @@ export class ReportRunRepository {
    * Insert an MV-refresh row (defaults to `queued`). Returns the inserted row.
    *
    * A NULL `organizationId` (a genuinely platform-wide refresh — no single tenant it belongs to)
-   * does NOT go through the plain Drizzle insert below: `wardenx_app` has no RLS policy admitting an
+   * does NOT go through the plain Drizzle insert below: `chartwarden_app` has no RLS policy admitting an
    * `organization_id IS NULL` row (WX-PR-024 — same ADR-0010 D2/D3 reasoning `outbox_event`'s
    * migration 0186 already documents). It calls the SECURITY DEFINER
    * `report_writer_insert_platform_report_run` function instead (migration 0188) — owned by
-   * `report_writer`, EXECUTE granted directly to `wardenx_app`, touches `organization_id IS NULL` rows
+   * `report_writer`, EXECUTE granted directly to `chartwarden_app`, touches `organization_id IS NULL` rows
    * only (hardcoded in the function body, never a caller-supplied parameter).
    */
   async createMvRun(values: schema.NewReportRun): Promise<schema.ReportRun> {
@@ -211,12 +211,12 @@ export class ReportRunRepository {
    * first — the only shape that can ever match an ORG-SCOPED row. A platform-wide
    * (`organization_id IS NULL`) row can never satisfy `report_run_org`'s `organization_id =
    * current_setting('app.org_id', true)::uuid` predicate (WX-PR-024), so that UPDATE silently matches
-   * zero rows for one when the caller holds an ordinary base UPDATE grant (`wardenx_app`); the
+   * zero rows for one when the caller holds an ordinary base UPDATE grant (`chartwarden_app`); the
    * fallback then calls the SECURITY DEFINER `report_writer_update_platform_report_run` function
    * (migration 0188), which scopes explicitly to `organization_id IS NULL` and raises if the row
    * genuinely doesn't exist there either.
    *
-   * A DIFFERENT platform credential (WX-PR-025's `wardenx_platform`, least-privilege by design — no
+   * A DIFFERENT platform credential (WX-PR-025's `chartwarden_platform`, least-privilege by design — no
    * base UPDATE grant on `report_run` at all, only EXECUTE on the platform-writer function) doesn't
    * silently return zero rows on the plain path — it throws `insufficient_privilege` (SQLSTATE
    * 42501) outright, which ALSO poisons the rest of the enclosing transaction ("current transaction

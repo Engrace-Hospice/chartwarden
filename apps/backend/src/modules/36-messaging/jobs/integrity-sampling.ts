@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 // the transaction's start). Those fall back to the rotation and the random pass.
 //
 // The rotation cursor lives in the previous `m36.hash_verify.run` audit row (no table): read through the audit query
-// helper as `wardenx_app`, validated strictly, and a missing or malformed cursor RESTARTS the rotation and says so.
+// helper as `chartwarden_app`, validated strictly, and a missing or malformed cursor RESTARTS the rotation and says so.
 import { createDbAuditQuery } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HashVerifySampleRow } from "@chartwarden/messaging";
@@ -149,7 +149,7 @@ function parseStartedAt(raw: unknown, now: Date): Date | null {
 
 /**
  * The previous run's end cursors and start time, from its `m36.hash_verify.run` audit row (a plain org-scoped SELECT
- * as `wardenx_app` through the audit query helper; reads write no audit row). Only the system actor's rows count.
+ * as `chartwarden_app` through the audit query helper; reads write no audit row). Only the system actor's rows count.
  * No row at all is a first run; a row whose cursor is unusable restarts the rotation and reports why.
  */
 export async function readPreviousRun(db: Db, orgId: string, now: Date): Promise<PreviousRun> {

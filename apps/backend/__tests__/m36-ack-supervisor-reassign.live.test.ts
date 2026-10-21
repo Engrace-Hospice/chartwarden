@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0078 - the reassign picker (G-6) and the supervisor reassign (G-2), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 ADR-0078 - the reassign picker (G-6) and the supervisor reassign (G-2), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, DB ack store, the migration-1126 update guard, the audit triggers, the M1 idempotency
  * store, the real catalog-validating outbox publisher, the real notification consumer) over a supervisor who is NOT a channel member.

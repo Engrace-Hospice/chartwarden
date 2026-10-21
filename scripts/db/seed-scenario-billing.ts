@@ -35,7 +35,7 @@
  *           no-API-path tables. The existing seeded `payer` row for `kind='medicaid'` is North Carolina
  *           (mismatched with the Oregon adapter), so this also DB-direct-seeds one Oregon Medicaid
  *           `payer` row — `payer` is M40 MDM reference data with no write route at all (RLS grants
- *           `wardenx_app` SELECT only), the same class as `seed-org-structure.ts`'s provider_entity.
+ *           `chartwarden_app` SELECT only), the same class as `seed-org-structure.ts`'s provider_entity.
  *       (b) `state_medicaid_trading_partner_credential` for the PE/OR — DOES have a real route
  *           (`POST /state-medicaid-trading-partner-credentials`), used here, but it is ALSO
  *           `STEP_UP`-gated, hitting the exact same unreachable-step-up-route gap as `submitClaim`

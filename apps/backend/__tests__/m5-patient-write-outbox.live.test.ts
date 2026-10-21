@@ -1,6 +1,6 @@
 /**
  * GAP-016 — the production M5 PatientRouteService publishes m5.patient.* from its writes, against REAL
- * Postgres as the NOBYPASSRLS `wardenx_app` role and through the REAL catalog-validating outbox
+ * Postgres as the NOBYPASSRLS `chartwarden_app` role and through the REAL catalog-validating outbox
  * publisher (`buildTxOutboxPublisher`, callerModule `m5`). Proves, per write, that exactly the spec'd event
  * lands in `outbox_event` in the same transaction with the payload shape the live M12 consumers decide on
  * (`organizationId` + `patientId`), that a rolled-back write leaves no event, and that RLS hides another
@@ -24,10 +24,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";

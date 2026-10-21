@@ -10,7 +10,7 @@
  *      sat `pending` on the 30-minute deferred clock forever.
  *   2. M40's canonical tables had NO WRITE PATH AT ALL. Migration 0019 created the `mdm_canonical_writer`
  *      role, its policies and its grants, and stated in prose that "the SECURITY DEFINER functions in
- *      packages/mdm own that grant" — those functions were never written, and `wardenx_app` holds SELECT
+ *      packages/mdm own that grant" — those functions were never written, and `chartwarden_app` holds SELECT
  *      and nothing else. `external_physician` had been read-only since the day it landed.
  *   3. `m40.canonical.*` was in no event catalog, so M40 could not have announced a change it could not
  *      make.
@@ -18,7 +18,7 @@
  * Only the fourth piece — the §4.7 decision logic in `@chartwarden/mdm` — was ready, shipped and unit-tested
  * since M40-T09 and waiting on all three of the above.
  *
- * This suite runs the WHOLE chain as the NOBYPASSRLS `wardenx_app` role: publish a platform event through
+ * This suite runs the WHOLE chain as the NOBYPASSRLS `chartwarden_app` role: publish a platform event through
  * the real validating publisher, tick the real dispatcher with the real M40 platform bindings, and assert
  * the canonical actually moved. A missing GRANT, a missing policy or a missing function fails it.
  *
@@ -38,7 +38,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const EXTRA_ROLES = ["report_writer", "mdm_canonical_writer"];
 
 const ORG_PREFERRED = "00000000-0000-4000-8000-0000000099a1";
@@ -109,7 +109,7 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
       options: { log: () => {}, pollIntervalMs: 10_000 },
     });
 
-  /** Publish a platform-wide (`organization_id IS NULL`) event as `wardenx_app` would at runtime. */
+  /** Publish a platform-wide (`organization_id IS NULL`) event as `chartwarden_app` would at runtime. */
   async function publishPlatform(eventName: string, payload: unknown, aggregateId: string) {
     const publisher = publisherFor("m29");
     await handle.db.transaction(async (tx) => {
@@ -168,7 +168,7 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
       );
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 
@@ -206,7 +206,7 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
   });
 
   // ── the privilege floor: the doors this all depends on must be the ONLY doors ────────────────────
-  it("refuses a direct canonical write from wardenx_app (§3.6 — the writer functions are the only door)", async () => {
+  it("refuses a direct canonical write from chartwarden_app (§3.6 — the writer functions are the only door)", async () => {
     // Drizzle wraps the driver error ("Failed query: …") and keeps the server's message on `.cause`, so
     // matching the top-level message would pass for ANY failed query — including a syntax error.
     const err = await handle.db
@@ -222,7 +222,7 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
     expect(`${cause?.message ?? err}`).toMatch(/permission denied/i);
   });
 
-  it("refuses a direct org-less receipt read/write from wardenx_app", async () => {
+  it("refuses a direct org-less receipt read/write from chartwarden_app", async () => {
     // The `outbox_consumer_receipt_org` policy keys on `app.org_id`; a NULL-org row satisfies no
     // predicate it can express. Without migration 0201's functions, delivery could not dedup at all.
     await admin.query(

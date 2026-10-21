@@ -2,7 +2,7 @@
  * GAP-164 / GAP-163 - the M34 platform-ops read/skip service and the tenant account + feature-flag service, LIVE
  * Postgres, on the REAL runtime roles.
  *
- * The platform service runs on the BYPASSRLS `wardenx_platform_login` built by `scripts/db/provision-runtime-roles.ts`
+ * The platform service runs on the BYPASSRLS `chartwarden_platform_login` built by `scripts/db/provision-runtime-roles.ts`
  * itself (executed here), so a missing production grant - the `onboarding_task` UPDATE this work added - fails in this
  * suite, not in prod. It pins what a unit test cannot: the cross-tenant DSAR keyset cursor pages microsecond-distinct
  * rows without skipping or duplicating any (the JS-Date-vs-timestamptz trap), the skip UPDATE asserts its row count and
@@ -25,14 +25,14 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_destruction_login",
-  "wardenx_destruction",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_destruction_login",
+  "chartwarden_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const JOB_ID = "m34-ops-live-test";
@@ -136,7 +136,7 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
     await dsar(ORG_B, "2026-07-01 10:00:00.000100+00", "requested");
 
     platform = createDbClient({
-      connectionString: urlAs("wardenx_platform_login", PLATFORM_PASSWORD),
+      connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
     });
     registerPlatformJob(JOB_ID);
     app = createDbClient({

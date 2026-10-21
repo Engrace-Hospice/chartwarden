@@ -44,7 +44,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-11111111062a";
 const USER = "33333333-3333-3333-3333-33333333062a";
 const MD = "55555555-5555-5555-5555-55555555062a";
@@ -210,7 +210,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
                 ($3,$2,'A Hospice Two','341236','3333333333','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A, PROVIDER_ENTITY_2],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
     const providerEntityOrgCheck = {

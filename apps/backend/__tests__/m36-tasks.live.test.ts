@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.4 - communication tasks, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.4 - communication tasks, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing) over the
  * REAL catalog-validating outbox publisher (not NOOP_OUTBOX), so every payload is checked against the catalog schema.
@@ -9,7 +9,7 @@
  *   2. LIFECYCLE    accept / complete / cancel / reassign through the routes; the clinical close-reason rule; 403 and 404.
  *   3. TENANCY      org B reads and mutates nothing of org A (HTTP and raw SQL); a cross-org insert is rejected.
  *   4. CHECKS       the DB itself refuses a clinical close without a reason, a non-clinical patient task, etc.
- *   5. GRANTS       wardenx_app cannot DELETE either table, cannot UPDATE identity columns, event rows are append-only.
+ *   5. GRANTS       chartwarden_app cannot DELETE either table, cannot UPDATE identity columns, event rows are append-only.
  *   6. AUDIT        trigger rows land for the task and its events; the patient id is never copied; the read event lands.
  *   7. OFFBOARDING  revoke / deactivate => creator, then care team, else needs_owner; redelivery converges; suspend no-op.
  *   8. CASCADE      a hard-deleted message removes its tasks and events.
@@ -52,11 +52,11 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_destruction",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
 ];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000e0001";
@@ -285,7 +285,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
     third = await seedUser("third", ORG_A);
     outsider = await seedUser("outsider", ORG_A);
     orgBUser = await seedUser("b", ORG_B);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     appConn = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await appConn.connect();
@@ -487,7 +487,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
     });
   });
 
-  describe("tenancy (as wardenx_app)", () => {
+  describe("tenancy (as chartwarden_app)", () => {
     it("lets org B read and mutate nothing of org A over HTTP", async () => {
       const { taskId } = await newTask(dm, creator, assignee);
       expect((await getTask(orgBUser, taskId, ORG_B)).statusCode).toBe(404);
@@ -550,7 +550,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
       ).rejects.toThrow(/communication_task_reason_only_when_closed/);
     });
 
-    it("refuses any update of a closed task, even as wardenx_app via raw SQL", async () => {
+    it("refuses any update of a closed task, even as chartwarden_app via raw SQL", async () => {
       const { taskId } = await newTask(dm, creator, assignee);
       expect((await act(assignee, taskId, "complete", { reason: "action_taken" })).statusCode).toBe(
         200,
@@ -579,7 +579,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
       expect(rows).toHaveLength(1);
     });
 
-    it("gives wardenx_app no DELETE and no UPDATE of identity columns, and keeps events append-only", async () => {
+    it("gives chartwarden_app no DELETE and no UPDATE of identity columns, and keeps events append-only", async () => {
       const { taskId } = await newTask(dm, creator, assignee);
       const denied = async (sql: string) => {
         await appConn.query("BEGIN");

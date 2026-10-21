@@ -1,6 +1,6 @@
 /**
  * Demo golden path — `POST /referrals/:id/create-patient`, proven against real Postgres as the
- * NOBYPASSRLS `wardenx_app` role.
+ * NOBYPASSRLS `chartwarden_app` role.
  *
  *  1. A duplicate MBI inside one org is a typed 409 (not a 500), says "possible duplicate patient", and
  *     reveals neither the existing patient nor the MBI; the same MBI in ANOTHER org still succeeds
@@ -47,7 +47,7 @@ import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const CREATOR = "33333333-3333-3333-3333-333333333333";
@@ -127,7 +127,7 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
         [ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     // The REAL CaseloadProvider over `patient_assignment`, as production boot registers it.
     const caseloadStore = createDrizzleCaseloadStore(handle.db);

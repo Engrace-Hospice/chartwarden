@@ -411,7 +411,7 @@ import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
  * `audit: db` is correct rather than a shortcut: `AuditExecutor` is structurally just
  * `insert(table).values(row)` (packages/audit/src/audit.ts), which the Drizzle client satisfies, and
  * `audit()` is documented as "the only sanctioned path to audit_event". Migration 0119 is what makes
- * it actually work — `wardenx_app` held the INSERT grant but no INSERT POLICY, so under production RLS
+ * it actually work — `chartwarden_app` held the INSERT grant but no INSERT POLICY, so under production RLS
  * every application-level audit write was refused with "new row violates row-level security policy".
  *
  * `collaborators` is DURABLE (GAP-115 follow-up, migration 0521 `collaborator_link`): the external-collaborator and

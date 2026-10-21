@@ -1,5 +1,5 @@
 /**
- * M36 WP 5.9 (ADR-0084, PROPOSED) - workforce offboarding (Workflow F), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role and a LIVE Valkey.
+ * M36 WP 5.9 (ADR-0084, PROPOSED) - workforce offboarding (Workflow F), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
  *
  * The production composition, not a shim: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL
  * offboarding routes (permission, supervisor-reassign keys, fresh step-up), the REAL session revoke (ADR-0083), the REAL ack service and its
@@ -68,12 +68,12 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "33333333-3333-4333-8333-3333000a9501";

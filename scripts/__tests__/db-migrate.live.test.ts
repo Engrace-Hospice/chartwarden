@@ -27,11 +27,11 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 // Every CREATE ROLE across the migration corpus (`grep -rh "CREATE ROLE" packages/db/migrations`),
 // so resetSchema() can drop them all before each fresh-database assertion below.
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
-  "wardenx_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+  "chartwarden_destruction",
   "mdm_canonical_writer",
   "billing_platform_loader",
   "cap_platform_loader",

@@ -1,6 +1,6 @@
 /**
  * M36 WP 2.7b chunk C2 (ADR-0058, Proposed) - the global search INDEX WRITER, LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role (migrations through 1091): lifecycle through the REAL catalog-validating publisher and the REAL outbox
+ * `chartwarden_app` role (migrations through 1091): lifecycle through the REAL catalog-validating publisher and the REAL outbox
  * dispatcher, FOR SHARE races, padding, reconcile/rebuild, OFF purge, OFF-then-ON, the org-NULL-only platform kill switch,
  * the fail-closed key provider and tenancy. Nothing here enables search anywhere: flags are set per test on a private database.
  *
@@ -68,7 +68,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0278";
 const ORG_B = "22222222-2222-4222-8222-2222000f0278";
 const VERSION = "legacy";
@@ -317,7 +317,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     userB = await seedUser("b", ORG_B);
     channelA = await seedChannel(ORG_A, userA);
     channelB = await seedChannel(ORG_B, userB);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
 

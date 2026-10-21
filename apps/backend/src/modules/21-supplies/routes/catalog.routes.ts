@@ -9,7 +9,7 @@
 //
 // TWO WRITE ROUTES ARE PLATFORM-ONLY (§4.3): `supplies.item.write` and `supplies.item.retire`.
 // `supply_item` carries no `organization_id` at all (D11) and its RLS policy grants writes only to
-// `wardenx_admin`, so a tenant session holding the key would still be refused by the database. The
+// `chartwarden_admin`, so a tenant session holding the key would still be refused by the database. The
 // permission is the first gate and the grant is the backstop — deliberately two, because a catalog write
 // that leaked into a tenant would corrupt every other tenant's SKU list.
 //

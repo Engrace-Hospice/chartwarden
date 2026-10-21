@@ -2,7 +2,7 @@
  * GAP-038 - the inpatient cap's day ledger, end to end, LIVE Postgres.
  *
  * Proves, through the REAL outbox dispatcher over the REAL catalog-validating publisher, as the NOBYPASSRLS
- * `wardenx_app` role, with M23's remittance consumer and M26's upstream consumer both live:
+ * `chartwarden_app` role, with M23's remittance consumer and M26's upstream consumer both live:
  *   1. an 835 payment moves a claim to PAID, M23 announces its day lines and M26 counts them (numerator AND
  *      denominator);
  *   2. a PAID claim driven to VOIDED through the REAL claim state machine (TOB 818) takes its days back out
@@ -40,7 +40,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111138";
 const ORG_B = "22222222-2222-2222-2222-222222222238";
@@ -234,7 +234,7 @@ describe.skipIf(!DB_URL)("GAP-038 cap day ledger - heal, reverse, backfill - LIV
     );
     periodId = rows[0].id as string;
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const catalog = buildBootOutboxCatalog([

@@ -1,7 +1,7 @@
 /**
  * GAP-007 — `membership_role.scope` against a REAL database: the 422 through the real route and the real
  * `createDbMembershipRoleStore`, the CHECK that bounds every other writer, the quarantine of legacy blobs, the
- * fail-closed reader through the real actor enrichment, and tenant isolation as `wardenx_app` (NOBYPASSRLS).
+ * fail-closed reader through the real actor enrichment, and tenant isolation as `chartwarden_app` (NOBYPASSRLS).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap007:grant-scope:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles. For a local PG without
@@ -39,7 +39,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const SHAPE_MIGRATION = "1050_m3_membership_role_scope_shape.sql";
 
 const ORG_A = "11111111-1111-4111-8111-1111000a0007";
@@ -164,7 +164,7 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
       [ORG_A, ids.memberMembership, ids.roleGood, JSON.stringify({ locationIds: [LOC_X] })],
     );
     await applyMigrations((f) => f >= SHAPE_MIGRATION);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 300_000);
 
@@ -222,7 +222,7 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
     });
   });
 
-  describe("the CHECK bounds every writer, as wardenx_app", () => {
+  describe("the CHECK bounds every writer, as chartwarden_app", () => {
     const tryInsert = async (scope: unknown): Promise<string | null> => {
       const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await app.connect();
@@ -424,7 +424,7 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
     });
   });
 
-  describe("tenant isolation as wardenx_app", () => {
+  describe("tenant isolation as chartwarden_app", () => {
     it("org B cannot read org A's membership_role scope, and cannot write into it", async () => {
       const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await app.connect();

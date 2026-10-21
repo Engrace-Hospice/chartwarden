@@ -91,9 +91,9 @@ export function createInMemoryCarePlanEraseStore(seed: Partial<CarePlanEraseCoun
  * The Drizzle-backed store: the REAL destruction path (TASK-003 / ARCH-007). Runs inside
  * `withOrgContext` so RLS scopes every statement to the acting org (a destruction certificate can
  * never reach across tenants). Deletes report ONLY rows actually removed (`returning` lengths);
- * migration 0029 grants `wardenx_app` no DELETE on any care-plan table (append-only for survey
+ * migration 0029 grants `chartwarden_app` no DELETE on any care-plan table (append-only for survey
  * reconstruction), so under an app-role connection Postgres REFUSES the delete and this store THROWS —
- * the destruction path must be handed a privileged (wardenx_admin) `DbClient` at the composition root.
+ * the destruction path must be handed a privileged (chartwarden_admin) `DbClient` at the composition root.
  */
 export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStore {
   const PLAN = schema.carePlans;

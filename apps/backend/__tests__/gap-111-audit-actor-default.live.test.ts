@@ -1,5 +1,5 @@
 /**
- * GAP-111 — write-audit actor attribution, LIVE Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * GAP-111 — write-audit actor attribution, LIVE Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Route-level PHI writes call `withOrgContext(db, { organizationId, userId: "" }, …)`; the audit trigger
  * reads NULLIF(app.user_id,'')::uuid, so every such write used to record a NULL actor (§164.312(b)).
@@ -20,10 +20,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
 ];
 
@@ -90,7 +90,7 @@ describe.skipIf(!DB_URL)("GAP-111 — withOrgContext defaults the audit actor", 
     await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'g111@example.test','G111')`, [
       USER,
     ]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

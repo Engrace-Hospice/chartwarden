@@ -4,11 +4,11 @@
 // THE CREDENTIAL SPLIT IS THE WHOLE FILE. §3.3 / migration 0116:
 //
 //   · `createDrizzleAiCapabilityRegistryStore` writes `ai_capability`,
-//     `ai_capability_lifecycle_event` and `ai_capability_calibration`, which grant `wardenx_app` SELECT
+//     `ai_capability_lifecycle_event` and `ai_capability_calibration`, which grant `chartwarden_app` SELECT
 //     ONLY. Its writes therefore run through `withPlatformContext` on the separately-pooled platform
 //     credential, gated by the tenancy allowlist (`M32_PLATFORM_JOB_ID`, registered by
 //     `wireM32Tenancy()`) and audited by the `platform.bypass_invoked` auditor. Reads take the ORDINARY
-//     tenant handle: `ai_capability_read` is `USING (true)` for `wardenx_app`, so listing the registry
+//     tenant handle: `ai_capability_read` is `USING (true)` for `chartwarden_app`, so listing the registry
 //     needs no bypass and must not take one — a cross-tenant credential opened for a read a tenant
 //     connection can already do is an audited bypass that teaches operators to ignore the alert.
 //   · `createDrizzleAiTenantConsentStore` writes `ai_tenant_opt_in_record` and `ai_clinician_opt_out`,
@@ -159,7 +159,7 @@ export function createDrizzleAiCapabilityRegistryStore(
     return withPlatformContext<DbClient, T>(
       deps.platformDb,
       // `crossTenant: false` — a capability registry write touches no tenant's rows. The bypass is a
-      // PRIVILEGE escalation (wardenx_admin), not a tenant-boundary crossing, and marking it critical
+      // PRIVILEGE escalation (chartwarden_admin), not a tenant-boundary crossing, and marking it critical
       // would put a page-worthy severity on every routine governance edit.
       { jobId: deps.jobId, reason, crossTenant: false },
       deps.auditBypass,

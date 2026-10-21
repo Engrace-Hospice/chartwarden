@@ -5,7 +5,7 @@ import type { AiBackendRoutingRow } from "@chartwarden/ai-platform";
 // THE CREDENTIAL SPLIT, CONTINUED (§3.3 / migration 0116):
 //
 //   · `ai_model_backend` is platform-shared and `ai_model_backend_read` is `USING (true)` for
-//     `wardenx_app`, so the routing gate reads it on the ORDINARY tenant handle. It does NOT take
+//     `chartwarden_app`, so the routing gate reads it on the ORDINARY tenant handle. It does NOT take
 //     `withPlatformContext`: opening an audited cross-tenant credential for a read a tenant connection
 //     can already perform is a `platform.bypass_invoked` row per AI call, which teaches operators to
 //     ignore the alert that exists to be rare.

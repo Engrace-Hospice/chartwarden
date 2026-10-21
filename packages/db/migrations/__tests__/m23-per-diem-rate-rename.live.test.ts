@@ -3,7 +3,7 @@
  *
  * Replays every migration up to 1068 (the legacy `hipps_*` shape), seeds a POPULATED tenant (a legacy segments
  * jsonb carrying `hippsCharPosition`, a `hipps_coding_correct` rule-config row and validation result), applies 1069
- * (twice: it must be idempotent) and proves, connected as the real NOBYPASSRLS `wardenx_app` role:
+ * (twice: it must be idempotent) and proves, connected as the real NOBYPASSRLS `chartwarden_app` role:
  *   - the old table / columns / indexes / policies / triggers / audit function are gone, the new ones exist;
  *   - append-only HISTORY IS NOT REWRITTEN: validation_result rows and the segments jsonb are byte-identical, the
  *     append-only triggers were never disabled (all `tgenabled = 'O'`) and still reject UPDATE, audit_event rows already
@@ -11,8 +11,8 @@
  *   - the mutable tenant overlay `validation_rule_config.rule_key` IS renamed in place, with its audit trigger enabled,
  *     so the rename is on the audit trail;
  *   - the re-created audit function is the hardened 1062 form (SECURITY DEFINER, pg_temp pinned, owned by
- *     wardenx_audit_writer) and writes the new resource kind for an INSERT made as wardenx_app and a DELETE made as
- *     a wardenx_destruction member;
+ *     chartwarden_audit_writer) and writes the new resource kind for an INSERT made as chartwarden_app and a DELETE made as
+ *     a chartwarden_destruction member;
  *   - RLS is still ENABLED + FORCEd and still isolates tenants on the renamed table;
  *   - re-applying 1069 from a PARTIALLY migrated state (table renamed, the rest not) converges.
  *
@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const RENAME_MIGRATION = "1069_m23_per_diem_rate_rename.sql";
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** Holds BOTH rule keys before 1069: the unique-safety guard must skip it and the verification block must not false-fail. */
@@ -57,7 +57,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
   }
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -328,7 +328,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
   it("the verification block raises when a legacy row would be left behind (migrator subject to RLS)", async () => {
     const sql = readFileSync(join(MIGRATIONS_DIR, RENAME_MIGRATION), "utf8");
     const verify = sql.slice(sql.indexOf("DO $verify$"));
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     try {
       await expect(db.query(verify)).rejects.toThrow(/superuser \/ BYPASSRLS/);
     } finally {
@@ -371,14 +371,14 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].prosecdef).toBe(true);
-    expect(rows[0].owner).toBe("wardenx_audit_writer");
+    expect(rows[0].owner).toBe("chartwarden_audit_writer");
     const searchPath = (rows[0].proconfig ?? []).find((c) => c.startsWith("search_path="));
     expect(searchPath).toMatch(/pg_temp/);
     expect(rows[0].src).toContain("public.audit_scrub");
     expect(rows[0].src).toContain("INSERT INTO public.audit_event");
   });
 
-  it("as wardenx_app: a tenant reads only its own row; the other tenant's row is invisible", async () => {
+  it("as chartwarden_app: a tenant reads only its own row; the other tenant's row is invisible", async () => {
     const own = await withOrg(ORG_A, () => db.query(`SELECT id FROM ${NEW_TABLE}`));
     expect(own.rows.map((r) => r.id)).toEqual([rowA]);
     const other = await withOrg(ORG_B, () =>
@@ -387,7 +387,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     expect(other.rowCount).toBe(0);
   });
 
-  it("as wardenx_app: WITH CHECK refuses a foreign organization_id; UPDATE is rejected (append-only)", async () => {
+  it("as chartwarden_app: WITH CHECK refuses a foreign organization_id; UPDATE is rejected (append-only)", async () => {
     await expect(
       withOrg(ORG_B, () =>
         db.query(
@@ -405,7 +405,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     ).rejects.toThrow();
   });
 
-  it("as wardenx_app: INSERT works on the renamed table and the SECURITY DEFINER trigger writes the NEW resource kind", async () => {
+  it("as chartwarden_app: INSERT works on the renamed table and the SECURITY DEFINER trigger writes the NEW resource kind", async () => {
     const org = "33333333-3333-3333-3333-333333333333";
     const { claim } = await seedClaimOnly(org, 3);
     const row = await withOrg(org, async () =>
@@ -425,9 +425,9 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     ]);
   });
 
-  it("as a wardenx_destruction member: DELETE on the renamed table works (erase cascade) and audits the new kind", async () => {
+  it("as a chartwarden_destruction member: DELETE on the renamed table works (erase cascade) and audits the new kind", async () => {
     await db.query(`DROP ROLE IF EXISTS ${DESTROYER}`);
-    await db.query(`CREATE ROLE ${DESTROYER} LOGIN PASSWORD 'x' IN ROLE wardenx_destruction`);
+    await db.query(`CREATE ROLE ${DESTROYER} LOGIN PASSWORD 'x' IN ROLE chartwarden_destruction`);
     try {
       await db.query(`SET ROLE ${DESTROYER}`);
       await db.query("SELECT set_config('app.org_id', $1, false)", [ORG_B]);
@@ -489,7 +489,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
       `SELECT prosecdef, pg_get_userbyid(proowner)::text AS owner FROM pg_proc
         WHERE proname = 'audit_phi_write_${NEW_TABLE}'`,
     );
-    expect(fn.rows).toEqual([{ prosecdef: true, owner: "wardenx_audit_writer" }]);
+    expect(fn.rows).toEqual([{ prosecdef: true, owner: "chartwarden_audit_writer" }]);
     const cfg = await db.query(
       "SELECT rule_key FROM validation_rule_config WHERE organization_id = $1",
       [ORG_A],
@@ -497,7 +497,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     expect(cfg.rows.map((r) => r.rule_key)).toEqual([NEW_RULE_KEY]);
   });
 
-  /** Post-migration seed of an org + minimal claim (the calculation row is inserted by the caller, as wardenx_app). */
+  /** Post-migration seed of an org + minimal claim (the calculation row is inserted by the caller, as chartwarden_app). */
   async function seedClaimOnly(org: string, n: number) {
     await db.query(
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'O','O')",

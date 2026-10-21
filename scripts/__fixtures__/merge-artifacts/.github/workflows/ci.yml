@@ -21,7 +21,7 @@
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999

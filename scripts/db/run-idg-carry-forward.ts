@@ -1,10 +1,10 @@
 /**
  * WardenX — one-shot run of the REAL M14 `idg.carry-forward` (`compute-carry-forward`) handler for the demo org
  * (local dev). NOT for prod. The same `runCarryForwardCron` the BullMQ worker runs, with the org supplied
- * explicitly, over the real `wardenx_app` connection and the real catalog-validating outbox publisher. Idempotent:
+ * explicitly, over the real `chartwarden_app` connection and the real catalog-validating outbox publisher. Idempotent:
  * a second run carries nothing and increments nothing.
  *
- *   DATABASE_URL="postgres://wardenx_app:wardenx-app-dev-password@localhost:5432/wardenx" bun run db:idg:carry-forward
+ *   DATABASE_URL="postgres://chartwarden_app:wardenx-app-dev-password@localhost:5432/wardenx" bun run db:idg:carry-forward
  */
 import { createDbClient } from "@chartwarden/db";
 import {
@@ -21,7 +21,7 @@ const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL (the wardenx_app role URL) is required");
+  if (!url) throw new Error("DATABASE_URL (the chartwarden_app role URL) is required");
   const handle = createDbClient({ connectionString: url });
   try {
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));

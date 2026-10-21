@@ -6,7 +6,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 //
 // The screen-driving READS (medication-order list + detail, active-medications, transmission status, the
 // refill inbox, the prescriber roster) run as real Drizzle queries over the M12-owned tables inside
-// `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged `wardenx_app` role.
+// `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged `chartwarden_app` role.
 // `medication_order` is PARTITION BY RANGE(created_at) — reads query the parent, inserts always land.
 //
 // Unlike M11, M12 has NO state-transition triggers (only the M4 audit triggers) — the service does every

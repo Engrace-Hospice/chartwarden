@@ -16,7 +16,7 @@
 //
 // WHY THE ERASE HALF IS A REPORT, NOT A DELETE (what is missing, exactly). Destroying PHI is gated in this system by
 // an M4 destruction CERTIFICATE (issued, approved by a compliance officer, and executed by the privileged
-// `wardenx_destruction` role through the registered `documents` eraser — `erasers/document-eraser.ts`, which is
+// `chartwarden_destruction` role through the registered `documents` eraser — `erasers/document-eraser.ts`, which is
 // PATIENT-scoped and DEK-shreds first). There is no seam by which M22 can request or auto-approve a certificate, and
 // the eraser has no batch-scoped entry point for unmatched (patient-less) intake. Deleting from a cron with the
 // application role would route around the very approval the destruction workflow exists to enforce, and it cannot be

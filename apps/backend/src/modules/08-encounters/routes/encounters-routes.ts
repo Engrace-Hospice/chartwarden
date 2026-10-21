@@ -545,7 +545,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 9 — remove a care-plan link while draft.
   //
   // F-064 — a SOFT invalidate now. This used to load the encounter, check it was mutable, and return
-  // 204 having removed nothing: `wardenx_app` holds DELETE on no M8 table (§3.6 append-only) and there
+  // 204 having removed nothing: `chartwarden_app` holds DELETE on no M8 table (§3.6 append-only) and there
   // was no column to mark instead. A link that is absent or already removed is a 404, because the old
   // 204 was indistinguishable from a working delete.
   app.delete(

@@ -3,7 +3,7 @@
 // The Drizzle-backed {@link M29PublishedSeamStore} the five §4.4 seams delegate to. Every ORG-SCOPED read
 // opens `withOrgContext` so RLS scopes it to the CONSUMER's ambient org (HARD RULE 3 — the seam self-scopes,
 // never trusts the org id it was handed as a cross-tenant selector); the platform-shared NPPES reads carry
-// no org context (read-all under `wardenx_app`). Aggregate/metadata reads only — no credential ciphertext,
+// no org context (read-all under `chartwarden_app`). Aggregate/metadata reads only — no credential ciphertext,
 // no raw HL7 payload crosses a seam.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";

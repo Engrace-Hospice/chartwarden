@@ -5,7 +5,7 @@
 // `ai_routing_override` are ORG-SCOPED, so every method here opens `withOrgContext` and RLS on
 // `app.org_id` is what keeps one agency's disclosures out of the next agency's compliance search. The
 // PLATFORM-SHARED reads (`ai_model_backend` for R32, `ai_capability` for the key/label joins,
-// `ai_evaluation_run` for R31) take the ordinary tenant handle — 0116 grants `wardenx_app` SELECT on all
+// `ai_evaluation_run` for R31) take the ordinary tenant handle — 0116 grants `chartwarden_app` SELECT on all
 // three — and take NO platform bypass, because opening an audited cross-tenant credential for a read a
 // tenant connection can already perform writes a `platform.bypass_invoked` row per dashboard refresh.
 //
@@ -371,7 +371,7 @@ export function buildDrizzleM32ReadService(deps: M32ReadDeps): M32ReadService {
 
     async recentDrift(_actor, withinHours): Promise<readonly AiDriftFindingView[]> {
       // PLATFORM-SHARED: `ai_evaluation_run` and `ai_capability` are both `USING (true)` for
-      // `wardenx_app` (0116), and a drift finding is a property of the MODEL, not of a tenant. Scoping
+      // `chartwarden_app` (0116), and a drift finding is a property of the MODEL, not of a tenant. Scoping
       // it to the caller's org would hide from one agency a degradation every agency is exposed to.
       const since = new Date(Date.now() - Math.max(withinHours, 0) * 60 * 60 * 1000);
       const rows = await db

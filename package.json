@@ -377,6 +377,7 @@
     "test:rls:live:m21": "vitest run packages/db/migrations/__tests__/m21-rls-isolation.live.test.ts",
     "test:rls:live:m23": "vitest run packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts",
     "test:m23:per-diem-rate-rename:live": "vitest run packages/db/migrations/__tests__/m23-per-diem-rate-rename.live.test.ts",
+    "test:roles-rename:live": "vitest run packages/db/migrations/__tests__/chartwarden-role-rename.live.test.ts",
     "test:rls:live:m24": "vitest run packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts",
     "test:rls:live:m25": "vitest run packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts",
     "test:rls:live:m26": "vitest run packages/db/migrations/__tests__/m26-rls-isolation.live.test.ts",

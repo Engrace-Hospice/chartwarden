@@ -1,5 +1,5 @@
 // apps/backend/__tests__/_dde-live-harness.ts — shared setup for the DDE work-queue live suites (test support, not a
-// test file): a migrated database, the superuser seeding client, the real NOBYPASSRLS `wardenx_app` client, the real
+// test file): a migrated database, the superuser seeding client, the real NOBYPASSRLS `chartwarden_app` client, the real
 // catalog-validating outbox publisher, and a Fastify app with the REAL Authorization Contract (RBAC, the real
 // `provider_entity_billing_scope` predicate over the Drizzle resolver, step-up) in front of the real DDE service.
 import { randomUUID } from "node:crypto";
@@ -31,7 +31,7 @@ import {
 import { appRoleConnectionString } from "./_live-app-role";
 
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 export const ORG_A = "11111111-1111-1111-1111-111111111111";
 export const ORG_B = "22222222-2222-2222-2222-222222222222";
 export const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

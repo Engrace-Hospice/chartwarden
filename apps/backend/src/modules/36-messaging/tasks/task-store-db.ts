@@ -2,7 +2,7 @@
 // append-only `communication_task_event` history.
 //
 // Writes take the caller's `tx` (the service owns the transaction and publishes the outbox event inside it). Every
-// statement names the organization on top of RLS. `wardenx_app` may UPDATE only the status columns and has no DELETE.
+// statement names the organization on top of RLS. `chartwarden_app` may UPDATE only the status columns and has no DELETE.
 // The partial unique index is the idempotency arbiter for create; transitions lock the row first, so two racing
 // transitions serialise and the loser sees the winner's state (replay or conflict), never a lost update.
 import { type DbClient, schema } from "@chartwarden/db";

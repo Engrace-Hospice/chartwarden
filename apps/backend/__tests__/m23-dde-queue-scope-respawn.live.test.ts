@@ -1,6 +1,6 @@
 /**
  * M23 DDE work queue: LIST SCOPING and the filing-window WATCH'S RESPAWN RULE (ADR-0052 D4/D6), LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role through the real routes, resolver and catalog-validating publisher.
+ * NOBYPASSRLS `chartwarden_app` role through the real routes, resolver and catalog-validating publisher.
  *
  *   - `GET /dde-items` returns only items of provider entities the actor may reach (the rule the detail route's
  *     `provider_entity_billing_scope` applies): an entity-scoped actor sees only its entity, an org-wide role sees both,

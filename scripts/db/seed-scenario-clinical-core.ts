@@ -19,7 +19,7 @@
  *     and the KEK was never the missing piece. Two things were — a `tenant_key_ring` row, which the
  *     base seed did not create because it INSERTs its organization directly rather than provisioning
  *     it through M34 (F-082, now fixed in `seed.ts`), and `DATABASE_PLATFORM_URL`, because migration
- *     0052 §5 REVOKES `wardenx_app`'s SELECT on that table by design so only the platform credential
+ *     0052 §5 REVOKES `chartwarden_app`'s SELECT on that table by design so only the platform credential
  *     can resolve a wrapped DEK. With both configured the finalize succeeds; the ⊘ branch below is
  *     kept because a stack with no `M34_TENANT_KEK` still legitimately reaches it.
  *   - M9's scale scorer only implements 4 of 14 scale types (`pps`, `fast`, `painad`, `esas_r`) —

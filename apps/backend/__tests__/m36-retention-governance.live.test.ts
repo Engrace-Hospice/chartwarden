@@ -1,5 +1,5 @@
 /**
- * M36 WP 5.6 S4 (ADR-0086, PROPOSED) - retention and legal-hold governance routes, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 5.6 S4 (ADR-0086, PROPOSED) - retention and legal-hold governance routes, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The production composition: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL governance
  * routes (permission `messaging.retention.manage`, fresh step-up), M4's REAL apply/release seam (same row, same `data.legal_hold_*` audit event,
@@ -61,13 +61,13 @@ import { catalogOutbox } from "./_m36-handoff-live-kit";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
-  "wardenx_destruction",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+  "chartwarden_destruction",
   "tenant_platform_writer",
 ];
 const ORG = "33333333-3333-4333-8333-3333000a9601";

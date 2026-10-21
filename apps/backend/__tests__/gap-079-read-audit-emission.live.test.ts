@@ -9,7 +9,7 @@
  *
  * The in-process suites (read-audit-coverage / read-audit-emission) prove the DECLARATIONS and the
  * hook's resolution logic against a fake db. This one proves the other half: a real HTTP GET through
- * the real route config, through `withOrgContext` as the NOBYPASSRLS `wardenx_app` role, lands a row
+ * the real route config, through `withOrgContext` as the NOBYPASSRLS `chartwarden_app` role, lands a row
  * in the partitioned `audit_event` table that the §164.528 accounting query can actually find — it
  * joins on `context->>'patientId'` (packages/audit `touchesPatient`), which is why the assertions
  * here are on that field and not merely on the event's existence.
@@ -52,7 +52,7 @@ import {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -198,8 +198,8 @@ describe.skipIf(!DB_URL)("GAP-079 read-audit emission — LIVE Postgres", () => 
       [ORG],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'gap079@x.test')`, [USER]);
-    // Production connects as the NOBYPASSRLS `wardenx_app` role; the audit insert must succeed as it.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    // Production connects as the NOBYPASSRLS `chartwarden_app` role; the audit insert must succeed as it.
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 

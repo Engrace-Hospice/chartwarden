@@ -5,7 +5,7 @@
  * live suite proves the policies at the table level. Neither drives the PRODUCTION read service — the one
  * the composition root casts to `EvvRouteService` and mounts. This applies the real migrations, seeds a full
  * EVV chain per tenant as superuser, then drives `createDbEvvBackend` over the M18-owned tables as the
- * unprivileged (NOBYPASSRLS) `wardenx_app` role under `withOrgContext`, proving:
+ * unprivileged (NOBYPASSRLS) `chartwarden_app` role under `withOrgContext`, proving:
  *   • the event ledger / device roster reads return the seeded rows, coordinate-free on the wire (§4.3);
  *   • RLS scopes every read by tenant (org B cannot see org A's event, and `getEvent` cross-tenant 404s);
  *   • every write still fail-closes 501 (the deny-stub throws SYNCHRONOUSLY — asserted as such).
@@ -23,7 +23,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** `evv_device.membership_id` / `evv_geofence_policy.set_by_membership_id` FK `membership`; each org needs one. */
@@ -127,9 +127,9 @@ describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () =>
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m18r@x.test')`, [USER]);
     seeded[ORG_A] = await seedOrg(ORG_A, 1);
     seeded[ORG_B] = await seedOrg(ORG_B, 2);
-    // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` does NOT SET ROLE, so to exercise
-    // RLS faithfully connect the client AS wardenx_app — NOLOGIN in the migrations, so grant LOGIN here.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    // Prod connects as the NOBYPASSRLS `chartwarden_app` role; `withOrgContext` does NOT SET ROLE, so to exercise
+    // RLS faithfully connect the client AS chartwarden_app — NOLOGIN in the migrations, so grant LOGIN here.
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

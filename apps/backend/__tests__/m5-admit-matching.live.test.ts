@@ -1,5 +1,5 @@
 /**
- * GAP-009 / GAP-010 — admit against REAL Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * GAP-009 / GAP-010 — admit against REAL Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *   010: the matcher is fed each candidate's primary address / phone / email, so a same name+DOB+address
  *        admit hard-blocks (no second patient), a name+DOB+phone+email near-match opens a soft review row
  *        (`matchReviewIds` non-empty), the admitted contact details are persisted, and an SSN is refused
@@ -24,10 +24,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";

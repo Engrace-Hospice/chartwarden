@@ -1,5 +1,5 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-store-db.ts - WP 4.2: the Drizzle store behind the acknowledgment-request
-// service. Every statement names the organization on top of RLS. `wardenx_app` may UPDATE only the transition columns and has
+// service. Every statement names the organization on top of RLS. `chartwarden_app` may UPDATE only the transition columns and has
 // no DELETE; the event table takes INSERT only. Transitions take the row FOR UPDATE and carry the expected version, so two
 // racing writers serialise and the loser sees the winner's state (a repeat or a conflict), never a lost update. The database
 // triggers (migration 1107) refuse any transition off the table, whatever this code does.

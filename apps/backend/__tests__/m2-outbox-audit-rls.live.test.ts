@@ -1,5 +1,5 @@
 /**
- * M2's audit/outbox RLS bug — LIVE Postgres, real NOBYPASSRLS `wardenx_app` role.
+ * M2's audit/outbox RLS bug — LIVE Postgres, real NOBYPASSRLS `chartwarden_app` role.
  *
  * Found while wiring M2's outbox catalog (#205). `mountIdentityRoutes` (and
  * `mountDeviceAttestationRoutes`/`mountSessionStepUpRoutes`) constructed `audit: db` — a bare, non-org-
@@ -37,13 +37,13 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f2050001";
 const ORG_B = "22222222-2222-4222-8222-2222f2050002";
 const USER = "33333333-3333-4333-8333-3333f2050003";
 
-describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_app role", () => {
+describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real chartwarden_app role", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
 
@@ -81,7 +81,7 @@ describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_
       `INSERT INTO "user" (id,email,name) VALUES ($1,'f205@example.test','F205 User')`,
       [USER],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
 
@@ -90,7 +90,7 @@ describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_
     await admin?.end();
   });
 
-  it("a bare `db` audit() insert is REFUSED by RLS as wardenx_app (proves the bug existed)", async () => {
+  it("a bare `db` audit() insert is REFUSED by RLS as chartwarden_app (proves the bug existed)", async () => {
     try {
       await audit(
         handle.db as never,

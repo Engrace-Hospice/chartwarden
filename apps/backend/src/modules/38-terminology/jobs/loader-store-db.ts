@@ -1,8 +1,8 @@
 // apps/backend/src/modules/38-terminology/jobs/loader-store-db.ts — the production {@link LoaderStorePort} over
 // Drizzle + the migration-0364 `terminology_loader_*` SECURITY DEFINER functions (GAP-108).
 //
-// Every WRITE is a function call: `wardenx_app` has no INSERT/UPDATE grant on any canonical table (§7.4) and the
-// worker connects as `wardenx_app`, so `SELECT terminology_loader_…(…)` is the whole write surface — the functions
+// Every WRITE is a function call: `chartwarden_app` has no INSERT/UPDATE grant on any canonical table (§7.4) and the
+// worker connects as `chartwarden_app`, so `SELECT terminology_loader_…(…)` is the whole write surface — the functions
 // run as the NOLOGIN `terminology_loader` role. Reads are plain selects (the platform-shared `USING (true)` policies).
 // A deterministic refusal raised by a function (`TERMINOLOGY_<REASON>: …`) becomes a `LoaderDataError` so the
 // orchestrator fails the version; any other error propagates and the job retries.

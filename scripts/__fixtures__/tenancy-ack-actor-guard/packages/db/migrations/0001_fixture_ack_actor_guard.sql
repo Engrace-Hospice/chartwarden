@@ -20,5 +20,5 @@ END $$;
 -- 3. A policy string carrying the name: reported (a policy is never exempt).
 DO $$
 BEGIN
-  EXECUTE 'CREATE POLICY fixture_ack_dyn ON fixture_ack FOR ALL TO wardenx_app USING (user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid) -- message_ack_request_update_guard';
+  EXECUTE 'CREATE POLICY fixture_ack_dyn ON fixture_ack FOR ALL TO chartwarden_app USING (user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid) -- message_ack_request_update_guard';
 END $$;

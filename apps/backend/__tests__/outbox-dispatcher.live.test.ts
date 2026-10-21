@@ -2,7 +2,7 @@
  * TASK-006 — the transactional-outbox DISPATCHER, proven against real Postgres.
  *
  * Drives `createOutboxDispatcher.tick()` (exposed for exactly this) as the NOBYPASSRLS
- * `wardenx_app` role over the real `outbox_event` table + RLS policy, with a stub
+ * `chartwarden_app` role over the real `outbox_event` table + RLS policy, with a stub
  * ActiveOrgEnumerator returning the seeded org (no platform credential needed). Asserts the
  * acceptance triangle: an emitted event reaches a registered consumer; the pending depth stays
  * bounded (every non-deferred row reaches a terminal); and the tick summary gives liveness.
@@ -31,7 +31,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 
 // One fixed id per case so cross-test seeds can never collide.
@@ -160,7 +160,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
       [ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

@@ -34,7 +34,7 @@ export const carePlanSignatures = pgTable(
     signatureMethod: text("signature_method").notNull().default("password_step_up"), // 'passkey' | 'password_step_up'
     signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
     attestationText: text("attestation_text"),
-    // D8: a return-to-draft INVALIDATES (never deletes) the collected signatures — wardenx_app has no
+    // D8: a return-to-draft INVALIDATES (never deletes) the collected signatures — chartwarden_app has no
     // DELETE on care-plan tables (append-only). Null = live; set = cleared (mig 0127).
     invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
   },

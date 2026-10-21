@@ -6,7 +6,7 @@
  * schedule, list every schedule in the org, and the scheduled-run worker delivered to any recipient whose
  * membership was merely active. The in-memory slice backend (gap-097-m33-schedule-authz.test.ts) proves the
  * route wiring; THIS suite proves the same rules over the production Drizzle code and real RLS, as the
- * NOBYPASSRLS `wardenx_app` role (fixtures are seeded as the superuser):
+ * NOBYPASSRLS `chartwarden_app` role (fixtures are seeded as the superuser):
  *
  *   1. `ReportScheduleRepository.listVisible` — owner OR recipient (`recipient_membership_ids @> [id]`),
  *      org_admin sees the whole org, ANY status, the status filter honoured, tenant isolation.
@@ -52,7 +52,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111197";
 const ORG_B = "22222222-2222-2222-2222-222222222297";
 const SHARED_ROLE_KEY = "gap097_analyst";
@@ -224,7 +224,7 @@ describe.skipIf(!DB_URL)("GAP-097 M33 schedule authz — LIVE Postgres", () => {
       );
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     seedDb = createDbClient({ connectionString: DB_URL as string });
 

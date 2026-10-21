@@ -2,7 +2,7 @@
 // RLS-enforced tenant role (GAP-086).
 //
 // Every live suite seeds as the SUPERUSER (`admin`), then drives the production code path as the
-// unprivileged NOBYPASSRLS `wardenx_app` role, because that is what production connects as and because a
+// unprivileged NOBYPASSRLS `chartwarden_app` role, because that is what production connects as and because a
 // superuser BYPASSES ROW LEVEL SECURITY unconditionally — no policy, and no amount of FORCE RLS, applies
 // to it. A cross-tenant assertion made on a superuser connection therefore proves nothing at all: it
 // asserts that org B cannot see org A's rows while sitting on a connection for which that restriction
@@ -10,7 +10,7 @@
 //
 // Thirty-four suites did that role switch by string surgery on the connection URL:
 //
-//     connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@")
+//     connectionString: (DB_URL as string).replace("://postgres@", "://chartwarden_app@")
 //
 // which only matches a PASSWORDLESS url (`postgres://postgres@host/db`). Against any url carrying a
 // password — including CI's own `postgresql://postgres:postgres@localhost:5432/wardenx_test` — the
@@ -25,25 +25,25 @@
 // regardless of the server's auth method.
 import type { Client } from "pg";
 
-/** The password granted to `wardenx_app` for the duration of a live suite. Test-only, never a secret. */
+/** The password granted to `chartwarden_app` for the duration of a live suite. Test-only, never a secret. */
 export const LIVE_APP_ROLE_PASSWORD = "wardenx_app_live_test";
 
 /**
- * Grant `wardenx_app` LOGIN (the migrations create it NOLOGIN) and return the connection string that logs
+ * Grant `chartwarden_app` LOGIN (the migrations create it NOLOGIN) and return the connection string that logs
  * in as it. Pass the SUPERUSER client and the suite's `CHARTWARDEN_TEST_DATABASE_URL`.
  *
  * Throws on a url that cannot be parsed rather than degrading to the caller's identity — the failure mode
  * this replaces was precisely a silent fallback to superuser.
  */
 export async function appRoleConnectionString(admin: Client, dbUrl: string): Promise<string> {
-  await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+  await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
   const url = appRoleUrl(dbUrl);
   await assertConnectsAsAppRole(url);
   return url;
 }
 
 /**
- * Prove the returned url actually logs in as the NOBYPASSRLS `wardenx_app` — and NOT as a superuser or
+ * Prove the returned url actually logs in as the NOBYPASSRLS `chartwarden_app` — and NOT as a superuser or
  * any BYPASSRLS role — before a suite builds its handle on it.
  *
  * The GAP-086 bug was invisible precisely because nothing ever asked. A suite that quietly connects as
@@ -65,14 +65,14 @@ async function assertConnectsAsAppRole(url: string): Promise<void> {
       "SELECT current_user, r.rolsuper, r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user",
     );
     const who = rows[0];
-    if (!who || who.current_user !== "wardenx_app") {
+    if (!who || who.current_user !== "chartwarden_app") {
       throw new Error(
-        `live suite connected as '${who?.current_user ?? "unknown"}', expected 'wardenx_app' — RLS assertions on this connection would be vacuous (GAP-086)`,
+        `live suite connected as '${who?.current_user ?? "unknown"}', expected 'chartwarden_app' — RLS assertions on this connection would be vacuous (GAP-086)`,
       );
     }
     if (who.rolsuper || who.rolbypassrls) {
       throw new Error(
-        "live suite's wardenx_app carries SUPERUSER/BYPASSRLS — no policy applies to it, so every " +
+        "live suite's chartwarden_app carries SUPERUSER/BYPASSRLS — no policy applies to it, so every " +
           "cross-tenant assertion would pass regardless (GAP-086)",
       );
     }
@@ -84,7 +84,7 @@ async function assertConnectsAsAppRole(url: string): Promise<void> {
 /** The url half of {@link appRoleConnectionString}, for a suite that grants LOGIN itself. */
 export function appRoleUrl(dbUrl: string): string {
   const url = new URL(dbUrl);
-  url.username = "wardenx_app";
+  url.username = "chartwarden_app";
   url.password = LIVE_APP_ROLE_PASSWORD;
   return url.toString();
 }

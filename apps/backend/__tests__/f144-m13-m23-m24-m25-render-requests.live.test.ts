@@ -31,7 +31,7 @@
  * Nothing is stubbed on the M22 side: the real catalog-validating transactional publisher writes the
  * row, the real `createOutboxDispatcher` claims and delivers it, M22's real render consumer resolves the
  * template, renders through the real `DocumentRenderer`, and the real Drizzle seam store writes
- * `document` + `document_version`, under RLS, as the NOBYPASSRLS `wardenx_app` role. The M13/M23/M25
+ * `document` + `document_version`, under RLS, as the NOBYPASSRLS `chartwarden_app` role. The M13/M23/M25
  * PRODUCER calls are driven through the real production write services. M24's producer
  * (`runClaimSubmit`) is driven directly against a minimal fake `MedicaidAdapter` — the wire mechanics
  * this worker exists to drive (a real MMIS endpoint) are out of scope for any test in this repo (see
@@ -103,7 +103,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -205,7 +205,7 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // M22's ONE render consumer's `eventTypes` is `[...M22_DOCUMENT_REQUEST_EVENTS]`, which spans every

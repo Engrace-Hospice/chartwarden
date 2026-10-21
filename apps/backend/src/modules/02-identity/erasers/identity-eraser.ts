@@ -108,7 +108,7 @@ export function createInMemoryIdentityEraserStore(seed: IdentityEraserSeed = {})
  * nowhere). Every count is the rows ACTUALLY deleted (`.returning()`), never the request size.
  *
  *   • two_factor / passkey are user-owned and un-RLS'd (migration 0006), so the deletes run on the
- *     pooled `wardenx_app` handle keyed on user_id — the same access shape identity-stores-db.ts
+ *     pooled `chartwarden_app` handle keyed on user_id — the same access shape identity-stores-db.ts
  *     uses for the M1-owned `users`. Erasure is global per subject by design (M02-F01).
  *   • organization_invitation is org-scoped (app.org_id RLS), and an invitation is addressed by
  *     EMAIL (it predates the account), so the store resolves the subject's email from `users`

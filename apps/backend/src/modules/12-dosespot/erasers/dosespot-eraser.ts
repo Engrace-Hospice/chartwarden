@@ -173,7 +173,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * partitioned `medication_order` parent via the partition-key predicate the route tier uses
  * (`patient_id` + `created_at < retentionAsOf`) — the row-delete arm of the M11 D12 precedent. The
  * DETACH+DROP arm is a DDL maintenance path that needs table-owner privileges the RLS-scoped
- * `wardenx_app` role does not hold, so this store always reports `partitionsDropped: 0`; a wholly-
+ * `chartwarden_app` role does not hold, so this store always reports `partitionsDropped: 0`; a wholly-
  * erasable partition is still fully emptied row-by-row, which is destruction-equivalent (the partition
  * shell holds no PHI). Any statement the database refuses THROWS and rolls the erase back — the erase
  * never reports success it did not perform.

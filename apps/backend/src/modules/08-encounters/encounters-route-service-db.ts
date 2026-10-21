@@ -3,7 +3,7 @@
 // The screen-driving READS (encounter detail, the org encounter list, the cosignature queue, my open
 // drafts, billability, signed-since, and the cosignature-request status) run as real Drizzle queries over
 // the M8-owned tables inside `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged
-// `wardenx_app` role. The WRITE lifecycle is now real (M8L-T02): draft creation, vitals/mileage authoring,
+// `chartwarden_app` role. The WRITE lifecycle is now real (M8L-T02): draft creation, vitals/mileage authoring,
 // care-plan link, EVV-missing, finalize (pins the vocab version), the §2.3 sign machine (incl. the §7.4 D1
 // F2F dual-write and the LPN/CHHA cosignature routing), the §2.4 D3 cosignature-request chain
 // (acknowledge → sign / supervisor-release), the §2.5 D4 late-entry overrides, void, and the addendum
@@ -1757,7 +1757,7 @@ export function createDbEncounterRouteService(
      * F-064 — a SOFT invalidate, and a real 404.
      *
      * The route loaded the encounter, checked it was mutable, and returned 204 having removed nothing:
-     * `wardenx_app` holds DELETE on no M8 table (§3.6 append-only, uniform across all ten) and there was
+     * `chartwarden_app` holds DELETE on no M8 table (§3.6 append-only, uniform across all ten) and there was
      * no column to mark instead. Migration 0231 adds the `removed_at` / `removed_by_membership_id`
      * pair, so the row survives for the M4 write-audit trail while the link stops counting.
      *

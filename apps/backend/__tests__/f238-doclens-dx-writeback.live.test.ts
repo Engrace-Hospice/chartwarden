@@ -3,7 +3,7 @@
  *
  * Nothing on the M22/M7 path is stubbed except the M38 terminology answer (injected so the suite can show
  * `valid` vs `not_valid_as_of` without loading an ICD-10-CM release): M22's real `createDbDocumentBackend`
- * (as the NOBYPASSRLS `wardenx_app` role) completes the review — decrypting the stored candidates with the
+ * (as the NOBYPASSRLS `chartwarden_app` role) completes the review — decrypting the stored candidates with the
  * real tenant-DEK cipher, writing `extraction_provenance` and publishing
  * `m22.extraction.diagnosis_commit_requested` through the real catalog-validating publisher; the real
  * dispatcher delivers it to M7's `m7.extraction-diagnosis-writeback` (pending `problem_proposal` rows +
@@ -49,7 +49,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleConnectionString } from "./_live-app-rol
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";

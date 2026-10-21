@@ -1,6 +1,6 @@
 /**
  * M36 gap closure B (ADR-0079) - the unreachable watch, the supervisor page and the stalled-escalation figure, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role (and, when CHARTWARDEN_TEST_REDIS_URL is set, a real Valkey for the notice claims).
+ * NOBYPASSRLS `chartwarden_app` role (and, when CHARTWARDEN_TEST_REDIS_URL is set, a real Valkey for the notice claims).
  *
  * The REAL Drizzle ack store, alert-emitter ports (rules seeded as the boot persister writes them, role_set recipients through
  * membership_role, verified endpoints through migration 1123, the M1 feature-flag reader, persistence) and stats reader; only the
@@ -171,11 +171,11 @@ describe.skipIf(!DB_URL)("M36 gap closure B (ADR-0079) - LIVE Postgres", () => {
 
   it("the app connection is a NOBYPASSRLS role, so every assertion below is under RLS", async () => {
     const r = await kit.one<{ rolbypassrls: boolean; rolsuper: boolean }>(
-      "SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(r[0]).toEqual({ rolbypassrls: false, rolsuper: false });
     const who = await kit.appConn.query("SELECT current_user AS u");
-    expect(who.rows[0].u).toBe("wardenx_app");
+    expect(who.rows[0].u).toBe("chartwarden_app");
   });
 
   describe("G-5 the watch", () => {

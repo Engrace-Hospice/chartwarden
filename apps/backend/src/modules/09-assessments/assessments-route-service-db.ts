@@ -3,7 +3,7 @@
 // The screen-driving READS (patient assessment list + detail, latest/summary/series/delta/batch trend,
 // significant-change inbox, scale licenses + policies) run as real Drizzle queries over the M9-owned
 // tables inside `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged
-// `wardenx_app` role. `clinical_assessment` is PARTITION BY RANGE (captured_at) — reads query the parent
+// `chartwarden_app` role. `clinical_assessment` is PARTITION BY RANGE (captured_at) — reads query the parent
 // (the partition router picks leaves); a DEFAULT partition catches every captured_at so inserts always
 // land. The §10 WRITE pipeline is now real (M9L): record (policy/license/discipline gate → server-
 // authoritative score → insert) · correct (planCorrection → insert the amendment; the DB

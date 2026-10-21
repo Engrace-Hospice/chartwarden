@@ -1,7 +1,7 @@
 // apps/backend/src/modules/32-ai-platform/wiring.ts — M32's composition-root helpers (M32-T03).
 //
 // The §3.3 governance tables (`ai_capability`, `ai_capability_lifecycle_event`,
-// `ai_capability_calibration`) grant `wardenx_app` SELECT only; every write is `wardenx_admin` on the
+// `ai_capability_calibration`) grant `chartwarden_app` SELECT only; every write is `chartwarden_admin` on the
 // separately-pooled platform credential. `@chartwarden/tenancy`'s allowlist starts EMPTY and
 // `withPlatformContext` refuses any caller not on it, so the registry store's writes are dead until
 // this runs — which is the fail-closed direction: a module that forgets to wire its tenancy cannot

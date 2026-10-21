@@ -1,5 +1,5 @@
 /**
- * WP 2.5 - server-side drafts, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * WP 2.5 - server-side drafts, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Acceptance (spec): a draft is never visible to another user or tenant. Proves: the body is sealed at rest; a colleague
  * in the SAME org (service and raw SQL under their own context, and with no user context) reads nothing; another tenant
@@ -27,7 +27,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const SECRET = "Mrs Quillfeather asked about the morphine titration";
 
@@ -138,7 +138,7 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
     });
     await admin.query(
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp25_destroyer') THEN
-         CREATE ROLE wp25_destroyer LOGIN PASSWORD 'wp25_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+         CREATE ROLE wp25_destroyer LOGIN PASSWORD 'wp25_destroyer_pw' IN ROLE chartwarden_destruction; END IF; END $$;`,
     );
     const destroyerUrl = new URL(DB_URL as string);
     destroyerUrl.username = "wp25_destroyer";

@@ -1,5 +1,5 @@
 /**
- * F-238 — LIVE Postgres proof that records land on the right PROSPECT, as the NOBYPASSRLS `wardenx_app` role,
+ * F-238 — LIVE Postgres proof that records land on the right PROSPECT, as the NOBYPASSRLS `chartwarden_app` role,
  * with the REAL M6 ReferralReader and M5 PatientReader behind the identity ports.
  *
  * 1. A fax filed against an UNRESOLVED referral is checked against the name/DOB the referral was received
@@ -50,7 +50,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const OTHER_ORG = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -312,7 +312,7 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       const catalog = buildBootOutboxCatalog([M5_OUTBOX_EVENTS, M22_OUTBOX_EVENTS]);
       const publisher = buildTxOutboxPublisher(catalog);
@@ -332,7 +332,7 @@ describe.skipIf(!DB_URL)(
       });
       svc = createDbDocumentBackend(handle.db, { outbox: m22Outbox, cipher }).service;
 
-      // The REAL M5 / M6 readers (RLS-scoped, as wardenx_app) behind the identity ports.
+      // The REAL M5 / M6 readers (RLS-scoped, as chartwarden_app) behind the identity ports.
       const patients = createPatientReader(createDrizzlePatientReaderStore(handle.db));
       const referrals = createReferralReader(handle.db);
       ports = {
@@ -563,7 +563,7 @@ describe.skipIf(!DB_URL)(
           relinked_by_membership_id: membership,
         },
       ]);
-      // The history is tenant-scoped (FORCEd RLS as wardenx_app): another org sees none of it.
+      // The history is tenant-scoped (FORCEd RLS as chartwarden_app): another org sees none of it.
       const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await app.connect();
       try {
@@ -868,7 +868,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("the admission hint: an extracted address waiting in review — counts + batch ids only, never a value", async () => {
-      const pending = createPendingAddressService({ db: handle.db }); // as wardenx_app (RLS)
+      const pending = createPendingAddressService({ db: handle.db }); // as chartwarden_app (RLS)
       extractAddress = true;
       const packet = await seedBatch({ patientId: arthur, referralId: null });
       try {

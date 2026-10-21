@@ -39,10 +39,10 @@ import {
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 
@@ -168,18 +168,18 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
     await seedOrg(ORG_A, "gap098a");
     await seedOrg(ORG_B, "gap098b");
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'gap098_app'");
-    appHandle = createDbClient({ connectionString: urlAs("wardenx_app", "gap098_app") });
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'gap098_app'");
+    appHandle = createDbClient({ connectionString: urlAs("chartwarden_app", "gap098_app") });
 
     // The platform-ops surface runs cross-tenant reads over a separately-pooled BYPASSRLS credential
-    // (index.ts's `DATABASE_PLATFORM_URL`); `wardenx_admin` already holds 0052's table grants, so it
+    // (index.ts's `DATABASE_PLATFORM_URL`); `chartwarden_admin` already holds 0052's table grants, so it
     // stands in for that role here (the GAP-097 suite's precedent).
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'gap098_platform'");
+    await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'gap098_platform'");
     await admin.query(
-      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_admin",
+      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO chartwarden_admin",
     );
     platformHandle = createDbClient({
-      connectionString: urlAs("wardenx_admin", "gap098_platform"),
+      connectionString: urlAs("chartwarden_admin", "gap098_platform"),
     });
 
     wireM34Tenancy();

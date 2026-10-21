@@ -13,7 +13,7 @@
  *  2. Indicators 2, 8 and 9 need M6 day/election SPANS intersected with M8 per-day skilled-nursing
  *     totals. Neither read existed; both are added here and exercised against the real tables.
  *
- * Everything the production code touches is driven as the NOBYPASSRLS `wardenx_app` role. The admission
+ * Everything the production code touches is driven as the NOBYPASSRLS `chartwarden_app` role. The admission
  * is ACTIVATED through the real M6 write service (referral → accept → NOR → election → CTI ×2 → activate),
  * not seeded, because the whole point of (1) is what that path does or does not write.
  *
@@ -56,7 +56,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111111f2";
 const USER = "33333333-3333-3333-3333-3333333333f2";
 const MD = "55555555-5555-5555-5555-5555555555f2";
@@ -210,7 +210,7 @@ describe.skipIf(!DB_URL)("F-042 — HCI indicator inputs, LIVE Postgres", () => 
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
     svc = createDbAdmissionRouteService(handle.db, undefined, undefined, {

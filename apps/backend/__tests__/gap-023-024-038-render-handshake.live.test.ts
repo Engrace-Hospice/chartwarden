@@ -11,7 +11,7 @@
  *     forever. Fixing only the emit side would have moved the silence one hop downstream.
  *
  * So this suite proves the WHOLE chain with nothing stubbed but the object bytes: sign an order through
- * the real Drizzle write service as the NOBYPASSRLS `wardenx_app` role → the real transactional outbox
+ * the real Drizzle write service as the NOBYPASSRLS `chartwarden_app` role → the real transactional outbox
  * publisher writes the row → the REAL `createOutboxDispatcher` claims and delivers it → M22's real render
  * consumer resolves the template, renders through the real `DocumentRenderer`, and the real Drizzle seam
  * store writes `document` + `document_version`. RLS is live throughout; org B must see none of it.
@@ -96,7 +96,7 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -293,7 +293,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The REAL catalog-validating transactional publisher — the same one boot binds. A payload that does

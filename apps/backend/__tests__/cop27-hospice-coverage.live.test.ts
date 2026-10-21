@@ -1,7 +1,7 @@
 /**
  * COP27 workstream B (42 CFR 418.24(c)) — hospice coverage determinations on M12 `medication_order` and M21
  * `supply_request`, END TO END over real Postgres migrated from scratch (through 0385/0386), run as the REAL
- * NOBYPASSRLS `wardenx_app` role (`_live-app-role.ts`), with the real catalog-validating outbox publisher.
+ * NOBYPASSRLS `chartwarden_app` role (`_live-app-role.ts`), with the real catalog-validating outbox publisher.
  *
  * Proves:
  *   1. migrations default every existing row to `covered_related` with no determination instant
@@ -46,7 +46,7 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111111c7";
 const ORG_B = "22222222-2222-2222-2222-2222222222c7";
 const PHYSICIAN_MDM = "66666666-6666-6666-6666-6666666666c7";
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)("COP27 — hospice coverage determinations — LIVE Pos
       ).rows[0].id as string;
       org[o] = { pe, loc, member, patient: randomUUID(), adm: randomUUID() };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(
       buildBootOutboxCatalog([M12_OUTBOX_EVENTS, M21_OUTBOX_EVENTS]),

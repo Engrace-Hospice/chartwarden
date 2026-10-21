@@ -4,12 +4,12 @@
  * `createDbMdmRouteService`'s three governance methods all called one helper, `governanceNotWired()`,
  * which threw a blanket 501 — behind three live, fully-enriched admin routes. And `listMergeRequests`,
  * the queue those routes act on, read `merge_request` directly on the app pool, which migration 0019
- * granted to `wardenx_admin` alone: a `permission denied` 500 sitting next to the 501s. The dedup queue
+ * granted to `chartwarden_admin` alone: a `permission denied` 500 sitting next to the 501s. The dedup queue
  * could be neither seen nor acted on.
  *
  * The audit's evidence line is the sharpest part: "the only tests touching these routes run against an
  * in-memory backend... no test exercises the production DB-backed service's approve/reject/promote at
- * all." This suite is that test, as the NOBYPASSRLS `wardenx_app` role, so a missing GRANT, a missing row
+ * all." This suite is that test, as the NOBYPASSRLS `chartwarden_app` role, so a missing GRANT, a missing row
  * POLICY (the trap migration 0202 found on this very role) or a missing function fails it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m40:governance:live
@@ -25,7 +25,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-4111-8111-1111110060a1";
 const ACTOR = "22222222-2222-4222-8222-2222220060b1";
@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'admin@gap060.test')`, [ACTOR]);
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     svc = createDbMdmRouteService(handle.db);
   }, 180_000);
@@ -146,7 +146,7 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
   });
 
   // ── the queue read (the quieter half of GAP-060) ────────────────────────────────────────────────
-  it("lists the open dedup queue as wardenx_app — the read that used to be permission denied", async () => {
+  it("lists the open dedup queue as chartwarden_app — the read that used to be permission denied", async () => {
     const id = await seedMerge(SURVIVOR, DUPLICATE);
     const queue = await svc.listMergeRequests();
     expect(queue.map((m) => m.id)).toContain(id);
@@ -157,7 +157,7 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
     expect(row?.evidence).toEqual({ npiMatch: true });
   });
 
-  it("still refuses a DIRECT merge_request read from wardenx_app (§3.6 posture unchanged)", async () => {
+  it("still refuses a DIRECT merge_request read from chartwarden_app (§3.6 posture unchanged)", async () => {
     // The function is the door; the table itself stays off the tenant pool entirely. If this ever
     // starts passing, someone widened the grant instead of using the writer surface.
     const err = await handle.db.execute("SELECT count(*) FROM merge_request" as never).then(
@@ -302,7 +302,7 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
   });
 
   // ── the privilege floor these functions exist to preserve ───────────────────────────────────────
-  it("still refuses a direct canonical write from wardenx_app (§3.6 unchanged by any of this)", async () => {
+  it("still refuses a direct canonical write from chartwarden_app (§3.6 unchanged by any of this)", async () => {
     const err = await handle.db
       .execute(`UPDATE external_physician SET status = 'merged' WHERE id = '${DUPLICATE}'` as never)
       .then(

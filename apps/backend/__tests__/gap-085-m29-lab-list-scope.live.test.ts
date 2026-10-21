@@ -6,7 +6,7 @@
  * roles read the org, everyone else reads only their M5 caseload, and an empty caseload yields an EMPTY
  * list (fail closed), never "no restriction".
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role over the production Drizzle store
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role over the production Drizzle store
  * (`createDrizzleM29Store().listObservations`) and the REAL M5 `CaseloadProvider`
  * (`createCaseloadProvider(createDrizzleCaseloadStore(db))`) reading seeded `patient_assignment` rows —
  * not an in-memory fake. `listObservations` emits no outbox event (it is a read), so there is no publisher
@@ -41,7 +41,7 @@ import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111185";
 const ORG_B = "11111111-1111-1111-1111-111111111186";
@@ -181,7 +181,7 @@ describe.skipIf(!DB_URL)("GAP-085 M29 lab list scope — LIVE Postgres", () => {
       [ORG_B, OBS(1)],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDrizzleM29Store(handle.db);
     caseload = createCaseloadProvider(createDrizzleCaseloadStore(handle.db));

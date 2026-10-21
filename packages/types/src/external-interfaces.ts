@@ -407,7 +407,7 @@ export const M29_TABLE_NAMES = [
  *
  *   `platform_shared` — no `organization_id`. `nppes_provider` + `nppes_sync_run`: `USING (true)` SELECT
  *                       platform-wide (any tenant reads the public NPPES directory), write only under the
- *                       `wardenx_admin` role via the nightly `withPlatformContext` sync (D11).
+ *                       `chartwarden_admin` role via the nightly `withPlatformContext` sync (D11).
  *   `tenant_scoped`   — `organization_id` present, policy keyed ONLY on `app.org_id`. The other nine.
  */
 export type M29TableTenancy = "platform_shared" | "tenant_scoped";

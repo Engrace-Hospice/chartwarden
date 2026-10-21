@@ -40,7 +40,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f0910001";
 const ORG_B = "22222222-2222-4222-8222-2222f0910002";
@@ -48,7 +48,7 @@ const OPERATOR = "33333333-3333-4333-8333-3333f0910003";
 
 describe.skipIf(!DB_URL)("F-091 M1 feature flags — LIVE Postgres", () => {
   let admin: Client;
-  /** The TENANT pool: the NOBYPASSRLS `wardenx_app` the reader runs on, exactly as production connects. */
+  /** The TENANT pool: the NOBYPASSRLS `chartwarden_app` the reader runs on, exactly as production connects. */
   let tenantHandle: ReturnType<typeof createDbClient>;
   /** The PLATFORM pool: RLS-bypass, which is what the admin seam requires — migration 0001's write
    *  policies never admit a NULL org, so a global flag is uncreatable from any tenant connection. */
@@ -88,7 +88,7 @@ describe.skipIf(!DB_URL)("F-091 M1 feature flags — LIVE Postgres", () => {
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'ops@f091.test')`, [OPERATOR]);
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     tenantHandle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     platformHandle = createDbClient({ connectionString: DB_URL as string });
 

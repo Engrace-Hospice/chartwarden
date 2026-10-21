@@ -5680,7 +5680,7 @@ Nodes (6): WARDENX_UI_HQRP_QUALITY, HQRP quality hub (KPI + CoP strip), Submissi
 
 ### Community 1073 - "Docs history · ClaimAssemblySeams readers (11"
 Cohesion: 0.33
-Nodes (6): M23 claim-assembly seams history (#250/#251), claimAssemblyRangeContextForOrg (M6 seam), ClaimAssemblySeams readers (11 methods, 4 bound), Live RLS test on wardenx_app role, mac_submitter_credential.mac_jurisdiction, wage_index_factor / sequestration_policy tables
+Nodes (6): M23 claim-assembly seams history (#250/#251), claimAssemblyRangeContextForOrg (M6 seam), ClaimAssemblySeams readers (11 methods, 4 bound), Live RLS test on chartwarden_app role, mac_submitter_credential.mac_jurisdiction, wage_index_factor / sequestration_policy tables
 
 ### Community 1074 - "pkg db · 0006_identity_m2_rls_audit_tri"
 Cohesion: 0.53

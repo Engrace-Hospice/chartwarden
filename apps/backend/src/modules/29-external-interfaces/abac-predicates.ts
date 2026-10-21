@@ -79,7 +79,7 @@ export interface M29AbacResolver {
   /**
    * The org that owns `feedId`, resolved UNDER `contextOrgId`'s RLS scope: `null` when the feed does not exist OR belongs
    * to another tenant (RLS hides it, so the two are indistinguishable — the §8.2 unenumerable registry). It cannot be
-   * resolved on a bare connection: `external_feed` is FORCE RLS, so `wardenx_app` with no `app.org_id` sees no rows.
+   * resolved on a bare connection: `external_feed` is FORCE RLS, so `chartwarden_app` with no `app.org_id` sees no rows.
    */
   feedOrgId(feedId: string, contextOrgId: string): Promise<string | null>;
   /** The proposal's org + owner module, or null when absent/cross-tenant/unreadable. */

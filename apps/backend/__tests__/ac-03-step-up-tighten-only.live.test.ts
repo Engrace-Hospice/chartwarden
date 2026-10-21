@@ -12,7 +12,7 @@
  * live exposure ran OPPOSITE to the obvious reading — not "a tenant can loosen the floor" but "a
  * tenant who TIGHTENS is silently ignored".
  *
- * This suite proves both halves against a real database, as the NOBYPASSRLS `wardenx_app` role:
+ * This suite proves both halves against a real database, as the NOBYPASSRLS `chartwarden_app` role:
  * the trigger refuses a loosening row at WRITE time, and the Drizzle store + seam make a tightening
  * row bind at EVALUATION time.
  *
@@ -35,7 +35,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-111111ac0301";
 const ORG_B = "11111111-1111-4111-8111-111111ac0302";
@@ -107,7 +107,7 @@ describe.skipIf(!DB_URL)("AC-03 step-up tighten-only — LIVE Postgres", () => {
       memberOf[org] = m.rows[0].id;
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

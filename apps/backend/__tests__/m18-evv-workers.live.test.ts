@@ -1,5 +1,5 @@
 /**
- * GAP-056 — the M18 §4.8 workers, proven against real Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * GAP-056 — the M18 §4.8 workers, proven against real Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Covers: the late-check sweep (opens one `missing_checkout` per late visit, idempotent, never touches a visit
  * that checked out or is still inside grace), the aggregator-submission prep consumer (a REAL `check_out_recorded`
@@ -50,7 +50,7 @@ import { createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -280,7 +280,7 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
       );
       seeded[org] = { pe, location, member, device };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M18_OUTBOX_EVENTS]));
     outbox = {

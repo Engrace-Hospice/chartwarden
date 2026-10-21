@@ -1010,7 +1010,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async recordDisclosure(envelope) {
-      // §164.528 (F-035). Org-scoped like every other write here; the ledger grants `wardenx_app`
+      // §164.528 (F-035). Org-scoped like every other write here; the ledger grants `chartwarden_app`
       // SELECT + INSERT only (0233), so this is the sole statement the application role can run against
       // it and an accounting row cannot later be edited away by the code that wrote it.
       await withOrgContext(db, ctx(envelope.organizationId), async (tx) => {

@@ -4,23 +4,23 @@
  * The pure unit suites for M35 exercise the domain but never touch a database, so they cannot catch a
  * wrong RLS predicate, a missing WITH CHECK, or a base-table grant that leaks across tenants. This test
  * applies the actual migrations to a real Postgres and exercises the policies as the unprivileged
- * `wardenx_app` role (no BYPASSRLS), proving cross-tenant denial for real across ALL 21 of M35's owned
+ * `chartwarden_app` role (no BYPASSRLS), proving cross-tenant denial for real across ALL 21 of M35's owned
  * tables — which carry THREE distinct RLS shapes (0143's own §1 commentary is the source of truth):
  *
  *   1. TENANT-SCOPED (twelve): subscription, subscription_state_history, payment_method, invoice,
  *      invoice_line, usage_event (partitioned — the policy lives on the parent and propagates to every
  *      partition, PG11+), usage_period_aggregate, patient_active_period, user_active_period,
- *      dunning_state, promo_code_application, refund. Canonical `app.org_id` predicate, wardenx_app keeps
+ *      dunning_state, promo_code_application, refund. Canonical `app.org_id` predicate, chartwarden_app keeps
  *      DELETE (the §3.7 tenant-offboarding copy-then-delete eraser needs it).
- *   2. PLATFORM CATALOG (three): plan, plan_meter, promo_code — `FOR SELECT USING (true)` to wardenx_app
- *      (every tenant must read the pricing/coupon catalog to subscribe); writes only via wardenx_admin.
+ *   2. PLATFORM CATALOG (three): plan, plan_meter, promo_code — `FOR SELECT USING (true)` to chartwarden_app
+ *      (every tenant must read the pricing/coupon catalog to subscribe); writes only via chartwarden_admin.
  *   3. PLATFORM-ONLY (six): revenue_recognition_snapshot, patient_pseudonym_key, stripe_webhook_event,
  *      stripe_api_call_audit, platform_retained_invoice, platform_retained_invoice_line. RLS enabled with
- *      NO wardenx_app grant at all (table-level GRANT, not just a policy) — a wardenx_app SELECT fails
+ *      NO chartwarden_app grant at all (table-level GRANT, not just a policy) — a chartwarden_app SELECT fails
  *      with a permission error regardless of `app.org_id`, not merely a zero-row result (there is no
  *      GRANT to bypass, so Postgres never gets as far as evaluating a policy). Migration 0159 (already
  *      applied) closed the "RLS enabled + zero policy = grant is dead" gap on these six by adding a
- *      `USING (true)` policy for wardenx_admin, so wardenx_admin can now read them for real.
+ *      `USING (true)` policy for chartwarden_admin, so chartwarden_admin can now read them for real.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m35` (SUPERUSER to a THROWAWAY
@@ -33,7 +33,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -77,7 +77,7 @@ const CATALOG_READALL: { table: string; key: keyof CatalogIds }[] = [
   { table: "promo_code", key: "promoCodeId" },
 ];
 
-// 3. PLATFORM-ONLY — six tables, no wardenx_app grant at all (0159 gave wardenx_admin a real policy).
+// 3. PLATFORM-ONLY — six tables, no chartwarden_app grant at all (0159 gave chartwarden_admin a real policy).
 const PLATFORM_ONLY = [
   "revenue_recognition_snapshot",
   "patient_pseudonym_key",
@@ -95,7 +95,7 @@ describe.skipIf(!DB_URL)(
     let a: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -105,7 +105,7 @@ describe.skipIf(!DB_URL)(
     }
 
     async function withAdmin<T>(fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_admin");
+      await db.query("SET ROLE chartwarden_admin");
       try {
         return await fn();
       } finally {
@@ -280,7 +280,7 @@ describe.skipIf(!DB_URL)(
       };
     }
 
-    /** Seed one row per PLATFORM-ONLY table (no wardenx_app grant at all), as superuser, once. */
+    /** Seed one row per PLATFORM-ONLY table (no chartwarden_app grant at all), as superuser, once. */
     async function seedPlatformOnly(): Promise<void> {
       await db.query(
         `INSERT INTO revenue_recognition_snapshot (
@@ -342,9 +342,9 @@ describe.skipIf(!DB_URL)(
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
     // not theoretical.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -398,13 +398,13 @@ describe.skipIf(!DB_URL)(
     );
 
     it.each(PLATFORM_ONLY)(
-      "%s: wardenx_admin can read (platform-only), wardenx_app has no grant at all regardless of org",
+      "%s: chartwarden_admin can read (platform-only), chartwarden_app has no grant at all regardless of org",
       async (table) => {
         const seenByAdmin = await withAdmin(() =>
           db.query(`SELECT count(*)::int AS n FROM ${table}`),
         );
         expect(seenByAdmin.rows[0].n).toBeGreaterThanOrEqual(1);
-        // wardenx_app was never GRANTed on these six tables — a SELECT fails with a permission error, not
+        // chartwarden_app was never GRANTed on these six tables — a SELECT fails with a permission error, not
         // merely a zero-row result, and that holds regardless of which org's context is set.
         await expect(
           withOrg(ORG_A, () => db.query(`SELECT count(*) FROM ${table}`)),

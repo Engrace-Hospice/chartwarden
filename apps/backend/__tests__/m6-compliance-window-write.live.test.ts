@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
  * M6L-T05 — the Drizzle compliance-window close / override write lifecycle, proven against real
  * Postgres. This is the last M6 write slice: with it, no admission route is left at 501.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role: an admission's compliance windows are opened
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role: an admission's compliance windows are opened
  * by the T02 createAdmission cascade (initial_assessment_48h / comprehensive_assessment_5d / care_plan_5d
  * / notice_of_rights); we close one, override another (capturing the reason + the overriding user), and
  * assert the §7.1 optimistic lock (stale ifVersion → 409) plus the already-closed guard.
@@ -37,7 +37,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MD = "55555555-5555-5555-5555-555555555555";
@@ -147,7 +147,7 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       `INSERT INTO "user" (id,email) VALUES ($1,'m6t5@x.test'),($2,'m6t5md@x.test'),($3,'m6t5b@x.test'),($4,'m6t5mdb@x.test')`,
       [USER, MD, USER_B, MD_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

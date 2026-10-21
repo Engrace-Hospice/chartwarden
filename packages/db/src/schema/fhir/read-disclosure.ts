@@ -6,7 +6,7 @@
 // while its accounting seam answers zero is publishing a false compliance statement, not failing closed.
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). APPEND-ONLY BY GRANT —
-// `wardenx_app` holds SELECT + INSERT and nothing else (migration 0233), so the ledger cannot be edited
+// `chartwarden_app` holds SELECT + INSERT and nothing else (migration 0233), so the ledger cannot be edited
 // or deleted by the application role that writes it. Retention is `compliance` (six years, §164.530(j)),
 // NOT the `operational` 90 days its sibling `fhir_client_session` carries, which is also why this table
 // is deliberately UNPARTITIONED: partitioning exists there to make a routine purge cheap, and nothing

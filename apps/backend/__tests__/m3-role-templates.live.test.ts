@@ -1,6 +1,6 @@
 /**
  * M3 role-template materialization (GAP-006) and role-grant scope (GAP-007), LIVE Postgres, as the RLS-enforced
- * `wardenx_app` role.
+ * `chartwarden_app` role.
  *
  * Before: nothing in production created `role` rows, so a freshly provisioned tenant had none, the first-admin
  * acceptance threw "org_admin role template is unavailable", and `GET /me/permissions` was empty.
@@ -45,12 +45,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "44444444-4444-4444-8444-444444441001";
@@ -60,7 +60,7 @@ const ORG_C = "66666666-6666-4666-8666-666666661003";
 describe.skipIf(!DB_URL)("M3 role-template materialization, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
-  /** The org-spine credential (production: DATABASE_PLATFORM_URL); the spine is RLS-hidden from `wardenx_app`. */
+  /** The org-spine credential (production: DATABASE_PLATFORM_URL); the spine is RLS-hidden from `chartwarden_app`. */
   let spineHandle: ReturnType<typeof createDbClient>;
 
   const roleCount = async (org: string) =>

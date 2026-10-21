@@ -13,7 +13,7 @@ import { requirePermission } from "@chartwarden/auth";
 // §7.4 CANONICAL LOCKDOWN: M38 exposes NO route that writes a platform terminology table — the
 // only write path here targets the org-scoped `value_set_tenant_extension` (add-only). Canonical
 // loads are platform-ops-only (`terminology.admin.load`, step-up, BullMQ) and land with the jobs
-// in T10; at the database, `wardenx_app` has no INSERT/UPDATE/DELETE grant on canonical tables
+// in T10; at the database, `chartwarden_app` has no INSERT/UPDATE/DELETE grant on canonical tables
 // (M38-T03 migration 0015), so the lockdown is enforced in depth, not just by route omission.
 //
 // The handlers compose over the injected `TerminologyProvider` seam (M38-T05) — the same surface

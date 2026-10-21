@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.5 - delivery-failure handling, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.5 - delivery-failure handling, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real request stack creates and acknowledges requests; the failures are driven through the REAL delivery settlement
  * (`applyDeliveryTransition`, which publishes the real `m36.notification.delivery_failed` through the catalog-validating outbox), the
@@ -12,7 +12,7 @@
  *   3. replay and 8-way concurrency: exactly one write;
  *   4. acknowledge vs failure, BOTH orders, and a concurrent race; the assignee can still acknowledge a failed_unreachable request;
  *   5. a failure for someone who is no longer the assignee, an alert from before a reassign, a reminder alert, flag off: nothing happens;
- *   6. tenant isolation as wardenx_app: another tenant's delivery is invisible, another tenant cannot touch the request;
+ *   6. tenant isolation as chartwarden_app: another tenant's delivery is invisible, another tenant cannot touch the request;
  *   7. the database refuses a person writing failed_unreachable; the empty actor may; a human can still reassign out of it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:ack-delivery-failure:live
@@ -698,7 +698,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
     });
   });
 
-  describe("6. tenant isolation (wardenx_app, NOBYPASSRLS)", () => {
+  describe("6. tenant isolation (chartwarden_app, NOBYPASSRLS)", () => {
     it("another tenant's context cannot read a delivery of this tenant, nor act on its request", async () => {
       resetCase();
       const { id, messageId } = await freshRequest();

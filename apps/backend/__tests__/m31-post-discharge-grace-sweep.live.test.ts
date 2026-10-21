@@ -1,7 +1,7 @@
 /**
  * F-222 (#248) — LIVE Postgres proof of M31's daily post-discharge-grace sweep (`m31.post-discharge-grace.cron`,
  * spec §4.8 / §7.6) over M6's org-explicit published read `portalDischargedPastGraceForOrg`, connected as the
- * real NOBYPASSRLS `wardenx_app` role. Real `portal_account` / `portal_access_grant` / `admission` /
+ * real NOBYPASSRLS `chartwarden_app` role. Real `portal_account` / `portal_access_grant` / `admission` /
  * `discharge_event` rows are inserted by the test (production has none until M31 provisioning is built).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m31:post-discharge-grace:live
@@ -22,7 +22,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -158,7 +158,7 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     await seedOrg(ORG_A, "a");
     await seedOrg(ORG_B, "b");
     await seedOrg(ORG_C, "c");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

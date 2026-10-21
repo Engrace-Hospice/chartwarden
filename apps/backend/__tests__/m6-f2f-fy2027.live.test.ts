@@ -1,5 +1,5 @@
 /**
- * FY2027 hospice CoP — LIVE Postgres proof (real NOBYPASSRLS `wardenx_app` role, real catalog-validating
+ * FY2027 hospice CoP — LIVE Postgres proof (real NOBYPASSRLS `chartwarden_app` role, real catalog-validating
  * outbox) of the face-to-face changes (docs/research/FY2027_HOSPICE_COP_RESEARCH.md §3–4):
  *
  *   · R-F2F-05 — `completeF2f` persists `encounter_location` and, for telehealth, the § 418.22(a)(4)(ii)(A)–(C)
@@ -43,7 +43,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111112027";
 const ORG_B = "22222222-2222-2222-2222-222222222027";
 const USER = "33333333-3333-3333-3333-333333332027";
@@ -62,7 +62,7 @@ const dayOffset = (offset: number): string =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
 describe.skipIf(!DB_URL)(
-  "FY2027 R-F2F-05/06 + CR 14495 range facts — LIVE Postgres (wardenx_app role)",
+  "FY2027 R-F2F-05/06 + CR 14495 range facts — LIVE Postgres (chartwarden_app role)",
   () => {
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
@@ -237,7 +237,7 @@ describe.skipIf(!DB_URL)(
           [MD, ORG_A],
         )
       ).rows[0].id;
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       registerM5IntakeSeams(handle.db);
       svc = createDbAdmissionRouteService(

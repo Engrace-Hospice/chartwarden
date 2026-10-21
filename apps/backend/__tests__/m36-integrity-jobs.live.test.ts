@@ -1,6 +1,6 @@
 /**
  * WP 1.9 (audit F8/F5) — the two scheduled M36 jobs and the reply guard, LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role.
+ * `chartwarden_app` role.
  *
  * Proves: the nightly hash-verify run is recorded in audit; a tampered message head, a tampered revision and a
  * corrupted cipher are each detected AND recorded; the retention scan withholds a legal-held message (and plans
@@ -51,7 +51,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 
 describe.skipIf(!DB_URL)(
@@ -59,7 +59,7 @@ describe.skipIf(!DB_URL)(
   () => {
     let admin: Client;
     let handle: { db: DbClient; close: () => Promise<void> };
-    /** A login that is actually `wardenx_destruction`: the erase credential (the app role cannot delete attachments). */
+    /** A login that is actually `chartwarden_destruction`: the erase credential (the app role cannot delete attachments). */
     let destroyer: { db: DbClient; close: () => Promise<void> };
     let orgA: string;
     let orgB: string;
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)(
       });
       await admin.query(
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp19_destroyer') THEN
-           CREATE ROLE wp19_destroyer LOGIN PASSWORD 'wp19_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+           CREATE ROLE wp19_destroyer LOGIN PASSWORD 'wp19_destroyer_pw' IN ROLE chartwarden_destruction; END IF; END $$;`,
       );
       const destroyerUrl = new URL(DB_URL as string);
       destroyerUrl.username = "wp19_destroyer";
@@ -265,7 +265,7 @@ describe.skipIf(!DB_URL)(
       expect(runs[0]).toMatchObject({ outcome: "success", actor_kind: "system" });
       expect(runs[0].context).toMatchObject({ scanned: heads + revs, mismatched: 0 });
 
-      // org B has no messages yet: its run scans nothing, whatever org A holds (RLS as wardenx_app)
+      // org B has no messages yet: its run scans nothing, whatever org A holds (RLS as chartwarden_app)
       const other = await runHashVerifyForOrg(deps, orgB);
       expect(other.scanned).toBe(0);
     });
@@ -754,7 +754,7 @@ describe.skipIf(!DB_URL)(
         [`message:${headIds[4]}`, `message_revision:${revIds[4]}`].sort(),
       );
 
-      // The cursor read is a plain SELECT of the org's own audit rows as wardenx_app: it adds no audit row of
+      // The cursor read is a plain SELECT of the org's own audit rows as chartwarden_app: it adds no audit row of
       // its own (each clean run adds exactly its one run row; the tampered run adds two mismatches plus its run row).
       const auditAfter = (
         await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1", [

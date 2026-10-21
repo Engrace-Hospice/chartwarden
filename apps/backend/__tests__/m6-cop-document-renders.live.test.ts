@@ -12,7 +12,7 @@
  * every database that has ever existed.
  *
  * Nothing is stubbed but the object bytes: drive the REAL Drizzle write service as the NOBYPASSRLS
- * `wardenx_app` role → the REAL catalog-validating transactional publisher writes the outbox row → the
+ * `chartwarden_app` role → the REAL catalog-validating transactional publisher writes the outbox row → the
  * REAL `createOutboxDispatcher` claims and delivers it → M22's real render consumer resolves the template
  * and renders through the real `DocumentRenderer` into the real Drizzle seam store → M22 announces
  * `m22.document.rendered` → M6's real back-ref consumer stamps its own column. RLS is live throughout.
@@ -93,7 +93,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -261,7 +261,7 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
 

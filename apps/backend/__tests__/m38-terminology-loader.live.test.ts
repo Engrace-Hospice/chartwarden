@@ -4,7 +4,7 @@
  * Before: no worker existed, `packages/terminology-loader` did not exist, the admin load route only registered a
  * version row (`pending_loader_worker`), and ICD-10-CM could only be loaded out of band by a superuser script.
  *
- * Everything below runs as the NOBYPASSRLS `wardenx_app` role (GAP-086): the loader's writes go through the
+ * Everything below runs as the NOBYPASSRLS `chartwarden_app` role (GAP-086): the loader's writes go through the
  * migration-0364 `terminology_loader_*` SECURITY DEFINER functions, so a missing grant, policy or function fails the
  * suite instead of passing on a superuser connection. Fixtures are tiny, hand-made and invented (no licensed content).
  *
@@ -78,10 +78,10 @@ const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const NO_PGVECTOR = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "terminology_loader",
 ];
 
@@ -217,7 +217,7 @@ describe.skipIf(!DB_URL)("GAP-108 M38 terminology loader + jobs — LIVE Postgre
     await admin.query(
       `INSERT INTO value_set (id, name, description, scope) VALUES ('terminal_dx','Terminal diagnosis',NULL,'hospice')`,
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     ops = createDbTerminologyOpsStore(handle.db);
     store = createDbLoaderStore(handle.db);
@@ -234,7 +234,7 @@ describe.skipIf(!DB_URL)("GAP-108 M38 terminology loader + jobs — LIVE Postgre
   });
 
   // ── §7.4 still holds, and the staging area is invisible to tenant traffic ───────────────────────
-  it("wardenx_app still cannot write a canonical table or even read the staging area", async () => {
+  it("chartwarden_app still cannot write a canonical table or even read the staging area", async () => {
     await expect(
       handle.db.execute(
         "INSERT INTO concept_hcpcs (code, display, status, effective_date, version_id) VALUES ('A1','x','active','2026-01-01',gen_random_uuid())" as never,
@@ -784,7 +784,7 @@ describe.skipIf(!DB_URL)("GAP-108 M38 terminology loader + jobs — LIVE Postgre
             )
           ).outcome,
         ).toBe("embedder_unavailable");
-        // wardenx_app cannot write vectors directly
+        // chartwarden_app cannot write vectors directly
         await expect(handle.db.execute("DELETE FROM concept_embedding" as never)).rejects.toThrow();
       },
     );

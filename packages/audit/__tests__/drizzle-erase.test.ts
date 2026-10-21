@@ -1,7 +1,7 @@
 /**
  * M4 §6/§10.5 — the production `performErasure` executor (lifecycle/drizzle-erase).
  *
- * `audit_event` is HELPER-ONLY and `wardenx_app` holds no DELETE grant (migration 0001), so the
+ * `audit_event` is HELPER-ONLY and `chartwarden_app` holds no DELETE grant (migration 0001), so the
  * destruction adapter lives in this package over an INJECTED destruction-granted client. With no
  * live Postgres in unit scope we drive it with a fake Drizzle db (the tenancy/context.test.ts +
  * death-discharge-reader.test.ts pattern): `transaction → tx` records set_config executes and

@@ -1,6 +1,6 @@
 /**
  * M36 WP 3.9 - care-team removal routes the removed clinician's open tasks to the review queue, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role (ADR-0066).
+ * NOBYPASSRLS `chartwarden_app` role (ADR-0066).
  *
  * The real route stack over the REAL catalog-validating outbox publisher and the REAL `AlertEmitter` with the seeded
  * platform-default rules. The channel-membership-sync consumer is driven with the real `m5.patient.assignment_ended` event

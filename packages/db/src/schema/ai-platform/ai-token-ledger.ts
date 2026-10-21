@@ -10,7 +10,7 @@
 // shorter than `ai_invocation`'s 7 because this is the SaaS billing audit trail (M35), not the
 // disclosure accounting.
 //
-// APPEND-ONLY (§3.5): UPDATE and DELETE both refused by the 0116 trigger, and `wardenx_app` is granted
+// APPEND-ONLY (§3.5): UPDATE and DELETE both refused by the 0116 trigger, and `chartwarden_app` is granted
 // SELECT/INSERT only. A ledger that can be edited cannot bound anything — W2's hard cap is enforced by
 // summing this table, and a mutable row means the sum is a claim rather than a total. A correction is a
 // compensating row.

@@ -4,7 +4,7 @@
 // The screen-driving READS (administration record + census, IV-continuous session, scheduled/missed doses,
 // reconciliation worksheets + decisions, comfort-kit deployments, administration policy) run as real Drizzle
 // queries over the M13-owned `emar/*` tables inside `withOrgContext`, so RLS scopes every row by `app.org_id`
-// as the unprivileged `wardenx_app` role. `administration_record` is PARTITIONED BY RANGE(administered_at);
+// as the unprivileged `chartwarden_app` role. `administration_record` is PARTITIONED BY RANGE(administered_at);
 // reads query the parent, inserts route to the current-month leaf.
 //
 // Like M12, M13 has NO state-transition triggers (only the M4 audit triggers) — the service does every

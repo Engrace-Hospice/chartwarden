@@ -1,5 +1,5 @@
 /**
- * M2 §7.7 auditor ENROLMENT (BAA terms + second factor) — LIVE Postgres as the real NOBYPASSRLS `wardenx_app`
+ * M2 §7.7 auditor ENROLMENT (BAA terms + second factor) — LIVE Postgres as the real NOBYPASSRLS `chartwarden_app`
  * role, through a real Better Auth instance, the real authenticate hook, the real RBAC resolver and the real
  * audit writer. Proves, end to end:
  *   1. redeeming a link yields ONLY an enrolment session: it can call the enrolment routes, cannot read the
@@ -52,10 +52,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
   "wardenx_report_writer",
 ];
@@ -166,7 +166,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
       "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'enr-a','A','A','active'),($2,'enr-b','B','B','active')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const auth = createIdentityAuth(handle.db as never);
 

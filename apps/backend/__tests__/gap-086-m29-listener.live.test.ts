@@ -4,7 +4,7 @@
  * The listener supervisor, framing, ACK builder, TLS registry and every inbound projection existed, but nothing composed them:
  * no `MllpIngestSink` implementation, no credential decrypt, no feed loader, no process entry — and no worker consumed
  * `hl7_message_inbound` rows, so nothing ever created an ADT proposal or an ORU lab observation. This suite drives the whole
- * thing as the NOBYPASSRLS `wardenx_app` role over real mTLS sockets:
+ * thing as the NOBYPASSRLS `chartwarden_app` role over real mTLS sockets:
  *
  *   mint (sealed under the tenant DEK) → startListenerProcess → BAA gate / credential load / bind → client sends HL7 →
  *   ACK `AA` only after COMMIT → `hl7_message_inbound` row → parse worker → proposal / lab observation / review queue.
@@ -33,7 +33,7 @@ import { ackCode, createTlsFixtures, freePort, hasOpenssl, sendMllp } from "./_m
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-1111-1111-111111111086";
 const OTHER_ORG = "11111111-1111-1111-1111-111111111087";
@@ -217,7 +217,7 @@ describe.skipIf(!DB_URL || !hasOpenssl())("GAP-086 M29 listener + parse worker �
     await seedFeed(FEED_BAA, "adt_inbound", await freePort(), ["BADBAA"]);
     await seedFeed(FEED_LEGACY, "adt_inbound", await freePort(), ["LABFAC"]);
 
-    await q(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await q(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const catalog = buildBootOutboxCatalog([M29_OUTBOX_EVENTS]);
@@ -669,7 +669,7 @@ describe.skipIf(!DB_URL || !hasOpenssl())("GAP-086 M29 listener + parse worker �
     expect(n).toBe(12);
   });
 
-  it("does not see or process another tenant's messages (RLS as wardenx_app)", async () => {
+  it("does not see or process another tenant's messages (RLS as chartwarden_app)", async () => {
     await q(
       `INSERT INTO hl7_message_inbound (organization_id, feed_id, message_type, message_control_id, payload_cipher,
          payload_sha256, segments_summary, sending_facility_raw_id, idempotency_key)

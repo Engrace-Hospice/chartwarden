@@ -14,7 +14,7 @@
  *     reach it. The worker now publishes `m29.lab_order.dispatch_refused`; F-177's applier flips the order to `failed`
  *     (`dispatch_refused:<reason>`) and F-182's resend then re-runs it once the operator fixed the cause.
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role, through the real catalog-validating publisher, M29's real T08
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role, through the real catalog-validating publisher, M29's real T08
  * worker (a STUB `MllpTransport` — a permanent refusal to reach a real `dlq_exhausted`, then an AA), and F-177's real
  * applier. Every guard is negative-tested (the assertion fails with the guard removed).
  *
@@ -60,7 +60,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -377,7 +377,7 @@ describe.skipIf(!DB_URL)(
           [USER_D, ORG_A],
         )
       ).rows[0].id as string;
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       await admin.query(
@@ -2032,10 +2032,10 @@ describe.skipIf(!DB_URL)(
       expect(await attestations(id)).toHaveLength(1);
       expect(await requests(id)).toHaveLength(1);
 
-      // The deployment's login role: `IN ROLE wardenx_destruction`, NOT a superuser (0157's contract).
+      // The deployment's login role: `IN ROLE chartwarden_destruction`, NOT a superuser (0157's contract).
       await admin.query(
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='f191_destroyer') THEN
-         CREATE ROLE f191_destroyer LOGIN PASSWORD 'f191_destroyer_pw' IN ROLE wardenx_destruction;
+         CREATE ROLE f191_destroyer LOGIN PASSWORD 'f191_destroyer_pw' IN ROLE chartwarden_destruction;
        END IF; END $$;`,
       );
       const url = new URL(DB_URL as string);
@@ -2087,7 +2087,7 @@ describe.skipIf(!DB_URL)(
       expect(await requests(id)).toHaveLength(0);
     });
 
-    // ══ F-203 — the residual risks of the two-person control, mitigated (all as the NOBYPASSRLS `wardenx_app` role) ═══════════
+    // ══ F-203 — the residual risks of the two-person control, mitigated (all as the NOBYPASSRLS `chartwarden_app` role) ═══════════
     //
     // These cases build their OWN backend with the real collusion bound on a PRIVATE clock in a distinct year, so their
     // windows share no rows with any other case (the attestation ledger is append-only and cannot be cleared between cases).

@@ -5,7 +5,7 @@
  * unreachable; and no M30 PHI route applied patient scope (RLS on these tables is org-only). The reads now
  * push filters, the caseload scope and a keyset cursor into SQL.
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role over the production `buildDrizzleM30ReadService`
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role over the production `buildDrizzleM30ReadService`
  * and the REAL M5 `CaseloadProvider` reading seeded `patient_assignment` rows. The first test proves the
  * harness bites (an un-scoped app read sees zero rows while the superuser sees all of them); the paging
  * test seeds 250 incidents (more than the old 200-row window) and pages through every one of them.
@@ -44,7 +44,7 @@ import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111191";
 const ORG_B = "11111111-1111-1111-1111-111111111192";
@@ -260,7 +260,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     }
     await seedInfection(null, new Date(BASE + 10 * MINUTE)); // staff exposure: no patient
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     read = buildDrizzleM30ReadService(handle.db);
     caseload = createCaseloadProvider(createDrizzleCaseloadStore(handle.db));

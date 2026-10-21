@@ -9,13 +9,13 @@
 // regenerates them through this generator is M4-T10).
 //
 // M04-F06 — the SECURITY DEFINER machinery is made to work *and stay least-privilege*:
-//   • `ALTER FUNCTION ... OWNER TO wardenx_audit_writer` — without this the function would be
-//     owned by the migration runner (wardenx_admin) and run with full RLS-bypassing admin rights
-//     on every PHI write. wardenx_audit_writer holds INSERT-only on audit_event (no UPDATE/DELETE,
+//   • `ALTER FUNCTION ... OWNER TO chartwarden_audit_writer` — without this the function would be
+//     owned by the migration runner (chartwarden_admin) and run with full RLS-bypassing admin rights
+//     on every PHI write. chartwarden_audit_writer holds INSERT-only on audit_event (no UPDATE/DELETE,
 //     no BYPASSRLS), so the definer can append to the log and nothing more.
 //   • `SET search_path = pg_catalog, public` on every definer function (standard PG hardening).
 //   • The INSERT-only RLS policy + grant that lets the writer role append are emitted once by
-//     `auditWriterGrantsDDL()` (audit_event has RLS with policies only TO wardenx_app, so without
+//     `auditWriterGrantsDDL()` (audit_event has RLS with policies only TO chartwarden_app, so without
 //     this the definer's inserts are denied).
 
 import {
@@ -77,7 +77,7 @@ function denylistArrayLiteral(columns: string[]): string {
  * Emit the per-table append-only write-audit trigger DDL (function + owner change + trigger) for
  * one PHI table, per M4 spec §3.3. The returned string is ready to embed in a Drizzle migration
  * (statements separated by `--> statement-breakpoint`). Depends on `audit_scrub` and the
- * `wardenx_audit_writer` grants being present — see `auditScrubFunctionDDL()` / `auditWriterGrantsDDL()`.
+ * `chartwarden_audit_writer` grants being present — see `auditScrubFunctionDDL()` / `auditWriterGrantsDDL()`.
  */
 export function generateAuditTrigger(opts: GenerateAuditTriggerOptions): string {
   const table = assertIdent(opts.table, "table");
@@ -166,7 +166,7 @@ ${conditionalBlocks}  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
   );
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
-ALTER FUNCTION ${fn}() OWNER TO wardenx_audit_writer;--> statement-breakpoint
+ALTER FUNCTION ${fn}() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 CREATE TRIGGER "${trg}" AFTER INSERT OR UPDATE OR DELETE ON ${table}
   FOR EACH ROW EXECUTE FUNCTION ${fn}();`;
 }
@@ -181,14 +181,14 @@ export function auditScrubFunctionDDL(): string {
 
 /**
  * The one-time grants that let the SECURITY DEFINER trigger functions (owned by
- * wardenx_audit_writer) actually append to audit_event (M04-F06 #2): a table-level INSERT grant
- * plus an INSERT-only RLS policy. audit_event's M1 policies are all `TO wardenx_app`, so without
+ * chartwarden_audit_writer) actually append to audit_event (M04-F06 #2): a table-level INSERT grant
+ * plus an INSERT-only RLS policy. audit_event's M1 policies are all `TO chartwarden_app`, so without
  * this the definer's inserts are denied. No BYPASSRLS — the targeted INSERT policy is the
  * least-privilege path. Idempotent: the policy is dropped-if-exists first.
  */
 export function auditWriterGrantsDDL(): string {
-  return `GRANT INSERT ON audit_event TO wardenx_audit_writer;--> statement-breakpoint
+  return `GRANT INSERT ON audit_event TO chartwarden_audit_writer;--> statement-breakpoint
 DROP POLICY IF EXISTS audit_writer_insert ON audit_event;--> statement-breakpoint
 CREATE POLICY audit_writer_insert ON audit_event
-  FOR INSERT TO wardenx_audit_writer WITH CHECK (true);`;
+  FOR INSERT TO chartwarden_audit_writer WITH CHECK (true);`;
 }

@@ -6,7 +6,7 @@
 // `FOR ALL` policy: SELECT admits the platform row plus the caller's own; INSERT and UPDATE admit only
 // rows carrying the caller's own org. A single permissive `FOR ALL` policy would let any tenant admin
 // mint a NULL-org row and kill the capability for every other tenant on the platform — so W3's
-// platform-wide activation goes through `wardenx_admin`, never through `wardenx_app`. (Two permissive
+// platform-wide activation goes through `chartwarden_admin`, never through `chartwarden_app`. (Two permissive
 // `FOR ALL` policies would also OR together, the shape ADR-0010 D3 forbids.)
 //
 // TWO PARTIAL UNIQUE INDEXES, NOT ONE. `ai_kill_org_cap_idx` is `(organization_id, capability_id)

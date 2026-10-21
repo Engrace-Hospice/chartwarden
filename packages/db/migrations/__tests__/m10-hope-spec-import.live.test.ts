@@ -6,7 +6,7 @@ import { importHopeSpec } from "../../../../scripts/db/import-hope-spec";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 describe.skipIf(!DB_URL)("M10 HOPE spec import — LIVE Postgres", () => {
   let db: Client;

@@ -1,5 +1,5 @@
 /**
- * M31 portal invitee SIGN-IN, end to end over HTTP, LIVE Postgres, as the RLS-enforced `wardenx_app` role.
+ * M31 portal invitee SIGN-IN, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role.
  *
  * The production composition, not a header shim: REAL Better Auth (a REAL emailed magic link is requested and followed,
  * and a REAL password + TOTP-less sign-in is used for the "unverified email" case), the REAL `createSessionAuthenticate`
@@ -16,7 +16,7 @@
  *   - two accounts => 409 until one is named; naming ANOTHER user's account id answers as "no account";
  *   - a portal session holds portal keys only: a user who is also a clinician cannot reach clinical routes from it;
  *   - failed binds trip the §5.3.1 budget (429 + Retry-After);
- *   - the definer function reveals only the passed user's accounts, and a bare wardenx_app read of portal_account with
+ *   - the definer function reveals only the passed user's accounts, and a bare chartwarden_app read of portal_account with
  *     no tenant bound still returns nothing (RLS is intact).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m31:portal-signin:live
@@ -66,12 +66,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "11111111-1111-4111-8111-111111120901";
@@ -94,7 +94,7 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
   const patientByOrg: Record<string, string> = {};
   const emailOf = (label: string) => `${label}-${randomUUID().slice(0, 8)}@m31-signin.test`;
 
-  // ── fixtures (seeded as the superuser; every assertion below is made as wardenx_app) ──────────────────────────
+  // ── fixtures (seeded as the superuser; every assertion below is made as chartwarden_app) ──────────────────────────
   async function seedUser(label: string, verified = false): Promise<Persona> {
     const email = emailOf(label);
     const userId = (
@@ -359,7 +359,7 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
     await admin?.end();
   });
 
-  it("harness bites: wardenx_app with no tenant bound sees no portal_account rows (superuser sees them)", async () => {
+  it("harness bites: chartwarden_app with no tenant bound sees no portal_account rows (superuser sees them)", async () => {
     const eligible = await seedUser("rls");
     await seedAccount(ORG_A, eligible.userId);
     const asApp = await handle.pool.query("SELECT count(*)::int AS n FROM portal_account");
@@ -384,7 +384,7 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
       .rows;
     expect(rowsNull).toEqual([]);
     expect(accB).not.toBe(accA);
-    // wardenx_app cannot read the underlying tables through the definer role directly.
+    // chartwarden_app cannot read the underlying tables through the definer role directly.
     await expect(handle.pool.query("SET ROLE portal_signin_reader")).rejects.toThrow();
   });
 

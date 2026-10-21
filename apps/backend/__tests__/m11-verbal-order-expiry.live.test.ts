@@ -71,7 +71,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
   const memberOf: Record<string, string> = {};
 
   async function resetSchema() {
-    // `wardenx_app`/etc. are CLUSTER-GLOBAL roles (per the harness's own convention this repo's live
+    // `chartwarden_app`/etc. are CLUSTER-GLOBAL roles (per the harness's own convention this repo's live
     // suites share). This suite runs against its own freshly-created, exclusive database, but the
     // cluster itself may be shared with other concurrently-running live suites in this session — a
     // `DROP OWNED BY ... CASCADE; DROP ROLE` here would fail (or, forced, would reach into another
@@ -199,7 +199,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The published M11 OrderSignatureProvider seam — real Drizzle store, so `M12`'s `recordVerbal`

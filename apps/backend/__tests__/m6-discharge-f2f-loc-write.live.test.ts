@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
  * M6L-T04 — the Drizzle F2F / LOC / discharge / transfer / revocation write lifecycle, proven against
  * real Postgres.
  *
- * Drives the production writes as the NOBYPASSRLS `wardenx_app` role: F2F schedule → complete → attest
+ * Drives the production writes as the NOBYPASSRLS `chartwarden_app` role: F2F schedule → complete → attest
  * (performer-is-actor gate) and the completed → window-override self-loop; LOC change (RHC → active) →
  * a second change that ends the prior open period → patch; discharge immediate (moved) → discharged;
  * death → bereavement (+ bereavement_eligible); the D11 for-cause file → `pending_cosign` (admission
@@ -47,7 +47,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -157,7 +157,7 @@ describe.skipIf(!DB_URL)(
          VALUES ($1,$2,'CCN-M6T4','M6 T4 Hospice','NPI-M6T4','enc','12-31')`,
         [PROVIDER_ENTITY, ORG_A],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({
         connectionString: appRoleUrl(DB_URL as string),
       });

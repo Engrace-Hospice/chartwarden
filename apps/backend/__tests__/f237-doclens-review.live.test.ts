@@ -1,6 +1,6 @@
 /**
  * F-237 — LIVE Postgres proof of DocLens stage 5, SUD detection and the review screen's server half, as the
- * NOBYPASSRLS `wardenx_app` role, with the REAL catalog-validating publisher and outbox dispatcher.
+ * NOBYPASSRLS `chartwarden_app` role, with the REAL catalog-validating publisher and outbox dispatcher.
  *
  * 1. `runDocLensIntake` over a two-page synthetic referral: the SUD rules flag the methadone line (page 2),
  *    a model indicator whose quote is not on the page is dropped, every candidate on page 2 is tagged, the
@@ -44,7 +44,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 
@@ -258,7 +258,7 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       [patient, ORG],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const catalog = buildBootOutboxCatalog([M5_OUTBOX_EVENTS, M22_OUTBOX_EVENTS]);

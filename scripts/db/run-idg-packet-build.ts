@@ -7,7 +7,7 @@
  * for a stack with NO worker or Redis (a meeting then sits in `packets_building` until something consumes
  * the job), or for building a meeting that is still outside the T-24h window without waiting for the hourly
  * sweep. It runs the SAME `runPacketBuildCron` the worker runs, with the org supplied explicitly, over the
- * real `wardenx_app` connection, real M5/M6/M7/M8 seams and the real catalog-validating outbox publisher.
+ * real `chartwarden_app` connection, real M5/M6/M7/M8 seams and the real catalog-validating outbox publisher.
  *
  * Run (host; needs the app-role URL that the Docker stack uses):
  *   DATABASE_URL="$(docker compose exec -T worker printenv DATABASE_URL | sed 's/@postgres:/@localhost:/')" \
@@ -50,7 +50,7 @@ const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL (the wardenx_app role URL) is required");
+  if (!url) throw new Error("DATABASE_URL (the chartwarden_app role URL) is required");
   const handle = createDbClient({ connectionString: url });
   const redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
     maxRetriesPerRequest: null,

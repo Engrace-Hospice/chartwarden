@@ -1,5 +1,5 @@
 /**
- * M36 WP 2.3 - mentions of people who are not in the conversation, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 2.3 - mentions of people who are not in the conversation, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Real service + real catalog-validating outbox publisher. Proves: the non-member lookup returns names only and only
  * active colleagues of THIS tenant who are not already members; a mention reference to a non-member is refused and
@@ -26,7 +26,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0023";
 const ORG_B = "22222222-2222-4222-8222-2222000f0023";
@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.3 mentions - LIVE Postgres", () => {
     suspendedMembership = await seedUser("Zed Suspended", ORG_A, { membershipStatus: "suspended" });
     inactiveUser = await seedUser("Zed Inactive", ORG_A, { userStatus: "suspended" });
     foreign = await seedUser("Zed Foreign", ORG_B);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));

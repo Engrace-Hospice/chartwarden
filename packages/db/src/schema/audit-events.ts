@@ -1,6 +1,6 @@
 // @chartwarden/db — `audit_event` (M1 Foundation §3.9). The append-only audit log,
 // RANGE partitioned on created_at (monthly). HELPER-ONLY: written exclusively via
-// packages/audit (audit()/auditRead()) under the wardenx_audit_writer role — never
+// packages/audit (audit()/auditRead()) under the chartwarden_audit_writer role — never
 // a direct insert/select from a feature module (HELPER_ONLY_TABLES, manifest).
 // organization_id is nullable so platform/system events can be recorded; tenant
 // reads are scoped by RLS on app.org_id (added with the initial migration, M1-T04).

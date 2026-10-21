@@ -5,7 +5,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 /**
  * M9 - `LatestAssessmentProvider.linkSummary` (the M36 WP 3.2 clinical-link read seam) proven against real
- * Postgres as the NOBYPASSRLS `wardenx_app` role: found, unknown id, cross-tenant, exactly four keys, no score or
+ * Postgres as the NOBYPASSRLS `chartwarden_app` role: found, unknown id, cross-tenant, exactly four keys, no score or
  * interpretation leaking, and a Part 2 (sud_context) row withheld like a missing one.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m9:link-summary:live
@@ -16,7 +16,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -27,7 +27,7 @@ const SECRET_SCORE_TEXT = "SECRET-INTERPRETATION-71";
 
 type Siting = { providerEntity: string; location: string; membership: string };
 
-describe.skipIf(!DB_URL)("M9 linkSummary - LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M9 linkSummary - LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let provider: ReturnType<typeof createLatestAssessmentProvider>;
@@ -112,7 +112,7 @@ describe.skipIf(!DB_URL)("M9 linkSummary - LIVE Postgres as wardenx_app", () => 
     siting[ORG_B] = await seedOrg(ORG_B, 2);
     aId = await seedAssessment(ORG_A, "pps", false);
     sudId = await seedAssessment(ORG_A, "aims", true);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     provider = createLatestAssessmentProvider(createDrizzleAssessmentReaderStore(handle.db));
   }, 180_000);
@@ -130,7 +130,7 @@ describe.skipIf(!DB_URL)("M9 linkSummary - LIVE Postgres as wardenx_app", () => 
     );
     await probe.end();
     expect(rows[0]).toMatchObject({
-      current_user: "wardenx_app",
+      current_user: "chartwarden_app",
       rolsuper: false,
       rolbypassrls: false,
     });

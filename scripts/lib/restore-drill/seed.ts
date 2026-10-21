@@ -1,7 +1,7 @@
 /**
  * Seed for the M36 restore drill: two tenants with messages, edits (revisions) and attachments, written THROUGH the
  * real M36 route stack (Authorization Contract, channel_visibility ABAC, idempotency store, catalog-validating outbox,
- * the real attachment service and scan gate) as the NOBYPASSRLS `wardenx_app` role, over the real SigV4 S3 adapter
+ * the real attachment service and scan gate) as the NOBYPASSRLS `chartwarden_app` role, over the real SigV4 S3 adapter
  * against the drill's private MinIO. Only the identity preconditions (organizations, users, memberships) are inserted
  * directly as the superuser, exactly as the live suites do.
  */

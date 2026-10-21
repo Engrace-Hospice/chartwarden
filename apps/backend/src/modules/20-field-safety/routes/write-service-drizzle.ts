@@ -1746,7 +1746,7 @@ export function buildDrizzleM20WriteService(
         }
 
         // Decision 6 — write a NEW version; never touch the old one. `safety_policy_version` is
-        // append-only at the GRANT level (migration 0111: wardenx_app holds SELECT/INSERT only, so a past
+        // append-only at the GRANT level (migration 0111: chartwarden_app holds SELECT/INSERT only, so a past
         // cadence cannot be rewritten), which means the old row's `effective_to` cannot be stamped either:
         // the UPDATE that used to close it failed with 42501 and made this route a guaranteed 500 (GAP-136,
         // found by the live route suite). Nothing needs the stamp — every reader (read-service

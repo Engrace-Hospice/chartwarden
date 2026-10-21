@@ -1,7 +1,7 @@
 /**
  * M14L — the Drizzle IDG write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12/M13, M14 has NO state-transition triggers,
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role. Like M12/M13, M14 has NO state-transition triggers,
  * so the service does every transition itself (composing the pure `@chartwarden/idg` machines): recurring-policy
  * create/update · the meeting machine (buildPackets · start · adjourn with the step-up gate + the
  * `idg.decision_recorded` ADJOURN burst · cancel · reschedule) · attendance record/update/remove · agenda
@@ -35,7 +35,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -194,7 +194,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -210,7 +210,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         displayForMemberships: async (_org, ids) =>
           new Map(ids.map((i) => [i, { displayName: `Name-${i.slice(0, 8)}` }])),
       },
-      // The REAL M1 site-display seam over the real wardenx_app connection (org + location NAMES for the PDF header).
+      // The REAL M1 site-display seam over the real chartwarden_app connection (org + location NAMES for the PDF header).
       { displayForSite: (o, ids) => siteDisplayForOrg(handle.db, o, ids) },
     );
   }, 120_000);
@@ -1200,7 +1200,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     ).resolves.toMatchObject({ status: "scheduled" });
   });
 
-  it("scheduleMeeting: org B cannot see org A's ad-hoc meeting (RLS, wardenx_app)", async () => {
+  it("scheduleMeeting: org B cannot see org A's ad-hoc meeting (RLS, chartwarden_app)", async () => {
     const m = await svc.scheduleMeeting(ORG_A, MEMBER, {
       locationId: locationOf[ORG_A],
       scheduledStart: "2032-03-04T15:00:00.000Z",
@@ -1209,12 +1209,12 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     await expect(svc.getMeeting(ORG_B, m.id)).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("RLS: org B cannot start or read org A's meeting (404 under the wardenx_app policy)", async () => {
+  it("RLS: org B cannot start or read org A's meeting (404 under the chartwarden_app policy)", async () => {
     const m = await seedMeeting(ORG_A, "packets_ready");
     await expect(svc.getMeeting(ORG_B, m)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.startMeeting(ORG_B, MEMBER, m)).rejects.toMatchObject({ statusCode: 404 });
   });
-  it("scheduleMeeting: coordinatorMembershipId must be an ACTIVE membership of the caller's org (422, uniform, wardenx_app)", async () => {
+  it("scheduleMeeting: coordinatorMembershipId must be an ACTIVE membership of the caller's org (422, uniform, chartwarden_app)", async () => {
     const active = await seedMembership(ORG_A, "active");
     const pending = await seedMembership(ORG_A, "pending");
     const revoked = await seedMembership(ORG_A, "revoked");
@@ -1547,7 +1547,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
     expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toEqual(snap[0].s); // reason rides in the render payload
 
-    // PDF header names (real M1 seam, as wardenx_app) + live DECISION CONTENT, re-derived at emit.
+    // PDF header names (real M1 seam, as chartwarden_app) + live DECISION CONTENT, re-derived at emit.
     const signedRp = ev[0].payload.renderPayload;
     expect(signedRp.meeting).toMatchObject({
       organizationName: "A",
@@ -1842,7 +1842,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         }),
       ),
     ).toMatchObject({ statusCode: 422, code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG" });
-    // ORG isolation of the lookup: org B's meetings are never consulted (RLS under wardenx_app); the read model:
+    // ORG isolation of the lookup: org B's meetings are never consulted (RLS under chartwarden_app); the read model:
     const st = (await svc.getMinutes(ORG_A, m)).addendumState;
     expect(st).toMatchObject({ open: true, closedReason: null });
     expect([...st.supersededPatientIds].sort()).toEqual([PATIENT_CLEAR, PATIENT_FLAGGED].sort());
@@ -1927,7 +1927,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     ]);
   });
 
-  it("membershipRoleKeysForOrg (M3 seam, as wardenx_app): live enabled+unexpired role keys only; unknown / revoked / cross-tenant are ABSENT", async () => {
+  it("membershipRoleKeysForOrg (M3 seam, as chartwarden_app): live enabled+unexpired role keys only; unknown / revoked / cross-tenant are ABSENT", async () => {
     const mk = async (org: string, key: string, enabled = true): Promise<string> =>
       (
         await admin.query(

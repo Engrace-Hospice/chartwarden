@@ -11,13 +11,13 @@
 //
 // WHY A SQL FUNCTION, NOT A PLAIN DRIZZLE UPSERT: `alert_rule`'s own RLS write policy is
 // `WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)` — a NULL
-// `organization_id` can never satisfy that check under `wardenx_app` (the role every request/worker
+// `organization_id` can never satisfy that check under `chartwarden_app` (the role every request/worker
 // connection runs as in production), by design (a tenant must never write a platform-default row).
 // ADR-0010 D2/D3 forbids adding a second RLS branch to that SAME policy (never an org-alternative
 // disjunct on a policy that is also tenant-writable). Migration 0193 mirrors 0187's
 // `audit_writer_insert_platform_event` / 0189's `cap_platform_loader_publish_constant` pattern exactly:
-// `alert_rule_platform_upsert(...)` is a SECURITY DEFINER function owned by `wardenx_admin` (which holds
-// its own dedicated `alert_rule_admin_all` policy), EXECUTE-granted to `wardenx_app` — so this runs over
+// `alert_rule_platform_upsert(...)` is a SECURITY DEFINER function owned by `chartwarden_admin` (which holds
+// its own dedicated `alert_rule_admin_all` policy), EXECUTE-granted to `chartwarden_app` — so this runs over
 // the SAME ordinary `dbHandle.db` connection every other boot-populate uses, no separate platform
 // credential required. `organization_id` is hardcoded NULL inside the function body, never a parameter.
 import type { DbClient } from "@chartwarden/db";

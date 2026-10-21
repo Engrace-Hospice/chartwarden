@@ -3,7 +3,7 @@
 //
 // The screen-driving READS (meeting schedule, meeting detail, packet digests, action-item worklist, minutes)
 // run as real Drizzle queries over the M14-owned tables inside `withOrgContext`, so RLS scopes every row by
-// `app.org_id` as the unprivileged `wardenx_app` role.
+// `app.org_id` as the unprivileged `chartwarden_app` role.
 //
 // Like M12/M13, M14 has NO state-transition triggers (only the M4 audit triggers) — the service does every
 // meeting/decision/action-item/minutes transition itself via INSERT/UPDATE, composing the PURE `@chartwarden/idg`
@@ -19,7 +19,7 @@
 // to stamp `idg_decision.care_plan_id` — see resolveCarePlanIdForDecision):
 //   (1) `withOrgContext` runs with `userId:""` → the M4 write-audit trigger fires with a NULL actor (the
 //       acting membership is the passed `userId`, stored on coordinator/recorded_by/etc. where a column exists);
-//   (2) wardenx_app has DELETE on NO M14 table (append + status-transition, §3.3) — so `removeAttendance`
+//   (2) chartwarden_app has DELETE on NO M14 table (append + status-transition, §3.3) — so `removeAttendance`
 //       soft-removes to `excused`, `removeActionItem` transitions to `cancelled`, and `removeAgendaItem` is a
 //       tenant-checked no-op (the append-only agenda has neither a DELETE grant nor a tombstone column);
 //   (3) `idg_patient_packet` (PE/location/patient/admission NOT NULL) is built by the §2.4 packet WORKER, not

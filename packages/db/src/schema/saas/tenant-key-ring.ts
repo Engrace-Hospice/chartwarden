@@ -6,7 +6,7 @@
 // MinIO / eraser-receipt sequence is logged to `tenant_key_destruction_log`.
 //
 // Tenancy (§3.10 M34-F02 / ADR-0010): ORG-SCOPED — carries its own `organization_id` NOT NULL so the canonical
-// app.org_id RLS predicate applies directly (base-table SELECT is REVOKED from wardenx_app; reads go through the
+// app.org_id RLS predicate applies directly (base-table SELECT is REVOKED from chartwarden_app; reads go through the
 // `tenant_key_ring_metadata_v` view, which also filters on organization_id). `tenant_account_id` is a plain uuid
 // app-validated reference to the sibling `tenant_account` row (authored separately); the org spine takes a SQL FK.
 // RLS + grants + the M4 write-audit trigger land in migrations 0052/0053. `destruction_certificate_id` is an M4

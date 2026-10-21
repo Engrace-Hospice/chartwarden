@@ -1,7 +1,7 @@
 /**
  * F-173 (#248, m1 group) — LIVE Postgres proof that `createDrizzleSystemStatusReader`
  * (`apps/backend/src/bootstrap/system-status-store.ts`) actually persists `POST /admin/system/status`
- * to the real `system_status` table, as the NOBYPASSRLS `wardenx_app` role.
+ * to the real `system_status` table, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * THE GAP THIS CLOSES (F-156, #248). No Drizzle-backed `SystemStatusReader` existed anywhere in the
  * repository; the composition root always fell back to `createInMemorySystemStatusReader()`, a
@@ -15,7 +15,7 @@
  * a shared in-process reference); a second upsert on the same `id` UPDATES in place (`ON CONFLICT`); two
  * different `orgId` arguments passed to `list`/`upsert` see and affect the EXACT SAME row (proving the
  * table is genuinely NON_ORG_SCOPED and the reader's `orgId` parameter is correctly ignored, not silently
- * dropping data); the NOBYPASSRLS `wardenx_app` role can read and write the table directly with no
+ * dropping data); the NOBYPASSRLS `chartwarden_app` role can read and write the table directly with no
  * `withOrgContext` envelope.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m1:system-status-store:live
@@ -30,7 +30,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f1730001";
 const ORG_B = "22222222-2222-4222-8222-2222f1730002";
@@ -62,7 +62,7 @@ describe.skipIf(!DB_URL)("F-173 (#248) — M1 Drizzle SystemStatusReader — LIV
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 

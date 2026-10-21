@@ -736,7 +736,7 @@ export * from "./safety/index";
 // cloud route without a BAA and ZDR" and "no local route without a license and an artifact" DB facts),
 // ai_prompt_template (the D18 prohibited-zone key; the prompt TEXT stays in version control and the row
 // pins its SHA-256) and ai_evaluation_run — all listed in check-tenancy.ts's NON_ORG_SCOPED set, read-all
-// within any tenant, writes via wardenx_admin. SIX are tenant-scoped on canonical app.org_id RLS:
+// within any tenant, writes via chartwarden_admin. SIX are tenant-scoped on canonical app.org_id RLS:
 // ai_tenant_opt_in_record (where the row's EXISTENCE is not consent — the STATUS is, defaulting to
 // opted_out), ai_clinician_opt_out (membership-keyed, one LIVE refusal per capability), ai_invocation,
 // ai_token_ledger, ai_hallucination_report and ai_routing_override. ONE is mixed —
@@ -752,7 +752,7 @@ export * from "./safety/index";
 // §3.5 immutability triggers in 0116.
 export * from "./ai-platform/index";
 // Module 28 (FHIR Gateway) — the eight §3.3 owned tables. Seven tenant-scoped (canonical app.org_id RLS)
-// + the platform-shared `fhir_capability_snapshot` (read-all, writes via wardenx_admin). Two are
+// + the platform-shared `fhir_capability_snapshot` (read-all, writes via chartwarden_admin). Two are
 // partitioned monthly (`fhir_client_session` on issued_at, `fhir_inbound_resource` on proposed_at) with
 // composite PKs declared in SQL. Enums land in M28-T01; tables in migrations 0134–0136; RLS/grants + the
 // M4 write-audit triggers in 0137.
@@ -783,7 +783,7 @@ export * from "./portal/index";
 export * from "./subscription-billing/index";
 
 // Module 29 (External Interfaces) — the eleven owned tables (§3.3). Nine tenant-scoped on canonical
-// app.org_id RLS + the two platform-shared NPPES directory tables (read-all, writes via wardenx_admin).
+// app.org_id RLS + the two platform-shared NPPES directory tables (read-all, writes via chartwarden_admin).
 // Five are partitioned monthly (hl7_message_inbound/lab_observation/lab_observation_value on received_at,
 // hl7_message_outbound on queued_at, hl7_inbound_proposal on proposed_at) with composite PKs in SQL; RLS +
 // M4 write-audit triggers in migration 0148. Enums in ./external-interfaces/enums.

@@ -4,7 +4,7 @@
  * M14's pure suites exercise the meeting/decision/minutes machines over in-memory Maps; the RLS suite proves
  * the policies but never drives the SERVICE. This applies the real migrations to a real Postgres, seeds one
  * full IDG chain per tenant as superuser, then drives the PRODUCTION read service (the one the composition
- * root mounts) over the M14-owned tables as the unprivileged `wardenx_app` role — proving the schedule /
+ * root mounts) over the M14-owned tables as the unprivileged `chartwarden_app` role — proving the schedule /
  * meeting / action-item / minutes reads return the seeded rows, that RLS scopes every read by tenant (org B
  * cannot see org A's meeting through the service), and that every write fail-closes 501.
  *
@@ -22,7 +22,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -162,9 +162,9 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
     );
     seeded[ORG_A] = await seedOrg(ORG_A, 1);
     seeded[ORG_B] = await seedOrg(ORG_B, 2);
-    // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` does NOT SET ROLE. To exercise
-    // RLS faithfully, connect the client AS wardenx_app — NOLOGIN in the migrations, so grant LOGIN here.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    // Prod connects as the NOBYPASSRLS `chartwarden_app` role; `withOrgContext` does NOT SET ROLE. To exercise
+    // RLS faithfully, connect the client AS chartwarden_app — NOLOGIN in the migrations, so grant LOGIN here.
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -302,7 +302,7 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
   });
 
   // ── signer name + render status on the minutes read (the identity-owned `membershipDisplayForOrg` seam) ──
-  it("membershipDisplayForOrg (as wardenx_app): name ONLY, trimmed; unknown ids absent; a revoked member still resolves", async () => {
+  it("membershipDisplayForOrg (as chartwarden_app): name ONLY, trimmed; unknown ids absent; a revoked member still resolves", async () => {
     const got = await membershipDisplayForOrg(handle.db, ORG_A, [
       MEMBER_A,
       "99999999-9999-9999-9999-999999999999",
@@ -355,7 +355,7 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
     expect(rendered.minutesDocumentId).toBe(documentId);
   });
 
-  // ── packet CONTENT read (GET /meetings/:id/packets/:patientId) — as wardenx_app over a real jsonb row ─────────
+  // ── packet CONTENT read (GET /meetings/:id/packets/:patientId) — as chartwarden_app over a real jsonb row ─────────
   const PKT_PATIENT_SUD = "99999999-9999-4999-8999-999999999999";
   const snapshotFor = (patientId: string, meetingId: string, sud: boolean) => ({
     schemaVersion: "2026-01-v1",
@@ -442,7 +442,7 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
     },
   });
 
-  it("getPacket returns the stored snapshot's content as wardenx_app; a non-SUD read never consults consent", async () => {
+  it("getPacket returns the stored snapshot's content as chartwarden_app; a non-SUD read never consults consent", async () => {
     const meetingId = seeded[ORG_A].meeting;
     const pe = (
       await admin.query(

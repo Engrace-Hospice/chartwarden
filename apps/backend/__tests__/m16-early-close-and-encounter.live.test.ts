@@ -1,7 +1,7 @@
 /**
  * GAP-047 / GAP-049 — M16 early-close cosign + completion source-encounter verification, LIVE Postgres.
  *
- * Real `buildDrizzleM16WriteService` as the NOBYPASSRLS `wardenx_app` role, real M8
+ * Real `buildDrizzleM16WriteService` as the NOBYPASSRLS `chartwarden_app` role, real M8
  * `BereavementEncounterReader` over the real `encounter` table. Plans / contacts / outreach / encounters are
  * seeded as the admin role (the intake path has its own suite); the plan-shaped read service is a stub
  * because the real one resolves the M39 consent gate, which is not what is under test here.
@@ -25,7 +25,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_OTHER = "22222222-2222-2222-2222-222222222222";
 const NARRATIVE = "The family relocated out of state and asked that the program be closed early.";
@@ -165,7 +165,7 @@ describe.skipIf(!DB_URL)("GAP-047/049 — M16 early-close cosign + source encoun
     supervisor = userIds[1] as string;
     authorMembership = members[2] as string;
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerSeam("BereavementEncounterReader", createBereavementEncounterReader(handle.db));
     const readStub = { getPlan: async () => ({}) } as unknown as M16ReadService;

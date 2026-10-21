@@ -123,10 +123,10 @@ export interface M34SeamRegistrationDeps {
   readonly kekUnwrap: KekUnwrapPort;
   /**
    * Run `fn` org-scoped over a credential that MAY SELECT `tenant_key_ring` — the platform login, not the
-   * request path's `wardenx_app`.
+   * request path's `chartwarden_app`.
    *
    * This is a separate port from {@link RunInOrgContext} on purpose. Migration 0052 §5 REVOKES SELECT on
-   * `tenant_key_ring` from `wardenx_app` and surfaces only the ciphertext-free `tenant_key_ring_metadata_v`
+   * `tenant_key_ring` from `chartwarden_app` and surfaces only the ciphertext-free `tenant_key_ring_metadata_v`
    * view to it, so that a compromise of the request path's credential yields no key material at all — the
    * §3.10 / M34-F02 control. Reading the wrapped DEK through `runInOrgContext` therefore does not fail on
    * the KEK, it fails one step earlier with `42501 permission denied for table tenant_key_ring`, whatever

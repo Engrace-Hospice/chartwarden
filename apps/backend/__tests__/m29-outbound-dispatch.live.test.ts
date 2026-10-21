@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { buildM29AbacPredicates } from "../src/modules/29-external-interfaces/abac-predicates";
 /**
  * M29 External Interfaces — F-175 (#248): the T08 outbound MLLP dispatch worker, proven against REAL
- * Postgres (as the NOBYPASSRLS `wardenx_app` role) and a real in-process mock MLLP server over `node:net`
+ * Postgres (as the NOBYPASSRLS `chartwarden_app` role) and a real in-process mock MLLP server over `node:net`
  * (the transport's own `mllp_plain` test-only protocol — see `mllp-transport.ts`'s header).
  *
  * Drives `buildM29OutboundDispatchConsumer(...).handle(event)` and `runOutboundRetrySweepOnce(...)`
@@ -51,7 +51,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -351,7 +351,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     await seedOrg(ORG_A, "org-a");
     await seedOrg(ORG_B, "org-b");
@@ -2062,7 +2062,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   });
 
   // ── F-189 — the per-feed admin routes' ABAC feed-org resolver, on the REAL NOBYPASSRLS role ─────────────────
-  // `feedOrgId` used to query `external_feed` on the BARE pool: `wardenx_app` with no `app.org_id` sees ZERO rows under
+  // `feedOrgId` used to query `external_feed` on the BARE pool: `chartwarden_app` with no `app.org_id` sees ZERO rows under
   // FORCE RLS, so it answered `null`, `external_feed_organization_scope` denied, and every per-feed admin route (detail,
   // update, activate, suspend, revoke, credentials, health) answered 404 — for every feed, always, in production. The
   // unit tests bind a stub resolver and no live suite ever built the Drizzle one, so nothing saw it.

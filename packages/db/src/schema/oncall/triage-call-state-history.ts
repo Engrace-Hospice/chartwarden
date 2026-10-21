@@ -8,7 +8,7 @@
 // text the §3.6 denylist already protects on `triage_call`. The digest still proves the same command
 // produced the same transition.
 //
-// GRANTS: wardenx_app gets SELECT + INSERT only (migration 0108). Append-only is enforced by the absent
+// GRANTS: chartwarden_app gets SELECT + INSERT only (migration 0108). Append-only is enforced by the absent
 // UPDATE/DELETE grant, not by convention.
 import { sql } from "drizzle-orm";
 import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

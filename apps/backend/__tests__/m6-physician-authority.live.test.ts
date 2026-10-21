@@ -1,6 +1,6 @@
 /**
  * 42 CFR 418.26(b) discharge order (FY 2027, effective 2026-10-01) + 42 CFR 418.25(a) admission recommendation
- * (FY 2026, effective 2025-10-01), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * (FY 2026, effective 2025-10-01), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Proves the PRODUCTION PhysicianAuthorityPort (`createDbPhysicianAuthority` — M3 role grants through the GAP-022
  * reader, M5 `patient_assignment` through M5's care-team reader) decides the signer matrix against real rows:
@@ -24,7 +24,7 @@ import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-1111111126b0";
 const ORG_B = "22222222-2222-2222-2222-2222222226b0";
@@ -167,7 +167,7 @@ describe.skipIf(!DB_URL)("418.25(a) / 418.26(b) physician signer set, LIVE Postg
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {

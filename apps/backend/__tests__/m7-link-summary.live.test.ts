@@ -5,7 +5,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 /**
  * M7 - `CarePlanReader.linkSummary` (the M36 WP 3.2 clinical-link read seam) proven against real Postgres as the
- * NOBYPASSRLS `wardenx_app` role: found, unknown id, cross-tenant, exactly four keys, and no plan content.
+ * NOBYPASSRLS `chartwarden_app` role: found, unknown id, cross-tenant, exactly four keys, and no plan content.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m7:link-summary:live
  * (no pgvector locally: CHARTWARDEN_TEST_NO_PGVECTOR=1)
@@ -16,14 +16,14 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const UNKNOWN_ID = "99999999-9999-9999-9999-999999999999";
 const SECRET = "SECRET-SUD-PROBLEM-TEXT";
 
-describe.skipIf(!DB_URL)("M7 CarePlanReader.linkSummary - LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M7 CarePlanReader.linkSummary - LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let reader: ReturnType<typeof createCarePlanReader>;
@@ -100,7 +100,7 @@ describe.skipIf(!DB_URL)("M7 CarePlanReader.linkSummary - LIVE Postgres as warde
     );
     await seedOrg(ORG_A, 1);
     await seedOrg(ORG_B, 2);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     reader = createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db));
   }, 180_000);
@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)("M7 CarePlanReader.linkSummary - LIVE Postgres as warde
     );
     await probe.end();
     expect(rows[0]).toMatchObject({
-      current_user: "wardenx_app",
+      current_user: "chartwarden_app",
       rolsuper: false,
       rolbypassrls: false,
     });

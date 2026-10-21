@@ -1,5 +1,5 @@
 /**
- * M19 EscalationRouter (ADR-0057 item 12), tier 1 only - LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M19 EscalationRouter (ADR-0057 item 12), tier 1 only - LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Proves what the in-memory unit suite cannot: the real `on_call_shift` read, the real PatientReader / site reader / policy reads,
  * RLS isolation between two orgs, the repeated wall-clock hour of 2026-11-01 America/New_York read against ABSOLUTE shift instants,
@@ -28,7 +28,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleConnectionString } from "./_live-app-rol
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111e5ca1a19";
 const ORG_B = "22222222-2222-4222-8222-2222e5ca1b19";
 const NY = "America/New_York";
@@ -41,7 +41,7 @@ interface OrgSeed {
   patient: string;
 }
 
-describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let router: EscalationRouter;
@@ -344,7 +344,7 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
     );
   });
 
-  it("tenant isolation as wardenx_app: org B cannot reach org A's patients or shifts, and a foreign org id is refused", async () => {
+  it("tenant isolation as chartwarden_app: org B cannot reach org A's patients or shifts, and a foreign org id is refused", async () => {
     const a = seeded[ORG_A] as OrgSeed;
     const b = seeded[ORG_B] as OrgSeed;
     // Org A's patient asked from org B's scope: identical to an unknown patient.

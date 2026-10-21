@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/promotions/promotion-store-db.ts - WP 3.7: the `chart_promotion_request` rows.
 //
 // Writes take the caller's `tx` (the service owns the transaction and publishes the outbox event inside it). Every
-// statement names the organization on top of RLS. `wardenx_app` may UPDATE only the outcome columns and has no DELETE; the
+// statement names the organization on top of RLS. `chartwarden_app` may UPDATE only the outcome columns and has no DELETE; the
 // partial unique index (one PROPOSED request per message and target) is the idempotency arbiter for insert, and the key
 // is locked (`FOR UPDATE`) before a decision so two racing requests serialise and the loser replays the winner's row.
 // There is no event table: the M4 audit trigger is the history.

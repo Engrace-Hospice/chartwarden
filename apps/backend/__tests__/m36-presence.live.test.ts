@@ -1,5 +1,5 @@
 /**
- * M36 WP 2.12 - ephemeral presence + typing, LIVE Postgres (as the NOBYPASSRLS `wardenx_app` role) + a throwaway Valkey.
+ * M36 WP 2.12 - ephemeral presence + typing, LIVE Postgres (as the NOBYPASSRLS `chartwarden_app` role) + a throwaway Valkey.
  *
  * Proves: flag off (the default) => a member gets the typed PRESENCE_DISABLED and NOTHING is stored (Valkey keyspace empty,
  * no presence relation in Postgres, no audit/outbox rows); flag on => a heartbeat is visible to another member and expires
@@ -48,7 +48,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = Buffer.alloc(32, 7);
 const TIMINGS = { presenceTtlMs: 2_500, typingTtlMs: 800, throttleMs: 200 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -6,7 +6,7 @@
  * ad-hoc PDF/XLSX exportRender outbox's payload/schema mismatch.
  *
  * REAL RLS, NOT A SUPERUSER BYPASS: `handle` (the connection `registerM33Workers` actually runs on)
- * connects as `wardenx_app`, NOBYPASSRLS — the SAME role production runs as. A superuser connection (this
+ * connects as `chartwarden_app`, NOBYPASSRLS — the SAME role production runs as. A superuser connection (this
  * test's first version) bypasses RLS entirely by Postgres's own hard rule, which would have proven the
  * worker CODE runs without throwing but proven NOTHING about whether `withOrgContext`/`withPlatformContext`
  * RLS scoping is actually load-bearing. `seedDb` (a SEPARATE superuser connection) is used ONLY for fixture
@@ -14,7 +14,7 @@
  * pattern this codebase's own `rls-isolation.live.test.ts` already uses, never for anything the worker
  * itself does.
  *
- * Proves, against a real Postgres (as `wardenx_app`) + a dedicated throwaway Redis:
+ * Proves, against a real Postgres (as `chartwarden_app`) + a dedicated throwaway Redis:
  *   1. The per-job tenancy envelope (withOrgContext / withPlatformContext) — EVERY M33 worker ran on the
  *      un-scoped base client before this pass; FORCE RLS silently denied/emptied every org-scoped
  *      read/write, and `risk_register`-class bugs (a successful op crashing on an unrelated unbound port)
@@ -26,35 +26,35 @@
  *   3. `scheduledRun`'s recipient re-validation (a real M2 active-membership check), snapshot build (the
  *      real `translateSpec` chain over a real view→version→definition→base), pause.autoPause, the M4
  *      audit() writes, and the outbox emits — all previously hardcoded throws, ALL now proven under real
- *      `wardenx_app` RLS (these ran as ordinary `withOrgContext(ORG)` writes/reads all along — the canonical
+ *      `chartwarden_app` RLS (these ran as ordinary `withOrgContext(ORG)` writes/reads all along — the canonical
  *      `app.org_id` policy admits them cleanly, no SECURITY DEFINER path needed).
  *   4. The lag-probe's Valkey-backed hysteresis state + advisory flag — previously hardcoded throws that
  *      would have crashed the 30-second singleton probe on its very first tick.
  *   5. mvRefresh/lagProbe's outbox emits, bound for real over the migration-0186 SECURITY DEFINER
  *      `report_writer_*` functions (`outbox_event.organization_id` is nullable now; ADR-0010 bans a second
- *      RLS-policy GUC, so this reuses the `wardenx_audit_writer`/`audit_writer_insert` role+function
+ *      RLS-policy GUC, so this reuses the `chartwarden_audit_writer`/`audit_writer_insert` role+function
  *      pattern instead). The outbox SECURITY DEFINER mechanism's OWN real-RLS correctness was separately,
- *      conclusively verified by hand first: a direct `psql` session, `SET ROLE wardenx_app`, confirms a raw
+ *      conclusively verified by hand first: a direct `psql` session, `SET ROLE chartwarden_app`, confirms a raw
  *      `organization_id IS NULL` INSERT is REJECTED outside the function, and the full insert → claim →
  *      finalize_dispatched → reclaim → purge cycle succeeds THROUGH it.
  *   6. WX-PR-024's THREE platform-wide write gaps are FIXED and conclusively proven — but NOT by this file.
  *      `audit_event`'s `platform.bypass_invoked` write (`auditPlatformEvent` → the SECURITY DEFINER
  *      `audit_writer_insert_platform_event`, migration 0187) and `report_run`/`materialized_view_metadata`'s
  *      write paths (migration 0188's `report_writer_*` functions) are each proven directly at the SQL level,
- *      as `wardenx_app`, in `packages/db/migrations/__tests__/m1-rls-isolation.live.test.ts` and
+ *      as `chartwarden_app`, in `packages/db/migrations/__tests__/m1-rls-isolation.live.test.ts` and
  *      `m33-rls-isolation.live.test.ts` — including the raw-path-still-rejected check (no new write hole).
  *      `testAuditBypass` below calls `auditPlatformEvent` (matching production's `m34PlatformBypassAuditor`).
  *   7. WX-PR-025 CLOSED: `platformDb` (mvRefresh/lagProbe's `withPlatformContext` base) is now a REAL
- *      `wardenx_platform_login` connection — the SAME credential shape `scripts/db/provision-runtime-roles.ts`
+ *      `chartwarden_platform_login` connection — the SAME credential shape `scripts/db/provision-runtime-roles.ts`
  *      provisions for production (`DATABASE_PLATFORM_URL`), bootstrapped inline here for the SAME reason
- *      `wardenx_app` is: reusing the script directly would pull in its CLI/env-var surface. `wardenx_platform`
+ *      `chartwarden_app` is: reusing the script directly would pull in its CLI/env-var surface. `chartwarden_platform`
  *      OWNS the 3 `report_mv.*` views AND carries `BYPASSRLS` directly on the CARRIER role (not just the
  *      login role) — confirmed empirically that `REFRESH MATERIALIZED VIEW CONCURRENTLY` re-executes its
  *      defining query under privileges resolved through the MV's OWNER, not the issuing session role, so
- *      `wardenx_platform_login`'s own BYPASSRLS (sufficient for ordinary queries) does NOT by itself make a
+ *      `chartwarden_platform_login`'s own BYPASSRLS (sufficient for ordinary queries) does NOT by itself make a
  *      refresh see other tenants' rows. The "nightly orchestrator" test below now seeds TWO tenants'
  *      `admission` rows and asserts the refreshed MV contains BOTH — proving the refresh is genuinely
- *      cross-tenant, not merely "didn't throw". `wardenx_app` itself still cannot REFRESH any `report_mv.*`
+ *      cross-tenant, not merely "didn't throw". `chartwarden_app` itself still cannot REFRESH any `report_mv.*`
  *      view directly (unchanged, correct — verified in `m33-rls-isolation.live.test.ts`); only the dedicated,
  *      narrowly-scoped platform credential can.
  *   8. The ad-hoc PDF/XLSX exportRender outbox — the `m33.scheduled_report.render_requested` catalog schema
@@ -66,7 +66,7 @@
  * Gated on a live DB + Redis so the default `bun run test` stays green:
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bunx vitest run apps/backend/__tests__/m33-reporting-scheduled-jobs.live.test.ts
- * (SUPERUSER connection string to a THROWAWAY db — this test bootstraps `wardenx_app` LOGIN itself and
+ * (SUPERUSER connection string to a THROWAWAY db — this test bootstraps `chartwarden_app` LOGIN itself and
  * connects the worker separately; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a
  * Redis instance DEDICATED to this run — the WX-PR-014 M30 test's own note applies identically here:
  * sharing a Redis with a locally-running `bun run dev:backend` means two independent `registerM33Workers`
@@ -104,12 +104,12 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
-  "wardenx_platform_login",
-  "wardenx_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
 ];
 
 const ORG = "44444444-4444-4444-4444-444444444444";
@@ -120,7 +120,7 @@ const USER = "44444444-4444-4444-4444-444444444401";
 const ORG_B = "44444444-4444-4444-4444-444444444402";
 
 /** WX-PR-025 — the SECURITY DEFINER platform-writer functions M33's mvRefresh/lagProbe workers reach
- *  when `platformDb` is `wardenx_platform_login` (mirrors `scripts/db/provision-runtime-roles.ts`'s
+ *  when `platformDb` is `chartwarden_platform_login` (mirrors `scripts/db/provision-runtime-roles.ts`'s
  *  `PLATFORM_WRITER_FUNCTIONS`, scoped down to just what THIS suite's workers call). */
 const PLATFORM_WRITER_FUNCTIONS = [
   "audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text)",
@@ -165,7 +165,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     /** The SAME `platform.bypass_invoked` write `m34PlatformBypassAuditor` (apps/backend/src/index.ts) makes
      *  — reimplemented here (it is a private, unexported function) rather than faked, so the test proves a
      *  REAL audited platform-context entry, not a stub. Uses `auditPlatformEvent` (WX-PR-024), NOT the plain
-     *  `audit()` helper: `audit()`'s `tx.insert(...)` runs as the caller's own role — `wardenx_app` here,
+     *  `audit()` helper: `audit()`'s `tx.insert(...)` runs as the caller's own role — `chartwarden_app` here,
      *  matching production — which holds no INSERT policy admitting a null-org `audit_event` row. */
     const testAuditBypass = async (
       tx: DbClient,
@@ -194,43 +194,43 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       }
       await applyMigrations();
 
-      // ── bootstrap wardenx_app as a REAL, NOBYPASSRLS LOGIN role (mirrors scripts/db/migrate.ts's
+      // ── bootstrap chartwarden_app as a REAL, NOBYPASSRLS LOGIN role (mirrors scripts/db/migrate.ts's
       // bootstrapAppRole, NOT reused directly to avoid pulling in its CLI/env-var surface) — a superuser
       // connection (the ORIGINAL version of this test) bypasses RLS entirely by Postgres's own hard rule,
       // so it proves the worker CODE runs without throwing but proves NOTHING about whether the real
       // `withOrgContext`/`withPlatformContext` RLS scoping this pass added is actually load-bearing.
-      // Verified by hand first (a direct psql session, SET ROLE wardenx_app, no BYPASSRLS): a NULL-org
+      // Verified by hand first (a direct psql session, SET ROLE chartwarden_app, no BYPASSRLS): a NULL-org
       // `outbox_event` INSERT is REJECTED by RLS outside the SECURITY DEFINER path, and the full insert →
       // claim → finalize_dispatched → reclaim → purge cycle succeeds THROUGH it — this test exercises the
       // SAME role for the SAME reason.
-      await admin.query("ALTER ROLE wardenx_app WITH LOGIN PASSWORD 'm33-live-test-pw'");
-      await admin.query("ALTER ROLE wardenx_app WITH NOBYPASSRLS");
+      await admin.query("ALTER ROLE chartwarden_app WITH LOGIN PASSWORD 'm33-live-test-pw'");
+      await admin.query("ALTER ROLE chartwarden_app WITH NOBYPASSRLS");
 
-      // ── WX-PR-025: bootstrap wardenx_platform / wardenx_platform_login (mirrors
+      // ── WX-PR-025: bootstrap chartwarden_platform / chartwarden_platform_login (mirrors
       // scripts/db/provision-runtime-roles.ts, NOT reused directly to avoid pulling in its CLI/env-var
-      // surface — the SAME reason wardenx_app is bootstrapped inline above rather than via
-      // scripts/db/migrate.ts). `wardenx_platform` OWNS the 3 report_mv.* views AND carries BYPASSRLS
+      // surface — the SAME reason chartwarden_app is bootstrapped inline above rather than via
+      // scripts/db/migrate.ts). `chartwarden_platform` OWNS the 3 report_mv.* views AND carries BYPASSRLS
       // on the CARRIER itself (not just the login role) — see this file's header comment for why both
       // are required for a genuinely cross-tenant REFRESH.
-      await admin.query("CREATE ROLE wardenx_platform NOLOGIN");
-      await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform");
-      await admin.query("GRANT USAGE ON SCHEMA report_mv TO wardenx_platform");
-      await admin.query('GRANT SELECT ON "admission" TO wardenx_platform');
-      await admin.query('GRANT SELECT ON "materialized_view_metadata" TO wardenx_platform');
-      await admin.query('GRANT INSERT ON "audit_event" TO wardenx_platform');
+      await admin.query("CREATE ROLE chartwarden_platform NOLOGIN");
+      await admin.query("GRANT USAGE ON SCHEMA public TO chartwarden_platform");
+      await admin.query("GRANT USAGE ON SCHEMA report_mv TO chartwarden_platform");
+      await admin.query('GRANT SELECT ON "admission" TO chartwarden_platform');
+      await admin.query('GRANT SELECT ON "materialized_view_metadata" TO chartwarden_platform');
+      await admin.query('GRANT INSERT ON "audit_event" TO chartwarden_platform');
       for (const mv of [
         "mv_census_org_daily",
         "mv_encounter_productivity_membership_day",
         "mv_evv_compliance_org_week",
       ]) {
-        await admin.query(`ALTER MATERIALIZED VIEW report_mv.${mv} OWNER TO wardenx_platform`);
+        await admin.query(`ALTER MATERIALIZED VIEW report_mv.${mv} OWNER TO chartwarden_platform`);
       }
-      await admin.query("ALTER ROLE wardenx_platform WITH BYPASSRLS");
+      await admin.query("ALTER ROLE chartwarden_platform WITH BYPASSRLS");
       for (const fn of PLATFORM_WRITER_FUNCTIONS) {
-        await admin.query(`GRANT EXECUTE ON FUNCTION ${fn} TO wardenx_platform`);
+        await admin.query(`GRANT EXECUTE ON FUNCTION ${fn} TO chartwarden_platform`);
       }
       await admin.query(
-        "CREATE ROLE wardenx_platform_login LOGIN IN ROLE wardenx_platform BYPASSRLS PASSWORD 'm33-platform-test-pw'",
+        "CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform BYPASSRLS PASSWORD 'm33-platform-test-pw'",
       );
 
       await admin.query(
@@ -247,19 +247,19 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       );
       activeMembershipId = memberRow.rows[0].id as string;
 
-      // `handle` (the REAL registerM33Workers deps) connects as wardenx_app — every withOrgContext /
+      // `handle` (the REAL registerM33Workers deps) connects as chartwarden_app — every withOrgContext /
       // withPlatformContext / SECURITY DEFINER call this test exercises now runs under REAL RLS
       // enforcement, not a superuser bypass. `seedDb` stays superuser — the beforeAll fixture setup
       // (report_definition/version/view seeding below) is schema-setup, not the code under test.
       const appDbUrl = new URL(DB_URL!);
-      appDbUrl.username = "wardenx_app";
+      appDbUrl.username = "chartwarden_app";
       appDbUrl.password = "m33-live-test-pw";
       handle = createDbClient({ connectionString: appDbUrl.toString() });
       seedDb = createDbClient({ connectionString: DB_URL! });
-      // `platformHandle` (WX-PR-025) — the real `wardenx_platform_login` credential, the SAME shape
+      // `platformHandle` (WX-PR-025) — the real `chartwarden_platform_login` credential, the SAME shape
       // `mvRefresh`/`lagProbe`'s `platformDb` uses in production when DATABASE_PLATFORM_URL is set.
       const platformDbUrl = new URL(DB_URL!);
-      platformDbUrl.username = "wardenx_platform_login";
+      platformDbUrl.username = "chartwarden_platform_login";
       platformDbUrl.password = "m33-platform-test-pw";
       platformHandle = createDbClient({ connectionString: platformDbUrl.toString() });
       connection = parseRedisUrl(REDIS_URL!);
@@ -290,7 +290,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         buildM33WorkerDeps({
           connection,
           db: handle.db,
-          // `platformDb` (mvRefresh/lagProbe's withPlatformContext base) is the real `wardenx_platform_login`
+          // `platformDb` (mvRefresh/lagProbe's withPlatformContext base) is the real `chartwarden_platform_login`
           // credential (WX-PR-025) — see this file's header comment.
           platformDb: platformHandle.db,
           auditBypass: testAuditBypass,
@@ -378,7 +378,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     it("nightly orchestrator fans out a REAL per-MV refresh (withPlatformContext, real REFRESH, real outbox emit)", async () => {
       // Force a fresh refresh regardless of the MV's 24h debounce window / any prior test run today.
       // A fixture reset (not the code path under test), so superuser is correct regardless of the
-      // migration-0188 `wardenx_app` write path this pass added for the worker's own telemetry stamp.
+      // migration-0188 `chartwarden_app` write path this pass added for the worker's own telemetry stamp.
       await seedDb.db
         .update(schema.materializedViewMetadata)
         .set({ lastRefreshedAt: null, status: "active", refreshFailureCount: 0 })
@@ -418,7 +418,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(result.mvKey).toBe("mv_census_org_daily");
 
       // The real report_run ledger row — read via `seedDb` (superuser): `report_run_org`'s canonical
-      // `app.org_id` predicate hides a NULL-org row from `wardenx_app` reads BY DESIGN (only the WRITE
+      // `app.org_id` predicate hides a NULL-org row from `chartwarden_app` reads BY DESIGN (only the WRITE
       // path was ever the bug, closed by migration 0188 — there is deliberately no read policy admitting
       // a platform-wide row to a tenant connection), so this is the "read as superuser" pattern the
       // codebase's own rls-isolation.live.test.ts uses for superuser-only-visible assertions.
@@ -429,9 +429,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
       // BOUND FOR REAL (this pass's fix): a genuine `m33.mv.refresh_succeeded` row now lands in
       // outbox_event via the report_writer_insert_platform_outbox_event SECURITY DEFINER function —
-      // read via `seedDb` for the same reason as the report_run read above (wardenx_app cannot SELECT a
+      // read via `seedDb` for the same reason as the report_run read above (chartwarden_app cannot SELECT a
       // NULL-org outbox_event row directly either, by design — only report_writer's functions can write
-      // one, and this test's separate direct-psql verification already proves wardenx_app genuinely
+      // one, and this test's separate direct-psql verification already proves chartwarden_app genuinely
       // cannot bypass that).
       const mvOutboxRows = await seedDb.db
         .select({ eventType: schema.outboxEvents.eventType, payload: schema.outboxEvents.payload })
@@ -442,8 +442,8 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect((mvOutboxRows[0]?.payload as { mvKey?: string })?.mvKey).toBe("mv_census_org_daily");
 
       // WX-PR-025 — the refresh genuinely spans BOTH seeded tenants, not just "didn't throw". Read via
-      // `seedDb` (superuser): `wardenx_app` has no MV SELECT grant at all (§3.5's "no direct MV SELECT"
-      // rule), and `wardenx_platform` — while it OWNS the view — isn't what this assertion is proving.
+      // `seedDb` (superuser): `chartwarden_app` has no MV SELECT grant at all (§3.5's "no direct MV SELECT"
+      // rule), and `chartwarden_platform` — while it OWNS the view — isn't what this assertion is proving.
       const mvRows = await seedDb.db.execute(
         sql`SELECT organization_id, active_patient_count FROM report_mv.mv_census_org_daily`,
       );

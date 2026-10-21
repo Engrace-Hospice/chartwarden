@@ -5,7 +5,7 @@
  * PRODUCTION read service (the object the composition root mounts as BOTH HopeRouteService and the §4.7
  * HopeAbacResolver) over the real M10-owned tables under `withOrgContext` — proving the timepoint-schedule
  * worklist and the (partitioned) HOPE-assessment reads return the right rows, RLS scopes every read by
- * tenant as the unprivileged `wardenx_app` role, and every write fail-closes 501.
+ * tenant as the unprivileged `chartwarden_app` role, and every write fail-closes 501.
  *
  * Gated on a live DB (default `bun run test` skips it):
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m10-hope-read-service.live.test.ts
@@ -20,7 +20,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -123,9 +123,9 @@ describe.skipIf(!DB_URL)("M10 Drizzle read service — LIVE Postgres (M10L)", ()
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m10r@x.test')`, [USER]);
     a = await seedOrg(ORG_A, 1);
     b = await seedOrg(ORG_B, 2);
-    // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` does NOT SET ROLE. To exercise
-    // RLS faithfully, connect the client AS wardenx_app — it is NOLOGIN in the migrations, so grant LOGIN.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    // Prod connects as the NOBYPASSRLS `chartwarden_app` role; `withOrgContext` does NOT SET ROLE. To exercise
+    // RLS faithfully, connect the client AS chartwarden_app — it is NOLOGIN in the migrations, so grant LOGIN.
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

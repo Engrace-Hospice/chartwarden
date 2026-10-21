@@ -1,6 +1,6 @@
 /**
  * GAP-034 - the two M23 eligibility PHI reads (`/hospice-periods`, `/latest`) leave a real `audit_event` row,
- * LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Before: both declared `auditRead` with no patient / resource id, so the audit insert bound an empty string to
  * the uuid `resource_id` column, failed, and the best-effort wrapper swallowed it - the read left no trail. The
@@ -29,7 +29,7 @@ import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -108,7 +108,7 @@ describe.skipIf(!DB_URL)("GAP-034 eligibility read-audit - LIVE Postgres", () =>
       [ORG],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'gap034@x.test')`, [USER]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
 

@@ -18,7 +18,7 @@ import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "12121212-1212-1212-1212-121212121212";
 const USER = "23232323-2323-2323-2323-232323232323";
 const PATIENT = "34343434-3434-3434-3434-343434343434";
@@ -158,7 +158,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         [providerEntityId],
       )
     ).rows[0]!.id;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     // The seams production boot registers that `recordTimepoint` reads: M6's AdmissionStatusReader
     // (the 01/02/03/05 RFAs resolve the admission's patient, siting and admission date through it) and

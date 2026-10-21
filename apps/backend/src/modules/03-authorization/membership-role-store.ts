@@ -5,7 +5,7 @@
 // app.org_id. `assign` carries the org in its input; `listForMembership` / `revoke` take only a
 // membership id, so they resolve the org from the AMBIENT request context (withOrgContextFromRequest) —
 // the route is already org-scoped, and a bare `WHERE membership_id=…` would return nothing under the
-// real wardenx_app role.
+// real chartwarden_app role.
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";

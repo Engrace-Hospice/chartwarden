@@ -4,7 +4,7 @@
  * Before migration 0334 a tenant admin could clone `field_safety.sos` with a lower severity floor or a
  * different resolver (the INSERT policy never looked at it), the emitter used the org row instead of the
  * platform rule, and the clone could never be edited again (the UPDATE policy demanded
- * system_locked=false). Proved as the real NOBYPASSRLS `wardenx_app` role (a superuser would bypass RLS):
+ * system_locked=false). Proved as the real NOBYPASSRLS `chartwarden_app` role (a superuser would bypass RLS):
  * the service refuses (422/403), the DB trigger independently rejects the same row written with raw SQL,
  * a tightening edit works and stays editable, and the emitter's rule lookup ignores a legacy weak row.
  *
@@ -24,7 +24,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const SOS = "field_safety.sos";
@@ -52,7 +52,7 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
     }
   }
 
-  /** Run one statement as wardenx_app inside ORG_A's tenant context; returns the pg error (or null). */
+  /** Run one statement as chartwarden_app inside ORG_A's tenant context; returns the pg error (or null). */
   async function asAppInOrgA(sqlText: string, params: unknown[] = []): Promise<Error | null> {
     await app.query("BEGIN");
     try {
@@ -107,7 +107,7 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
        RETURNING id`,
     );
     sosPlatformId = rows[0].id;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await app.connect();
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
@@ -137,7 +137,7 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
     expect(await orgRows()).toHaveLength(0);
   });
 
-  it("DB backstop (as wardenx_app): raw INSERTs that weaken the locked rule are rejected", async () => {
+  it("DB backstop (as chartwarden_app): raw INSERTs that weaken the locked rule are rejected", async () => {
     for (const weak of [
       { severity: "info" },
       { severity: "warn" },
@@ -179,7 +179,7 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
     ).rejects.toMatchObject({ code: "LOCKED_RULE_SEVERITY_DOWNGRADE" });
   });
 
-  it("DB: UPDATE of the locked clone as wardenx_app may tighten (add a channel) but not weaken", async () => {
+  it("DB: UPDATE of the locked clone as chartwarden_app may tighten (add a channel) but not weaken", async () => {
     const ok = await asAppInOrgA(
       `UPDATE alert_rule SET channels_override = ARRAY['in_app','push','sms','voice','email']
         WHERE organization_id='${ORG_A}' AND event_type='${SOS}'`,
@@ -234,7 +234,7 @@ describe.skipIf(!DB_URL)("GAP-102 — locked alert rules are tighten-only, LIVE 
 
   // Migration 0346 — the M20 coverage-gap rule joins the locked set. The trigger is data-driven, so the
   // proof is: an already-seeded UNLOCKED platform row is flipped by the migration, after which a tenant
-  // clone cannot weaken it (as the real NOBYPASSRLS wardenx_app role).
+  // clone cannot weaken it (as the real NOBYPASSRLS chartwarden_app role).
   it("0346: flips a seeded unlocked coverage-gap platform rule, after which a tenant cannot loosen it", async () => {
     const GAP = "m20.safety.coverage_gap_detected";
     await admin.query("DELETE FROM alert_rule WHERE event_type=$1", [GAP]);

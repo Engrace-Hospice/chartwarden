@@ -54,7 +54,7 @@ import {
 // RLS shape (M39-T03, §3.5–3.7):
 //   • `consent_type_catalog` is PLATFORM-SHARED reference (no organization_id; NON_ORG_SCOPED,
 //     read-all via the dual-grant policy) — so the catalog read runs directly on the pooled
-//     `wardenx_app` handle (no org context needed).
+//     `chartwarden_app` handle (no org context needed).
 //   • `consent_record` / `consent_record_recipient` / `consent_eval_audit` are ORG-SCOPED PHI
 //     (app.org_id RLS) — every read runs inside `withOrgContext` so RLS scopes to the actor's tenant.
 //

@@ -1,6 +1,6 @@
 /**
  * GAP-036 - the appeal packet render request carries the TYPED AppealPacketRenderPayload, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role through the real catalog-validating outbox publisher AND the real cross-module
+ * NOBYPASSRLS `chartwarden_app` role through the real catalog-validating outbox publisher AND the real cross-module
  * seams (M23 `ClaimSubmissionReader`, M22 `DocumentReader`).
  *
  * Before: submitAppeal published `m25.appeal_packet.render_requested` with `payload: {}` (later: ids only), so M22
@@ -36,7 +36,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const NARRATIVE =

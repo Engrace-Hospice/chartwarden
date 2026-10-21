@@ -4,7 +4,7 @@
 // ── THE CREDENTIAL SPLIT, AND WHY THE KILL SWITCH IS THE HARD ONE ─────────────────────────────────
 //
 // `ai_kill_switch_state` is M32's only mixed-scope table and 0116 splits its policies BY COMMAND:
-// `wardenx_app` may SELECT the platform row plus its own, but may INSERT/UPDATE only rows carrying its
+// `chartwarden_app` may SELECT the platform row plus its own, but may INSERT/UPDATE only rows carrying its
 // own org. So:
 //
 //   · a TENANT-scoped write runs `withOrgContext` on the ordinary handle — RLS is what keeps one

@@ -2,7 +2,7 @@
  * M1 `FoundationSiteReader.allLocationsOpenInOrg` — the location check M2's user provisioning used to run
  * against M1's tables directly (scripts/check-table-ownership.ts moved it behind the owner's reader).
  *
- * Run as the real NOBYPASSRLS `wardenx_app` role inside `withOrgContext`: an open location of the org
+ * Run as the real NOBYPASSRLS `chartwarden_app` role inside `withOrgContext`: an open location of the org
  * passes; a closed one, another tenant's (excluded by the reader's own org filter, as well as RLS), and an
  * unknown id fail; an empty list and duplicate ids behave.
  *
@@ -22,7 +22,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111fa51a001";
 const ORG_B = "22222222-2222-4222-8222-2222fa51b002";
@@ -89,7 +89,7 @@ describe.skipIf(!DB_URL)("FoundationSiteReader.allLocationsOpenInOrg — LIVE Po
     loc.aOpen2 = await seedLocation(ORG_A, "A created", "created");
     loc.aClosed = await seedLocation(ORG_A, "A closed", "closed");
     loc.bOpen = await seedLocation(ORG_B, "B open", "active");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   });
 
@@ -119,7 +119,7 @@ describe.skipIf(!DB_URL)("FoundationSiteReader.allLocationsOpenInOrg — LIVE Po
   });
 
   // Found hitting POST /orgs/:orgId/users on the Docker stack: a bare-`db` read of the RLS-scoped
-  // `organization` table sees no row as wardenx_app, so every provisioning answered 404.
+  // `organization` table sees no row as chartwarden_app, so every provisioning answered 404.
   it("M2's credential lifecycle store reads the organization name under RLS", async () => {
     const store = createDbCredentialLifecycleStore(handle.db, async () => true);
     expect(await store.organizationName(ORG_A)).toBe("A");

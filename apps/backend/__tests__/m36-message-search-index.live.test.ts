@@ -1,6 +1,6 @@
 /**
  * M36 WP 2.7b chunk C1 (ADR-0058, Proposed) - the global search index STORAGE, LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role (migration 1091). Nothing reads or writes these tables in product code yet; this proves the schema:
+ * `chartwarden_app` role (migration 1091). Nothing reads or writes these tables in product code yet; this proves the schema:
  * cross-tenant RLS, no UPDATE grant, the same-transaction removal hook (delete, edit, but NOT a cipher-only re-wrap),
  * cascade on message delete, an audit trail that carries message ids and never a tag, and exactly four token columns.
  *
@@ -20,7 +20,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0277";
 const ORG_B = "22222222-2222-4222-8222-2222000f0277";
 const VERSION = "v1";
@@ -103,7 +103,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       ).rows[0].n,
     );
 
-  /** Run `fn` on the wardenx_app connection with the tenant GUCs set; always rolled back unless `commit`. */
+  /** Run `fn` on the chartwarden_app connection with the tenant GUCs set; always rolled back unless `commit`. */
   async function asApp<T>(
     org: string | null,
     user: string,
@@ -145,7 +145,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
     userB = await seedUser("b", ORG_B);
     channelA = await seedChannel(ORG_A, userA);
     channelB = await seedChannel(ORG_B, userB);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await app.connect();
@@ -214,14 +214,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
   });
 
   describe("grants", () => {
-    it("wardenx_app has no UPDATE on the token table (and no TRUNCATE)", async () => {
+    it("chartwarden_app has no UPDATE on the token table (and no TRUNCATE)", async () => {
       const m = await seedIndexedMessage(ORG_A, channelA, userA);
       const priv = (
         await admin.query(
-          `SELECT has_table_privilege('wardenx_app','message_search_token','UPDATE') AS u,
-                  has_table_privilege('wardenx_app','message_search_token','TRUNCATE') AS t,
-                  has_table_privilege('wardenx_app','message_search_token','INSERT') AS i,
-                  has_table_privilege('wardenx_app','message_search_token','DELETE') AS d`,
+          `SELECT has_table_privilege('chartwarden_app','message_search_token','UPDATE') AS u,
+                  has_table_privilege('chartwarden_app','message_search_token','TRUNCATE') AS t,
+                  has_table_privilege('chartwarden_app','message_search_token','INSERT') AS i,
+                  has_table_privilege('chartwarden_app','message_search_token','DELETE') AS d`,
         )
       ).rows[0];
       expect(priv).toEqual({ u: false, t: false, i: true, d: true });
@@ -232,16 +232,16 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       ).rejects.toThrow(/permission denied/);
     });
 
-    it("the wardenx_platform carrier has no privilege, table or column level, on the index state or token tables (L2)", async () => {
+    it("the chartwarden_platform carrier has no privilege, table or column level, on the index state or token tables (L2)", async () => {
       // The carrier is created by scripts/db/provision-runtime-roles.ts, not by a migration: make the check non-vacuous here.
       await admin.query(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_platform') THEN CREATE ROLE wardenx_platform NOLOGIN; END IF;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN CREATE ROLE chartwarden_platform NOLOGIN; END IF;
       END $$`);
       const rows = (
         await admin.query(
           `SELECT t AS table_name,
-                  has_table_privilege('wardenx_platform', t, 'SELECT') AS table_select,
-                  has_any_column_privilege('wardenx_platform', t, 'SELECT') AS column_select
+                  has_table_privilege('chartwarden_platform', t, 'SELECT') AS table_select,
+                  has_any_column_privilege('chartwarden_platform', t, 'SELECT') AS column_select
              FROM unnest(ARRAY['message_search_index_state','message_search_token']) t`,
         )
       ).rows;
@@ -257,18 +257,18 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       expect(provision).not.toMatch(/message_search_(token|index_state)/);
     });
 
-    it("wardenx_app cannot DELETE the setting row (switch OFF, never remove)", async () => {
+    it("chartwarden_app cannot DELETE the setting row (switch OFF, never remove)", async () => {
       const priv = (
         await admin.query(
-          `SELECT has_table_privilege('wardenx_app','tenant_messaging_search_setting','DELETE') AS d,
-                  has_table_privilege('wardenx_app','tenant_messaging_search_setting','UPDATE') AS u`,
+          `SELECT has_table_privilege('chartwarden_app','tenant_messaging_search_setting','DELETE') AS d,
+                  has_table_privilege('chartwarden_app','tenant_messaging_search_setting','UPDATE') AS u`,
         )
       ).rows[0];
       expect(priv).toEqual({ d: false, u: true });
     });
   });
 
-  describe("RLS cross-tenant isolation as wardenx_app", () => {
+  describe("RLS cross-tenant isolation as chartwarden_app", () => {
     it("org B sees none of org A's tokens, cannot delete them, and cannot forge a row into org A", async () => {
       const m = await seedIndexedMessage(ORG_A, channelA, userA);
       const seenByA = await asApp(ORG_A, userA, async () =>
@@ -451,14 +451,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
             AND (has_table_privilege(rolname, 'message', 'UPDATE')
               OR has_any_column_privilege(rolname, 'message', 'UPDATE')) ORDER BY rolname`,
       );
-      expect(r.rows.map((x) => x.rolname)).toEqual(["wardenx_app", "wardenx_destruction"]);
+      expect(r.rows.map((x) => x.rolname)).toEqual(["chartwarden_app", "chartwarden_destruction"]);
     });
 
-    it("fires as wardenx_destruction (the erase path rewrites cipher and digest)", async () => {
+    it("fires as chartwarden_destruction (the erase path rewrites cipher and digest)", async () => {
       const m = await seedIndexedMessage(ORG_A, channelA, userA);
       await admin.query("BEGIN");
       try {
-        await admin.query("SET LOCAL ROLE wardenx_destruction");
+        await admin.query("SET LOCAL ROLE chartwarden_destruction");
         await admin.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_A]);
         const r = await admin.query(
           `UPDATE message SET body_cipher=$2, body_sha256=$3 WHERE id=$1`,

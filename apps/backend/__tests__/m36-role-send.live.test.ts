@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0081 (PROPOSED) - role-based send ("message the on-call RN"), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 ADR-0081 (PROPOSED) - role-based send ("message the on-call RN"), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract incl. the REAL caseload_or_scope predicate, `channel_visibility`, the DB route service,
  * the audit plumbing, the M1 idempotency store) over the REAL urgent service, ack tracker and catalog-validating outbox publisher. Only

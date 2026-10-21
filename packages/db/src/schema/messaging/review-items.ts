@@ -1,6 +1,6 @@
 // M36 WP 3.8 - the lifecycle review queue (ADR-0065): one row per (trigger, open communication task). Ids and enums only
 // (no free text); patient_id, item_id and trigger_ref are logical pointers (no FK). The CHECK/index names match migration
-// 1103 (pinned by a test). wardenx_app has no DELETE: a decided row is final.
+// 1103 (pinned by a test). chartwarden_app has no DELETE: a decided row is final.
 import { sql } from "drizzle-orm";
 import {
   check,

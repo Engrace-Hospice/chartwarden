@@ -6,7 +6,7 @@
  * DDL, not something this script can downgrade without rewriting every historical migration; the
  * PR-reviewed SQL running through a gated CI/CD pipeline is the real safety boundary here, not the
  * connecting role). What IS split out is the one thing that touches live credentials/policy on
- * EVERY invocation: enabling LOGIN, setting the password, and toggling BYPASSRLS on `wardenx_app`
+ * EVERY invocation: enabling LOGIN, setting the password, and toggling BYPASSRLS on `chartwarden_app`
  * (`bootstrapAppRole`, below). That is a ONE-TIME bootstrap (or a deliberate password rotation), not
  * a per-deploy action, so `--schema-only` skips it — the per-deploy pipeline runs ONLY
  * `applyMigrations()`, touching no role/credential state. A plain (no-flag) run does both, for
@@ -31,16 +31,16 @@
  * Flags:
  *   --baseline      record every current migration as applied WITHOUT running it (see above)
  *   --strict        checksum drift on an already-applied file is a hard failure, not a warning
- *   --schema-only   apply pending migrations only; skip the wardenx_app LOGIN/password/BYPASSRLS
+ *   --schema-only   apply pending migrations only; skip the chartwarden_app LOGIN/password/BYPASSRLS
  *                   bootstrap (the per-deploy step — see header)
  *
  * Env (Bun auto-loads `.env`):
  *   DATABASE_ADMIN_URL   superuser/owner conn string for DDL (falls back to DATABASE_URL)
- *   CHARTWARDEN_APP_PASSWORD password set on the wardenx_app login role (default "wardenx_app";
+ *   CHARTWARDEN_APP_PASSWORD password set on the chartwarden_app login role (default "chartwarden_app";
  *                        irrelevant with --schema-only)
  *
  * Run:
- *   bun run db:migrate                              one-time/local: apply + bootstrap wardenx_app
+ *   bun run db:migrate                              one-time/local: apply + bootstrap chartwarden_app
  *   bun run db:migrate:baseline                      adopt an already-migrated DB
  *   bun run db:migrate:deploy                        per-deploy: apply only, fail on any drift
  *     (= bun run scripts/db/migrate.ts --strict --schema-only)
@@ -54,7 +54,7 @@ import { firstRow } from "./lib/query-rows";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = join(here, "..", "..", "packages", "db", "migrations");
-const APP_ROLE = "wardenx_app";
+const APP_ROLE = "chartwarden_app";
 /** Runtime bookkeeping table (created by this script, not a migration; unowned by any module). */
 const TRACK_TABLE = "_wardenx_migration";
 
@@ -259,7 +259,7 @@ export interface BootstrapAppRoleOptions {
 }
 
 /**
- * Enable LOGIN + set the password on the RLS app role (`wardenx_app`) so the backend can connect
+ * Enable LOGIN + set the password on the RLS app role (`chartwarden_app`) so the backend can connect
  * directly as it, and set its BYPASSRLS attribute per policy. This is the ONE-TIME (or
  * rotation-time) step `--schema-only` skips — see the file header for why it's split out.
  */
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
       `CHARTWARDEN_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default login password on ${APP_ROLE}. (Pass --schema-only for the per-deploy step, which never touches this credential.)`,
     );
   }
-  const appPassword = process.env.CHARTWARDEN_APP_PASSWORD ?? "wardenx_app";
+  const appPassword = process.env.CHARTWARDEN_APP_PASSWORD ?? "chartwarden_app";
 
   const db = new Client({ connectionString: url });
   await db.connect();
@@ -331,7 +331,7 @@ async function main(): Promise<void> {
     });
     if (SCHEMA_ONLY) {
       console.log(
-        "--schema-only: skipping wardenx_app LOGIN/password/BYPASSRLS bootstrap (run a plain " +
+        "--schema-only: skipping chartwarden_app LOGIN/password/BYPASSRLS bootstrap (run a plain " +
           "`bun run db:migrate` once per environment, or after a password rotation).",
       );
       console.log("✓ migrations complete.");
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
         isProduction: IS_PRODUCTION,
         bypassRlsRequested: BYPASSRLS_REQUESTED,
       });
-      console.log("✓ migrations complete; wardenx_app is LOGIN-enabled.");
+      console.log("✓ migrations complete; chartwarden_app is LOGIN-enabled.");
     }
   } finally {
     await db.end();

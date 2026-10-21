@@ -27,10 +27,10 @@ import {
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -70,9 +70,9 @@ describe.skipIf(!DB_URL)("F-171 direct patient merge — LIVE Postgres", () => {
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'actor@f171.test')`, [ACTOR]);
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'wardenx-f171-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-f171-test'");
     const appUrl = new URL(DB_URL as string);
-    appUrl.username = "wardenx_app";
+    appUrl.username = "chartwarden_app";
     appUrl.password = "wardenx-f171-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
   }, 120_000);

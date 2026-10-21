@@ -3,7 +3,7 @@
 // checksum. `/fhir/r4/metadata` returns the snapshot; the hourly validator detects tampering.
 //
 // PLATFORM-SHARED (the ONLY M28 table with no `organization_id` — a conformance statement is the same for
-// every tenant): read-all `USING (true)` to wardenx_app, writes only via wardenx_admin (§3.5; the M32
+// every tenant): read-all `USING (true)` to chartwarden_app, writes only via chartwarden_admin (§3.5; the M32
 // `ai_capability` / M38 `code_system` precedent — architecture wins over the spec's `app.role` policy,
 // which the canonical-RLS-variable rule bans). No PHI, so the §3.6 denylist is empty; it audits through
 // M1's baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The

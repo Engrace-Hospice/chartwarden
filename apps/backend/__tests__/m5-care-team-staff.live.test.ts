@@ -1,6 +1,6 @@
 /**
  * Care-team staff lookup (GET /api/v1/orgs/:id/care-team-staff) against REAL Postgres as the
- * NOBYPASSRLS `wardenx_app` role. Proves through the real route + Drizzle port:
+ * NOBYPASSRLS `chartwarden_app` role. Proves through the real route + Drizzle port:
  *   - a holder of patient.assign gets active members of ITS org only (suspended and other-tenant users
  *     absent), name-ordered, with role labels, and no email / username in the payload;
  *   - `q` is a literal display-name substring (LIKE wildcards do not match everything) and never
@@ -31,10 +31,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const DB_ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";

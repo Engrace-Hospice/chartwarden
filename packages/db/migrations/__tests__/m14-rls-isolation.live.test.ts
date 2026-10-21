@@ -4,7 +4,7 @@
  * M14's pure suites exercise the meeting/decision/minutes machines but never touch a database, so they cannot
  * catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant that leaks across tenants. This
  * applies the real migrations (0042 tables + 0043 RLS/audit triggers) to a real Postgres and drives the
- * policies as the unprivileged `wardenx_app` role (no BYPASSRLS), covering all NINE org-scoped M14 tables.
+ * policies as the unprivileged `chartwarden_app` role (no BYPASSRLS), covering all NINE org-scoped M14 tables.
  *
  * The one that makes this worth more than a checkbox is `idg_decision`: the recorded IDG determination whose
  * per-kind `payload` drives the outbox emit that mutates M7/M11/M12 (care-plan updates, order requests,
@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** membership_id / patient_id / admission_id are NOT NULL but carry NO SQL FK (§3.3 — cross/intra-module
@@ -73,7 +73,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
   let b: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -266,25 +266,25 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
   // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
   // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
   });
 
   it("every M14 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    // 0043 holds the original nine; 0282 adds idg_discipline_note (its wardenx_destruction policy is a
-    // different role's and is excluded — only the wardenx_app tenant policy is judged here).
+    // 0043 holds the original nine; 0282 adds idg_discipline_note (its chartwarden_destruction policy is a
+    // different role's and is excluded — only the chartwarden_app tenant policy is judged here).
     const rls =
       readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8") +
       readFileSync(join(MIGRATIONS_DIR, "0282_m14_idg_discipline_note.sql"), "utf8") +
-      // 0305 adds idg_decision_application_ack (F-234); its wardenx_destruction policy is excluded as above.
+      // 0305 adds idg_decision_application_ack (F-234); its chartwarden_destruction policy is excluded as above.
       readFileSync(join(MIGRATIONS_DIR, "0305_m14_idg_decision_application_ack.sql"), "utf8");
     // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (b) => b.includes("TO wardenx_app") && COVERED.some((t) => b.includes(`"${t.table}"`)),
+      (b) => b.includes("TO chartwarden_app") && COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All ten M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
     // lives on the parent (0043) and is inherited by every leaf, so it counts here too.
@@ -343,7 +343,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
     expect(r.rows[0].n).toBeGreaterThan(0);
   });
 
-  // 0283/0284 — late addenda + optional `reason` on idg_discipline_note, judged as the real NOBYPASSRLS wardenx_app role.
+  // 0283/0284 — late addenda + optional `reason` on idg_discipline_note, judged as the real NOBYPASSRLS chartwarden_app role.
   describe("idg_discipline_note late addenda + reason (0283/0284)", () => {
     const insertAddendum = (org: string, ids: SeedIds, reason: string | null, flag = true) =>
       db.query(

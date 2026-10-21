@@ -290,7 +290,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * until this transaction commits. Membership STATUS changes do not touch the FK; the only one that could
  * revive a membership is a PATCH out of `revoked`, which the route refuses (revocation is terminal).
  * The cross-org read is M2's `m2_list_own_memberships` SECURITY DEFINER function (migration 0231) —
- * `membership` RLS keys only on app.org_id, so wardenx_app cannot see other orgs' rows directly.
+ * `membership` RLS keys only on app.org_id, so chartwarden_app cannot see other orgs' rows directly.
  */
 export function createDbUserDirectory(db: DbClient): UserDirectory {
   const U = schema.users;
@@ -355,7 +355,7 @@ export function createDbUserDirectory(db: DbClient): UserDirectory {
     // §4.7 platform-wide offboard. `user` is NON_ORG_SCOPED (no RLS), so the lock + status flip need no
     // org context; the cross-org membership READ goes through the same SECURITY DEFINER function as
     // above, and each revoke WRITE runs with `app.org_id` pointed at that row's org (revokeMembershipsIn)
-    // — wardenx_app still cannot touch another org's `membership` rows without naming it. Same `FOR UPDATE` as `deactivateFromOrg`, so the two serialize.
+    // — chartwarden_app still cannot touch another org's `membership` rows without naming it. Same `FOR UPDATE` as `deactivateFromOrg`, so the two serialize.
     async deactivateGlobally({ userId }) {
       if (!UUID_RE.test(userId)) {
         return { outcome: "not_found", memberOrganizationIds: [], revokedMemberships: [] };

@@ -227,7 +227,7 @@ export function createDrizzleAlertEmitterPorts(
       const map = new Map<string, RecipientPreferences>();
       if (userIds.length === 0) return map;
       // `user_notification_preferences`'s own RLS is keyed on app.user_id, not app.org_id — "the
-      // user's own rows only" (migration 0017), so no per-request wardenx_app session can ever read a
+      // user's own rows only" (migration 0017), so no per-request chartwarden_app session can ever read a
       // SECOND user's row. This calls migration 0194's SECURITY DEFINER cross-user reader instead of a
       // plain Drizzle select (confirmed live: the plain-select version failed with "invalid input
       // syntax for type uuid: ''" the moment more than the system-actor sentinel was in scope). Mirrors

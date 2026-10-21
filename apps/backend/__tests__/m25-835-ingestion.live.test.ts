@@ -11,7 +11,7 @@
  * F-128 (#251) — the whole file used to drive `receiveAdvice`/`postAdvice` over the bare superuser
  * `DB_URL` (GAP-086: a superuser BYPASSES RLS unconditionally), so nothing here had ever proven the write
  * path itself is RLS-clean; only one dedicated test at the bottom role-switched, and only for a bare
- * SELECT. Now connects as the real NOBYPASSRLS `wardenx_app` role throughout (`_live-app-role.ts`) — every
+ * SELECT. Now connects as the real NOBYPASSRLS `chartwarden_app` role throughout (`_live-app-role.ts`) — every
  * assertion in this file is now a genuine RLS proof, not merely a superuser-connection convenience. It
  * also adds real coverage for the M23→M25 auto-match bridge (`buildM23BackedClaimMatchCandidateProvider`
  * over M23's registered `ClaimSubmissionReader` seam, WX-PR-012): every existing test here fed the
@@ -53,7 +53,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PE_A = "00000000-0000-0000-0000-0000000000a1";
@@ -880,11 +880,11 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     expect(a.outcome).toBe("queued");
     expect(b.outcome).toBe("queued");
 
-    // The RLS proof runs as NOBYPASSRLS `wardenx_app` (the rls-isolation.live.test.ts precedent) — the
+    // The RLS proof runs as NOBYPASSRLS `chartwarden_app` (the rls-isolation.live.test.ts precedent) — the
     // `admin` connection is a superuser and would see everything regardless of `app.org_id`, which would
     // make this assertion pass vacuously.
     async function readAdviceIdsAs(organizationId: string): Promise<string[]> {
-      await admin.query("SET ROLE wardenx_app");
+      await admin.query("SET ROLE chartwarden_app");
       try {
         await admin.query("SELECT set_config('app.org_id', $1, false)", [organizationId]);
         const res = await admin.query("SELECT id FROM remittance_advice");

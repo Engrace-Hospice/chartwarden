@@ -14,7 +14,7 @@
  * bind materializes that parent under the reserved id; the discard tombstones the link and creates no
  * observation at all.
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role over the production Drizzle store, so a missing
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role over the production Drizzle store, so a missing
  * RLS policy, a CHECK the code disagrees with, or a partition-key mismatch between parent and children
  * fails it.
  *
@@ -35,7 +35,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-1111-1111-111111111129";
 const OTHER_ORG = "11111111-1111-1111-1111-111111111130";
@@ -168,7 +168,7 @@ describe.skipIf(!DB_URL)("GAP-044 M29 unmatched-lab review — LIVE Postgres", (
       [FEED, ORG, USER],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The M5 PatientReader slice the bind resolves through — the composition root passes the real seam.

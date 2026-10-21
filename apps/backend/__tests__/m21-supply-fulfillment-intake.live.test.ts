@@ -5,7 +5,7 @@
  * `supply.v2` (`{skuId, quantity, ...}`, closed — no address, no HCPCS on the order) and binds the consumer
  * over the already-built `decideSupplyFulfillmentIntake`. Nothing is stubbed except the clock:
  *
- *   REAL M11 write service (as the NOBYPASSRLS `wardenx_app` role) creates + signs the order → the REAL
+ *   REAL M11 write service (as the NOBYPASSRLS `chartwarden_app` role) creates + signs the order → the REAL
  *   catalog-validating publisher writes `m11.order.supply_fulfillment_requested` → the REAL
  *   `createOutboxDispatcher` delivers it → M21's intake consumer reads the order (M11 `OrderProvider`), the
  *   admission (M6 `AdmissionStatusReader`), the SKU (`supply_item`) and PULLS the address through M5's
@@ -54,7 +54,7 @@ import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PHYSICIAN_MDM = "99999999-9999-4999-8999-999999999999";
@@ -262,7 +262,7 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
       )
     ).rows[0].id as string;
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The REAL seams M21's intake reads (production boot registers the same Drizzle-backed ones).

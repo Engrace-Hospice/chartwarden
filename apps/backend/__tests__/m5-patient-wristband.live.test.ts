@@ -1,6 +1,6 @@
 /**
  * GAP-020 -- the M5 patient wristband (the on-file side of the BCMA `wrong_patient` arm) against REAL Postgres,
- * as the NOBYPASSRLS `wardenx_app` role. Proves, through the real routes, the real Drizzle store and the real
+ * as the NOBYPASSRLS `chartwarden_app` role. Proves, through the real routes, the real Drizzle store and the real
  * M4 audit trigger:
  *   - printing mints a token whose RAW value is returned once and stored nowhere: the row holds only an org-salted
  *     digest, and `audit_event`, `outbox_event` and `idempotency_key` (even when the client sent an
@@ -46,7 +46,7 @@ import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const ORG_B = "bbbbbbbb-0000-4000-8000-0000000000b1";
 const NURSE = "d0000000-0000-4000-8000-000000000001";
@@ -150,7 +150,7 @@ describe.skipIf(!DB_URL)("GAP-020 patient wristband -- LIVE Postgres", () => {
       [NURSE_B, "nurseb"],
     ] as const)
       await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [id, `${n}@wb.test`]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     resetAuthorizationContract();

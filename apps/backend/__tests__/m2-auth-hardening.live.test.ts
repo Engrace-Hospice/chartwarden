@@ -1,5 +1,5 @@
 /**
- * M2 authentication hardening, end to end over HTTP, LIVE Postgres, as the RLS-enforced `wardenx_app` role
+ * M2 authentication hardening, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role
  * (GAP-002 / GAP-004 auth audit trail; GAP-003 / GAP-005 MFA matrix).
  *
  * The production composition, not a shim: REAL Better Auth behind the REAL Fastify bridge; the REAL audit sink
@@ -57,12 +57,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "33333333-3333-4333-8333-333333331001";

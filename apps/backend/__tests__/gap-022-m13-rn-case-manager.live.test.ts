@@ -17,7 +17,7 @@
  * would have said yes to that aide — which is why `primaryRnUserId` had to be its own seam method rather
  * than a filter over the roster.
  *
- * Runs as the NOBYPASSRLS `wardenx_app` role.
+ * Runs as the NOBYPASSRLS `chartwarden_app` role.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m13:rn-case-manager:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -40,7 +40,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111110022a1";
 const ORG_B = "11111111-1111-4111-8111-1111110022a2";
@@ -170,7 +170,7 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
       }
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M13_OUTBOX_EVENTS]));
     // The composition root's private `bindCallerModule` pins the callerModule the catalog's namespace

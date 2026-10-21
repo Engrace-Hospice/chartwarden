@@ -10,7 +10,7 @@
  *  2. FAILED AFTER A MESSAGE WAS BUILT (`dlq_exhausted`, `application_reject`, `recovery_blocked:*`). The lab MAY have it,
  *     so it is NEVER retried automatically; it gets a WORKLIST and an AGING ESCALATION (warn, then critical).
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role through the real catalog-validating publisher, M29's real T08
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role through the real catalog-validating publisher, M29's real T08
  * worker (a STUB `MllpTransport`), F-177's real applier, and the REAL M36 alert emitter over the REAL platform-default
  * rule seed — so "one page per stage" is proven by the `alert` table's unique correlation id, not asserted on a stub.
  *
@@ -62,7 +62,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

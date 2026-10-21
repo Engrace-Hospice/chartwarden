@@ -10,7 +10,7 @@
  *   bun run db:platform-role grant  --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-123
  *   bun run db:platform-role revoke --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-124
  *
- * Needs an owner/BYPASSRLS connection (platform-owned rows are not writable by `wardenx_app`):
+ * Needs an owner/BYPASSRLS connection (platform-owned rows are not writable by `chartwarden_app`):
  * DATABASE_ADMIN_URL, else DATABASE_URL — the same connection the migration runner uses.
  */
 import { Client } from "pg";

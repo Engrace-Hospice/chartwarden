@@ -19,7 +19,7 @@ import {
  *
  * The REAL `runClose13MonthsCron` / `runMissDeadlineCron` / `runAnniversaryLookaheadCron` /
  * `runUnreachableDetectorCron` as the NOBYPASSRLS
- * `wardenx_app` role, writing through the REAL catalog-validating tx outbox publisher (callerModule `m16`)
+ * `chartwarden_app` role, writing through the REAL catalog-validating tx outbox publisher (callerModule `m16`)
  * — never `NOOP_OUTBOX`. Plans / contacts / outreach / reminders are seeded as the admin role; two orgs prove
  * the fan-out is per-tenant (each org's rows land under its own `organization_id`).
  *
@@ -30,7 +30,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -210,7 +210,7 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
       ).rows[0].id as string;
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M16_OUTBOX_EVENTS]));
     deps = {

@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 // so RLS scopes it to the acting org and the M4 write-audit trigger stamps the acting membership as the
 // actor (`userId` carries the membership id on the write path — the M18/M28 idiom). The two platform-shared
 // NPPES tables (`nppes_provider` / `nppes_sync_run`) are read WITHOUT an org context (they carry no
-// `organization_id`; RLS grants read-all to `wardenx_app`).
+// `organization_id`; RLS grants read-all to `chartwarden_app`).
 //
 // PHASE-1 CRYPTO POSTURE. No module binds a per-tenant DEK envelope yet, so a minted channel credential is
 // stored as its sha256 DIGEST in the NOT-NULL `secret_cipher` with the `fingerprint` = the digest's first 8
@@ -894,7 +894,7 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     },
 
     async getNppesProvider(npi) {
-      // Platform-shared, read-all under wardenx_app — no org context.
+      // Platform-shared, read-all under chartwarden_app — no org context.
       const [row] = await db.select().from(NPPES).where(eq(NPPES.npi, npi)).limit(1);
       return row ? nppesView(row) : null;
     },

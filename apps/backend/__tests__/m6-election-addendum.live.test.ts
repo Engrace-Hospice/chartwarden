@@ -1,6 +1,6 @@
 /**
  * FY2027 — LIVE Postgres proof of the 42 CFR 418.24(c)/(d) election statement addendum, as the real NOBYPASSRLS
- * `wardenx_app` role, with the REAL catalog-validating M6 outbox publisher and admissions built through the
+ * `chartwarden_app` role, with the REAL catalog-validating M6 outbox publisher and admissions built through the
  * production write service (referral → NOR → election → CTI → activation).
  *
  *   · activation of an election effective >= 2026-10-01 opens draft v1 + the 5-day `election_addendum_initial`
@@ -20,7 +20,7 @@
  *   · a SCANNED signed paper copy (418.24(c)(9)): on a never-furnished draft it needs the furnish date, then
  *     furnishes (paper) + signs in one step with the same events; the copy is linked in its own columns (the
  *     rendered `document_id` untouched) and M23 sees it signed. The M22 check runs through the REAL DocumentReader
- *     as wardenx_app: another org's document, another admission's document and a superseded version are refused;
+ *     as chartwarden_app: another org's document, another admission's document and a superseded version are refused;
  *     a paper refusal is attached to a furnished version; the DB CHECK refuses an uploaded source with no document
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:election-addendum:live
@@ -64,7 +64,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111ea01a";
 const ORG_B = "22222222-2222-2222-2222-2222222ea01b";
 const USER = "33333333-3333-3333-3333-3333333ea01a";
@@ -74,7 +74,7 @@ const PROVIDER_ENTITY = "88888888-8888-8888-8888-8888888ea01a";
 const SIGN = { signingPatientName: "Test Patient", signingRole: "patient" } as const;
 
 describe.skipIf(!DB_URL)(
-  "FY2027 election statement addendum (42 CFR 418.24(c)/(d)) — LIVE Postgres (wardenx_app role)",
+  "FY2027 election statement addendum (42 CFR 418.24(c)/(d)) — LIVE Postgres (chartwarden_app role)",
   () => {
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
@@ -181,7 +181,7 @@ describe.skipIf(!DB_URL)(
            VALUES ($1,$2,'Example Hospice','341234','1111111111','\\x00','12-31')`,
         [PROVIDER_ENTITY, ORG_A],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       registerM5IntakeSeams(handle.db);
       svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {

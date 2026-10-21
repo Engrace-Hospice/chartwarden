@@ -8,7 +8,7 @@
  * forever, and NO claim ever left ACK_ACCEPTED when the MAC paid it.
  *
  * The suite runs the REAL `createOutboxDispatcher` over the REAL catalog-validating publisher and the new
- * M23 consumer, as the NOBYPASSRLS `wardenx_app` role. Nothing between the outbox row and the claim row
+ * M23 consumer, as the NOBYPASSRLS `chartwarden_app` role. Nothing between the outbox row and the claim row
  * is stubbed.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:remittance-feedback:live
@@ -33,7 +33,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111137";
 const ORG_B = "22222222-2222-2222-2222-222222222237";
@@ -196,7 +196,7 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
     await seedClaim(CLAIM.notLegal, ORG_A, "DRAFT", "CCN-DRFT");
     await seedClaim(CLAIM.crossTenant, ORG_B, "ACK_ACCEPTED", "CCN-XTEN");
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The dispatcher REFUSES to construct when a consumer binds an event the catalog does not know, or

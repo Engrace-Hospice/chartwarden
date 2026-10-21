@@ -1,6 +1,6 @@
 /**
  * M12 `MedicationOrderProvider.linkSummary` (M36 WP 3.2) — the Drizzle query proven against real Postgres as
- * the NOBYPASSRLS `wardenx_app` role. Rows are seeded as superuser through the real `medication_order` table.
+ * the NOBYPASSRLS `chartwarden_app` role. Rows are seeded as superuser through the real `medication_order` table.
  *
  * Both orgs hold an order each; org B's order is asked for with org A's id and vice versa. The explicit
  * organization_id predicate is a second wall that RLS masks here, so this suite proves RLS plus the shape
@@ -19,7 +19,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -30,7 +30,7 @@ const PHYSICIAN_MDM = "77777777-7777-7777-7777-777777777777";
 const UNKNOWN_ID = "99999999-9999-9999-9999-999999999999";
 const SENSITIVE_DRUG = "Zzzmorphine-SENTINEL";
 
-describe.skipIf(!DB_URL)("M12 linkSummary — LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M12 linkSummary — LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let provider: ReturnType<typeof createMedicationOrderProvider>;
@@ -89,7 +89,7 @@ describe.skipIf(!DB_URL)("M12 linkSummary — LIVE Postgres as wardenx_app", () 
     ids.aNoActivation = await seedMedOrder(ORG_A, PATIENT_A, null);
     ids.b = await seedMedOrder(ORG_B, PATIENT_B, "2026-04-01T12:10:00Z");
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     provider = createMedicationOrderProvider(createDrizzleDoseSpotSeamStore(handle.db));
   }, 120_000);

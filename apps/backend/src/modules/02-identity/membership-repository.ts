@@ -23,7 +23,7 @@ import type {
 // The wrapped user's display name / email / account status come from the M1-owned `user` table, and
 // `lastLoginAt` from the most recent M1-owned `session` row — both joined in here (FB-T12). M2 reads
 // these (dependsOn 1); they are org-scoped identity, not PHI, and `user`/`session` stay un-RLS'd
-// (org context is applied at the app layer), so they read cleanly under wardenx_app.
+// (org context is applied at the app layer), so they read cleanly under chartwarden_app.
 const lastLoginExpr = sql<
   Date | string | null
 >`(select max(${schema.sessions.createdAt}) from ${schema.sessions} where ${schema.sessions.userId} = ${schema.memberships.userId})`;
@@ -121,7 +121,7 @@ export function createDbMembershipRepository(
     });
 
   // Org-scoped by-id read: runs under the AMBIENT request org (withOrgContextFromRequest), so RLS
-  // scopes by app.org_id under the real wardenx_app role — a bare `WHERE id=…` would return nothing
+  // scopes by app.org_id under the real chartwarden_app role — a bare `WHERE id=…` would return nothing
   // there. The route already requires the membership to be in the caller's org, so scoping to the
   // request org is exactly the intended semantics.
   const oneById = async (membershipId: string): Promise<MembershipRecord | null> =>

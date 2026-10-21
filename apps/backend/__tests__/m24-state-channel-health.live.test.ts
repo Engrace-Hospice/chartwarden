@@ -4,7 +4,7 @@
  * no schedule, and no handler anywhere — genuinely unbuilt, not merely unwired. `runStateChannelHealth`
  * is driven directly (not through BullMQ — the queue/worker wrapper is a thin, untested-here shim; the
  * value under test is the real Drizzle reads under RLS + the real credential decrypt + the breaker/debounce
- * logic + the real catalog-shaped outbox publish) as the NOBYPASSRLS `wardenx_app` role.
+ * logic + the real catalog-shaped outbox publish) as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Gated on a live DB: CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run <this file>
  */
@@ -26,7 +26,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -173,7 +173,7 @@ describe.skipIf(!DB_URL)(
       ]);
       peA = await seedOrg(ORG_A, "org-a");
       peB = await seedOrg(ORG_B, "org-b");
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     }, 120_000);
 

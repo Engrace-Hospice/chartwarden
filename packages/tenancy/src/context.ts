@@ -7,7 +7,7 @@
 //
 // `withPlatformContext()` is the GATED cross-tenant escape hatch for platform jobs
 // (NPPES sync, partition rotation, outbox dispatch, …). It does NOT `SET ROLE`
-// wardenx_admin on a tenant connection (that would collapse the RLS-bypass boundary
+// chartwarden_admin on a tenant connection (that would collapse the RLS-bypass boundary
 // into the request process — SEC-097/OPS-070). It runs against a SEPARATELY POOLED
 // platform credential and is allowlist-gated; non-registered callers are refused.
 //

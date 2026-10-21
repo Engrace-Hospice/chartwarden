@@ -39,7 +39,7 @@ export interface TerminologyEraserDeps {
  * proven adapter (FB-T01, `terminology-store-db.ts`) to the erase port: a hard DELETE of every
  * `value_set_tenant_extension` row the org owns, inside `withOrgContext` (app.org_id RLS), counted
  * by `.returning()`. Platform reference tables stay physically out of reach (§7.4 — no
- * `wardenx_app` write grant), so the narrowing is also the guarantee nothing else is deletable.
+ * `chartwarden_app` write grant), so the narrowing is also the guarantee nothing else is deletable.
  */
 export function createDrizzleTerminologyEraseStore(db: DbClient): TerminologyEraseStore {
   const store = createDbTerminologyStore(db);

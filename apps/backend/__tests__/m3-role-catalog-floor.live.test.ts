@@ -17,7 +17,7 @@
  * WHICH IS EXACTLY WHY THIS SUITE IS LIVE. A test against the in-memory store proves the double
  * behaves; it has proved that all along, and the defect lived in the difference. The only way to make a
  * statement about the deployed control is to drive the Drizzle store over real `role` /
- * `role_permission` rows as the NOBYPASSRLS `wardenx_app` role.
+ * `role_permission` rows as the NOBYPASSRLS `chartwarden_app` role.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m3:role-floor:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -37,7 +37,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f0930001";
 const ACTOR = "33333333-3333-4333-8333-3333f0930003";
@@ -121,7 +121,7 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
       );
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDbRoleStore(handle.db);
   }, 240_000);

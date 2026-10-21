@@ -35,7 +35,7 @@ import { buildM30WorkerDeps, registerM30Workers } from "../src/modules/30-qualit
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "65656565-6565-6565-6565-656565656565";
 const PROVIDER_ENTITY = "00000000-0000-0000-0000-0000000000e1";

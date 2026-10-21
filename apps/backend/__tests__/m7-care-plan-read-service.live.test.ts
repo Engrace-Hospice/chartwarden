@@ -3,15 +3,15 @@ import { randomUUID } from "node:crypto";
  * M7L-T01 — the Drizzle `createDbCarePlanRouteService` READ paths, proven against real Postgres.
  *
  * M7's pure suites exercise the version/quorum/clock machinery but never touch a database, and the
- * RLS-isolation suite drives the raw policies as `wardenx_app`. Neither proves the PRODUCTION read
+ * RLS-isolation suite drives the raw policies as `chartwarden_app`. Neither proves the PRODUCTION read
  * SERVICE — the one the composition root mounts — returns the right rows through `withOrgContext`.
  * This drives that service over the real M7 tables: the care-plan aggregate / version-ledger reads
  * surface the seeded chain, RLS scopes every read by tenant (org B is denied org A's plan), and the
  * bootstrap write drives a real insert (the full write lifecycle lives in m7-care-plan-write.live).
  *
- * As the template M6 suite notes: prod connects as the NOBYPASSRLS `wardenx_app` role (a login role
+ * As the template M6 suite notes: prod connects as the NOBYPASSRLS `chartwarden_app` role (a login role
  * SET ROLEs to it) and `withOrgContext` deliberately does NOT SET ROLE, so the read client here
- * connects AS `wardenx_app` to exercise RLS faithfully.
+ * connects AS `chartwarden_app` to exercise RLS faithfully.
  *
  * Gated on a live DB (default `bun run test` skips it):
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m7-care-plan-read-service.live.test.ts
@@ -26,7 +26,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** `care_plan_signature.membership_id` carries a real FK to `membership`, so each org needs one. */
@@ -134,10 +134,10 @@ describe.skipIf(!DB_URL)("M7 Drizzle read service — LIVE Postgres (M7L-T01)", 
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m7r@x.test')`, [USER]);
     seeded[ORG_A] = await seedOrg(ORG_A, 1);
     seeded[ORG_B] = await seedOrg(ORG_B, 2);
-    // Prod connects as the NOBYPASSRLS `wardenx_app` role (a login role SET ROLEs to it); `withOrgContext`
-    // deliberately does NOT SET ROLE. To exercise RLS faithfully, connect the read client AS wardenx_app —
+    // Prod connects as the NOBYPASSRLS `chartwarden_app` role (a login role SET ROLEs to it); `withOrgContext`
+    // deliberately does NOT SET ROLE. To exercise RLS faithfully, connect the read client AS chartwarden_app —
     // it is NOLOGIN in the migrations, so grant LOGIN for the throwaway run.
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

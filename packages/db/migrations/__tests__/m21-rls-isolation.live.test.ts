@@ -6,9 +6,9 @@
  * machine, the D4 routing ladder, the D8 discrepancy math and the §4.1 authz composition, but they never
  * touch a database — so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant
  * that leaks across tenants. This test applies the real migrations to a real Postgres and exercises the
- * policies as the unprivileged `wardenx_app` role.
+ * policies as the unprivileged `chartwarden_app` role.
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies every
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies every
  * assertion below vacuously. That is asserted FIRST, before a single isolation case runs.
  *
  * M21 IS THREE POLICY SHAPES, NOT ONE, and each needs a different proof (§3.5):
@@ -21,7 +21,7 @@
  *      one table would OR together, which is the shape ADR-0010 D3 forbids. So the proof is two-sided —
  *      the floor is visible to both tenants AND neither can write it.
  *   3. **`supply_item`** — genuinely org-less (D11 platform catalog): read-all restricted to active rows,
- *      writes only through `wardenx_admin`. "Every tenant sees it" is the CORRECT outcome here, and the
+ *      writes only through `chartwarden_admin`. "Every tenant sees it" is the CORRECT outcome here, and the
  *      control that matters is the absence of a write grant.
  *
  * Two structural facts get their own cases:
@@ -50,7 +50,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** A membership sentinel — M21 stores membership ids without a cross-module FK (M2 owns that table). */
@@ -96,7 +96,7 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
   let a: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -288,9 +288,9 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
     if (db) await db.end();
   });
 
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
@@ -363,7 +363,7 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
     // tenant would corrupt every OTHER tenant's SKU list, which is why there are deliberately two.
     const { rows } = await db.query<{ privilege_type: string }>(
       `SELECT privilege_type FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND table_name='supply_item'`,
+       WHERE grantee='chartwarden_app' AND table_name='supply_item'`,
     );
     expect(rows.map((r) => r.privilege_type).sort()).toEqual(["SELECT"]);
     await expect(
@@ -419,7 +419,7 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
   });
 
   it.each(["supply_request", "comfort_kit_dispatch"])(
-    "%s: a PARTITION cannot be addressed directly by wardenx_app (the leaf carries no grant)",
+    "%s: a PARTITION cannot be addressed directly by chartwarden_app (the leaf carries no grant)",
     async (parent) => {
       // PostgreSQL applies the PARENT's policy to a query routed THROUGH the parent, but a leaf addressed by
       // name is governed by its own `relrowsecurity` — and `CREATE TABLE … PARTITION OF` gives a leaf neither
@@ -436,7 +436,7 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
 
       const granted = await db.query<{ table_name: string }>(
         `SELECT DISTINCT table_name FROM information_schema.role_table_grants
-         WHERE grantee='wardenx_app' AND table_name = ANY($1)`,
+         WHERE grantee='chartwarden_app' AND table_name = ANY($1)`,
         [leaves.rows.map((r) => r.relname)],
       );
       expect(granted.rows.map((r) => r.table_name)).toEqual([]);
@@ -487,7 +487,7 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
   it("the DEA outbound log holds no UPDATE grant — a dispatched line is never edited (§3.5)", async () => {
     const { rows } = await db.query<{ privilege_type: string }>(
       `SELECT privilege_type FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND table_name='comfort_kit_dispatched_content'`,
+       WHERE grantee='chartwarden_app' AND table_name='comfort_kit_dispatched_content'`,
     );
     expect(rows.map((r) => r.privilege_type).sort()).toEqual(["INSERT", "SELECT"]);
     await expect(
@@ -524,10 +524,10 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
     expect(rows[0].discrepancy_flagged).toBe(true);
   });
 
-  it("wardenx_app holds no DELETE on any M21 table — destruction runs through the eraser (§8.4)", async () => {
+  it("chartwarden_app holds no DELETE on any M21 table — destruction runs through the eraser (§8.4)", async () => {
     const { rows } = await db.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND privilege_type='DELETE' AND table_name = ANY($1)`,
+       WHERE grantee='chartwarden_app' AND privilege_type='DELETE' AND table_name = ANY($1)`,
       [ALL_TABLES],
     );
     expect(rows.map((r) => r.table_name)).toEqual([]);

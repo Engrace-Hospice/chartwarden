@@ -1,12 +1,12 @@
 /**
- * M36 WP 2.9 — announcements & department channels, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 2.9 — announcements & department channels, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Proves on the real route stack (Authorization Contract + `channel_visibility` ABAC + Postgres idempotency store):
  *   - announcement SEND stays messaging.announce-only on both the announce route and the generic channel send route;
  *   - a read of an announcement writes exactly one `read` receipt per reader (never the author, never twice), single
  *     and up-to, and the sender-side receipt view reports readers and the unread list;
  *   - the receipt view is org-scoped (another org's admin gets the 404 a random id gets), audited as a read, and RLS
- *     (as wardenx_app) denies reading or writing another org's receipts;
+ *     (as chartwarden_app) denies reading or writing another org's receipts;
  *   - department channels: org-scoped subject check, find-or-create on the unique subject index (a race is one row),
  *     the creator is the owner, and a foreign / unknown subject is a 404 that writes nothing.
  *
@@ -45,7 +45,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0029";
 const ORG_B = "22222222-2222-4222-8222-2222000f0029";
@@ -194,7 +194,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.9 announcements & departments — LIVE Postgr
         [ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const service = createDbMessagingRouteService(handle.db, { kek: KEK });
@@ -365,7 +365,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.9 announcements & departments — LIVE Postgr
       expect((await receipts(adminA, sent.messageId)).statusCode).toBe(404);
     });
 
-    it("RLS as wardenx_app: org B's context cannot read or write org A's receipts", async () => {
+    it("RLS as chartwarden_app: org B's context cannot read or write org A's receipts", async () => {
       const { messageId } = await announce(adminA, "rls");
       await read(nurse1, messageId);
       const app_ = new Client({ connectionString: appRoleUrl(DB_URL as string) });

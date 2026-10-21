@@ -9,7 +9,7 @@
 // step-up on top.
 //
 // NO ROUTE HERE TAKES AN ORG. `ai_capability`, `ai_capability_lifecycle_event` and
-// `ai_capability_calibration` are platform-shared (§3.3 grants `wardenx_app` SELECT and routes every write
+// `ai_capability_calibration` are platform-shared (§3.3 grants `chartwarden_app` SELECT and routes every write
 // through the allowlisted platform credential), so a capability is the same row for every tenant. The
 // org-scoped decisions ABOUT a capability — the tenant opt-in, the clinician opt-out, the routing override
 // — live in the sibling route files, and keeping them apart is what stops one agency's opt-in from

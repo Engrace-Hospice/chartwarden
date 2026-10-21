@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0085 (PROPOSED), slice G1 - the one-thread read grant table (migration 1135), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 ADR-0085 (PROPOSED), slice G1 - the one-thread read grant table (migration 1135), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  *   1. TENANCY     another organisation reads nothing and cannot insert a grant for this org's rows.
  *   2. GUARD       insert-only apart from one revoke: no other column moves, a revoke happens once, no DELETE for the app role,

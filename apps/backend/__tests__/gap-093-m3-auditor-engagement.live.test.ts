@@ -1,6 +1,6 @@
 /**
  * GAP-093(a)(b)(c)(d) / GAP-011 — auditor engagements are DURABLE and the M3 `AuditorEngagementReader` is
- * real, LIVE Postgres as `wardenx_app` (NOBYPASSRLS). Proves, on a real database:
+ * real, LIVE Postgres as `chartwarden_app` (NOBYPASSRLS). Proves, on a real database:
  *   1. the engagement store WRITES `auditor_engagement` (create / get / shorten / cancel / enrolment count);
  *   2. the reader says "active" only for the same org, `active` status, inside the window, and resolves
  *      what the engagement covers (explicit patients, tenant-wide) — and answers false/null for a scheduled,
@@ -27,7 +27,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-111111a09301";
 const ORG_B = "11111111-1111-4111-8111-111111b09301";
@@ -93,7 +93,7 @@ describe.skipIf(!DB_URL)("GAP-093 M3 auditor engagement store + reader — LIVE 
       `INSERT INTO "user" (id,email) VALUES ($1,'c@g093.test'),($2,'a@g093.test')`,
       [COMPLIANCE, AUDITOR],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDbEngagementStore(handle.db, () => NOW);
     reader = createDbAuditorEngagementReader(handle.db);

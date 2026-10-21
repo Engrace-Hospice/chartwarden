@@ -1,6 +1,6 @@
 // apps/backend/src/modules/37-ipu/routes/service-drizzle.ts — the production M37 route service (T11b core
 // spine). Every op runs inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction as the
-// NOBYPASSRLS `wardenx_app` role, so tenant isolation is the RLS backstop, not app logic. Writes drive the
+// NOBYPASSRLS `chartwarden_app` role, so tenant isolation is the RLS backstop, not app logic. Writes drive the
 // pure @chartwarden/inpatient machines (transitionBedCleaning, planOpenAdmission) and emit `m37.*` through the
 // injected WriteOutboxPort in the SAME unit of work (transactional outbox). `userId` is the M2 session user
 // id (the audit actor); `membershipId` stamps the row's created_by / by_membership_id columns.

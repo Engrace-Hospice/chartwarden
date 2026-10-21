@@ -1,6 +1,6 @@
 /**
  * GAP-173 / GAP-158 follow-up - M40 `mdm_license_record` (manual license entry + expiry scan) and
- * `external_grief_resource` RLS, LIVE Postgres, as the RLS-enforced `wardenx_app` role. Proves the upsert
+ * `external_grief_resource` RLS, LIVE Postgres, as the RLS-enforced `chartwarden_app` role. Proves the upsert
  * (re-entering a renewed expiry updates in place, one row per org/entity/state), the 2-letter state CHECK, the
  * scan's read (org-scoped, horizon-bounded) and that a tenant sees neither another tenant's licenses nor grief
  * resources. Gated on a live DB:
@@ -18,12 +18,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "11111111-1111-4111-8111-111111117301";

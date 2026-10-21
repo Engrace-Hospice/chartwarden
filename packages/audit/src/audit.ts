@@ -180,13 +180,13 @@ export interface PlatformAuditEventInput {
 
 /**
  * Write one PLATFORM-SCOPED (`organization_id IS NULL`, `actor_kind = 'system'`) `audit_event` row.
- * `wardenx_app` holds no INSERT policy admitting a null-org row (ADR-0010 D2/D3 ban a second
+ * `chartwarden_app` holds no INSERT policy admitting a null-org row (ADR-0010 D2/D3 ban a second
  * RLS-policy GUC or an org-alternative disjunct on a tenant-writable policy — see migration 0186's
  * own comment for why), so a plain `tx.insert(schema.auditEvents)...` — the path `audit()` takes —
  * fails under real RLS the same way `outbox_event`'s platform-wide insert did before migration 0186.
  * This instead calls the SECURITY DEFINER `audit_writer_insert_platform_event` function (migration
- * 0187) — owned by `wardenx_audit_writer` (which already holds the unconditional `audit_writer_insert`
- * policy, migration 0013), EXECUTE granted directly to `wardenx_app`. `organization_id`/`actor_kind`
+ * 0187) — owned by `chartwarden_audit_writer` (which already holds the unconditional `audit_writer_insert`
+ * policy, migration 0013), EXECUTE granted directly to `chartwarden_app`. `organization_id`/`actor_kind`
  * are hardcoded inside the function body, never caller-supplied, so there is no way to widen scope
  * through an argument — the same shape as `outbox_event`'s platform-writer functions.
  *

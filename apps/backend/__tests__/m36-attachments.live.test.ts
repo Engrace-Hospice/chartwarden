@@ -1,5 +1,5 @@
 /**
- * M36 WP 1.5 — attachments via M22, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 1.5 — attachments via M22, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (real Authorization Contract + `channel_visibility` ABAC + the Postgres IdempotencyStore + the
  * catalog-validating transactional outbox publisher) over a fake in-memory object store (never the shared MinIO) and
@@ -70,7 +70,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0005";
 const ORG_B = "22222222-2222-4222-8222-2222000f0005";
@@ -212,7 +212,7 @@ function shape(res: { statusCode: number; body: string }): string {
 describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
-  /** A login that is actually `wardenx_destruction`: the only credential that may DELETE message_attachment. */
+  /** A login that is actually `chartwarden_destruction`: the only credential that may DELETE message_attachment. */
   let destroyer: { db: DbClient; close: () => Promise<void> };
   let routeService: ReturnType<typeof createDbMessagingRouteService>;
   let app: FastifyInstance;
@@ -432,11 +432,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     u2 = await seedUser("u2", ORG_A);
     outsider = await seedUser("out", ORG_A);
     bUser = await seedUser("b", ORG_B);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     await admin.query(
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp15_destroyer') THEN
-         CREATE ROLE wp15_destroyer LOGIN PASSWORD 'wp15_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+         CREATE ROLE wp15_destroyer LOGIN PASSWORD 'wp15_destroyer_pw' IN ROLE chartwarden_destruction; END IF; END $$;`,
     );
     const destroyerUrl = new URL(DB_URL as string);
     destroyerUrl.username = "wp15_destroyer";
@@ -1142,7 +1142,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     });
   });
 
-  describe("RLS as the real wardenx_app role", () => {
+  describe("RLS as the real chartwarden_app role", () => {
     async function asApp<T>(org: string | null, fn: (c: Client) => Promise<T>): Promise<T> {
       const c = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await c.connect();
@@ -1240,7 +1240,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         `INSERT INTO attachment_access_event (organization_id, attachment_id, user_id, action, reason) VALUES ($1,$2,$3,'denied','not_clean')`,
         [orgC, ins.rows[0].id, cUser],
       );
-      // The erase credential is wardenx_destruction: the app role has no DELETE on message_attachment (1075).
+      // The erase credential is chartwarden_destruction: the app role has no DELETE on message_attachment (1075).
       const store = createDrizzleMessagingEraseStore(destroyer.db);
       await store.deleteStructuralRows(orgC);
       expect(
@@ -1341,7 +1341,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp15_selectonly') THEN
            CREATE ROLE wp15_selectonly LOGIN PASSWORD 'wp15_selectonly_pw'; END IF; END $$;`,
       );
-      // A standalone role (a member of wardenx_app would inherit its FOR ALL policy): granted SELECT and the row-removal
+      // A standalone role (a member of chartwarden_app would inherit its FOR ALL policy): granted SELECT and the row-removal
       // privilege, but its only policy is a SELECT one, so the privilege check passes while RLS hides every row from it.
       await admin.query(`GRANT USAGE ON SCHEMA public TO wp15_selectonly`);
       await admin.query(`GRANT SELECT, DELETE ON message_attachment TO wp15_selectonly`);
@@ -1438,7 +1438,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       }
     }
 
-    it("wardenx_app cannot DELETE message_attachment or attachment_access_event", async () => {
+    it("chartwarden_app cannot DELETE message_attachment or attachment_access_event", async () => {
       const { attachmentId } = await uploaded(u1, dm, pdfBytes("no-delete"));
       await access(u1, attachmentId);
       await expect(asApp(ORG_A, (c) => c.query(`DELETE FROM message_attachment`))).rejects.toThrow(
@@ -3837,7 +3837,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
 
   // WP 1.8 / SG-03: the M36 read routes that surface message, attachment or alert content each leave a row in the
   // audit trail. `app` above has no `db` (the emitter is inert without one), so this builds the same routes on a
-  // server that has the real wardenx_app handle. The single-resource reads carry the resource id (a missing
+  // server that has the real chartwarden_app handle. The single-resource reads carry the resource id (a missing
   // `resourceIdParam` makes the audit insert fail on the uuid cast and the best-effort emitter swallows it).
   describe("read-audit emission (WP 1.8)", () => {
     let auditApp: FastifyInstance;

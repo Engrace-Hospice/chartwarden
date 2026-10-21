@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `messaging.read` + `messaging.review`, the DB reader, the DB channel check, the
  * Part 2 gate seam, read-audit) over requests seeded through the real insert guard, then moved through the legal transitions.

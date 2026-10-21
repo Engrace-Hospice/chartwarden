@@ -1,6 +1,6 @@
 /**
  * M14 `lastMeetingForPatient` / `getLastMeetingForPatient` (WP 3.1) — the Drizzle query proven against real
- * Postgres as the NOBYPASSRLS `wardenx_app` role. Rows are seeded as superuser through the real tables.
+ * Postgres as the NOBYPASSRLS `chartwarden_app` role. Rows are seeded as superuser through the real tables.
  *
  * "Last meeting" = status 'adjourned' AND real actual_start AND a FROZEN packet row for the patient. Each
  * decoy below fails exactly ONE of those conditions, so dropping any single filter surfaces a decoy that is
@@ -22,7 +22,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBERSHIP = "33333333-3333-3333-3333-333333333333";
@@ -34,7 +34,7 @@ const NEVER_REVIEWED = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 type OrgSeed = { providerEntity: string; location: string; policy: string };
 
-describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let store: ReturnType<typeof createDrizzleIdgSeamStore>;
@@ -182,7 +182,7 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
       packet: { patient: NEVER_REVIEWED, frozen: true },
     });
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDrizzleIdgSeamStore(handle.db);
   }, 120_000);

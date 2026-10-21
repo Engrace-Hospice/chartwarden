@@ -2,9 +2,9 @@
 // follow-up): the actual row destruction behind `eraseAuditRows`. It lives HERE because
 // `audit_event` is HELPER-ONLY (manifest HELPER_ONLY_TABLES) — packages/audit is the only
 // sanctioned code allowed to touch the table — and because the tenant role cannot do this at all:
-// `wardenx_app` holds INSERT/SELECT only (migration 0001, the append-only guarantee), so the
+// `chartwarden_app` holds INSERT/SELECT only (migration 0001, the append-only guarantee), so the
 // caller must inject a DESTRUCTION-GRANTED DbClient (a separately pooled credential holding
-// DELETE on `audit_event`, e.g. `wardenx_admin`). The M4 backend keeps its `performErasure` leg a
+// DELETE on `audit_event`, e.g. `chartwarden_admin`). The M4 backend keeps its `performErasure` leg a
 // loud UNBOUND throw until deployment provisions that credential and threads it through.
 //
 // Semantics — a hard partitioned DELETE, not a crypto-erase: `audit_event` stores its payloads
@@ -43,7 +43,7 @@ export type AuditEraseExecutor = Pick<EraserPorts, "performErasure">;
 
 /**
  * Build the Drizzle `performErasure` executor over an injected DESTRUCTION-GRANTED client.
- * Do NOT pass the tenant pool here — `wardenx_app` has no DELETE grant and the call would fail
+ * Do NOT pass the tenant pool here — `chartwarden_app` has no DELETE grant and the call would fail
  * (correctly) at the database. The eraser/destruction guards (§10.6 legal hold, §6 Part 2) are NOT
  * re-checked here; this executor must only ever run behind `eraseAuditRows`, which is the sole
  * caller of the `performErasure` port.

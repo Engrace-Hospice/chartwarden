@@ -305,7 +305,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // race-safe under two concurrent callers (exactly one epoch minted), the wrapped ciphertext at rest is
   // never the plaintext, an unknown KEK id refuses with a stated reason, rotation retires the old epoch
   // and historic rows keep their original epoch tag (never rewritten), `patient_pseudonym_key` is
-  // unreadable on the tenant `wardenx_app` credential (42501, the `tenant_key_ring`/M34-F02 shape), and
+  // unreadable on the tenant `chartwarden_app` credential (42501, the `tenant_key_ring`/M34-F02 shape), and
   // all three consumers write real `patient_active_period`/`user_active_period` rows under RLS with
   // cross-tenant isolation (org B's rows are untouched by an org A delivery).
   // F-158 (#248) — the `m2` group is GONE, not merely emptied. `m39.consent.revoked` is now BUILT:

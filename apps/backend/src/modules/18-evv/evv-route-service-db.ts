@@ -4,7 +4,7 @@
 // The screen-driving READS (event ledger + detail, per-visit bracket, device roster, geofence policy, missing-
 // resolution queue, per-state aggregator submissions, EVV metrics, last-known team location, portal arrival)
 // run as real Drizzle queries over the M18-owned tables inside `withOrgContext`, so RLS scopes every row by
-// `app.org_id` as the unprivileged `wardenx_app` role. The §4.7 ABAC resolver (`assigned_clinician_for_visit`
+// `app.org_id` as the unprivileged `chartwarden_app` role. The §4.7 ABAC resolver (`assigned_clinician_for_visit`
 // ∧ `evv_within_visit_window`) reads the M17 `visit` aggregate the same way (M18 dependsOn [17]; RLS-scoped,
 // fail-closed → `null` when the visit is absent/cross-tenant). Coordinates are NEVER projected on event reads.
 //

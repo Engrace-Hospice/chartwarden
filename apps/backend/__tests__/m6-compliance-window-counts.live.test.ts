@@ -7,7 +7,7 @@
  * replacement: a nightly-batch measure-computation pull over `compliance_window`, not an event-driven
  * consumer of M6's outbox events.
  *
- * Everything under test is driven as the NOBYPASSRLS `wardenx_app` role (GAP-086) — a cross-tenant
+ * Everything under test is driven as the NOBYPASSRLS `chartwarden_app` role (GAP-086) — a cross-tenant
  * assertion on a superuser connection proves nothing. Fixture rows are seeded directly (superuser) rather
  * than through the full referral/election/CTI ceremony: this seam reads `compliance_window` /
  * `admission` table STATE, and the write lifecycle (open/close/override) is already proven by
@@ -27,7 +27,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-1111111178a0";
 const ORG_B = "11111111-1111-1111-1111-1111111178b0";
@@ -136,7 +136,7 @@ describe.skipIf(!DB_URL)("M6 ComplianceWindowCountsProvider — LIVE Postgres (F
     );
     await seedProviderEntity(PE_A, ORG_A, "CCN-F178-A", "1178000001");
     await seedProviderEntity(PE_B, ORG_A, "CCN-F178-B", "1178000002");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     provider = createComplianceWindowCountsProvider(handle.db);
 

@@ -1,5 +1,5 @@
 /**
- * M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role and a LIVE Valkey.
+ * M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
  *
  * The production composition, not a shim: REAL Better Auth sessions behind the REAL Fastify bridge and authenticate hook, the REAL DB permission
  * resolver and session-context store (so the REAL step-up predicate reads the session row), the REAL device routes, the REAL endpoint
@@ -60,12 +60,12 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "33333333-3333-4333-8333-3333000a8501";
@@ -655,7 +655,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect((await call("GET", "/api/v1/devices", a5)).statusCode).toBe(401);
     }, 60_000);
 
-    it("the delivery_endpoint RLS is still the user's own after the new column (another user's row is invisible as wardenx_app)", async () => {
+    it("the delivery_endpoint RLS is still the user's own after the new column (another user's row is invisible as chartwarden_app)", async () => {
       const result = await handle.db.transaction(async (tx) => {
         await tx.execute(sql`SELECT set_config('app.user_id', ${b.userId}, true)`);
         return tx.execute(

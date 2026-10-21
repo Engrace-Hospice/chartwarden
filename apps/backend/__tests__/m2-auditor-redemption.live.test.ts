@@ -1,6 +1,6 @@
 /**
  * M2/M3 auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral) — LIVE Postgres as the real
- * NOBYPASSRLS `wardenx_app` role, through a real Better Auth instance and the real authenticate hook.
+ * NOBYPASSRLS `chartwarden_app` role, through a real Better Auth instance and the real authenticate hook.
  * Proves, end to end:
  *   1. a link is redeemed once into a signed `auditor`-class ENROLMENT session scoped to ONE engagement and
  *      bounded by the engagement window; it holds NO role and cannot read until the BAA is accepted and a
@@ -60,10 +60,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
   "wardenx_report_writer",
 ];
@@ -200,7 +200,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
       [ORG_A, m[0].id, r[0].id],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const auth = createIdentityAuth(handle.db as never);
 

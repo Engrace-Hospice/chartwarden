@@ -32,7 +32,7 @@ export interface AuditIntegrityRouteDeps {
 
 const AUDIT_TABLE = "audit_event";
 /** The app roles the append-only model must hold for (§10.4) — mirrors `@chartwarden/audit`'s default. */
-const APP_ROLE = "wardenx_app";
+const APP_ROLE = "chartwarden_app";
 
 const integrityPermission = requirePermission("audit.integrity") as PreHandler;
 

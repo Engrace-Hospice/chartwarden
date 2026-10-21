@@ -3,7 +3,7 @@ import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@chartwar
 // artifact reader `AIPromptRegistry` resolves bodies through (M32-T05).
 //
 // `ai_prompt_template` is PLATFORM-SHARED (§3.3): `ai_prompt_template_read` is `USING (true)` for
-// `wardenx_app`, so every READ takes the ordinary tenant handle — including the D18 prohibited-zone
+// `chartwarden_app`, so every READ takes the ordinary tenant handle — including the D18 prohibited-zone
 // queries a consumer module runs at its own boot, which must not need a credential M12 does not hold.
 // R30's activation is the only WRITE and it runs under the audited platform bypass.
 //

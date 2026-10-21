@@ -1,6 +1,6 @@
 // M36 WP 2.7b chunk C1 (ADR-0058) - the global blind-token search index (migration 1091; 1096 adds `channel_id` and the name
 // exclusion columns). `message_search_token` has EXACTLY five columns and no surrogate key: a T-bit truncated HMAC (or a random
-// dummy) per (message, key version), keyed PER CHANNEL, with the channel id in the clear (migration 1096). `tag` is derived data and never leaves the index path: never logged, never audited. wardenx_app
+// dummy) per (message, key version), keyed PER CHANNEL, with the channel id in the clear (migration 1096). `tag` is derived data and never leaves the index path: never logged, never audited. chartwarden_app
 // has no UPDATE. RLS (FORCE) on organization_id, the statement-level audit trigger and the removal hook are in the migration.
 import { sql } from "drizzle-orm";
 import {

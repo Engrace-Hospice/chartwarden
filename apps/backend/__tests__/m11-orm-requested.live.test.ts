@@ -5,7 +5,7 @@
  * event between them: a signed lab order never became an HL7 ORM and `transmission_status` never left `pending`.
  * This drives the WHOLE chain with nothing stubbed but the wire and the vendor seams:
  *
- *   real M11 write service (SIGN, as the NOBYPASSRLS `wardenx_app` role)
+ *   real M11 write service (SIGN, as the NOBYPASSRLS `chartwarden_app` role)
  *     → gathers M5 demographics + the M40 physician + the M40 facility + M29's single active feed IN the sign tx
  *     → the real catalog-validating publisher writes `m11.order.hl7_orm_requested`
  *     → the real dispatcher delivers it to M29's real T08 worker
@@ -53,7 +53,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -265,7 +265,7 @@ describe.skipIf(!DB_URL)(
           [USER, ORG_A],
         )
       ).rows[0].id as string;
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       // M40 — the REAL canonical store, as production binds it. Physicians: one active + confirmed NPI, one

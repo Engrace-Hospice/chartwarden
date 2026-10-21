@@ -22,7 +22,7 @@
  *      tenant-writable policy and permissive `FOR ALL` policies that OR together.
  *   4. RLS ENABLED ⇒ RLS FORCED (F-087) — `ENABLE ROW LEVEL SECURITY` exempts the
  *      table's OWNER, and migrate.ts connects as `DATABASE_ADMIN_URL ?? DATABASE_URL`,
- *      so a deployment that migrates with only DATABASE_URL set makes `wardenx_app`
+ *      so a deployment that migrates with only DATABASE_URL set makes `chartwarden_app`
  *      the owner and every policy on an unFORCEd table stops applying to it. Judged
  *      on the migrations' NET effect, like Rule 2 — and modelling the two catalog
  *      sweeps (0118/0159) rather than hardcoding them. The answer to this had been a
@@ -146,7 +146,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // same posture as `session`). `notification_delivery` + `alert_receipt`
   // are pure children of `alert` (ON DELETE cascade) and inherit tenancy via the parent
   // FK (`message_attachment` left this list in 1075: it carries organization_id + composite FKs now); RLS is applied through the parent-join — `alert_receipt` (migration 0243) shipped with
-  // neither the join policy nor the wardenx_app grant its siblings got in M36-T03, so every real
+  // neither the join policy nor the chartwarden_app grant its siblings got in M36-T03, so every real
   // request touching it 42501'd; migration 0247 gives it the same shape. `alert_payload_catalog`
   // is platform-floor reference, read-all, populated at boot from the §3.12 Foundation Registry.
   // The remaining M36 tables carry organization_id and get standard app.org_id RLS in M36-T03.
@@ -189,7 +189,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // carries organization_id NOT NULL and gets standard app.org_id RLS — NONE of them are listed here.
   // Only THREE M34 tables are genuinely org-less: onboarding_task_template (platform-shared read-only
   // catalog, SD-036 pattern-2 — SELECT USING(true)); tenant_signup_intent / tenant_signup_token
-  // (pre-organization signup funnel — wardenx_app cannot SELECT; tenant_platform_writer only).
+  // (pre-organization signup funnel — chartwarden_app cannot SELECT; tenant_platform_writer only).
   "onboarding_task_template",
   "tenant_signup_intent",
   "tenant_signup_token",
@@ -241,7 +241,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // M21 Supplies (§3.1.3 / D11): supply_item is the PLATFORM-shared canonical SKU catalog — one row per
   // real-world HCPCS-keyed item, rewritten wholesale by the annual CMS HCPCS loader, the same answer for
   // every tenant — with NO organization_id BY DESIGN. Dual-grant RLS in 0106: read-all
-  // `USING (is_active = true)` TO wardenx_app, writes only via wardenx_admin; it audits through the M1
+  // `USING (is_active = true)` TO chartwarden_app, writes only via chartwarden_admin; it audits through the M1
   // baseline `wardenx_audit_trigger()` because the M4 generator's body reads NEW.organization_id (the M22
   // form_template / M38 code_system / M39 consent_type_catalog precedent). The tenant half of the D11
   // canonical-plus-overlay pair, tenant_supply_item_extension, is intentionally NOT listed here — it carries
@@ -259,7 +259,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // per-tenant copy would let two tenants disagree about which model version answered; `ai_prompt_template`
   // is the versioned prompt registry and the D18 prohibited-zone key; `ai_evaluation_run` is governance
   // evaluation evidence run against the model on a held-out set, not inside a tenant. All six get
-  // read-all `USING (true)` TO wardenx_app with writes only via wardenx_admin in 0116 (the M38
+  // read-all `USING (true)` TO chartwarden_app with writes only via chartwarden_admin in 0116 (the M38
   // code_system / M22 form_template / M21 supply_item precedent); the four with an empty §3.4 denylist
   // audit through M1's baseline `wardenx_audit_trigger()`, and the two with a denylist get generated
   // scrubbing functions that resolve organization_id from the SESSION because the column does not exist.
@@ -277,15 +277,15 @@ const NON_ORG_SCOPED = new Set<string>([
   "ai_evaluation_run",
   // M28 FHIR Gateway (§3.3 / §3.5): `fhir_capability_snapshot` is the platform-singleton
   // CapabilityStatement (D11) and carries NO organization_id BY DESIGN — a conformance statement is the
-  // same contract for every tenant. Read-all `USING (true)` TO wardenx_app, writes only via wardenx_admin
+  // same contract for every tenant. Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin
   // (0137; the M32 ai_capability / M38 code_system / M22 form_template precedent); it audits through M1's
   // baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The other seven
   // M28 tables carry organization_id and get standard app.org_id RLS.
   "fhir_capability_snapshot",
   // M35 Subscription Billing (§3.3 / §3.5): NINE tables carry no tenant-RLS organization_id BY DESIGN.
   //   • `plan` / `plan_meter` / `promo_code` — the platform-owned pricing + coupon catalog (D11). The
-  //     same offer for every tenant, so read-all `USING (true)` TO wardenx_app, writes only via
-  //     wardenx_admin (0143; the M38 code_system / M28 fhir_capability_snapshot precedent).
+  //     same offer for every tenant, so read-all `USING (true)` TO chartwarden_app, writes only via
+  //     chartwarden_admin (0143; the M38 code_system / M28 fhir_capability_snapshot precedent).
   //   • `revenue_recognition_snapshot` — the cross-tenant MRR/ARR aggregate (W-SB-15): platform-only
   //     read+write, never exposed to tenant queries.
   //   • `patient_pseudonym_key` — the M35-private HMAC key catalog: platform-only read+write; §3.6 grants
@@ -311,8 +311,8 @@ const NON_ORG_SCOPED = new Set<string>([
   "platform_retained_invoice_line",
   // M29 External Interfaces (§3.3 / §3.5): the two NPPES cache tables carry NO organization_id BY DESIGN —
   // the CMS NPPES registry is the same public provider directory for every tenant. `nppes_provider` (keyed
-  // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO wardenx_app, written only via
-  // wardenx_admin under the platform-role nightly sync (0148; the M28 fhir_capability_snapshot / M38
+  // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO chartwarden_app, written only via
+  // chartwarden_admin under the platform-role nightly sync (0148; the M28 fhir_capability_snapshot / M38
   // code_system precedent). The other nine M29 tables carry organization_id and get standard app.org_id RLS.
   "nppes_provider",
   "nppes_sync_run",
@@ -874,8 +874,8 @@ function isForceRlsCatalogSweep(text: string): boolean {
  * Rule 4 — every table the migrations leave with RLS ENABLED must also be left FORCEd.
  *
  * `ENABLE ROW LEVEL SECURITY` does not apply to the table's OWNER. Every policy in this repo is
- * `TO wardenx_app`, and `scripts/db/migrate.ts` connects as `DATABASE_ADMIN_URL ?? DATABASE_URL` —
- * so a deployment that runs the migrator with only `DATABASE_URL` set makes `wardenx_app` the owner
+ * `TO chartwarden_app`, and `scripts/db/migrate.ts` connects as `DATABASE_ADMIN_URL ?? DATABASE_URL` —
+ * so a deployment that runs the migrator with only `DATABASE_URL` set makes `chartwarden_app` the owner
  * and every policy on an unFORCEd table stops applying to the application's own role. Migration
  * 0118's header sets that out in full; it is not a hypothetical, it is why 0118 exists.
  *
@@ -948,7 +948,7 @@ function checkForceRls(files: readonly string[]): void {
       detail: [
         `table '${table}' is left with RLS ENABLED but never FORCEd — RLS does not apply to a`,
         "table's OWNER, and migrate.ts connects as `DATABASE_ADMIN_URL ?? DATABASE_URL`, so on a",
-        "deployment that migrates with only DATABASE_URL set, wardenx_app owns this table and every",
+        "deployment that migrates with only DATABASE_URL set, chartwarden_app owns this table and every",
         "policy on it stops applying to it (ADR-0010 D2; migration 0118).",
         `\n  Fix: add \`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY;\` beside the ENABLE.`,
       ].join(" "),

@@ -1,5 +1,5 @@
 /**
- * M36 WP 1.2 — idempotent durable send, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 1.2 — idempotent durable send, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Two layers, both proven against the real route stack (real Authorization Contract + `channel_visibility`
  * ABAC + the Postgres IdempotencyStore + the catalog-validating transactional outbox publisher):
@@ -45,7 +45,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0001";
 const ORG_B = "22222222-2222-4222-8222-2222000f0002";
@@ -166,7 +166,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
     user1 = await seedUser("u1", ORG_A);
     user2 = await seedUser("u2", ORG_A);
     outsider = await seedUser("out", ORG_A);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));

@@ -94,7 +94,7 @@ const timed = async <T>(
   }
 };
 
-/** migrate (production path: DDL as superuser, then the wardenx_app LOGIN bootstrap) + provision the runtime roles. */
+/** migrate (production path: DDL as superuser, then the chartwarden_app LOGIN bootstrap) + provision the runtime roles. */
 function migrateAndProvision(pg: Pg, db: string): void {
   const env = {
     ...process.env,
@@ -212,8 +212,8 @@ async function main(): Promise<number> {
     migrateAndProvision(src, DB);
     const world = await createWorld({
       adminUrl: src.url(DB),
-      appUrl: src.url(DB, "wardenx_app", APP_PW),
-      destructionUrl: src.url(DB, "wardenx_destruction_login", DESTRUCTION_PW),
+      appUrl: src.url(DB, "chartwarden_app", APP_PW),
+      destructionUrl: src.url(DB, "chartwarden_destruction_login", DESTRUCTION_PW),
       minio: srcMinio,
       kek,
     });
@@ -221,7 +221,7 @@ async function main(): Promise<number> {
     console.log("  seeded baseline through the real M36 routes");
 
     // 2. backup-time manifest (read-only), then the backup itself
-    const appUrl = src.url(DB, "wardenx_app", APP_PW);
+    const appUrl = src.url(DB, "chartwarden_app", APP_PW);
     const rowsAtBackup = await attachmentRows(src.url(DB));
     const manifest = {
       counts: await countM36Tables(src.url(DB)),
@@ -270,7 +270,7 @@ async function main(): Promise<number> {
     const faultNote = await injectFault(fault, scratch, scratchMinio);
     const verifyStart = performance.now();
     const checks: Check[] = [];
-    const restoredAppUrl = scratch.url(DB, "wardenx_app", APP_PW);
+    const restoredAppUrl = scratch.url(DB, "chartwarden_app", APP_PW);
     const restoredCounts = await countM36Tables(scratch.url(DB));
     checks.push(compareCounts(manifest.counts, restoredCounts));
     checks.push(

@@ -1695,7 +1695,7 @@ export function wireModuleSeams(
      * The PLATFORM-pooled client (`DATABASE_PLATFORM_URL`). Distinct from `organizationDb` even though
      * the composition root happens to pass the same handle to both: this one is here because M34's D5
      * key provider needs a credential that may SELECT `tenant_key_ring`, which migration 0052 §5 revokes
-     * from `wardenx_app` (#105). Absent ⇒ the key provider refuses with a stated reason.
+     * from `chartwarden_app` (#105). Absent ⇒ the key provider refuses with a stated reason.
      */
     platformDb?: DbClient;
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
@@ -2596,7 +2596,7 @@ export function wireModuleSeams(
       db: deps.db,
       auditBypass: m34PlatformBypassAuditor,
       kekUnwrap: kek ?? gateway?.kekUnwrap,
-      // NOT `deps.db`: migration 0052 §5 revokes wardenx_app's SELECT on tenant_key_ring, so the request
+      // NOT `deps.db`: migration 0052 §5 revokes chartwarden_app's SELECT on tenant_key_ring, so the request
       // path's credential cannot read a wrapped DEK at all. The platform login holds the grant.
       keyRingDb: deps.platformDb,
     });
@@ -2653,7 +2653,7 @@ export function wireModuleSeams(
  * bypass (the fail-closed posture).
  *
  * Uses `auditPlatformEvent` (NOT the plain `audit()` helper, WX-PR-024): `audit()`'s `tx.insert(...)` runs as
- * the caller's own role — `wardenx_app` in production — which holds no INSERT policy admitting a null-org
+ * the caller's own role — `chartwarden_app` in production — which holds no INSERT policy admitting a null-org
  * `audit_event` row (ADR-0010 bans a policy shaped to allow it). `auditPlatformEvent` instead calls the
  * SECURITY DEFINER `audit_writer_insert_platform_event` function (migration 0187), so this write actually
  * succeeds under real RLS instead of throwing on every `withPlatformContext` entry codebase-wide.
@@ -2722,8 +2722,8 @@ export function wireModuleErasers(
     platformDb?: DbClient;
     /**
      * The destruction-granted credential (DATABASE_DESTRUCTION_URL → a login role IN ROLE
-     * wardenx_destruction, migration 0157). The append-only clinical/billing tables grant
-     * wardenx_app no DELETE, so per-patient erase stores bind THIS pool when present; absent, they
+     * chartwarden_destruction, migration 0157). The append-only clinical/billing tables grant
+     * chartwarden_app no DELETE, so per-patient erase stores bind THIS pool when present; absent, they
      * bind the tenant pool and the first privileged statement fails loudly (permission denied) —
      * never a certificate for undone work. M4's audit-row executor binds ONLY this (typed UNBOUND
      * otherwise — audit_event is append-only for every app role).
@@ -2734,7 +2734,7 @@ export function wireModuleErasers(
   // TASK-003 (ARCH-007) — every registrar below binds its Drizzle erase store on a db boot, so a
   // right-to-erasure request touches REAL rows and its certificate counts what was actually
   // destroyed. Grant caveats (each fails LOUDLY, never a fake certificate): the append-only
-  // clinical/billing tables (M7–M13, M23, M25) grant wardenx_app no DELETE — the erase path needs
+  // clinical/billing tables (M7–M13, M23, M25) grant chartwarden_app no DELETE — the erase path needs
   // the destruction-granted credential at deployment; M4's performErasure throws typed-UNBOUND
   // (audit_event is HELPER_ONLY + append-only — the crypto-erase adapter lands in packages/audit);
   // M36's sole-tenant-user leg refuses without a platform membership enumerator (D9 is an
@@ -3299,9 +3299,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     onBreakerEdge: (edge) => m12BreakerEdges.record(edge),
   });
   // M35 §5.2 platform-ops admin surface runs its cross-tenant reads/writes through a SEPARATE platform
-  // credential — NOT the tenant `wardenx_app` pool. The six PLATFORM-ONLY M35 tables
+  // credential — NOT the tenant `chartwarden_app` pool. The six PLATFORM-ONLY M35 tables
   // (revenue_recognition_snapshot, stripe_webhook_event, patient_pseudonym_key, stripe_api_call_audit,
-  // platform_retained_invoice[_line]; migration 0143) have RLS enabled with NO wardenx_app grant, so a
+  // platform_retained_invoice[_line]; migration 0143) have RLS enabled with NO chartwarden_app grant, so a
   // tenant-pool read fails closed with `permission denied`. DATABASE_PLATFORM_URL points at a least-privilege
   // platform login role (SELECT/write on those tables + the org-scoped M35 tables it reads cross-tenant +
   // audit_event INSERT + BYPASSRLS). Absent → the M35 platformRunner below stays undefined and the admin
@@ -3332,9 +3332,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // constructed ONCE and shared between the fresh-dispatch `OutboxConsumerBinding` and the retry-sweep
   // worker (both below) so the throttle budget is genuinely shared across both send paths, not doubled.
   const m29OutboundRateLimiter = createM29OutboundRateLimiter();
-  // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE wardenx_destruction,
+  // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE chartwarden_destruction,
   // migration 0157: DELETE/UPDATE grants scoped to exactly what the erase stores execute, org-pinned
-  // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant wardenx_app no
+  // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant chartwarden_app no
   // DELETE, so without this the per-patient erase paths fail loudly at the first privileged
   // statement and M4's audit-row executor stays typed-UNBOUND.
   const destructionDbHandle = process.env.DATABASE_DESTRUCTION_URL
@@ -3937,7 +3937,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   );
   if (s3ObjectStoreConfigFromEnv(process.env) && !destructionDbHandle) {
     console.warn(
-      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (wardenx_app cannot DELETE message_attachment). Provision wardenx_destruction_login (db:provision-roles) and set it.",
+      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (chartwarden_app cannot DELETE message_attachment). Provision chartwarden_destruction_login (db:provision-roles) and set it.",
     );
   }
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
@@ -6966,9 +6966,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     m33LagProbeRedis?.on("error", () => {});
     const m33MvRefreshEnqueue = buildM33MvRefreshEnqueue(queueConnection);
     // WX-PR-025: `platformDb` prefers the separate `platformDbHandle` (DATABASE_PLATFORM_URL) over the
-    // tenant `wardenx_app` pool when configured — `mvRefresh`'s nightly cross-tenant REFRESH needs the
-    // `wardenx_platform` credential's ownership + BYPASSRLS over the report_mv.* views (provisioned by
-    // `scripts/db/provision-runtime-roles.ts`) to genuinely span every tenant; `wardenx_app` has no
+    // tenant `chartwarden_app` pool when configured — `mvRefresh`'s nightly cross-tenant REFRESH needs the
+    // `chartwarden_platform` credential's ownership + BYPASSRLS over the report_mv.* views (provisioned by
+    // `scripts/db/provision-runtime-roles.ts`) to genuinely span every tenant; `chartwarden_app` has no
     // privilege to REFRESH those views at all. Falls back to `dbHandle.db` when the platform credential
     // isn't configured (dev/CI without DATABASE_PLATFORM_URL) — `lagProbe`'s own `platform.bypass_invoked`
     // audit write and `scheduledRun`'s ordinary org-scoped work are unaffected either way.
@@ -7008,8 +7008,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // no-op once the window is covered, so three cheap chances beat one tick that a restart can eat.
     //
     // It uses the PLATFORM credential, not the tenant pool. Partition DDL needs ownership of the parent
-    // table and `wardenx_app` has none — the definer-rights `rotate_time_partitions` bridges that, and
-    // `scripts/db/provision-runtime-roles.ts` grants EXECUTE on it to `wardenx_platform`. Falling back to
+    // table and `chartwarden_app` has none — the definer-rights `rotate_time_partitions` bridges that, and
+    // `scripts/db/provision-runtime-roles.ts` grants EXECUTE on it to `chartwarden_platform`. Falling back to
     // `dbHandle.db` keeps dev/CI (no DATABASE_PLATFORM_URL) working, where the connected role is usually
     // the owner anyway.
     const partitionRotateWorker = new Worker(
@@ -7064,7 +7064,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // detach the partition. It never drops anything — destruction is M4's certificate-driven act. Unconfigured
     // (no AUDIT_ARCHIVE_BUCKET, or no MINIO_* credentials) it is a logged skip: the hot tier keeps everything.
     // Platform credential, like partition rotation: reading every tenant's audit rows and detaching a partition
-    // are definer-rights functions (migration 0432) that `wardenx_platform` is granted EXECUTE on.
+    // are definer-rights functions (migration 0432) that `chartwarden_platform` is granted EXECUTE on.
     const auditArchiveSetup = auditArchiveConfigFromEnv(process.env);
     const auditArchiveWorker = new Worker(
       AUDIT_ARCHIVE_QUEUE,
@@ -8389,7 +8389,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // ── M38 §4.3 workers (GAP-108) ───────────────────────────────────────────────────────────────────────
     // One real Worker per queue: load_version (fetch → checksum → parse → stage → activate, resumable from `staged`,
     // failed loads leave no residue), refresh_expansions, refresh_embeddings, tenant_deprecation_scan and the five
-    // scheduled_* source jobs. Writes go through the `terminology_loader` SECURITY DEFINER functions as `wardenx_app`;
+    // scheduled_* source jobs. Writes go through the `terminology_loader` SECURITY DEFINER functions as `chartwarden_app`;
     // the tenant scan fans out over the audited active-org enumerator and reaches each org's code usage through the
     // owner-published CarePlanReader seam. Tier-1 fetches need TERMINOLOGY_LOADER_EGRESS=on; tier-2 (SNOMED / RxNorm /
     // LOINC) sit behind the fail-closed credential deny-stub — no licensed fetch is wired.
@@ -9863,7 +9863,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // UNLIKE EVERY OTHER CRON HERE, this one is NOT an active-org fan-out: NPPES is one public CMS
     // directory shared platform-wide (D11), so there is no per-org tick and no `buildActiveOrgEnumerator`.
     // Its writes go through migration 0199's `nppes_writer_*` SECURITY DEFINER functions (the two tables
-    // are SELECT-only to `wardenx_app`), and its five §4.10 events publish platform-wide
+    // are SELECT-only to `chartwarden_app`), and its five §4.10 events publish platform-wide
     // (`organization_id IS NULL`) through the existing migration-0186 path.
     //
     // It is also the only cron that reaches the PUBLIC INTERNET on a tick (the CMS NPI Registry, no

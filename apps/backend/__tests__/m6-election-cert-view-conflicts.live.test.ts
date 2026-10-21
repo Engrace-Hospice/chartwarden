@@ -13,7 +13,7 @@
  * code, refused before any write. The registered business rule + the service-side mapping are the backstop
  * for a writer that races past the pre-check, asserted here against a REAL 23505.
  *
- * Reads/writes run as the NOBYPASSRLS `wardenx_app` role (_live-app-role.ts); only seeding uses the superuser.
+ * Reads/writes run as the NOBYPASSRLS `chartwarden_app` role (_live-app-role.ts); only seeding uses the superuser.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:election-cert-view:live
  */
@@ -33,7 +33,7 @@ import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111139a8";
 const USER = "33333333-3333-3333-3333-3333333339a8";
 const MD = "55555555-5555-5555-5555-5555555539a8";
@@ -116,7 +116,7 @@ describe.skipIf(!DB_URL)("M6 election-cert view pick + 409 conflicts, LIVE Postg
          VALUES ($1,$2,'A Hospice','341239','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {

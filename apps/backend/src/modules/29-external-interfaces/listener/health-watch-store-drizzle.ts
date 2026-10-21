@@ -1,7 +1,7 @@
 // apps/backend/src/modules/29-external-interfaces/listener/health-watch-store-drizzle.ts - GAP-043. The Drizzle
 // `FeedWatchStore`: reads the watchable feeds (feed + listener-state row + newest inbound frame) and applies a transition
 // - the state row, the current hour's health row and the outbox event - in ONE `withOrgContext` transaction, as the
-// feed's own tenant (RLS on `app.org_id`). The watcher runs in the worker role as `wardenx_app`.
+// feed's own tenant (RLS on `app.org_id`). The watcher runs in the worker role as `chartwarden_app`.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";

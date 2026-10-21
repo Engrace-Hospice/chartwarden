@@ -1,6 +1,6 @@
 /**
  * M31 provisioning Drizzle paths - `portal_notification_preference` and `portal_document_upload` - LIVE Postgres, as
- * the RLS-enforced `wardenx_app` role. The account + grant are created by the REAL invitation issue/accept flow so
+ * the RLS-enforced `chartwarden_app` role. The account + grant are created by the REAL invitation issue/accept flow so
  * the rows carry real tenancy columns. Proves preference upsert (insert then in-place update with a version bump),
  * the upload begin -> stage -> complete lifecycle against real columns (encrypted staging, ciphertext cleared on
  * submit, idempotent complete) and that a rejected / expired stage is DURABLY recorded (not rolled back with the
@@ -22,12 +22,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "11111111-1111-4111-8111-111111113101";

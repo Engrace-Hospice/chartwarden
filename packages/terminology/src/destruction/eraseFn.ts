@@ -8,7 +8,7 @@
 // the update log — is shared PLATFORM reference data that survives the tenant and is never subject to
 // HIPAA retention destruction (§7.2: a destruction certificate has never been needed for canonical
 // terminology data). So this eraser deletes the org's extensions and NOTHING else; platform tables
-// are physically out of reach (the tenant `wardenx_app` role has no write grant on them, §7.4).
+// are physically out of reach (the tenant `chartwarden_app` role has no write grant on them, §7.4).
 //
 // Pure orchestration over the {@link TerminologyEraseStore} port — the in-memory store implements it
 // for the slice/tests; the Drizzle-backed store implements it over `value_set_tenant_extension` in

@@ -18,33 +18,33 @@ import {
 describe("§12.3 append-only GRANT verification", () => {
   it("passes when the app role holds only SELECT/INSERT on audit_event", () => {
     const grants: GrantSnapshot[] = [
-      { role: "wardenx_app", table: "audit_event", privileges: ["SELECT", "INSERT"] },
-      { role: "wardenx_audit_writer", table: "audit_event", privileges: ["INSERT"] },
+      { role: "chartwarden_app", table: "audit_event", privileges: ["SELECT", "INSERT"] },
+      { role: "chartwarden_audit_writer", table: "audit_event", privileges: ["INSERT"] },
     ];
     expect(verifyAppendOnly(grants)).toEqual([]);
   });
 
   it("flags an app-role UPDATE/DELETE/TRUNCATE on the audit log (immutability breach)", () => {
     const grants: GrantSnapshot[] = [
-      { role: "wardenx_app", table: "audit_event", privileges: ["SELECT", "UPDATE", "DELETE"] },
+      { role: "chartwarden_app", table: "audit_event", privileges: ["SELECT", "UPDATE", "DELETE"] },
     ];
     const violations = verifyAppendOnly(grants);
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toMatchObject({ role: "wardenx_app", table: "audit_event" });
+    expect(violations[0]).toMatchObject({ role: "chartwarden_app", table: "audit_event" });
     expect(violations[0]!.forbidden.sort()).toEqual(["DELETE", "UPDATE"]);
   });
 
   it("ignores non-app roles and tables outside the audit allowlist", () => {
     const grants: GrantSnapshot[] = [
       { role: "wardenx_migrator", table: "audit_event", privileges: ["UPDATE"] },
-      { role: "wardenx_app", table: "patient", privileges: ["UPDATE"] },
+      { role: "chartwarden_app", table: "patient", privileges: ["UPDATE"] },
     ];
     expect(verifyAppendOnly(grants, { auditTables: ["audit_event"] })).toEqual([]);
   });
 
   it("is case-insensitive on role and privilege names", () => {
     const grants: GrantSnapshot[] = [
-      { role: "WARDENX_APP", table: "audit_event", privileges: ["delete"] },
+      { role: "CHARTWARDEN_APP", table: "audit_event", privileges: ["delete"] },
     ];
     expect(verifyAppendOnly(grants)).toHaveLength(1);
   });

@@ -8,7 +8,7 @@
  * orchestration but never touch a database, so they cannot catch a wrong policy predicate, a
  * missing WITH CHECK, a base-table grant that leaks across tenants, or a SECURITY DEFINER wrapper
  * that forgets its org-assertion. This test applies the actual migrations to a real Postgres and
- * exercises the policies as the unprivileged `wardenx_app` role (no BYPASSRLS), proving:
+ * exercises the policies as the unprivileged `chartwarden_app` role (no BYPASSRLS), proving:
  *
  *   - cross-tenant denial for real on all 9 org-scoped M33 tables (report_definition ·
  *     report_definition_version · report_view · report_share · report_schedule ·
@@ -17,8 +17,8 @@
  *     report_metric_catalog) are read-all cross-org (SELECT USING(true));
  *   - report_run's NULLABLE-org (platform-wide refresh) rows are hidden from tenants by the
  *     canonical predicate;
- *   - report_drilldown_audit is INSERT-ONLY (no UPDATE/DELETE path for wardenx_app);
- *   - the §3.5 "no direct MV SELECT" rule: wardenx_app cannot SELECT a report_mv.* materialized
+ *   - report_drilldown_audit is INSERT-ONLY (no UPDATE/DELETE path for chartwarden_app);
+ *   - the §3.5 "no direct MV SELECT" rule: chartwarden_app cannot SELECT a report_mv.* materialized
  *     view directly, and the report_mv.select_<mv_key>(p_org_id) SECURITY DEFINER wrapper REFUSES
  *     (returns nothing) when p_org_id != the caller's app.org_id (the org-assertion);
  *   - ADR-0010: a session that sets only the legacy `app.current_org_id` (not the canonical
@@ -39,10 +39,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
   "tenant_platform_writer",
   "report_writer", // M33's SECURITY DEFINER MV-wrapper / catalog-writer role (0056)
@@ -63,7 +63,7 @@ type SeedIds = {
   reportDrilldownAudit: string;
 };
 
-// The 9 tenant-scoped M33 tables, proven through a direct base-table SELECT under wardenx_app. A
+// The 9 tenant-scoped M33 tables, proven through a direct base-table SELECT under chartwarden_app. A
 // row's `id` PK (or the id half of a partitioned composite PK) uniquely identifies org A's row.
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "report_definition", key: "reportDefinition" },
@@ -94,7 +94,7 @@ describe.skipIf(!DB_URL)(
 
     /** Run `fn` as the unprivileged app role with app.org_id = `org` (RLS enforced). */
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -298,9 +298,9 @@ describe.skipIf(!DB_URL)(
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
     // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -382,12 +382,12 @@ describe.skipIf(!DB_URL)(
 
     // ── WX-PR-024: the platform-wide WRITE path (migration 0188) ─────────────────────────────────
     // `report_run_org`/the (missing) materialized_view_metadata write policy hide/refuse a null-org
-    // row to `wardenx_app` — but until migration 0188, that meant `wardenx_app` could not WRITE one
+    // row to `chartwarden_app` — but until migration 0188, that meant `chartwarden_app` could not WRITE one
     // either (a real INSERT rejected under NOBYPASSRLS, discovered live-testing WX-PR-014's M33
     // follow-up). These prove the raw path is STILL correctly rejected (no new write hole opened)
     // and the SECURITY DEFINER `report_writer_*` functions succeed through it.
     describe("WX-PR-024 — report_run / materialized_view_metadata platform-wide write path", () => {
-      it("a raw wardenx_app INSERT of a NULL-org report_run row is still rejected", async () => {
+      it("a raw chartwarden_app INSERT of a NULL-org report_run row is still rejected", async () => {
         await expect(
           withOrg(ORG_A, () =>
             db.query(
@@ -398,7 +398,7 @@ describe.skipIf(!DB_URL)(
         ).rejects.toThrow(/row-level security/i);
       });
 
-      it("report_writer_insert_platform_report_run succeeds as wardenx_app and lands organization_id NULL", async () => {
+      it("report_writer_insert_platform_report_run succeeds as chartwarden_app and lands organization_id NULL", async () => {
         const row = await withOrg(ORG_A, async () => {
           const r = await db.query(
             `SELECT * FROM report_writer_insert_platform_report_run($1,$2,$3,$4,$5,$6,$7)`,
@@ -420,7 +420,7 @@ describe.skipIf(!DB_URL)(
           )
         ).rows[0].id as string;
 
-        // A raw wardenx_app UPDATE cannot even SEE the row (RLS hides it), let alone change it.
+        // A raw chartwarden_app UPDATE cannot even SEE the row (RLS hides it), let alone change it.
         const rawUpdate = await withOrg(ORG_A, () =>
           db.query("UPDATE report_run SET status = 'succeeded' WHERE id = $1", [runId]),
         );
@@ -437,7 +437,7 @@ describe.skipIf(!DB_URL)(
         expect(settled.duration_ms).toBe(42);
       });
 
-      it("a raw wardenx_app UPDATE of materialized_view_metadata is rejected (no write policy)", async () => {
+      it("a raw chartwarden_app UPDATE of materialized_view_metadata is rejected (no write policy)", async () => {
         await expect(
           withOrg(ORG_A, () =>
             db.query(
@@ -448,7 +448,7 @@ describe.skipIf(!DB_URL)(
         ).rejects.toThrow(/row-level security|permission denied/i);
       });
 
-      it("report_writer_update_platform_mv_metadata stamps refresh telemetry as wardenx_app", async () => {
+      it("report_writer_update_platform_mv_metadata stamps refresh telemetry as chartwarden_app", async () => {
         const stamped = await withOrg(ORG_A, async () => {
           const r = await db.query(
             `SELECT * FROM report_writer_update_platform_mv_metadata($1,$2::jsonb)`,
@@ -504,8 +504,8 @@ describe.skipIf(!DB_URL)(
     });
 
     // ── report_drilldown_audit INSERT-ONLY ledger (§3.5) ─────────────────────────────────────────
-    describe("report_drilldown_audit — insert-only (no UPDATE/DELETE path for wardenx_app)", () => {
-      it("wardenx_app cannot UPDATE an own-org drilldown audit row (no UPDATE grant)", async () => {
+    describe("report_drilldown_audit — insert-only (no UPDATE/DELETE path for chartwarden_app)", () => {
+      it("chartwarden_app cannot UPDATE an own-org drilldown audit row (no UPDATE grant)", async () => {
         await expect(
           withOrg(ORG_A, () =>
             db.query("UPDATE report_drilldown_audit SET source_tile_key = 'x' WHERE id = $1", [
@@ -515,7 +515,7 @@ describe.skipIf(!DB_URL)(
         ).rejects.toThrow(/permission denied/i);
       });
 
-      it("wardenx_app cannot DELETE an own-org drilldown audit row (no DELETE grant)", async () => {
+      it("chartwarden_app cannot DELETE an own-org drilldown audit row (no DELETE grant)", async () => {
         await expect(
           withOrg(ORG_A, () =>
             db.query("DELETE FROM report_drilldown_audit WHERE id = $1", [a.reportDrilldownAudit]),
@@ -526,7 +526,7 @@ describe.skipIf(!DB_URL)(
 
     // ── §3.5 "no direct MV SELECT" + SECURITY DEFINER org-assertion ──────────────────────────────
     describe("report_mv — direct SELECT denied; wrapper enforces the org-assertion (§3.5)", () => {
-      it("wardenx_app cannot SELECT the materialized view directly (no MV SELECT grant)", async () => {
+      it("chartwarden_app cannot SELECT the materialized view directly (no MV SELECT grant)", async () => {
         await expect(
           withOrg(ORG_A, () => db.query("SELECT count(*) FROM report_mv.mv_census_org_daily")),
         ).rejects.toThrow(/permission denied/i);
@@ -570,7 +570,7 @@ describe.skipIf(!DB_URL)(
       const fresh = new Client({ connectionString: DB_URL });
       await fresh.connect();
       try {
-        await fresh.query("SET ROLE wardenx_app");
+        await fresh.query("SET ROLE chartwarden_app");
         await fresh.query("SELECT set_config('app.current_org_id', $1, false)", [ORG_A]);
         const r = await fresh.query(
           "SELECT count(*)::int AS n FROM report_definition WHERE id = $1",

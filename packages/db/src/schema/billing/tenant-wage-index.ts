@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 // hospice wage index for a CCN + federal fiscal year. ORG-SCOPED (organization_id NOT NULL, canonical app.org_id RLS,
 // ENABLED + FORCED). No PHI.
 //
-// Why not write into the platform-shared `wage_index_factor`: that table has NO organization_id (D12) and `wardenx_app`
+// Why not write into the platform-shared `wage_index_factor`: that table has NO organization_id (D12) and `chartwarden_app`
 // holds SELECT only — a tenant-keyed value there would silently reprice every tenant. Claim assembly reads this table
 // first, then a platform AUTHORITATIVE `wage_index_factor` row.
 //

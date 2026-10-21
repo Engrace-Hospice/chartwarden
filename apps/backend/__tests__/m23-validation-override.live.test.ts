@@ -3,9 +3,9 @@
  *
  * `POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override` answered 503 "the override audit port is
  * not bound" because the composition root never passed `ports.audit`. This drives the REAL route (real guards) over the
- * real write service on the NOBYPASSRLS `wardenx_app` role, with the audit port built by the same factory the composition
+ * real write service on the NOBYPASSRLS `chartwarden_app` role, with the audit port built by the same factory the composition
  * root uses. The M23 `provider_entity_billing_scope` and `override_role_eligible` predicates are the REAL ones (resolving
- * facts from the database as `wardenx_app`); only the M3 `step_up_recent` predicate is a documented stand-in (it reads the
+ * facts from the database as `chartwarden_app`); only the M3 `step_up_recent` predicate is a documented stand-in (it reads the
  * test header's step-up flag), because a real step-up needs an authenticated session this suite does not have. It proves:
  *   - 201 for an eligible actor with step-up; one prominent `m23.validation.override_applied` audit_event is written in the
  *     same transaction, its id is the override's NOT-NULL `m4_audit_event_id`, and it carries ids, the rule key, the role
@@ -47,7 +47,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_USER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
       ]).store,
     );
     const reg = createPredicateRegistry();
-    // The REAL M23 predicates (facts resolved from the database as wardenx_app); only step_up_recent is a stand-in.
+    // The REAL M23 predicates (facts resolved from the database as chartwarden_app); only step_up_recent is a stand-in.
     for (const [name, predicate] of Object.entries(
       buildM23AbacPredicates({ db: handle.db as never }),
     )) {

@@ -65,7 +65,7 @@ export function createInMemoryMedicaidRedactStore(): MedicaidRedactStore {
   };
 }
 
-/** The real Drizzle redaction store — runs under the privileged M4 cert context (wardenx_admin connection). */
+/** The real Drizzle redaction store — runs under the privileged M4 cert context (chartwarden_admin connection). */
 export function createDrizzleMedicaidRedactStore(db: DbClient): MedicaidRedactStore {
   const A = schema.rbArrangement;
   const RD = schema.rbDay;

@@ -1,6 +1,6 @@
 /**
  * F-218 / F-219 / F-224 (#248) — the three M19 triage outbox pairs, proven over real Postgres as the
- * NOBYPASSRLS `wardenx_app` role.
+ * NOBYPASSRLS `chartwarden_app` role.
  *
  *   A (F-224) `m22 <- m19.triage.summary_requested` — produced by an EXPLICIT staff action
  *     (`requestSummary`, the `POST /api/v1/triage-calls/:id/request-summary` service). The REAL M19 write
@@ -71,7 +71,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const SENTINEL = "PHI-SENTINEL-free-text-must-not-cross";
@@ -259,7 +259,7 @@ describe.skipIf(!DB_URL)("F-218/F-219/F-224 — M19 triage pairs, LIVE Postgres"
       ).rows[0].id as string;
       seeded[org] = { pe, member, user, shift };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The M22 render consumer's `eventTypes` is the WHOLE `M22_DOCUMENT_REQUEST_EVENTS` array, and

@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.4 - durable escalation timers, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role, plus (for the queue cases) a REAL
+ * M36 WP 4.4 - durable escalation timers, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role, plus (for the queue cases) a REAL
  * BullMQ on a real Valkey.
  *
  * The real request stack creates, acknowledges, reassigns and deletes (Authorization Contract, `channel_visibility`, the DB route

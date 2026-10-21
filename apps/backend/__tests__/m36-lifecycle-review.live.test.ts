@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.8 - the lifecycle review queue, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.8 - the lifecycle review queue, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack over the REAL catalog-validating outbox publisher, the REAL `AlertEmitter` with the seeded
  * platform-default rules, and the two M36 consumers fed synthetic `m6.admission.discharged` / `m5.patient.deceased`.
@@ -9,7 +9,7 @@
  *   2. BEREAVEMENT     a bereavement channel is not archived, its task is not queued, posting still works.
  *   3. QUEUE           the open care-team tasks appear for a messaging.review holder; others get 403; alerts are fixed text.
  *   4. DECISIONS       reassign and close end to end (task events, outbox rows, review row resolved); resolved rows are
- *                      final; wardenx_app cannot DELETE or rewrite identity columns; replays and conflicts.
+ *                      final; chartwarden_app cannot DELETE or rewrite identity columns; replays and conflicts.
  *   5. CLOSED ELSEWHERE the assignee closes the task herself and the trigger resolves the review.
  *   6. TRIGGERS        transfer-out, discharge, the M5-only death, the death arriving twice, a readmitted patient.
  *   7. AUDIT           trigger rows scrub patient_id and trigger_ref; list and action reads land with a resource id.
@@ -561,7 +561,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.8 lifecycle review queue - LIVE Postgres", ()
       expect(await reviewRow(taskId)).toMatchObject({ state: "open" });
     });
 
-    it("keeps resolved rows final and gives wardenx_app no DELETE and no rewrite of identity columns", async () => {
+    it("keeps resolved rows final and gives chartwarden_app no DELETE and no rewrite of identity columns", async () => {
       const { patientId, taskIds } = await patientWithTasks([assignee]);
       await deathOf(patientId);
       const taskId = taskIds[0] as string;

@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -71,7 +71,7 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
   let a: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -245,9 +245,9 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     if (db) await db.end();
   });
 
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
@@ -396,7 +396,7 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     const r = await db.query<{ table_name: string }>(
       `SELECT DISTINCT table_name
          FROM information_schema.role_table_grants
-        WHERE grantee = 'wardenx_app' AND privilege_type = 'DELETE'
+        WHERE grantee = 'chartwarden_app' AND privilege_type = 'DELETE'
           AND table_name IN (${COVERED.map((c) => `'${c.table}'`).join(",")})
         ORDER BY table_name`,
     );

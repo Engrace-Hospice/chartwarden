@@ -1,6 +1,6 @@
 /**
  * GAP-086 — the `sud_test_loinc` M38 value set is SEEDED, and the REAL M29 inbound adapter now flags a seeded
- * SUD LOINC as SUD — LIVE Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * SUD LOINC as SUD — LIVE Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Before: nothing seeded `sud_test_loinc`, so `isMemberOf` was false for every code and M29's inbound lab gate
  * (`buildM29InboundSeamPorts().terminology.classifyLoinc` → `decideLabSudRedaction`) never redacted a 42 CFR Part 2
@@ -35,10 +35,10 @@ const NO_PGVECTOR = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const SEED_MIGRATION = "0500_terminology_sud_test_loinc_value_set.sql";
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "terminology_loader",
 ];
 
@@ -79,7 +79,7 @@ describe.skipIf(!DB_URL)("GAP-086 sud_test_loinc seed + M29 adapter — LIVE Pos
   const adminCount = async (sql: string, params: unknown[] = []): Promise<number> =>
     Number((await admin.query(sql, params)).rows[0].n);
 
-  /** Run `fn` on the wardenx_app connection inside a transaction scoped to `org` (the production RLS GUC). */
+  /** Run `fn` on the chartwarden_app connection inside a transaction scoped to `org` (the production RLS GUC). */
   async function asOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
     await appClient.query("BEGIN");
     try {
@@ -189,7 +189,7 @@ describe.skipIf(!DB_URL)("GAP-086 sud_test_loinc seed + M29 adapter — LIVE Pos
   });
 
   // ── RLS: reference data is readable by the app, writable only through the loader door ───────────────
-  it("wardenx_app can read the platform members but cannot write them", async () => {
+  it("chartwarden_app can read the platform members but cannot write them", async () => {
     const read = await asOrg(ORG_A, () =>
       appClient.query(`SELECT count(*)::int n FROM value_set_member WHERE value_set_id = $1`, [
         SUD_TEST_LOINC_VALUE_SET_ID,
@@ -307,7 +307,7 @@ describe.skipIf(!DB_URL)("GAP-086 sud_test_loinc seed + M29 adapter — LIVE Pos
       }
     });
 
-    it("org A adds the local code through the real M38 write path, as wardenx_app under RLS", async () => {
+    it("org A adds the local code through the real M38 write path, as chartwarden_app under RLS", async () => {
       const provider = getSeam("TerminologyProvider") as {
         addTenantExtension(
           orgId: string,

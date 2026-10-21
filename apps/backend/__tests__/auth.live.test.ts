@@ -16,7 +16,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
 /**
- * Wrap a Drizzle client so every transaction runs as the RLS-enforced tenant role (`wardenx_app`),
+ * Wrap a Drizzle client so every transaction runs as the RLS-enforced tenant role (`chartwarden_app`),
  * not the superuser the live lane connects as — otherwise RLS is BYPASSED and org-scoping is never
  * actually tested. `SET LOCAL ROLE` is transaction-scoped (reset on commit), and withOrgContext's
  * `set_config('app.org_id', …)` runs right after, so the store's queries are genuinely RLS-filtered.
@@ -25,7 +25,7 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
  */
 function asTenantRole<T extends { transaction: (...a: any[]) => any }>(
   db: T,
-  role = "wardenx_app",
+  role = "chartwarden_app",
 ): T {
   return new Proxy(db, {
     get(target, prop, receiver) {
@@ -44,10 +44,10 @@ function asTenantRole<T extends { transaction: (...a: any[]) => any }>(
 }
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
 ];
 
@@ -433,7 +433,7 @@ describe.skipIf(!DB_URL)(
       await handle4.close();
     });
 
-    it("GAP-096: every authority read drops a reserved key on a tenant-owned row (wardenx_app)", async () => {
+    it("GAP-096: every authority read drops a reserved key on a tenant-owned row (chartwarden_app)", async () => {
       const { createDbClient: mkDbR } = await import("@chartwarden/db");
       const { createDbActorEnrichmentReader, createDbEffectivePermissionStore } = await import(
         "@chartwarden/auth"
@@ -740,7 +740,7 @@ describe.skipIf(!DB_URL)(
       await handleC.close();
     });
 
-    it("GAP-002: the live enforcer expires idle/absolute sessions and stamps activity (wardenx_app)", async () => {
+    it("GAP-002: the live enforcer expires idle/absolute sessions and stamps activity (chartwarden_app)", async () => {
       const { createDbClient: mkDbT } = await import("@chartwarden/db");
       const { createDbSessionTimeoutEnforcer } = await import("@chartwarden/auth");
       const handleT = mkDbT({
@@ -784,7 +784,7 @@ describe.skipIf(!DB_URL)(
       await handleT.close();
     });
 
-    it("GAP-009: closed registration — sign-up needs an invite token that names a pending invitation for that email (as wardenx_app)", async () => {
+    it("GAP-009: closed registration — sign-up needs an invite token that names a pending invitation for that email (as chartwarden_app)", async () => {
       const { createDbClient: mkDbS } = await import("@chartwarden/db");
       const { createIdentityAuth, INVITE_TOKEN_HEADER } = await import("@chartwarden/auth");
       const { createHash } = await import("node:crypto");
@@ -912,7 +912,7 @@ describe.skipIf(!DB_URL)(
       const { createDbClient: mkDb5 } = await import("@chartwarden/db");
       const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
       const handle5 = mkDb5({ connectionString: DB_URL as string });
-      // Under the RLS-enforced wardenx_app role: this exercises the 0025 policy fix (templates org_id
+      // Under the RLS-enforced chartwarden_app role: this exercises the 0025 policy fix (templates org_id
       // NULL must stay readable) AND real org-scoping of the catalog — not the superuser bypass.
       const store = createDbRoleStore(asTenantRole(handle5.db) as never);
 
@@ -945,7 +945,7 @@ describe.skipIf(!DB_URL)(
 
       const roles = await store.listForOrg(org);
       const byId = new Map(roles.map((r) => [r.roleId, r]));
-      // Template (org_id NULL) visible under wardenx_app thanks to 0025; org row visible + customized.
+      // Template (org_id NULL) visible under chartwarden_app thanks to 0025; org row visible + customized.
       expect(byId.has(tmpl)).toBe(true); // would be FALSE under the pre-0025 org-only read policy
       expect(byId.get(tmpl)?.systemDefault).toBe(true);
       expect(byId.get(tmpl)?.customized).toBe(false);
@@ -973,7 +973,7 @@ describe.skipIf(!DB_URL)(
         "../src/modules/02-identity/membership-repository"
       );
       const handle6 = mkDb6({ connectionString: DB_URL as string });
-      // Run the store under the RLS-enforced wardenx_app role — this is the real test (the live lane
+      // Run the store under the RLS-enforced chartwarden_app role — this is the real test (the live lane
       // connects as a superuser, which would bypass RLS and never exercise org-scoping).
       const tdb = asTenantRole(handle6.db) as never;
       const repo = createDbMembershipRepository(tdb, createDbAdminMembershipReader(tdb));
@@ -1027,7 +1027,7 @@ describe.skipIf(!DB_URL)(
       expect(roster.find((m) => m.userId === rnUser)?.isAdmin).toBe(false);
       expect(await repo.activeAdminCount(org)).toBe(1);
 
-      // ★ RLS proof (the point of running as wardenx_app): the by-id read is org-scoped. Under the
+      // ★ RLS proof (the point of running as chartwarden_app): the by-id read is org-scoped. Under the
       // member's own org it resolves; under a DIFFERENT org's ambient context RLS denies it → null.
       // With the pre-#47 bare `WHERE id=…` read this would have LEAKED the row across tenants.
       const otherOrg = (
@@ -1050,7 +1050,7 @@ describe.skipIf(!DB_URL)(
       await handle6.close();
     });
 
-    it("M3 MembershipRoleStore: assign/list/revoke role grants, RLS-scoped (wardenx_app)", async () => {
+    it("M3 MembershipRoleStore: assign/list/revoke role grants, RLS-scoped (chartwarden_app)", async () => {
       const { createDbClient: mkDb7 } = await import("@chartwarden/db");
       const { createDbMembershipRoleStore } = await import(
         "../src/modules/03-authorization/membership-role-store"
@@ -1123,7 +1123,7 @@ describe.skipIf(!DB_URL)(
       await handle7.close();
     });
 
-    it("M4 Audit: the live AuditQuery searches/filters the org's audit_event log, RLS-scoped (wardenx_app)", async () => {
+    it("M4 Audit: the live AuditQuery searches/filters the org's audit_event log, RLS-scoped (chartwarden_app)", async () => {
       const { createDbClient: mkDb8 } = await import("@chartwarden/db");
       const { createDbAuditQuery } = await import("@chartwarden/audit");
       const handle8 = mkDb8({ connectionString: DB_URL as string });
@@ -1192,7 +1192,7 @@ describe.skipIf(!DB_URL)(
       await handle8.close();
     });
 
-    it("M5 Patient census: the live read service lists/filters/paginates patients, RLS-scoped (wardenx_app)", async () => {
+    it("M5 Patient census: the live read service lists/filters/paginates patients, RLS-scoped (chartwarden_app)", async () => {
       const { createDbClient: mkDb9 } = await import("@chartwarden/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle9 = mkDb9({ connectionString: DB_URL as string });
@@ -1279,7 +1279,7 @@ describe.skipIf(!DB_URL)(
       resetAuthorizationContract();
       resetRbacEngine();
 
-      // The REAL NOBYPASSRLS `wardenx_app` — not the suite's superuser DB_URL. Through the superuser every RLS policy
+      // The REAL NOBYPASSRLS `chartwarden_app` — not the suite's superuser DB_URL. Through the superuser every RLS policy
       // is bypassed, which is how `select-organization`'s outbox publish (an `outbox_event` insert under
       // `organization_id = current_setting('app.org_id')::uuid`) could fail in production yet pass here.
       const handle11 = mkDb11({
@@ -1528,7 +1528,7 @@ describe.skipIf(!DB_URL)(
       await handle11.close();
     });
 
-    it("M5 admission: admit inserts a patient (appears in census) and §7.1 MBI dedup hard-blocks (wardenx_app)", async () => {
+    it("M5 admission: admit inserts a patient (appears in census) and §7.1 MBI dedup hard-blocks (chartwarden_app)", async () => {
       const { createDbClient: mkDb10 } = await import("@chartwarden/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle10 = mkDb10({ connectionString: DB_URL as string });
@@ -1684,7 +1684,7 @@ describe.skipIf(!DB_URL)(
       ).toEqual([]);
 
       // GAP-006 dedupe (0323) — a resubmit under a new key returns the OPEN request, never a second one.
-      // Two CONCURRENT submits of the same change (whitespace differs) as wardenx_app → exactly one row.
+      // Two CONCURRENT submits of the same change (whitespace differs) as chartwarden_app → exactly one row.
       const sameChange = {
         organizationId: org,
         patientId,

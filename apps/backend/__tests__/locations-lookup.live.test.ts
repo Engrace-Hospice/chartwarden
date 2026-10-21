@@ -9,7 +9,7 @@ import { registerLocationLookupRoutes } from "../src/bootstrap/routes/locations"
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PE_A = "33333333-3333-4333-8333-333333333333";
@@ -99,9 +99,9 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
          ($2, 'Beta East', '30 Maple Road', 'Austin', 'TX', '73301', 'America/Chicago')`,
       [PE_A, PE_B],
     );
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'wardenx-location-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-location-test'");
     const appUrl = new URL(DB_URL as string);
-    appUrl.username = "wardenx_app";
+    appUrl.username = "chartwarden_app";
     appUrl.password = "wardenx-location-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
