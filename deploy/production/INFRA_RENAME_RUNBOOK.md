@@ -111,7 +111,7 @@ Bucket inventory (code/config references):
 
 | Bucket | Where it is referenced |
 | --- | --- |
-| `chartwarden-platform-terminology` (was `wardenx-platform-terminology`; code switched in step 2) | `apps/backend/src/modules/38-terminology/jobs/platform-objects.ts` (`DEFAULT_PLATFORM_BUCKET`, overridable via env `TERMINOLOGY_PLATFORM_BUCKET`); `apps/backend/src/index.ts` (~3968); `apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts` |
+| `chartwarden-platform-terminology` (was `wardenx-platform-terminology`; code switched in step 2) | `apps/backend/src/modules/38-terminology/jobs/platform-objects.ts` (`DEFAULT_PLATFORM_BUCKET`, overridable via env `TERMINOLOGY_PLATFORM_BUCKET`); `apps/backend/src/index.ts` (`TERMINOLOGY_PLATFORM_BUCKET`, ~3986); `apps/backend/src/modules/22-documents/access-log/minio-access-log.test.ts` |
 | `chartwarden-readiness` (was `wardenx-readiness`; code switched in step 2) | `apps/backend/src/index.ts` (`READINESS_PROBE_BUCKET`) |
 | `wardenx-*` IAM scope | `deploy/production/compose.yml` minio-provision policy `wardenx-app` (`arn:aws:s3:::wardenx-*`, `.../wardenx-*/*`) |
 | Policy / account names | `wardenx-app` (policy and `MINIO_APP_ACCESS_KEY` default in `deploy.sh` and `.env.production.example`), `wardenx-minio-admin` (root user) |
@@ -132,7 +132,7 @@ Order of the bucket change (production holds only `tenant-*` buckets today; neit
 Only after step 1 is deployed may `TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`;
 setting it earlier makes every terminology read/write fail with AccessDenied because the policy would still only allow
 `wardenx-*`. `minio-provision` re-applies the policy on every deploy, before api/worker are recreated. `READINESS_PROBE_BUCKET`
-is hardcoded (not env-overridable), so that bucket needs the code change (step 2).
+was hardcoded (not env-overridable); step 2 changed the constant.
 
 Procedure (on the VPS; `mc` alias `local` points at the MinIO root):
 
