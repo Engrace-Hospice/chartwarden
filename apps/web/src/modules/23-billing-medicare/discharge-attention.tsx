@@ -134,7 +134,7 @@ function remedyText(
     default:
       return {
         tone: "error",
-        text: `This claim is ${state.replace(/_/g, " ")}, a state WardenX cannot build a replacement from. Correct it with the MAC directly (an adjustment in the MAC portal or DDE) using type of bill ${derived}, and note the correction on the claim.`,
+        text: `This claim is ${state.replace(/_/g, " ")}, a state ChartWarden cannot build a replacement from. Correct it with the MAC directly (an adjustment in the MAC portal or DDE) using type of bill ${derived}, and note the correction on the claim.`,
       };
   }
 }
@@ -175,7 +175,7 @@ export function TypeOfBillPanel({
                 Type of bill changed: {tob} → {t.derived}.
               </strong>{" "}
               {stayEnd
-                ? `The stay ended ${stayEndPhrase(stayEnd.kind)} on ${formatClaimDate(stayEnd.effectiveDate)}, so this is now a ${tobMeaning(t.derived).toLowerCase()}. WardenX used to bill revocations and transfers to another hospice as interim claims (812/813); they are final claims (811/814).`
+                ? `The stay ended ${stayEndPhrase(stayEnd.kind)} on ${formatClaimDate(stayEnd.effectiveDate)}, so this is now a ${tobMeaning(t.derived).toLowerCase()}. ChartWarden used to bill revocations and transfers to another hospice as interim claims (812/813); they are final claims (811/814).`
                 : `The patient is now still on service on this claim's Through date, so this is a ${tobMeaning(t.derived).toLowerCase()}.`}{" "}
               {remedyText(t.remedy, state, t.derived).text}
             </InlineAlert>

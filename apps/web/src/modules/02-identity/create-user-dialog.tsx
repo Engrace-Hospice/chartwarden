@@ -291,7 +291,7 @@ export function CreateUserDialog({
             </div>
             {serverGenerated ? (
               <p style={descriptionStyle}>
-                WardenX will generate a secure password and display it once after creation.
+                ChartWarden will generate a secure password and display it once after creation.
               </p>
             ) : (
               <>

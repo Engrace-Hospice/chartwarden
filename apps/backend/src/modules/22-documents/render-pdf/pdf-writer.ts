@@ -164,7 +164,7 @@ export function writePdf(doc: DocModel, pages: readonly LaidOutPage[]): Uint8Arr
   const date = pdfDate(doc.createdAtIso);
   const degradedNote = doc.discloseDegradedGlyphs === true && documentDegradedGlyphs(doc) > 0;
   const resources = doc.watermark ? " /ExtGState << /GS1 << /ca 0.12 /CA 0.12 >> >>" : "";
-  bodies[5] = `<< /Title ${pdfString(doc.title)} /Producer (WardenX M22 renderer) /Creator (WardenX) /CreationDate (${date}) /ModDate (${date}) >>`;
+  bodies[5] = `<< /Title ${pdfString(doc.title)} /Producer (ChartWarden M22 renderer) /Creator (ChartWarden) /CreationDate (${date}) /ModDate (${date}) >>`;
 
   for (let i = 0; i < pageCount; i++) {
     const ops = [

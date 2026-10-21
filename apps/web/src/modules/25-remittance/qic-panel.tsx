@@ -345,7 +345,7 @@ export function QicPanel({
           <h4 className="wx-action-title">Escalate to OMHA</h4>
           <Hint>
             The QIC has not decided by its date. Record the escalation request you sent outside
-            WardenX; WardenX does not send it for you. Recording it needs a recent step-up
+            ChartWarden; ChartWarden does not send it for you. Recording it needs a recent step-up
             verification and cannot be edited afterwards. Not yet confirmed with your billing SME:
             the escalation procedure, any form, and the ALJ amount-in-controversy requirement.
           </Hint>

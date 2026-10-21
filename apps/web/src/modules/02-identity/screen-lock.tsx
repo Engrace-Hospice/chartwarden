@@ -124,7 +124,7 @@ export function ScreenLock(): JSX.Element | null {
     // invariant blocker, not a dismissible dialog — the only way out is unlocking or signing out.
     <Modal open role="alertdialog" ariaLabel="Screen locked" width="22rem">
       <form onSubmit={unlock} style={card}>
-        <strong style={{ fontSize: "1rem" }}>WardenX</strong>
+        <strong style={{ fontSize: "1rem" }}>ChartWarden</strong>
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           Your screen locked after inactivity.{" "}

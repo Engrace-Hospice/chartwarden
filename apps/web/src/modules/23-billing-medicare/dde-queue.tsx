@@ -210,7 +210,7 @@ export function DdeQueue(): JSX.Element {
           <div>
             <h1 className="wx-headline-lg">DDE Work Queue</h1>
             <p>
-              Medicare Direct Data Entry work to key by hand. WardenX does not connect to DDE:
+              Medicare Direct Data Entry work to key by hand. ChartWarden does not connect to DDE:
               record what you keyed and what came back. A notice is on time only once the MAC
               acceptance date is recorded.
             </p>

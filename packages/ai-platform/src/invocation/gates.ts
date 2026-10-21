@@ -139,7 +139,7 @@ export function evaluateAiInvocationGates(facts: AiInvocationGateFacts): AiInvoc
     return deny(
       "ai_full_flag",
       "phase_1_capability_shell",
-      "the 'ai.full' feature flag is off; WardenX dispatches no AI in Phase 1",
+      "the 'ai.full' feature flag is off; ChartWarden dispatches no AI in Phase 1",
       null,
     );
   }

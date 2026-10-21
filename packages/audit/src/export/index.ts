@@ -103,7 +103,7 @@ function renderNdjson(records: readonly AuditEventRecord[], watermark: string): 
 /** PDF — deterministic text layout with the watermark in the page header (binary render: follow-up). */
 function renderPdf(records: readonly AuditEventRecord[], watermark: string): string {
   const lines = [
-    "WardenX — Audit Compliance Export",
+    "ChartWarden — Audit Compliance Export",
     `WATERMARK: ${watermark}`,
     `RECORDS: ${records.length}`,
     "",

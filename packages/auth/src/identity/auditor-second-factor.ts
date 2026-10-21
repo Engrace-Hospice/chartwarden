@@ -23,7 +23,7 @@ export const TOTP_PERIOD_SEC = 30;
 /** Accept the previous, current and next step: ±30 s of clock skew. */
 const TOTP_SKEW_STEPS = 1;
 const TOTP_SECRET_LENGTH = 32;
-const TOTP_ISSUER = "WardenX";
+const TOTP_ISSUER = "ChartWarden";
 
 /** Recovery codes: 10 codes of 20 base-32 characters (100 bits each), shown once as XXXXX-XXXXX-XXXXX-XXXXX. */
 export const RECOVERY_CODE_COUNT = 10;

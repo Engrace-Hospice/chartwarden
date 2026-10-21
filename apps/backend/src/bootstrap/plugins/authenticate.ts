@@ -87,7 +87,7 @@ function assertCredentialStateMayCall(
   if (PASSWORD_CHANGE_ALLOWED_ROUTES.has(`${request.method.toUpperCase()} ${path}`)) return;
   throw new WardenXError(
     "PASSWORD_CHANGE_REQUIRED",
-    "change the temporary password before accessing WardenX",
+    "change the temporary password before accessing ChartWarden",
     403,
   );
 }

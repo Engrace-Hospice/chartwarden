@@ -54,11 +54,11 @@ export const DISCHARGE_DEFECT_CODES = {
 /** The two defects a biller resolves by completing the M6 discharge record (the guided "Fix discharge details"). */
 const MISSING_DETAIL_SUMMARY = {
   place_of_death_missing:
-    "CMS requires the patient status on the final claim. This death was recorded before WardenX captured the " +
+    "CMS requires the patient status on the final claim. This death was recorded before ChartWarden captured the " +
     "place of death, so the status (40 home, 41 facility, 42 unknown) cannot be set. Record where the patient " +
     "died, then re-validate.",
   transfer_setting_missing:
-    "CMS requires the patient status on the final claim. This transfer was recorded before WardenX captured " +
+    "CMS requires the patient status on the final claim. This transfer was recorded before ChartWarden captured " +
     "where the receiving hospice cares for the patient, so the status (50 home, 51 facility) cannot be set. " +
     "Record the receiving care setting, then re-validate.",
 } as const;

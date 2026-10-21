@@ -129,7 +129,7 @@ export function planTriageEncounter(input: {
   require_(
     discipline !== null,
     "ENCOUNTER_ACTOR_CANNOT_AUTHOR",
-    `a '${input.actorDiscipline}' actor holds no WardenX clinical identity to author the M8 encounter; the in-agency clinician who took the handoff documents the call (§7.5)`,
+    `a '${input.actorDiscipline}' actor holds no ChartWarden clinical identity to author the M8 encounter; the in-agency clinician who took the handoff documents the call (§7.5)`,
   );
   require_(
     input.call.patientId !== null && input.call.admissionId !== null,

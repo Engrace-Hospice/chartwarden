@@ -68,13 +68,13 @@ export function buildM20TerminusDeps(input: BuildTerminusDepsInput): TerminusDep
     } catch {
       log(
         "[m20:terminus] CRITICAL: WARDENX_OPS_PAGE_WEBHOOK_URL is set but invalid (must be https://). " +
-          "SOS emergency-terminus alerts will NOT page WardenX ops until it is fixed.",
+          "SOS emergency-terminus alerts will NOT page ChartWarden ops until it is fixed.",
       );
     }
   } else {
     log(
       "[m20:terminus] CRITICAL: WARDENX_OPS_PAGE_WEBHOOK_URL is not set. An SOS alert that reaches the emergency " +
-        "terminus will be recorded but WardenX ops will NOT be paged (ledger: page_ops skipped / pager_unbound). " +
+        "terminus will be recorded but ChartWarden ops will NOT be paged (ledger: page_ops skipped / pager_unbound). " +
         "Set it to the on-call receiver.",
     );
   }

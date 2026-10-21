@@ -135,7 +135,7 @@ export function PaymentMethods(): JSX.Element {
                 the visible copy. The previous wording described card entry as if it worked. */}
               <span>
                 Card entry is handled by the Stripe payment element, so raw card data stays off
-                WardenX. Adding a card is not enabled yet — contact support to add or replace one.
+                ChartWarden. Adding a card is not enabled yet — contact support to add or replace one.
                 Existing cards can still be set as default or detached below.
               </span>
             </div>

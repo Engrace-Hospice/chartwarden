@@ -105,10 +105,10 @@ describe("WP 4.7 - every category x channel renders PHI-free", () => {
         }),
         channel,
       );
-    expect(mk("email").subject).toBe("WardenX notification");
-    expect(mk("push").title).toBe("WardenX");
+    expect(mk("email").subject).toBe("ChartWarden notification");
+    expect(mk("push").title).toBe("ChartWarden");
     expect(mk("sms").body).toBe(
-      `You have a new urgent request in WardenX. Sign in to view. ${BASE}/n/nd-abc-123`,
+      `You have a new urgent request in ChartWarden. Sign in to view. ${BASE}/n/nd-abc-123`,
     );
     expect(mk("email").body).toContain(`${BASE}/n/nd-abc-123`);
   });

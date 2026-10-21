@@ -67,7 +67,7 @@ export function Maintenance(): JSX.Element {
   return (
     <CenteredStatusLayout
       icon={<Glyph name="clock" size={24} />}
-      headline="WardenX is undergoing maintenance"
+      headline="ChartWarden is undergoing maintenance"
       explanation="We’ll be back shortly. Thank you for your patience."
     />
   );

@@ -149,7 +149,7 @@ export function SupportGrants(): JSX.Element {
             }
           >
             <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-              A consent grant lets a WardenX support engineer access your tenant for up to 72 hours.
+              A consent grant lets a ChartWarden support engineer access your tenant for up to 72 hours.
               Issuing requires a compliance officer and a step-up challenge.
             </p>
           </PageHeader>
@@ -195,7 +195,7 @@ export function SupportGrants(): JSX.Element {
               <strong>Organization-scoped · 72 hours</strong>
             </div>
             <span style={{ fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" }}>
-              A distinct WardenX support engineer will be permitted to start a consented support
+              A distinct ChartWarden support engineer will be permitted to start a consented support
               session against this organization. PHI reads within that session require a further
               per-session elevation and are recorded for §164.528 disclosure accounting.
             </span>

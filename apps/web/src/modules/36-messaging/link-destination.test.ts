@@ -26,7 +26,7 @@ describe("every link shows its host unless the text is exactly that host", () =>
     "login",
     "PayPal",
     "wardenx",
-    "Sign in to WardenX",
+    "Sign in to ChartWarden",
     "paypal dot com",
     "paypal . com",
     "Open chart",

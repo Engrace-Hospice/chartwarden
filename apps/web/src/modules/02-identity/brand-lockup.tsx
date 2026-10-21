@@ -13,7 +13,7 @@ export function BrandLockup(): JSX.Element {
       <span
         style={{ fontFamily: t.fontDisplay, fontWeight: 600, fontSize: "1.5rem", color: t.primary }}
       >
-        WardenX
+        ChartWarden
       </span>
     </div>
   );

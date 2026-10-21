@@ -333,7 +333,7 @@ export function AdrPacketPanel({
         <>
           <h4 className="wx-action-title">Record filing</h4>
           <Hint>
-            Record the response you sent to the MAC. WardenX does not send it for you yet. Recording
+            Record the response you sent to the MAC. ChartWarden does not send it for you yet. Recording
             it needs a recent step-up verification and freezes the packet.
           </Hint>
           <SelectField

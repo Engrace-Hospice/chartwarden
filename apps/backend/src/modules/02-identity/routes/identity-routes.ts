@@ -175,8 +175,8 @@ async function deliverInvite(
     try {
       await deps.emailTransport.send({
         to: email,
-        subject: "You're invited to WardenX",
-        text: `You've been invited to join ${orgName} on WardenX. Accept your invitation using this link (it expires in 72 hours):\n\n${inviteUrl}\n\nIf you weren't expecting this, you can ignore this email.`,
+        subject: "You're invited to ChartWarden",
+        text: `You've been invited to join ${orgName} on ChartWarden. Accept your invitation using this link (it expires in 72 hours):\n\n${inviteUrl}\n\nIf you weren't expecting this, you can ignore this email.`,
       });
     } catch {
       // Swallow: see the doc comment above.

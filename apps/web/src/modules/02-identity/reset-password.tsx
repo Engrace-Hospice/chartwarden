@@ -26,7 +26,7 @@ export function ResetPassword(): JSX.Element {
   if (!token || linkError) {
     return (
       <CenteredCardLayout
-        brand={<strong>WardenX</strong>}
+        brand={<strong>ChartWarden</strong>}
         footer={<a href="/forgot">Request a new link</a>}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -68,7 +68,7 @@ export function ResetPassword(): JSX.Element {
 
   return (
     <CenteredCardLayout
-      brand={<strong>WardenX</strong>}
+      brand={<strong>ChartWarden</strong>}
       footer={<a href="/login">Back to sign in</a>}
     >
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

@@ -183,7 +183,7 @@ export function ResetUserPasswordDialog({
               </div>
             ) : (
               <p style={descriptionStyle}>
-                WardenX will generate a secure temporary password and display it once.
+                ChartWarden will generate a secure temporary password and display it once.
               </p>
             )}
             <label style={confirmationStyle}>

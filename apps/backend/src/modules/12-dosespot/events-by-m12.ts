@@ -481,7 +481,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.dosespot_degraded",
     moduleOwner: "m12",
     description:
-      "The DoseSpot circuit breaker opened; M36 system alert to org_admin + WardenX ops (DR_BCP §10.4.3).",
+      "The DoseSpot circuit breaker opened; M36 system alert to org_admin + ChartWarden ops (DR_BCP §10.4.3).",
     payloadSchema: Type.Object({
       breakerName: id,
       openedAt: isoInstant,

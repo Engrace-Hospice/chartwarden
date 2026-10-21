@@ -29,8 +29,8 @@ export type HopeAlertSeverity = "info" | "warning" | "clinical_urgent" | "critic
 
 /** The static, PHI-free template strings carried out-of-band per §4.9.1 (no patient identifiers). */
 export const OUT_OF_BAND_TEMPLATES = {
-  timepoint_window_state: "HOPE timepoint action required — open WardenX",
-  sfv_obligation: "Symptom Follow-Up Visit due — open WardenX",
+  timepoint_window_state: "HOPE timepoint action required — open ChartWarden",
+  sfv_obligation: "Symptom Follow-Up Visit due — open ChartWarden",
 } as const;
 
 // ── §4.9 typed-alert builders (the deterministic payloads M10 hands to M36) ────────────────────────────

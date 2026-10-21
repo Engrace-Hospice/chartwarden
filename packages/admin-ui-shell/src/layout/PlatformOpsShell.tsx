@@ -63,7 +63,7 @@ export function PlatformOpsShell({
   activeKey,
   renderNavLink,
   topBarActions,
-  brand = "WardenX Platform Ops",
+  brand = "ChartWarden Platform Ops",
   children,
 }: PlatformOpsShellProps): JSX.Element {
   return (

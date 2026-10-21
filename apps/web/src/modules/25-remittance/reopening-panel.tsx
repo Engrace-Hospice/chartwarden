@@ -264,7 +264,7 @@ export function ReopeningPanel({
         <>
           <h4 className="wx-action-title">Record filing</h4>
           <Hint>
-            Record the request you filed with the MAC. WardenX does not send it for you yet.
+            Record the request you filed with the MAC. ChartWarden does not send it for you yet.
             Recording it needs a recent step-up verification and cannot be edited afterwards.
           </Hint>
           <TextField

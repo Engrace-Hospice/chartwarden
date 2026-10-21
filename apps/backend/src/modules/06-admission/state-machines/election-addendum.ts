@@ -285,7 +285,7 @@ export function planUploadedAcknowledgement(
   require_(
     facts.furnishedAt !== null,
     "ADDENDUM_FURNISH_DATE_REQUIRED",
-    "This addendum was never furnished in WardenX: enter the date the paper copy was given to the patient",
+    "This addendum was never furnished in ChartWarden: enter the date the paper copy was given to the patient",
   );
   require_(
     validPast(facts.furnishedAt, facts.now) &&

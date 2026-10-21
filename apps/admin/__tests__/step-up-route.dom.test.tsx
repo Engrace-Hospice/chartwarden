@@ -53,7 +53,7 @@ describe("admin /step-up", () => {
   it("renders the shared ceremony under the console brand for a signed-in platform_ops actor", async () => {
     mountAt("/step-up?returnTo=%2Fadmin%2Frevenue");
     expect(await screen.findByRole("heading", { name: "Confirm it’s you" })).toBeTruthy();
-    expect(screen.getByText("WardenX Platform Ops")).toBeTruthy();
+    expect(screen.getByText("ChartWarden Platform Ops")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Sign in as someone else" }).getAttribute("href")).toBe(
       "/login",
     );

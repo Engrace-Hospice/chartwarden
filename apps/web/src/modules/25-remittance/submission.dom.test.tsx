@@ -32,7 +32,7 @@ const attempt = () => ({
   adapter: "manual",
   status: attemptState,
   needsManualReason:
-    attemptState === "needs_manual" ? "Filed outside WardenX. Record the receipt." : null,
+    attemptState === "needs_manual" ? "Filed outside ChartWarden. Record the receipt." : null,
   confirmationRef: attemptState === "acknowledged" ? "CONF-1" : null,
   receiptAt: attemptState === "acknowledged" ? "2026-09-10T12:00:00.000Z" : null,
   receiptDocumentId: null,

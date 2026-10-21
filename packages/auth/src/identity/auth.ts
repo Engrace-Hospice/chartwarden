@@ -296,7 +296,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
   const emailTransport = options.emailTransport ?? createNoopEmailTransport();
   const requireInvite = options.requireInviteForSignUp ?? resolveSignUpRequiresInvite(process.env);
   return betterAuth({
-    appName: "WardenX",
+    appName: "ChartWarden",
     secret: process.env.BETTER_AUTH_SECRET,
     // `baseURL` is the canonical origin of the auth server (this backend) — used for callbacks,
     // redirects, and cookie domains. Production MUST set BETTER_AUTH_URL (the deploy host); we keep it
@@ -363,8 +363,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         }
         await emailTransport.send({
           to: data.user.email,
-          subject: "Reset your WardenX password",
-          text: `Reset your WardenX password using this link (it expires shortly):\n\n${data.url}\n\nIf you didn't request this, you can ignore this email.`,
+          subject: "Reset your ChartWarden password",
+          text: `Reset your ChartWarden password using this link (it expires shortly):\n\n${data.url}\n\nIf you didn't request this, you can ignore this email.`,
         });
       },
     },
@@ -408,13 +408,13 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator
       // above seals/opens the values); ADR-0034. SMS fallback never qualifies as step-up.
       twoFactor({
-        issuer: "WardenX",
+        issuer: "ChartWarden",
         schema: {
           twoFactor: { fields: { secret: "secretEncrypted", backupCodes: "backupCodesEncrypted" } },
         },
       }),
       passkey({
-        rpName: "WardenX",
+        rpName: "ChartWarden",
         rpID: resolvePasskeyRpId(),
         origin: [...resolvePasskeyOrigins()],
         // Field-map: Better Auth's `credentialID` → M1's drizzle property `credentialId` (the other
@@ -431,8 +431,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         sendMagicLink: async ({ email, url }: { email: string; url: string }) => {
           await emailTransport.send({
             to: email,
-            subject: "Your WardenX sign-in link",
-            text: `Sign in to WardenX using this link (it expires shortly):\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
+            subject: "Your ChartWarden sign-in link",
+            text: `Sign in to ChartWarden using this link (it expires shortly):\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
           });
         },
       }),

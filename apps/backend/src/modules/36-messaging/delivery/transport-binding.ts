@@ -66,7 +66,7 @@ const val = (env: Env, key: string): string | undefined => {
 const E164 = /^\+[1-9]\d{6,14}$/;
 const need = (env: Env, keys: readonly string[]): string[] => keys.filter((k) => !val(env, k));
 const VERIFICATION_TEXT = (code: string) =>
-  `Your WardenX verification code is ${code}. If you did not request it, ignore this message.`;
+  `Your ChartWarden verification code is ${code}. If you did not request it, ignore this message.`;
 
 function unavailable(channel: string): WardenXError {
   return new WardenXError(
@@ -199,7 +199,7 @@ export function bindOutOfBandTransports(options: OutOfBandBindingOptions): OutOf
         if (!emailOptions) throw unavailable("email");
         await sendPostmarkEmail(emailOptions, {
           to: target,
-          subject: "WardenX verification code",
+          subject: "ChartWarden verification code",
           text: VERIFICATION_TEXT(code),
         });
       }

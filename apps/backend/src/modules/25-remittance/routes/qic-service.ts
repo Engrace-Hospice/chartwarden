@@ -456,7 +456,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           ) {
             throw new WardenXError(
               "RECEIPT_BEFORE_FILING",
-              "the QIC cannot have received the request before it was filed in WardenX; check the date on the acknowledgement",
+              "the QIC cannot have received the request before it was filed in ChartWarden; check the date on the acknowledgement",
               422,
             );
           }

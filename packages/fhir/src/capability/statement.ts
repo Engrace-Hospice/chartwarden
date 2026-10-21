@@ -117,7 +117,7 @@ export function buildCapabilityStatement(catalog: FhirCapabilityCatalog): FhirCa
     fhirVersion: catalog.fhirVersion,
     format: ["application/fhir+json"],
     implementation: {
-      description: `WardenX FHIR Gateway (${catalog.releaseTag})`,
+      description: `ChartWarden FHIR Gateway (${catalog.releaseTag})`,
       url: catalog.baseUrl,
     },
     rest: [{ mode: "server", resource, operation }],

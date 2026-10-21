@@ -34,7 +34,7 @@ export function CredentialStateGuard({ children }: { children: ReactNode }): JSX
     <div role="alert" style={{ padding: "2rem", maxWidth: "32rem", margin: "4rem auto" }}>
       <h1 style={{ fontSize: "1.2rem" }}>Account security unavailable</h1>
       <p style={{ color: "var(--color-on-surface-variant)" }}>
-        WardenX could not verify whether your account setup is complete. Workspace access remains
+        ChartWarden could not verify whether your account setup is complete. Workspace access remains
         blocked for your protection.
       </p>
       <Button tone="primary" onClick={() => window.location.reload()}>

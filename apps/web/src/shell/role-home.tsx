@@ -930,7 +930,7 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
         <header className="wx-page-head">
           <div>
             <h1 style={{ fontSize: "1.875rem" }}>
-              {session ? `${greeting()}, ${firstName(session)}` : "Welcome to WardenX"}
+              {session ? `${greeting()}, ${firstName(session)}` : "Welcome to ChartWarden"}
             </h1>
             <p>Here's what's happening with your hospice today.</p>
           </div>

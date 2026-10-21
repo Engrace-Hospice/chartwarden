@@ -10,7 +10,7 @@ import { markStepUpReturn } from "../../shell/step-up-redirect";
 export function StepUp(): JSX.Element {
   return (
     <StepUpCard
-      brand={<strong>WardenX</strong>}
+      brand={<strong>ChartWarden</strong>}
       footer={<a href="/login">Sign in as someone else</a>}
       signInPath="/login"
       enrolPasskeyPath="/security/passkeys"

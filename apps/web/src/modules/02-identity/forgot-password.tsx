@@ -26,7 +26,7 @@ export function ForgotPassword(): JSX.Element {
 
   return (
     <CenteredCardLayout
-      brand={<strong>WardenX</strong>}
+      brand={<strong>ChartWarden</strong>}
       footer={<a href="/login">Back to sign in</a>}
     >
       {sent ? (

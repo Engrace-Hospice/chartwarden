@@ -327,7 +327,7 @@ function FactorStep(props: {
       {setup ? (
         <>
           <p style={mutedStyle}>
-            Add WardenX to your authenticator app with this key, then enter the 6-digit code it
+            Add ChartWarden to your authenticator app with this key, then enter the 6-digit code it
             shows.
           </p>
           <code style={keyStyle} aria-label="Authenticator setup key">

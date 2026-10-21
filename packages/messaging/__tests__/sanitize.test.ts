@@ -111,8 +111,8 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
       }
       expect(out.short).toBe(
         channel === "voice"
-          ? "WardenX field safety alert. Please open the app."
-          : "You have a new message in WardenX. Sign in to view.",
+          ? "ChartWarden field safety alert. Please open the app."
+          : "You have a new message in ChartWarden. Sign in to view.",
       );
       // trailing-slash baseUrl is normalized (no double slash).
       expect(out.deepLink).toBe("https://app.wardenx.example/n/nd-msg-9");
@@ -127,7 +127,7 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
         recipientUserId: "user-7",
         baseUrl: "https://app.wardenx.example",
       });
-      expect(out.short).toBe("WardenX field safety alert. Please open the app.");
+      expect(out.short).toBe("ChartWarden field safety alert. Please open the app.");
     }
   });
 

@@ -152,7 +152,7 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
             <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />
           ) : null}
           <Hint>
-            WardenX does not send the response to the MAC yet: file it through the MAC's portal, fax
+            ChartWarden does not send the response to the MAC yet: file it through the MAC's portal, fax
             or mail, then record the filing here with its confirmation.
           </Hint>
           <h3 className="wx-action-title">History</h3>

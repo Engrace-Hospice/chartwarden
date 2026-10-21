@@ -110,7 +110,7 @@ export function OrganizationSelect(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
+    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
       <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Select organization</h1>
       {state.kind === "loading" ? <LoadingSpinner /> : null}
       {state.kind === "error" ? (

@@ -125,7 +125,7 @@ export function acknowledgementLabel(
       ? `${outcome} — scanned paper copy (content on paper)`
       : `${outcome} — scanned paper copy`;
   }
-  if (v.acknowledgementSource === "structured") return `${outcome} — recorded in WardenX`;
+  if (v.acknowledgementSource === "structured") return `${outcome} — recorded in ChartWarden`;
   return outcome;
 }
 

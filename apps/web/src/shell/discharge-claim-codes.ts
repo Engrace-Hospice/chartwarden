@@ -57,10 +57,10 @@ export function missingDetailNoun(detail: MissingDischargeDetail): string {
  */
 export function missingDetailExplanation(detail: MissingDischargeDetail): string {
   return detail === "place_of_death"
-    ? "CMS requires the patient status on the final claim. This death was recorded before WardenX captured " +
+    ? "CMS requires the patient status on the final claim. This death was recorded before ChartWarden captured " +
         "the place of death, so billing cannot set the status (40 home, 41 facility, 42 place unknown) and " +
         "the claim is held."
-    : "CMS requires the patient status on the final claim. This transfer was recorded before WardenX captured " +
+    : "CMS requires the patient status on the final claim. This transfer was recorded before ChartWarden captured " +
         "where the receiving hospice cares for the patient, so billing cannot set the status (50 home, " +
         "51 facility) and the claim is held.";
 }

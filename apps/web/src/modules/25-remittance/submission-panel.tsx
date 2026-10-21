@@ -206,7 +206,7 @@ export function SubmissionPanel({ kind, subjectId }: SubmissionPanelProps): JSX.
         </>
       ) : null}
       <Hint>
-        WardenX does not send this to the MAC yet. File it through the channel the MAC or QIC
+        ChartWarden does not send this to the MAC yet. File it through the channel the MAC or QIC
         instructs, then record the confirmation here.
       </Hint>
       <Facts
@@ -265,7 +265,7 @@ export function SubmissionPanel({ kind, subjectId }: SubmissionPanelProps): JSX.
               <>
                 <Hint>
                   {onCase(attempt.purpose)
-                    ? "The case record keeps its original confirmation and is the value WardenX uses. Corrections are kept beside it."
+                    ? "The case record keeps its original confirmation and is the value ChartWarden uses. Corrections are kept beside it."
                     : "The latest correction is the current value; the original receipt is kept above."}
                 </Hint>
                 <ul className="wx-action-hint wx-action-list">

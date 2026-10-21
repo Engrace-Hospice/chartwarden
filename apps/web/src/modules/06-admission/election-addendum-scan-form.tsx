@@ -114,7 +114,7 @@ export function ScannedCopyForm({
       {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
       {gaps.length > 0 ? (
         <InlineAlert tone="info">
-          This draft is not complete in WardenX (missing: {gaps.join("; ")}). That is fine: the
+          This draft is not complete in ChartWarden (missing: {gaps.join("; ")}). That is fine: the
           scanned paper copy will stand as the addendum's content, and nothing needs to be filled in
           here first.
         </InlineAlert>
@@ -188,7 +188,7 @@ export function ScannedCopyForm({
         <TextField
           type="date"
           label="Date furnished"
-          hint="This version was never furnished in WardenX. Enter the day the paper addendum was handed over."
+          hint="This version was never furnished in ChartWarden. Enter the day the paper addendum was handed over."
           required
           max={paperDate || today}
           disabled={busy}

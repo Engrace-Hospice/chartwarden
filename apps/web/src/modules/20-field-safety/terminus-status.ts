@@ -24,7 +24,7 @@ export interface TerminusLine {
 }
 
 const EFFECT_LABEL: Readonly<Record<TerminusEffect, string>> = {
-  page_ops: "WardenX operations page",
+  page_ops: "ChartWarden operations page",
   dial_contact: "Emergency-contact call",
   resolve_psap: "PSAP lookup",
 };

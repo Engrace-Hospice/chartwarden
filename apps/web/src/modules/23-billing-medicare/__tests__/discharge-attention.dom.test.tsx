@@ -128,7 +128,7 @@ describe("ValidationWorklist — missing discharge details", () => {
       },
     );
     expect(await screen.findByText("Claim held: missing discharge details")).toBeTruthy();
-    expect(screen.getByText(/recorded before WardenX captured the place of death/)).toBeTruthy();
+    expect(screen.getByText(/recorded before ChartWarden captured the place of death/)).toBeTruthy();
     const choices = screen.getByRole("list", { name: "place of death choices" });
     expect(choices.textContent).toMatch(/40.*At home.*41.*In a facility.*42.*Place not known/);
     // The panel's action and the result row's own remediation CTA both lead to the guided M6 screen.

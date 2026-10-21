@@ -58,7 +58,7 @@ const adminSession: Session = {
   organizationId: "org-1",
   membershipId: "mem-1",
   displayName: "Ada Lovelace",
-  organizationName: "WardenX",
+  organizationName: "ChartWarden",
   roles: ["administrator"],
   isAdmin: true,
   permissions: [

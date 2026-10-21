@@ -25,13 +25,13 @@ function Brand({
   compact?: boolean;
 }): JSX.Element {
   return (
-    <Link className="wx-portal-brand" to={destination} aria-label="WardenX Family Portal home">
+    <Link className="wx-portal-brand" to={destination} aria-label="ChartWarden Family Portal home">
       <span className="wx-portal-brand__mark" aria-hidden="true">
         W
       </span>
       {!compact ? (
         <span>
-          <strong>WardenX</strong>
+          <strong>ChartWarden</strong>
           <small>Family Portal</small>
         </span>
       ) : null}
@@ -106,7 +106,7 @@ function PortalSidebar({
       )}
       <div className="wx-portal-sidebar__footer">
         <span>Private and secure</span>
-        <small>Your access is protected by WardenX.</small>
+        <small>Your access is protected by ChartWarden.</small>
       </div>
     </aside>
   );
