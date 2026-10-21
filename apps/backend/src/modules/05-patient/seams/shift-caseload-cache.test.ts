@@ -7,7 +7,7 @@ import {
   writeShiftAssignment,
 } from "./shift-caseload-cache";
 
-function fakeRedis() {
+function fakeRedis(failExec?: Array<[Error | null, number]> | null) {
   const hashes = new Map<string, Map<string, string>>();
   const ttl = new Map<string, number>();
   const redis = {
@@ -27,6 +27,22 @@ function fakeRedis() {
     },
     async hgetall(k: string) {
       return Object.fromEntries(hashes.get(k) ?? []);
+    },
+    multi() {
+      const ops: Array<() => Promise<number>> = [];
+      const tx = {
+        hdel: (k: string, f: string) => {
+          ops.push(() => redis.hdel(k, f));
+          return tx;
+        },
+        async exec() {
+          if (failExec) return failExec;
+          const out: Array<[Error | null, number]> = [];
+          for (const op of ops) out.push([null, await op()]);
+          return out;
+        },
+      };
+      return tx;
     },
   };
   return { redis: redis as unknown as Redis, hashes, ttl };
@@ -80,5 +96,41 @@ describe("shift caseload cache dual-write", () => {
     f.hashes.set(RENAMED, new Map([["v1", entry("p-new")]]));
     const ids = [...(await readShiftAssignedPatientIds(f.redis, "org", "u"))].sort();
     expect(ids).toEqual(["p-new", "p-old"]);
+  });
+});
+
+describe("shift caseload cache unassign is atomic and write order is new-first", () => {
+  const seedBoth = (f: ReturnType<typeof fakeRedis>) => {
+    const e = JSON.stringify({ patientId: "p1", expiresAt: future() });
+    f.hashes.set(LEGACY, new Map([["v1", e]]));
+    f.hashes.set(RENAMED, new Map([["v1", e]]));
+  };
+
+  it("throws when one of the two deletes errors, so the outbox retries", async () => {
+    const f = fakeRedis([
+      [null, 1],
+      [new Error("READONLY"), 0],
+    ]);
+    seedBoth(f);
+    await expect(removeShiftAssignment(f.redis, "org", "u", "v1")).rejects.toThrow("READONLY");
+  });
+
+  it("throws when the transaction was not executed", async () => {
+    const f = fakeRedis(null as unknown as Array<[Error | null, number]>);
+    // a null exec result must not be mistaken for success
+    f.redis.multi = (() => ({ hdel() { return this; }, async exec() { return null; } })) as never;
+    await expect(removeShiftAssignment(f.redis, "org", "u", "v1")).rejects.toThrow(/not executed/);
+  });
+
+  it("writes the new key before the legacy key", async () => {
+    const order: string[] = [];
+    const f = fakeRedis();
+    const hset = f.redis.hset.bind(f.redis);
+    f.redis.hset = (async (k: string, field: string, v: string) => {
+      order.push(k);
+      return hset(k, field, v);
+    }) as never;
+    await writeShiftAssignment(f.redis, "org", "u", "v1", "p1", future());
+    expect(order).toEqual([RENAMED, LEGACY]);
   });
 });

@@ -92,7 +92,8 @@ export async function writeShiftAssignment(
   const entry: ShiftEntry = { patientId, expiresAt };
   const { legacyKey, newKey } = cacheKeys(organizationId, userId);
   const serialised = JSON.stringify(entry);
-  for (const key of [legacyKey, newKey]) {
+  // New key first, like every other family: if the second write fails the retry finds the fresher value in the key that wins the merge.
+  for (const key of [newKey, legacyKey]) {
     await redis.hset(key, visitId, serialised);
     await redis.expire(key, SAFETY_TTL_SEC);
   }
@@ -107,8 +108,10 @@ export async function removeShiftAssignment(
   visitId: string,
 ): Promise<void> {
   const { legacyKey, newKey } = cacheKeys(organizationId, userId);
-  await redis.hdel(legacyKey, visitId);
-  await redis.hdel(newKey, visitId);
+  // One MULTI/EXEC: the union read must never see an unassigned visit in the hash that survived a half-done delete.
+  const results = await redis.multi().hdel(legacyKey, visitId).hdel(newKey, visitId).exec();
+  if (results === null) throw new Error("shift caseload unassign was not executed");
+  for (const [err] of results) if (err) throw err;
 }
 
 async function readUnexpiredEntries(
