@@ -245,7 +245,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // real-world HCPCS-keyed item, rewritten wholesale by the annual CMS HCPCS loader, the same answer for
   // every tenant — with NO organization_id BY DESIGN. Dual-grant RLS in 0106: read-all
   // `USING (is_active = true)` TO chartwarden_app, writes only via chartwarden_admin; it audits through the M1
-  // baseline `wardenx_audit_trigger()` because the M4 generator's body reads NEW.organization_id (the M22
+  // baseline `chartwarden_audit_trigger()` because the M4 generator's body reads NEW.organization_id (the M22
   // form_template / M38 code_system / M39 consent_type_catalog precedent). The tenant half of the D11
   // canonical-plus-overlay pair, tenant_supply_item_extension, is intentionally NOT listed here — it carries
   // organization_id NOT NULL and gets standard app.org_id RLS. comfort_kit_template / _medication and
@@ -264,7 +264,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // evaluation evidence run against the model on a held-out set, not inside a tenant. All six get
   // read-all `USING (true)` TO chartwarden_app with writes only via chartwarden_admin in 0116 (the M38
   // code_system / M22 form_template / M21 supply_item precedent); the four with an empty §3.4 denylist
-  // audit through M1's baseline `wardenx_audit_trigger()`, and the two with a denylist get generated
+  // audit through M1's baseline `chartwarden_audit_trigger()`, and the two with a denylist get generated
   // scrubbing functions that resolve organization_id from the SESSION because the column does not exist.
   //
   // The other seven are intentionally NOT listed. Six carry organization_id NOT NULL under canonical
@@ -282,7 +282,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // CapabilityStatement (D11) and carries NO organization_id BY DESIGN — a conformance statement is the
   // same contract for every tenant. Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin
   // (0137; the M32 ai_capability / M38 code_system / M22 form_template precedent); it audits through M1's
-  // baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The other seven
+  // baseline `chartwarden_audit_trigger()`, which resolves the (absent) org from the session. The other seven
   // M28 tables carry organization_id and get standard app.org_id RLS.
   "fhir_capability_snapshot",
   // M35 Subscription Billing (§3.3 / §3.5): NINE tables carry no tenant-RLS organization_id BY DESIGN.

@@ -4,7 +4,7 @@
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). Operational metadata
 // only — NO PHI and no secret — so the §3.6 denylist is empty and it audits through M1's baseline
-// `wardenx_audit_trigger()`. `credential_id` is a LOGICAL uuid pointing at `fhir_client_credential.id`
+// `chartwarden_audit_trigger()`. `credential_id` is a LOGICAL uuid pointing at `fhir_client_credential.id`
 // (the reverse FK, credential → client, carries the real constraint; a real FK here too would be a
 // circular pair). `approved_by_*_membership_id` are logical M2 references, validated at the write
 // boundary.

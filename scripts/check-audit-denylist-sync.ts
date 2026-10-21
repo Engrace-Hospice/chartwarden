@@ -248,7 +248,7 @@ const MODULES: ReadonlyArray<{
  *  `M22.form_template_version` RESOLVED (WX-PR-016): the constant was the side that disagreed with
  *  reality — `payload_schema` is a serialized TypeBox render CONTRACT (field structure), not patient
  *  data, per the table's own schema-file comment ("structural, not PHI"). Removed from
- *  `M22_AUDIT_DENYLIST`; the platform-shared `wardenx_audit_trigger()` this table uses correctly has no
+ *  `M22_AUDIT_DENYLIST`; the platform-shared `chartwarden_audit_trigger()` this table uses correctly has no
  *  redaction at all, which is now what the constant claims too. Normal checked table now, not an
  *  exemption. */
 const KNOWN_UNRESOLVED_DISAGREEMENTS = new Set<string>([]);

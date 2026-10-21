@@ -3,7 +3,7 @@
 // concurrency lock (a further request is a 429); `completed` mints output URLs with a 24h TTL (W-FHIR-04).
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). The request envelope is
-// metadata (the empty §3.6 denylist) so it audits through M1's baseline `wardenx_audit_trigger()` — a
+// metadata (the empty §3.6 denylist) so it audits through M1's baseline `chartwarden_audit_trigger()` — a
 // `compliance` retention row that reconstructs a bulk disclosure long after the NDJSON is gone. `patient_ids`
 // / `group_id` / `client_id` / `initiated_by_membership_id` are LOGICAL uuids validated at the write boundary.
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

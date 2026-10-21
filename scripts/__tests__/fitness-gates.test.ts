@@ -166,6 +166,12 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/duplicate-enum/);
   });
 
+  it("ddl-legality — a migration after 1143 naming a renamed wardenx_* DB object", async () => {
+    const r = await gate("check-ddl-legality.ts", join(FIX, "ddl-legacy-name"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/legacy-db-object-name/);
+  });
+
   it("migration-numbering — two migrations claiming one ordinal", async () => {
     // The real failure this gate was written for: two branches opened the same afternoon each took
     // "the next number" against main, and `migrate.ts` sorts filenames — so which one applies first
