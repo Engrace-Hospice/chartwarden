@@ -261,7 +261,8 @@ database, so the rename below is what actually changes it.
      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'wardenx' AND pid <> pg_backend_pid();" -c \
      "ALTER DATABASE wardenx RENAME TO chartwarden;"
    ```
-5. In `.env.production`, together: add `CHARTWARDEN_DB_NAME=chartwarden` and change the database path of every
+5. In `.env.production`, together: add `CHARTWARDEN_DB_NAME=chartwarden` (unquoted, no trailing comment, LF line
+   endings: `deploy.sh` reads it with a strict `sed` and exits 64 on anything else) and change the database path of every
    whole-URL value (`.../wardenx` -> `.../chartwarden`) such as `DATABASE_URL`, `DATABASE_ADMIN_URL`,
    `DATABASE_PLATFORM_URL`, `DATABASE_DESTRUCTION_URL`, `PROVISION_DATABASE_URL` if present. Compose-built URLs follow
    the variable on their own; whole URLs in the file do not. Check with
