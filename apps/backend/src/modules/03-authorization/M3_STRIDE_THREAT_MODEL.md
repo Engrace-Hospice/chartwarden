@@ -1,7 +1,7 @@
 # Module 3 (Authorization) — STRIDE Threat Model (M3-T10 / M03-F08 — SEC-007)
 
 Recorded per the §20.B template STRIDE requirement (ADR-0021). Authoritative source: the
-Module 3 spec §8.4 (`docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md`) and Security
+Module 3 spec §8.4 (`docs/modules/CHARTWARDEN_MODULE_03_AUTHORIZATION_SPEC_v0_3.md`) and Security
 Hardening v0.2 §3.1. Module 3 is the authorization layer — the highest-risk module for
 privilege abuse — so each threat below maps to an existing control and the negative test that
 verifies it (M3-T11 §9 / spec §12 STRIDE suite).

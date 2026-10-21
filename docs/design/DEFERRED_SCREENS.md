@@ -1,4 +1,4 @@
-# WardenX — Deferred Screens Ledger (Track A backlog + coordination point)
+# ChartWarden — Deferred Screens Ledger (Track A backlog + coordination point)
 
 The Track-A/Track-B coordination ledger, per `docs/plans/FRONTEND_INTEGRATION_PLAN.md` (F0-T05). *(Authority note, 2026-08-14: the gate-generated [`audit/ui-parity/UI_PARITY.md`](../../audit/ui-parity/UI_PARITY.md) is the authoritative per-screen status — see line ~464; this ledger is the human worklist layered on it.)*
 Every backend module task so far ended "screens defer (no UI codePath)". This ledger is the **Track A
@@ -9,7 +9,7 @@ other track skips it.
 **Governing ADRs:** [ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md) (placement: each module
 owns `apps/web/src/modules/NN-*`, registered into the M1 shell), [ADR-0032](../adr/ADR-0032-frontend-api-transport-and-client.md)
 (typed client). Screen specs live under `docs/design/screens/`; layout patterns in
-`WARDENX_UI_LAYOUT_PATTERNS.md`; module ownership is the `Module:` line in each spec.
+`CHARTWARDEN_UI_LAYOUT_PATTERNS.md`; module ownership is the `Module:` line in each spec.
 
 **Build rule (backend-first):** a screen is only built after its module's routes/seams are on `main`,
 and against the generated client (`packages/ui/src/core/api` — moved by the ADR-0035 core/web split). No new authz on the frontend — the server
@@ -30,17 +30,17 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 
 | # | Module | Screen | Spec | Layout pattern | Layout cmp | Status |
 |---|--------|--------|------|----------------|-----------|--------|
-| 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
-| 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
-| 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team + Privacy Flags tabs)⁴ ⁹ ¹⁰ ¹¹ ¹² |
-| 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
-| 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
-| 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done (live)⁸ |
-| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁸ |
-| 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
-| 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁷ |
+| 1 | M2 | Authentication & Session | `screens/core/CHARTWARDEN_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
+| 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/CHARTWARDEN_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
+| 3 | M1 | System / Utility Pages | `screens/core/CHARTWARDEN_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
+| 4 | M5 | Patient Chart | `screens/clinical/CHARTWARDEN_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team + Privacy Flags tabs)⁴ ⁹ ¹⁰ ¹¹ ¹² |
+| 5 | M5 | Patient List / Census | `screens/clinical/CHARTWARDEN_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
+| 6 | M3 | Roles & Permissions | `screens/admin/CHARTWARDEN_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
+| 7 | M4 | Audit Log Viewer | `screens/admin/CHARTWARDEN_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
+| 8 | M36 | Internal Staff Secure Messaging | `screens/core/CHARTWARDEN_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done (live)⁸ |
+| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/CHARTWARDEN_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁸ |
+| 10 | M38 | Terminology / Reference Data | `screens/admin/CHARTWARDEN_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
+| 11 | M40 | Master Data Management | `screens/admin/CHARTWARDEN_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁷ |
 
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
@@ -203,9 +203,9 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 
 | Module(s) | Screen | Spec | Blocked-on | Status |
 |-----------|--------|------|-----------|--------|
-| M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | later facets (documents/orders/visits/commands) need unbuilt modules | done (partial — M5+M2 facets)⁶ |
-| M2 + M36 + M17 | User Profile & Preferences | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
-| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); enriched (FB-T12) with name/email, last-login, Pending-invite + Locked-account KPIs; Discipline/Credentials still need M34 | done (M2 roster — enriched)⁵ |
+| M5 + M2/M3 | Global Search Results | `screens/core/CHARTWARDEN_UI_GLOBAL_SEARCH_RESULTS.md` | later facets (documents/orders/visits/commands) need unbuilt modules | done (partial — M5+M2 facets)⁶ |
+| M2 + M36 + M17 | User Profile & Preferences | `screens/core/CHARTWARDEN_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
+| M2 / M34 | Staff Management | `screens/admin/CHARTWARDEN_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); enriched (FB-T12) with name/email, last-login, Pending-invite + Locked-account KPIs; Discipline/Credentials still need M34 | done (M2 roster — enriched)⁵ |
 
 > ⁵ **Staff Management — built at the M2 roster level, enriched (FB-T12)** (`apps/web/src/modules/02-identity/staff-management.tsx`,
 > `/admin/staff`, Work Queue). Invite by email, change member status (active/suspended), and revoke a
@@ -261,18 +261,18 @@ contract), so `openapi.json`/the client are unchanged.
 
 | Module | Screens built | Spec | Status |
 |---|---|---|---|
-| M6 | Referral Inbox (§5.2.1), Admission Census (§5.2.12), Admission Detail + activation gate (§5.2.4/§5.2.5), Compliance Dashboard (§5.2.11) | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md`, `WARDENX_UI_ELECTION_CERTIFICATION.md` | done (M6-T12)¹³ |
-| M7 | Care Plan View (§5.2), Version History (§5.1), Care Plan Summary (§5.2) | `screens/clinical/WARDENX_UI_CARE_PLAN.md` | done (M7-T09)¹⁴ |
-| M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
-| M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
-| M10 | HOPE Timepoint Dashboard (§5.2), Patient HOPE Timeline (§5.2), SFV Worklist (§5.2), HOPE Assessment Detail (§5.2), Submission Worklist (§5.2), Submission Detail (§5.2), HQRP Compliance Dashboard (§5.2) | `docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` §5 | done (M10-T08)¹⁷ |
-| M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/WARDENX_UI_ORDERS.md` | done (M11-T08)¹⁸ |
-| M12 | Patient Medications (§6.1), Medication Detail (§6.1), Medication Sign Inbox (§6.1), Verbal Medication Orders (§6.1), Refill Inbox (§6.1), Refill Detail (§6.1), Medication Reconciliation (§6.1), Prescriber Roster admin (§6.1), Prescribing Policy admin (§6.1) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (prescribing half) | done — prescribing (M12-T09)¹⁹ |
-| M13 | Patient eMAR (§6.1 #1), Administration Detail (§6.1 #11), IV Continuous Session (§6.1 #5), Missed-Dose Inbox (§6.1 #8), Reconciliation Worksheet (§6.1 #6), Comfort Kit View (§6.1 #7), Administration Policy admin (§6.1 #12) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (eMAR half) | done — eMAR administration (M13-T10)²⁰ |
-| M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
+| M6 | Referral Inbox (§5.2.1), Admission Census (§5.2.12), Admission Detail + activation gate (§5.2.4/§5.2.5), Compliance Dashboard (§5.2.11) | `screens/clinical/CHARTWARDEN_UI_ADMISSIONS_REFERRAL_INTAKE.md`, `CHARTWARDEN_UI_ELECTION_CERTIFICATION.md` | done (M6-T12)¹³ |
+| M7 | Care Plan View (§5.2), Version History (§5.1), Care Plan Summary (§5.2) | `screens/clinical/CHARTWARDEN_UI_CARE_PLAN.md` | done (M7-T09)¹⁴ |
+| M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
+| M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
+| M10 | HOPE Timepoint Dashboard (§5.2), Patient HOPE Timeline (§5.2), SFV Worklist (§5.2), HOPE Assessment Detail (§5.2), Submission Worklist (§5.2), Submission Detail (§5.2), HQRP Compliance Dashboard (§5.2) | `docs/modules/CHARTWARDEN_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` §5 | done (M10-T08)¹⁷ |
+| M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/CHARTWARDEN_UI_ORDERS.md` | done (M11-T08)¹⁸ |
+| M12 | Patient Medications (§6.1), Medication Detail (§6.1), Medication Sign Inbox (§6.1), Verbal Medication Orders (§6.1), Refill Inbox (§6.1), Refill Detail (§6.1), Medication Reconciliation (§6.1), Prescriber Roster admin (§6.1), Prescribing Policy admin (§6.1) | `screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md` (prescribing half) | done — prescribing (M12-T09)¹⁹ |
+| M13 | Patient eMAR (§6.1 #1), Administration Detail (§6.1 #11), IV Continuous Session (§6.1 #5), Missed-Dose Inbox (§6.1 #8), Reconciliation Worksheet (§6.1 #6), Comfort Kit View (§6.1 #7), Administration Policy admin (§6.1 #12) | `screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md` (eMAR half) | done — eMAR administration (M13-T10)²⁰ |
+| M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
 | M17 | Day View (§5.1), Week View (§5.1), Proposal Inbox (§5.1), Recurring Policies (§5.1), Time-Off Queue (§5.1), Visit Detail (§5.1), My Visits (§5.1), Scheduling Metrics (§5.1) | M17 spec §5.1 | done — scheduling read surfaces (M17-T08)²² |
 | M18 | EVV Dashboard (§5.1), Event Ledger (§5.1), Event Detail (§5.1), Missing-EVV Resolutions (§5.1), Aggregator Submissions (§5.1), Geofence Policy (§5.1), Devices (§5.1), EVV Metrics (§5.1), My Devices (§5.1) | M18 spec §5.1 | done — EVV read surfaces (M18-T07)²³ |
-| M22 | DOC.Explorer (§5.1), DOC.VersionHistory (§5.1), INTAKE.BatchDetail (§5.1), FORM.TemplateLibrary (§5.1) | `docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md` §5.1 | done — Documents read surfaces (M22-T10)²⁴ |
+| M22 | DOC.Explorer (§5.1), DOC.VersionHistory (§5.1), INTAKE.BatchDetail (§5.1), FORM.TemplateLibrary (§5.1) | `docs/modules/CHARTWARDEN_MODULE_22_DOCUMENTS_SPEC_v0_5.md` §5.1 | done — Documents read surfaces (M22-T10)²⁴ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -586,7 +586,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > ²⁷ **M19 On-Call Triage now LIVE (Wave P2-2, M19-T08).** Fifteen screens under
 > `apps/web/src/modules/19-oncall`, registered into the M1 shell via `oncallScreens` (`main.tsx`) under a
 > new "On-call" nav group, over the live 38-route M19 backend. They cover both M19 screen specs —
-> `WARDENX_UI_ON_CALL_TRIAGE.md` (the live-call surface) and `WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md` (its
+> `CHARTWARDEN_UI_ON_CALL_TRIAGE.md` (the live-call surface) and `CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md` (its
 > administrative twin): the supervisor board; the intake that starts a record; the triage panel driving the
 > §2.2.1 call machine (server-gated protocol stepper, red-flag and mandatory-escalation banners, the §6/§7.3
 > disposition matrix, the M8 encounter hand-off, the D15 medication context, the D11/D12 advisory block);
@@ -649,7 +649,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > ²⁸ **M20 Field Safety now LIVE (Wave P2-2, M20-T07).** Fourteen screens under
 > `apps/web/src/modules/20-field-safety`, registered into the M1 shell via `fieldSafetyScreens`
 > (`main.tsx`) under a new "Field safety" nav group, over the live 30-route M20 backend. They cover the
-> §5.1 inventory and `WARDENX_UI_FIELD_SAFETY.md`'s Dashboard + Mobile Task Flow pattern: the supervisor
+> §5.1 inventory and `CHARTWARDEN_UI_FIELD_SAFETY.md`'s Dashboard + Mobile Task Flow pattern: the supervisor
 > live-awareness board; the active-SOS centre with the §2.2.6 acknowledgment ceremony; one alert end to end
 > (the §2.2.2 ledger, the acknowledgment chain, the resolve/open-an-incident fork, and the D6 coordinate
 > stream); the incident register, the report form and the §2.2.3 lifecycle with §7.6/D9's step-up'd OSHA
@@ -763,7 +763,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > (`/subscription` — plan/status/current period + the §5.5 dunning banner composed from
 > `GET /api/v1/subscription` + `/billing/status`), the plan picker with per-meter included/overage
 > comparison (`/subscription/plan`), stored payment methods (`/subscription/payment_methods` — the Stripe
-> Payment Element is the only iframe-mounted WCAG-AA component; the raw PAN never touches WardenX per
+> Payment Element is the only iframe-mounted WCAG-AA component; the raw PAN never touches ChartWarden per
 > §4.13), the status-filtered invoice list + line-item detail with "Download PDF"/"View on Stripe"
 > (`/subscription/invoices` + `/subscription/invoices/:id`), current-period meter usage with progress bars
 > over included quantity + historical periods (`/subscription/usage`, aggregate counts only — usage is
@@ -781,7 +781,7 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > clinical revenue cycle (the `arch:ui-parity` duplicate-path gate is what surfaced the collision).
 >
 > **§5.2 platform-ops admin console now LIVE (Wave Admin-Console, M35A-T03–T08) — `done`.** The 14
-> WardenX-staff screens live under `apps/admin/src/modules/35-subscription-billing`, registered into the
+> ChartWarden-staff screens live under `apps/admin/src/modules/35-subscription-billing`, registered into the
 > **M34-owned** `apps/admin` shell via `subscriptionAdminScreens` (`apps/admin/src/main.tsx`, ADR-0030 — M34
 > owns the shell, M35 contributes a slice, exactly as M1 owns `apps/web`). They cover Plans (list + create +
 > the meter/pricing editor with Activate→Stripe-sync), Promos (CRUD + redemption counts), Subscriptions

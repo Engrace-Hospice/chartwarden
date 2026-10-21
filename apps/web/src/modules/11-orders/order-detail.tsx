@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
 // per-order facts the §5 detail pane renders: kind/priority/status, ordering physician + drafter, signature
 // posture (signed/cosign/verbal), the verbal-order deadline, the correction link, and the lab transmission /
 // results lifecycle (D17) — and the §2.2/§2.3/§2.5/§2.6 write ceremonies (sign, cosign, record-verbal,

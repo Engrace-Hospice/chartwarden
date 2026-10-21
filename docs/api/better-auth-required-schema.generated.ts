@@ -1,4 +1,4 @@
-// AUTH-T06 REFERENCE ARTIFACT — authoritative Better Auth required schema for WardenX's
+// AUTH-T06 REFERENCE ARTIFACT — authoritative Better Auth required schema for ChartWarden's
 // configured instance + plugins (2FA/passkey/magic-link/HIBP), emitted by:
 //   bunx @better-auth/cli generate --config <createIdentityAuth>
 // NOT imported/compiled — it is the reconciliation TARGET to diff M1 against. Reflects the

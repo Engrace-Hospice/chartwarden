@@ -3,7 +3,7 @@
 ## Portée et invariants
 
 Ce contrat lie le repository `wardenx` à la future PR C de `wardenx-mobile`. Le mobile utilise
-l’instance Better Auth existante et les routes `/api/auth/*`; il n’existe ni JWT WardenX, ni second
+l’instance Better Auth existante et les routes `/api/auth/*`; il n’existe ni JWT ChartWarden, ni second
 store de sessions, ni endpoint d’authentification mobile parallèle. Le serveur calcule l’utilisateur,
 l’organisation, les rôles, les permissions, les attributs ABAC et les rooms Socket.IO. Une valeur
 `organizationId`, un rôle ou une permission fourni par le client n’est jamais une autorité.
@@ -36,7 +36,7 @@ PR C doit pinner une version client compatible avec Better Auth `1.6.25` et conf
 l’appeler sous une forme compatible sync/async : `await authClient.getCookie()`.
 
 Le helper ne doit pas être supposé propriétaire du cookie applicatif `wardenx_csrf`. Le nonce CSRF
-WardenX suit le protocole séparé ci-dessous. `withCredentials: true` ne suffit pas à persister ou
+ChartWarden suit le protocole séparé ci-dessous. `withCredentials: true` ne suffit pas à persister ou
 réémettre des cookies dans React Native : l’adaptateur fournit explicitement le header `Cookie`.
 
 SecureStore contient seulement le matériel d’authentification Better Auth nécessaire. Le nonce CSRF
@@ -124,7 +124,7 @@ peuvent être retentés avec backoff borné lorsque leur contrat le permet.
 
 ## Erreurs et corrélation
 
-Le client conserve l’enveloppe WardenX et le correlation ID :
+Le client conserve l’enveloppe ChartWarden et le correlation ID :
 
 | Statut | Traitement mobile |
 |---|---|

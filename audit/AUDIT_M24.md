@@ -1,6 +1,6 @@
 # AUDIT — Module 24: Billing — Medicaid (spec v0.2.1, "Locked")
 
-**Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0. Criteria packs read in full (CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS) plus `module-manifest.ts`. Spec read in full (2,403 lines / 265 KB). BLOCKER findings verified directly against `WARDENX_ARCHITECTURE_v0_11.md` (§11 M24 entry line 1851–1856, §13 lines 2195–2221, §20 dep table line 2362, §20.A lines 2382/2446, revenue-code table line 1781, §11.A Medicaid row line 1815), `WARDENX_DR_BCP_v0.1.md` §10.4.5, `WARDENX_INTEGRATIONS_v0_1.md` §6.5 (lines 272–282).
+**Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0. Criteria packs read in full (CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS) plus `module-manifest.ts`. Spec read in full (2,403 lines / 265 KB). BLOCKER findings verified directly against `CHARTWARDEN_ARCHITECTURE_v0_11.md` (§11 M24 entry line 1851–1856, §13 lines 2195–2221, §20 dep table line 2362, §20.A lines 2382/2446, revenue-code table line 1781, §11.A Medicaid row line 1815), `CHARTWARDEN_DR_BCP_v0.1.md` §10.4.5, `CHARTWARDEN_INTEGRATIONS_v0_1.md` §6.5 (lines 272–282).
 
 ---
 

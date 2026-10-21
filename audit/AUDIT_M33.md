@@ -1,8 +1,8 @@
-# WardenX Module Audit — Module 33: Reporting & Dashboards
+# ChartWarden Module Audit — Module 33: Reporting & Dashboards
 
-**Auditor:** WardenX Module Compliance Auditor (Principal Architect / Medicare Hospice / HIPAA Security / Staff Engineer / QA Director)
-**Spec under audit:** `WARDENX_MODULE_33_REPORTING_SPEC_v0_2.md` (v0.2, "Locked")
-**Authoritative sources:** `WARDENX_ARCHITECTURE_v0_11.md`, `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`, `WARDENX_SYSTEM_DESIGN_v0.3.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `WARDENX_AI_GOVERNANCE_v0.2.md`, `WARDENX_DR_BCP_v0.1.md`, `WARDENX_OPS_RUNBOOK_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`
+**Auditor:** ChartWarden Module Compliance Auditor (Principal Architect / Medicare Hospice / HIPAA Security / Staff Engineer / QA Director)
+**Spec under audit:** `CHARTWARDEN_MODULE_33_REPORTING_SPEC_v0_2.md` (v0.2, "Locked")
+**Authoritative sources:** `CHARTWARDEN_ARCHITECTURE_v0_11.md`, `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`, `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`, `CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, `CHARTWARDEN_AI_GOVERNANCE_v0.2.md`, `CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_OPS_RUNBOOK_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`
 **Date:** 2026-06-11
 
 ---

@@ -45,13 +45,13 @@ wardenx-impl-starter.zip
 # Generated bundles — regenerable from the spec sources in docs/modules/ (module specs +
 # module-29-tasks/). Named individually rather than globbed as *.zip because these entries
 # predate the removal of the two zips that used to be the reason for the distinction
-# (WARDENX_PROJECT_STARTER.zip, WARDENX_UI_SCREEN_SPECS_v5.zip); the corpus itself lives in
+# (CHARTWARDEN_PROJECT_STARTER.zip, CHARTWARDEN_UI_SCREEN_SPECS_v5.zip); the corpus itself lives in
 # docs/, and nothing in the repo is generated FROM a zip.
-WARDENX_MODULES_01-10.zip
-WARDENX_MODULES_11-20.zip
-WARDENX_MODULES_21-30.zip
-WARDENX_MODULES_31-40.zip
-WARDENX_MODULE_29_TASKS_T29.zip
+CHARTWARDEN_MODULES_01-10.zip
+CHARTWARDEN_MODULES_11-20.zip
+CHARTWARDEN_MODULES_21-30.zip
+CHARTWARDEN_MODULES_31-40.zip
+CHARTWARDEN_MODULE_29_TASKS_T29.zip
 
 # wardenx-piv: per-run resolved plan path + module scope (workflow setup node)
 .archon/run-plan.txt

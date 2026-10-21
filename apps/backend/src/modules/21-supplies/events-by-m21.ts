@@ -168,7 +168,7 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       courierAttestation,
     }),
     // F-191 (#248) — m22 DROPPED from declaredConsumers, misdeclared: M22's own spec explicitly
-    // disclaims owning signature capture (`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:126`, "M22 does
+    // disclaims owning signature capture (`CHARTWARDEN_MODULE_22_DOCUMENTS_SPEC_v0_5.md:126`, "M22 does
     // not capture signatures — the source module does"; line 2383 lists it as a non-goal even for
     // M39 consent, the nearest structural analog), and no capture route/seam/FormFill consumer
     // exists anywhere in `22-documents/` (confirmed by direct read, `render-consumer.ts:292-297`
@@ -424,12 +424,12 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       reconciledAt: Iso,
     }),
     // F-149 (#248) — m30 MOVED to seamConsumers, along with all four of its M21 siblings below: M21's
-    // own spec (docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:9,72) names the
+    // own spec (docs/modules/CHARTWARDEN_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:9,72) names the
     // real mechanism decisively — "30 (HQRP & Quality — … controlled-substance-discrepancy rate,
     // kit-return-on-time rate, par-stock-stockout rate; all read M21 via `SupplyFulfillmentProvider` and
     // `ComfortKitDispatchProvider`)" and "M21 publishes … seams; M30 consumes and computes" — never an
     // outbox push, matching M30's own blanket §1.1 principle that it never subscribes to an upstream
-    // module's outbox (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353). Both seams are
+    // module's outbox (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353). Both seams are
     // already registered at boot (`apps/backend/src/modules/21-supplies/seams/index.ts`); M30's side of
     // the call is what remains unbuilt — this event's own "M30 files the survey record" claim describes
     // a mechanism M30's spec never corroborates anywhere.

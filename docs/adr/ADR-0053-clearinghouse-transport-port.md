@@ -1,12 +1,12 @@
-# ADR-0053 — The claim cycle runs through one `ClearinghouseTransport` port; WardenX resells one clearinghouse (platform configuration); an adapter is done only when it passes the shared conformance cases
+# ADR-0053 — The claim cycle runs through one `ClearinghouseTransport` port; ChartWarden resells one clearinghouse (platform configuration); an adapter is done only when it passes the shared conformance cases
 
-- **Status:** **Proposed** — D3 (platform configuration, WardenX resells one clearinghouse) was decided by the
+- **Status:** **Proposed** — D3 (platform configuration, ChartWarden resells one clearinghouse) was decided by the
   product owner 2026-10-11; D1, D2 and D4–D9 are proposed with the first implementation (port, conformance
   suite and in-memory reference) and are ratified when the first real adapter passes the suite.
 - **Date:** 2026-10-11
 - **Phase:** post-launch billing work (Medicare submission paths); precedes the Stedi adapter (Phase 4/5).
 - **Extends:** [ADR-0028](ADR-0028-adapter-package-codepaths.md) (adapter package code paths) and
-  `docs/architecture/WARDENX_INTEGRATIONS_v0_1.md` §3.1 (adapter package model), which say *that* an integration
+  `docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md` §3.1 (adapter package model), which say *that* an integration
   sits behind an interface but not *what* the interface is for claims.
 - **Related:** [ADR-0052](ADR-0052-dde-work-queue.md) (NOE timeliness is judged on MAC acceptance, so the port
   must carry the payer's own acknowledgment date), [ADR-0037](ADR-0037-x12-cost-report-typescript.md) (precedent for
@@ -48,7 +48,7 @@ not the last event delivered, because delivery order is not guaranteed (C16). Th
 split to match in a follow-up migration (plan A6); until then adapters map onto the old state conservatively
 (accepted = payer-accepted only).
 
-**D3 — Platform configuration, not a tenant setting.** WardenX resells one clearinghouse (Stedi first), so the
+**D3 — Platform configuration, not a tenant setting.** ChartWarden resells one clearinghouse (Stedi first), so the
 vendor binding is deployment/platform configuration. The credential is platform-held; every call is still
 attributed to a ProviderEntity (the payer sees the provider) through `ClearinghouseContext`. A per-ProviderEntity
 override can be added later without changing the port. `usage: "test"` must reach only vendor test mode. The
@@ -89,7 +89,7 @@ pull methods. Pull methods are cursor-paged with a cursor that is always resumab
 malformed cursor is `CH_INVALID_REQUEST`, never a silent restart; and polling reconciliation is the backstop for any
 missed event.
 
-**D8 — The transport is the tenant boundary.** WardenX holds one platform credential, so nothing in the vendor
+**D8 — The transport is the tenant boundary.** ChartWarden holds one platform credential, so nothing in the vendor
 separates tenants. All state — submissions, idempotency keys, acknowledgments, remittances, status — is scoped to
 (organizationId, providerEntityId, usage) (`ClearinghouseScope`), and a transport that lets another org, another
 ProviderEntity or the other usage mode see, replay or collide with it fails C14/C15. Enrollment is per ProviderEntity

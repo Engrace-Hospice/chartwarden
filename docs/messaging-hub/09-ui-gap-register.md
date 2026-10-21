@@ -41,7 +41,7 @@
 - `notifications-inbox.tsx` has 35 inline `style={}` uses (against "no old-style inline UIs").
 - Module-local `wx-messaging-*` CSS vs shared `list-chrome`: unconfirmed.
 - Screen index (`bun run docs:ui`) may need updating: unconfirmed.
-- `WARDENX_UI_NOTIFICATIONS_TASKS.md` (KPI cards, Tasks/Worklist, Preferences) vs built inbox: unchecked.
+- `CHARTWARDEN_UI_NOTIFICATIONS_TASKS.md` (KPI cards, Tasks/Worklist, Preferences) vs built inbox: unchecked.
 
 ## E. Phase 0/1 backend work with no screen
 

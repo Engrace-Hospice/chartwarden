@@ -12,7 +12,7 @@
 // WHAT IS STILL NOT HERE, and is not this file's to supply: the iQIES WIRE PROTOCOL. The CMS endpoint,
 // its authentication flow and the HOPE submission XML schema are not in this repository — `packages/
 // iqies-client`'s own header says the live transport binds "with the per-tenant credential wiring from
-// M34's secret store", and `WARDENX_INTEGRATIONS_v0_1.md` §6.7 specifies the integration's SHAPE
+// M34's secret store", and `CHARTWARDEN_INTEGRATIONS_v0_1.md` §6.7 specifies the integration's SHAPE
 // (outbound batch, acceptance report retrieved, per-ProviderEntity submitter credentials, sandbox vs
 // prod) and no protocol details. Everything here is written against the typed `IqiesAdapter` port, so
 // binding a real transport is implementing three methods.
@@ -187,7 +187,7 @@ export async function claimSubmissionForTransmit(
  * Guarded on `iqies_batch_id IS NULL` so it can never un-transmit a batch CMS actually received. The
  * retry is safe because `SubmitBatchRequest.correlationId` is derived from the submission id and is
  * therefore stable across attempts — the at-least-once-plus-idempotency-key posture
- * `WARDENX_INTEGRATIONS_v0_1.md` §5 prescribes for every outbox-driven external call.
+ * `CHARTWARDEN_INTEGRATIONS_v0_1.md` §5 prescribes for every outbox-driven external call.
  */
 export async function releaseSubmission(
   tx: DbClient,

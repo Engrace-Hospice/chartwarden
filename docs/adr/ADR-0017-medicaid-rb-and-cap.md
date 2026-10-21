@@ -5,7 +5,7 @@
 - **Phase:** 4 (Medicare/Medicaid correctness)
 - **Resolves:** M24-F02/F04/F05/F06/F08; M26 (inpatient cap composition)
 - **Depends on:** [ADR-0002](ADR-0002-hospice-cap-year.md), [ADR-0003](ADR-0003-room-and-board-revenue-code.md)
-- **Changes:** `WARDENX_MODULE_24_BILLING_MEDICAID_SPEC`, `WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC`
+- **Changes:** `CHARTWARDEN_MODULE_24_BILLING_MEDICAID_SPEC`, `CHARTWARDEN_MODULE_26_CAP_MANAGEMENT_SPEC`
 
 ## Context
 

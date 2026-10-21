@@ -10,7 +10,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — prescribing policy admin (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill SLA & controlled-
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill SLA & controlled-
 // substance policy admin). Two read-only tenant-config panes for org_admin / compliance_officer: the refill-
 // inbox SLA (warn/critical hours, with the platform floors the tenant config may only TIGHTEN beyond, §2.7 D9)
 // and the controlled-substance policy (schedule-II / III–V refill caps per 21 CFR 1306.22 + the EPCS

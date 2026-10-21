@@ -3,7 +3,7 @@
 // group's `m29.lab_order.transmitted`/`.transmission_failed` pairs F-175 surfaced when it built M29's T08
 // dispatch worker (M29 now genuinely publishes both; nothing on the M11 side read them until this file).
 //
-// D16 (locked, `docs/modules/WARDENX_MODULE_11_ORDERS_SPEC_v0_4.md` line ~2837) is decisive about the state
+// D16 (locked, `docs/modules/CHARTWARDEN_MODULE_11_ORDERS_SPEC_v0_4.md` line ~2837) is decisive about the state
 // machine: `order_record.transmission_status` moves `pending -> transmitted` on `m29.lab_order.transmitted`
 // (`ackCode='AA'`), or to a terminal state on `m29.lab_order.transmission_failed`. Its own §4.10
 // event-consumption table (line ~1498) is equally decisive on the events THIS file re-publishes: "Either way

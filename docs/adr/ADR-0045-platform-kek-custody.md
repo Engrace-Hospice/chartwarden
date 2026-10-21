@@ -94,7 +94,7 @@ the chain dead and the diagnosis pointing at the wrong layer.
 - **A new production secret**, `M34_TENANT_KEK`, fail-closed at boot. Losing it without a retired
   copy makes every tenant's ciphertext permanently unreadable — the same property that makes the
   shred work, pointed the wrong way. Backup and rotation of this value is an operational
-  requirement, not a convenience (`docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md` §key management).
+  requirement, not a convenience (`docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §key management).
 - **The provision gateway is no longer on the DEK path.** It keeps `/dek/wrap` and `/dek/unwrap` for
   a future KMS-fronted deployment, and is still required for storage prefixes and invitation
   delivery; but the platform's root key operation no longer depends on a service that does not exist.

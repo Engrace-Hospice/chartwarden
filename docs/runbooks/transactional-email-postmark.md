@@ -9,7 +9,7 @@ These are **operator steps**; none can be performed from the repository.
 
 ## 1. Postmark account and BAA
 
-1. Create the Postmark account for WardenX (platform-level, one set of credentials; not per tenant).
+1. Create the Postmark account for ChartWarden (platform-level, one set of credentials; not per tenant).
 2. Execute Postmark's **BAA** (INTEGRATIONS section 6.14 / 6.22: Postmark carries a BAA as defence in depth even though the
    payload carries no PHI by code rule).
 3. Create a **Server** for production and use the default **Transactional** message stream (`outbound`). Do not use the

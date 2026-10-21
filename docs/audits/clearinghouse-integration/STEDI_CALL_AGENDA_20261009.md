@@ -1,7 +1,7 @@
 # Stedi technical call: agenda (30 min)
 
 Attendees: Engrace (Fabrice Adjam, engineering lead), Stedi (Customer Operations + engineer).
-Context: WardenX is a multi-tenant hospice EHR. First tenant: Engrace Hospice, CCN 381588, Pendleton OR 97801.
+Context: ChartWarden is a multi-tenant hospice EHR. First tenant: Engrace Hospice, CCN 381588, Pendleton OR 97801.
 Goal: leave with a provisioned sandbox, the payer/enrollment path for Oregon hospice, and answers on NOE/NOTR and adjustments.
 
 ## Volume (Engrace, estimated per month)

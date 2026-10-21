@@ -1,4 +1,4 @@
-# Start WardenX Locally
+# Start ChartWarden Locally
 
 This guide starts the complete local development experience: PostgreSQL, Valkey/Redis,
 MinIO, the Fastify API, its worker, and the Vite web application. It is for local

@@ -1,4 +1,4 @@
-# WardenX — Event Catalog, Seam Matrix & Enforcement-Coverage Assessment
+# ChartWarden — Event Catalog, Seam Matrix & Enforcement-Coverage Assessment
 
 Companion to `FITNESS_ENFORCEMENT_AUDIT.md` (manifest-derived: modules, tables, dependency
 graph, cycles). This file covers the **spec-prose** layer (events, seams) and assesses **what

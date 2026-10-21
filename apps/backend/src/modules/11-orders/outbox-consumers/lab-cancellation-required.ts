@@ -8,10 +8,10 @@
 // placer order number.
 //
 // WHY THIS IS AN ALERT AND NOT AN HL7 CANCEL (the F-187 spec decision — do not "finish" it without a spec change):
-//   * T-29.08 (`WARDENX_T-29.08_OUTBOUND_ORM.md`) defines ONE outbound message: `ORM^O01` with `ORC-1 = NW`
+//   * T-29.08 (`CHARTWARDEN_T-29.08_OUTBOUND_ORM.md`) defines ONE outbound message: `ORM^O01` with `ORC-1 = NW`
 //     (`orm-o01.ts` hardcodes it). No `CA` / `OC` / `DC` order-control flow, no cancel message type, no cancel
 //     idempotency rule and no partner-lab acknowledgement semantics are defined anywhere in the M29 spec, the
-//     task specs or `WARDENX_INTEGRATIONS_v0_1.md`. The "cancel" in the M29 spec is inbound `ADT^A11`
+//     task specs or `CHARTWARDEN_INTEGRATIONS_v0_1.md`. The "cancel" in the M29 spec is inbound `ADT^A11`
 //     (cancel admission) and the `cancelled` LAB RESULT status — neither is an outbound order cancel.
 //   * M11's spec lists M21 (supplies) as the consumer of a decisive `m11.order.supply_cancellation_requested`
 //     (§4.5) and names NO equivalent for lab. `m11.order.discontinued`'s consumers exclude M29.

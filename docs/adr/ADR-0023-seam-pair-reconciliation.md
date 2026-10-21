@@ -5,7 +5,7 @@
 - **Phase:** 6 (cross-spec reconciliation)
 - **Resolves:** X10, X12; M13↔M12, M14→M16, M15→M14, M19 phantom seams, M25→M22, M2 surface inflation
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md)
-- **Changes:** the paired specs; `WARDENX_MODULE_02_IDENTITY`
+- **Changes:** the paired specs; `CHARTWARDEN_MODULE_02_IDENTITY`
 
 ## Context
 

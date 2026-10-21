@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — administration policy admin (M13 §4.1/§6.1 #12, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
 // Tenant configuration for org_admin / compliance_officer: the grace window, the PRN minimum-interval
 // default, and the eMAR-PDF-on-commit toggle. F-031 — the tighten-only PUT is live. Nothing here decides
 // what "tighten" means: the SERVER holds the platform floors, so a loosened value is REFUSED there and the

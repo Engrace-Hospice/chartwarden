@@ -1,7 +1,7 @@
 // apps/backend/src/modules/30-quality/routes/close-cosign.ts — GAP-088 / GAP-046: the service-layer two-person
 // guard for the QAPI PIP close (R-31, V-11) and the SRA cycle close (R-47, V-12).
 //
-// SPEC (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md): D12 (line 3576) — SRA close = Security
+// SPEC (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md): D12 (line 3576) — SRA close = Security
 // Officer + Compliance Officer, PIP close = QAPI Coordinator + Medical Director, "distinct individuals",
 // enforced at the application layer AND the DB; §4.7 (lines 2106/2108) — the caller holds one role of the
 // pair and the SECOND co-signer holds the OTHER; line 3804 — both closes require a recent step-up.

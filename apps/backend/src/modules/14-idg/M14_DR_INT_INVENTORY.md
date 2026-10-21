@@ -1,8 +1,8 @@
 # Module 14 (Interdisciplinary Group / IDG) — DR Tier + Integration Inventory + STRIDE
 
 M14-T07 (spec §4.12, §8.4, §8.5). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
-`WARDENX_SECURITY_HARDENING_v0_2.md`, and the M14 spec. IDG meetings are scheduled in advance and the IDG
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
+`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and the M14 spec. IDG meetings are scheduled in advance and the IDG
 decision burst is the legally-actionable output that drives care-plan / order / medication change downstream
 (M7/M11/M12), but a live meeting is unlikely to coincide with the first hours after a major failure — so the
 read path (packet snapshots, minutes) carries the availability priority and the write/lifecycle path is

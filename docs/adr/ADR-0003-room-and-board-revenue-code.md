@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** M24 (Medicaid R&B), Build-Blocking #9
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §H Module 23 (Revenue codes line)
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §H Module 23 (Revenue codes line)
 
 ## Context
 

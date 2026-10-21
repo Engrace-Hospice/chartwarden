@@ -14,7 +14,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — Meeting Detail (pre-meeting) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign
 // (flat page head + Panels, right context rail, kit DataTable, 8px-radius buttons). The IDG Coordinator's
 // pre-meeting view: header (date/time, location, status, live quorum, packets ready) over the agenda by
 // kind, the per-patient packet list, and a rail of attendance/quorum + schedule. The SERVER owns the §2.2

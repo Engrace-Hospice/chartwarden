@@ -10,7 +10,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — administration detail (M13 §4.1/§6.1 #11, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". Read-only detail of a single
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Detail". Read-only detail of a single
 // administration within the retention-class-C audit boundary: the §2.2 lifecycle status, the §2.5 late-entry
 // tier, the actor kind (clinician / caregiver-attested), the witness pair for controlled substances, the §2.9
 // BCMA match result, and the caregiver-cosign posture.

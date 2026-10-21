@@ -4,7 +4,7 @@
 **Requirement (user, 2026-10-11):** "we want full claim cycle with the clearinghouses" — every stage from
 eligibility to posted payment must run through a clearinghouse adapter, and Stedi is only the first.
 
-Authority: [`WARDENX_INTEGRATIONS_v0_1.md`](../../architecture/WARDENX_INTEGRATIONS_v0_1.md) §3.1 (adapter package
+Authority: [`CHARTWARDEN_INTEGRATIONS_v0_1.md`](../../architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md) §3.1 (adapter package
 model), §2 (inventory), [ADR-0020](../../adr/ADR-0020-integration-governance.md),
 [ADR-0028](../../adr/ADR-0028-adapter-package-codepaths.md). Where this plan disagrees with them, they win.
 Vendor names not already in the repo are **candidates from general market knowledge, not verified** (hospice
@@ -54,12 +54,12 @@ the whole row set passes conformance. "Today" is the state of `main`; module own
 | # | Stage | X12 / mechanism | Port method | Owner | Today |
 |---|---|---|---|---|---|
 | 1 | Eligibility / benefit-period check | 270/271 (HETS or clearinghouse) | `checkEligibility` | M5 → M23 | HETS codec + CORE MIME, bound only if `M23_HETS_TRANSPORT` set; MBI never persisted |
-| 2 | Pre-submission validation | WardenX §11.A rules (+ clearinghouse edits as a second validator) | `validateOnly` (dry-run) | M23 | internal only; Stedi edits run before provisioning, so usable as validator |
+| 2 | Pre-submission validation | ChartWarden §11.A rules (+ clearinghouse edits as a second validator) | `validateOnly` (dry-run) | M23 | internal only; Stedi edits run before provisioning, so usable as validator |
 | 3 | NOE (election notice, day-5 deadline) | 837I TOB 81A | `submitNotice` | M23 / DDE queue | state service + ack jobs exist; **no 837I NOE builder in the repo** (only the 8xC/8xD transfer-notice builder), generation is the external gateway/sidecar; sandbox needs `BHT06=RP`, CL102 |
 | 4 | Claim submission | 837I TOB 81x/82x | `submitClaim` | M23 | claim *document* fixed in Phase 3 (`ClaimDocument837i`); **X12/JSON generation is the external gateway/pyx12 sidecar, not in the repo**; Stedi rules (freq 2/3, `DTP*096*TM`, CLM02 = Σ lines) not yet applied |
 | 5 | Interchange / syntax ack | 999 / TA1 | `fetchAcknowledgments` | M23 | **no 999/TA1 parser in the repo** (`acks/` has date helpers only; `parse999` is a sidecar call) |
 | 6 | Claim acknowledgment (clearinghouse then payer) | 277CA; clearinghouse-accepted vs payer-accepted | `fetchAcknowledgments` | M23 → M25 | `parse-277ca`; **single ack state, needs split** |
-| 7 | Rejection / RTP handling | 277CA reject, DDE RTP | — (workflow) | DDE queue (M23) | queue built (ADR-0052); human corrects in DDE, WardenX never holds DDE creds |
+| 7 | Rejection / RTP handling | 277CA reject, DDE RTP | — (workflow) | DDE queue (M23) | queue built (ADR-0052); human corrects in DDE, ChartWarden never holds DDE creds |
 | 8 | Adjustment / replacement | 837I freq 7 (`REF*F8`) | `submitClaim` (freq 7) | M23 | not supported; Stedi/CMS conflict open (Q17) |
 | 9 | Cancel | 837I freq 8 | `submitClaim` (freq 8) | M23 | not supported |
 | 10 | Remittance | 835 ERA | `fetchRemittances` | M25 | `parse-835` exists; worker port unbound |
@@ -71,7 +71,7 @@ the whole row set passes conformance. "Today" is the state of `main`; module own
 | 16 | Event intake (push) | webhook signed per destination; ordering not guaranteed | `verifyAndParseEvent` | platform | not built; Stedi events carry references only → fetch |
 
 Hospice-specific, not handled by any clearinghouse (Stedi confirmed no hospice rules): NOE timeliness, benefit
-period logic, revenue-code/HCPCS pairing, Q5006 reporting, PM modifier. These stay in WardenX §11.A.
+period logic, revenue-code/HCPCS pairing, Q5006 reporting, PM modifier. These stay in ChartWarden §11.A.
 
 ## 3. Plan
 
@@ -144,7 +144,7 @@ vendors. No speculative framework (YAGNI).
 - **Adjustments:** Stedi docs say Original Medicare does not accept freq 7/8, while their edit accepts it with
   `REF*F8`. Confirm with Stedi and the MAC before building stages 8–9.
 - **Metered CI:** each live suite adds a job; batch pushes.
-- **Decided (2026-10-11):** WardenX resells one clearinghouse (Stedi first), so the vendor choice is
+- **Decided (2026-10-11):** ChartWarden resells one clearinghouse (Stedi first), so the vendor choice is
   **platform configuration**, not a tenant-facing setting. A3 therefore stores the selection per
   ProviderEntity but writes it from an operator/platform surface (M19/M40), never a tenant admin screen. A
   tenant-chosen clearinghouse stays possible later through the same port without a redesign.

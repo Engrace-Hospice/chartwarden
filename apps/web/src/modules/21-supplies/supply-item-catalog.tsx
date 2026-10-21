@@ -1,5 +1,5 @@
 // apps/web/src/modules/21-supplies — S21.9 SUPPLY ITEM CATALOG (`/supplies/items`, §5.10,
-// Track B / ADR-0030). Spec: docs/design/screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md —
+// Track B / ADR-0030). Spec: docs/design/screens/clinical/CHARTWARDEN_UI_SUPPLY_DME_INVENTORY.md —
 // "Use Work Queue."
 //
 // D11's two halves in one browsable list: the PLATFORM catalog (HCPCS-keyed, org-less, the same answer for

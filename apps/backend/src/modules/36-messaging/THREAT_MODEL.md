@@ -2,7 +2,7 @@
 
 Captures the three non-code M36-T10 deliverables that have no gate of their own: the §4.10 STRIDE
 threat model (SEC-007 / M36-F09), the disaster-recovery tier, and the integration inventory. The
-authoritative text is the module spec (`docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md`);
+authoritative text is the module spec (`docs/modules/CHARTWARDEN_MODULE_36_MESSAGING_SPEC_v0_4.md`);
 this file is the in-repo pointer that travels with the code and names where each control lives.
 
 ## STRIDE threat model (spec §4.10)
@@ -311,7 +311,7 @@ An officer previews and runs the offboarding of a departed user (`messaging.offb
 **SOS field-safety voice escalation is the platform's single Tier-1 dependency** (architecture /
 integrations §6.13; spec §7.7). Tier-1 = life-safety: the `messaging.send_voice` queue runs at
 `priority: 10`, and on three failed voice attempts the `field_safety.escalated` system alert fires,
-supervisor SMS+push are escalated explicitly, and WardenX ops are paged (spec §4.4 voice queue row).
+supervisor SMS+push are escalated explicitly, and ChartWarden ops are paged (spec §4.4 voice queue row).
 The **in-app Socket.IO floor** is the always-available delivery path — no external vendor outage can
 prevent an alert reaching a connected client (spec §2.4 invariant 1). All other channels (push, SMS,
 email) are additive and degrade to `partial` outcomes without blocking the dispatch.

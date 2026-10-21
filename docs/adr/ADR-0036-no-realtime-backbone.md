@@ -7,9 +7,9 @@
 - **Phase:** post-build divergence record. All 40 modules shipped without a realtime transport;
   this ADR records that as a decision rather than leaving the architecture doc describing an
   unbuilt channel in present tense.
-- **Supersedes (wording):** `WARDENX_ARCHITECTURE_v0_11.md` §25.13 ("modules communicate via
+- **Supersedes (wording):** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §25.13 ("modules communicate via
   Socket.IO events") and every present-tense Socket.IO delivery claim in
-  `WARDENX_SYSTEM_DESIGN_v0.3.md`; both now carry a verified divergence banner pointing here.
+  `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`; both now carry a verified divergence banner pointing here.
 - **Related:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (seam/outbox consumption
   needs no import edge — the pattern that actually carries cross-module effects).
 

@@ -1,4 +1,4 @@
-# Catalogue UI — refonte WardenX
+# Catalogue UI — refonte ChartWarden
 
 Ce catalogue est la référence de migration pour les écrans Web. Les composants proviennent de
 `@chartwarden/ui`; ils consomment uniquement les tokens Lantern et fonctionnent en light, twilight-dark,

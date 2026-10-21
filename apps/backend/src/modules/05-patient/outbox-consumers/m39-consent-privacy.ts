@@ -8,7 +8,7 @@
 // re-read of all the patient's current consents" — re-checked against current code and found HALF
 // wrong: the mapping DOES exist (`apps/backend/src/modules/39-consent/consumers.ts`'s
 // `TYPE_TO_PRIVACY_FLAG`, built at M39-T08/T09 and never called by anything), and only "42_cfr_part_2
-// _release" → "sud" is real — M39's own spec §4.3.1 (WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:1433-1452)
+// _release" → "sud" is real — M39's own spec §4.3.1 (CHARTWARDEN_MODULE_39_CONSENT_SPEC_v0_3.md:1433-1452)
 // is explicit that HIV/mental_health/genetic are "M5-delegated": computed from `hipaa_release`
 // consent-recipient SCOPE by a wholly different, unbuilt mechanism, never pushed by an M39 event. This
 // consumer implements exactly the ONE real relationship — SUD/Part-2 — and nothing else.

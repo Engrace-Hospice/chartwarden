@@ -1,4 +1,4 @@
-# WardenX — App Overview for New Developers
+# ChartWarden — App Overview for New Developers
 
 A guided map of *what this codebase is and how it fits together*, for an engineer joining the
 project. It complements, and doesn't repeat, these companion docs:
@@ -19,7 +19,7 @@ module's code feels familiar rather than starting from zero.
 
 ## What this app is
 
-WardenX is a **multi-tenant hospice EHR (electronic health record) SaaS**. It covers the full
+ChartWarden is a **multi-tenant hospice EHR (electronic health record) SaaS**. It covers the full
 operational surface of a hospice organization: clinical documentation (admissions, care plans,
 encounters, assessments, medications, IDG team meetings), field operations (scheduling, EVV,
 on-call triage, field safety, supplies/DME, inpatient units), the Medicare/Medicaid revenue cycle
@@ -295,8 +295,8 @@ an accurate, current read on what's actually built versus scaffolded, per module
 - **Set up your local environment / run the app** → [`docs/DEVELOPMENT.md`](./DEVELOPMENT.md) and
   the local-app runbook it links
 - **Find a module or UI spec** → [`docs/modules/README.md`](./modules/README.md),
-  [`docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md)
+  [`docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md`](./design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md)
 - **Understand *why* the architecture is shaped this way** → `docs/architecture/`
-  (`WARDENX_ARCHITECTURE_v0_11.md` is the authoritative system design doc) and `docs/adr/`
+  (`CHARTWARDEN_ARCHITECTURE_v0_11.md` is the authoritative system design doc) and `docs/adr/`
 - **Check current build status per module** → `audit/implementation-status/IMPLEMENTATION_STATUS.md`
   (regenerate with `bun run status:matrix`)

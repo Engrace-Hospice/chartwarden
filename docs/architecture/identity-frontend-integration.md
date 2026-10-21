@@ -1,6 +1,6 @@
 # Identity frontend integration
 
-Status: implemented against the generated WardenX API client and Better Auth client in the current
+Status: implemented against the generated ChartWarden API client and Better Auth client in the current
 worktree.
 
 ## Authentication continuation

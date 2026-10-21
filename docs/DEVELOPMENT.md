@@ -1,6 +1,6 @@
-# WardenX — Development Runbook
+# ChartWarden — Development Runbook
 
-How to build, verify, and extend the WardenX monorepo. This is the Phase 0 output: a
+How to build, verify, and extend the ChartWarden monorepo. This is the Phase 0 output: a
 buildable skeleton with CI-enforced architecture fitness. **No business logic yet** —
 Phase 1 builds feature modules against the gates described here.
 

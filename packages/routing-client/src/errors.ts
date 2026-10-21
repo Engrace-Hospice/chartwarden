@@ -1,6 +1,6 @@
 // @chartwarden/routing-client — the typed adapter-failure contract (M17-T07, spec §4.10 / §7.9 / D1).
 //
-// Per WARDENX_INTEGRATIONS and the §25.14 adapter mandate a raw `fetch` rejection must NEVER propagate to
+// Per CHARTWARDEN_INTEGRATIONS and the §25.14 adapter mandate a raw `fetch` rejection must NEVER propagate to
 // an M17 caller: every routing-engine transport failure is normalised to the {@link RoutingDegradedError}
 // envelope so the `optimize-day` worker (M17-T08) decides degrade-vs-skip from a single typed shape. On a
 // degraded run the cron logs `m17.route_optimization_degraded`, emits the warn alert, and the day view shows

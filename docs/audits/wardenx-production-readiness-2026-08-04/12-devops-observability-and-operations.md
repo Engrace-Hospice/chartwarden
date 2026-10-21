@@ -32,7 +32,7 @@
 - Affected workflow: Data recovery and tenant isolation after restore
 - Affected persona: Operator, all tenants
 - Evidence: DR documentation admits restored-schema RLS smoke is not implemented; local compose explicitly provides no HA/backups. No real backup artifact, offsite policy, restore duration, object version recovery, or queue reconciliation evidence was available.
-- File(s): `docs/architecture/WARDENX_DR_BCP_v0.1.md:764-766`; `docker-compose.yml:1-7`
+- File(s): `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md:764-766`; `docker-compose.yml:1-7`
 - Symbol(s): DR drill process
 - Description: Runbooks and synthetic scripts do not prove recoverability of PostgreSQL, MinIO versions, Valkey/job state, and secrets together.
 - Root cause: No production target or scheduled evidence-producing drill.

@@ -1,4 +1,4 @@
-# WardenX — BLOCKER Re-Audit (post-remediation), 2026-06-13
+# ChartWarden — BLOCKER Re-Audit (post-remediation), 2026-06-13
 
 Re-verification of every June-13 BLOCKER-class finding against the **current reconciled spec text +
 the 25 ADRs**, after this session's remediation (Batches 1/2/3/3b/5, ADR-0024/0025, CFR track).

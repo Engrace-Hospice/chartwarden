@@ -1,6 +1,6 @@
-# WardenX — Business Logic, Workflows &amp; Functionality (As Built)
+# ChartWarden — Business Logic, Workflows &amp; Functionality (As Built)
 
-This document describes the business logic **actually implemented in code** across WardenX's 40
+This document describes the business logic **actually implemented in code** across ChartWarden's 40
 modules — state machines, validation rules, calculation logic, and cross-module workflows. It is
 grounded in `apps/backend/src/modules/*` and the backing `packages/*` domain libraries, not in
 `docs/modules/*` specs (which are implementation *proposals* and may describe things not yet

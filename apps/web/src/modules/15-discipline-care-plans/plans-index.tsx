@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the DISCIPLINE PLANS INDEX (§5.1 #1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
 //
 // The four-plan grid for one patient: every CoP discipline plan with its status, its next-due clock and
 // its last signed version. Reads GET /api/v1/discipline-plans?patientId= (route 1) — the server scopes the

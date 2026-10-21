@@ -198,7 +198,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-149 (#248) — m30 MOVED here from declaredConsumers, along with all seven of its M11 siblings
     // below: M30's own §1.1 relationship inventory states flatly "Outbox publication is the only
     // cross-module communication M30 performs at the boundary. M30 *calls* … M11 … reader seams as
-    // in-process function calls" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353) — M30
+    // in-process function calls" (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353) — M30
     // never subscribes to an upstream module's outbox. The order-completion/discontinuation-timeliness/
     // lab-transmission/results-lifecycle measures M11's own spec cites (§D14, line 2844) as the M30
     // destination are real but genuinely unbound one layer deeper than the catalog declaration: the

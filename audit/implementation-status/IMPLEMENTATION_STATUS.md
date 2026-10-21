@@ -1,4 +1,4 @@
-# WardenX — Module Implementation-Status Matrix
+# ChartWarden — Module Implementation-Status Matrix
 
 > **Generated, advisory report** (`bun run status:matrix`). A green `arch:fitness` proves the
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.

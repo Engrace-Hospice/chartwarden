@@ -1,6 +1,6 @@
 # Runbook: M36 escalation fallback ("when push fails, who calls whom") and quarterly drills
 
-WP 4.11 of the messaging hub. This is what a person does when WardenX cannot get an acknowledgment request in front of a
+WP 4.11 of the messaging hub. This is what a person does when ChartWarden cannot get an acknowledgment request in front of a
 clinician by itself, and how the agency proves, every quarter, that it can still do that. It is a **template**: every
 name, number and rota below is a placeholder the agency fills in (section 4). It contains no patient information and must
 never be filled in with any.
@@ -79,7 +79,7 @@ Nothing here pages a clinician. These are signals for a **supervisor** and for *
 The queue row carries the assignee's id (null on a restricted row) and display name (kept on a restricted row), the **requester's display name** (`requester_display_name`, also kept on a restricted row) and `request_ref`, the request's own id, present on **every** row including restricted ones (`apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts`, `Item`). `request_ref` is the handle the supervisor reassign uses; it opens nothing, and every route that reads a request, a thread or a patient still answers 404 without channel visibility. No requester id and no role class is returned. Showing the requester name and `request_ref` on restricted rows is **OPEN** for compliance / Part 2 review (ADR-0078).
 
 What does **not** exist: Alertmanager rules in the repo (the operator scrapes the gauges and writes their own, see
-[`WARDENX_OPS_RUNBOOK_v0.1.md` section 16.8](../architecture/WARDENX_OPS_RUNBOOK_v0.1.md)), percentiles, a phone page to a supervisor that can actually be delivered (the platform plans it for a verified endpoint, but **no vendor transport exists**; see G-3 in section 9), a supervisor action to acknowledge or resolve from the queue, and a supervisor way into a
+[`CHARTWARDEN_OPS_RUNBOOK_v0.1.md` section 16.8](../architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md)), percentiles, a phone page to a supervisor that can actually be delivered (the platform plans it for a verified endpoint, but **no vendor transport exists**; see G-3 in section 9), a supervisor action to acknowledge or resolve from the queue, and a supervisor way into a
 conversation they are not a member of (a supervisor who needs the content asks a channel member or the sender). The window between a request going quiet and a human noticing is therefore the
 supervisor looking at the queue or the operator watching the gauges. **OPEN:** who watches either outside office hours.
 
@@ -114,18 +114,18 @@ Each person is called once; if a person was already reached, skip to the next. *
 
 Rules for the tree:
 
-- Script for A (the assignee): "WardenX shows a response request waiting for you; please sign in and open Messages."
-- Script for S (the sender): "Your WardenX request is still unanswered. Can you reach the assignee, or tell me who else
+- Script for A (the assignee): "ChartWarden shows a response request waiting for you; please sign in and open Messages."
+- Script for S (the sender): "Your ChartWarden request is still unanswered. Can you reach the assignee, or tell me who else
   should be told?" The supervisor, not the sender, moves the request (section 5.3 step 3); the sender may also reassign it themselves from the card while it is not yet taken.
 - Script for T, C, D, L: these people are **not** the assignee and cannot acknowledge the request. Say: "You may be asked
-  to take over a WardenX request. Please stand by." Never tell them a request is waiting for them unless it has been
+  to take over a ChartWarden request. Please stand by." Never tell them a request is waiting for them unless it has been
   reassigned to them.
 - Verify the person by the agency's normal verification procedure.
 - Never say a patient name, a diagnosis or message content on the call, and never put them in a text or voicemail.
   **Emergency carve-out (OPEN):** what may be said to summon emergency help (for example giving an address to the
   emergency number) is decided by the sender or the clinical supervisor under the agency's emergency procedure, not by this
   runbook. A restricted row where the sender and assignee are both unreachable gives no patient identity at all, so the
-  supervisor cannot summon help from WardenX data; the agency's own records and procedure must. **OPEN (brief section 13):**
+  supervisor cannot summon help from ChartWarden data; the agency's own records and procedure must. **OPEN (brief section 13):**
   also whether a clinician-to-clinician verbal handoff of the content is permitted.
 - Call from the agency's own phone system or the numbers on file; never use a number taken from a message.
 - If a step reaches voicemail, leave the generic line above and move on; do not wait for a call back. Record each attempt
@@ -162,7 +162,7 @@ Rules for the tree:
 
 ### 5.3 Reaching a human and recording that they have it
 
-This is the honest part. **WardenX has no write path for "acknowledged by phone".** Only the assigned clinician can mark a
+This is the honest part. **ChartWarden has no write path for "acknowledged by phone".** Only the assigned clinician can mark a
 request acknowledged, and only by signing in and pressing "Take responsibility". The supervisor cannot do it for them.
 What a supervisor **can** do is move a waiting request to a reachable, qualified clinician, who then takes responsibility in
 their own session (supervisor reassign, ADR-0078).
@@ -174,7 +174,7 @@ their own session (supervisor reassign, ADR-0078).
 3. **If the assignee cannot be reached or cannot sign in, the supervisor reassigns.** From the queue row press **Reassign**,
    choose a reachable, qualified colleague from the list (it shows eligible people only), choose the **reason code** that fits
    (`assignee_unreachable`, `assignee_unable_to_sign_in`, `assignee_off_shift`, `coverage_change`, `workload` or
-   `other_operational`) and confirm. Then **call the new assignee**: "WardenX shows a response request waiting for you; please
+   `other_operational`) and confirm. Then **call the new assignee**: "ChartWarden shows a response request waiting for you; please
    sign in and open Messages." They take responsibility **in their own session**. Notes: it works on a restricted row and on a
    `failed_unreachable` row (the timer watches it again); it is refused for an `acknowledged`, `resolved` or `cancelled`
    request (`409`); a `422` means pick a differently qualified colleague (no reason is given; an empty list or a `422` for every colleague can mean you are walled off from the patient, so ask a person who is admitted, or the clinical lead); a `409` that mentions the clinical lead means this request has been moved by supervisors five times in 24 hours: ask the clinical lead; a `429` means wait and try
@@ -186,9 +186,9 @@ their own session (supervisor reassign, ADR-0078).
    (**OPEN**). If the supervisor needs the content, they ask a channel member or the sender (with Part 2 access where it applies); a supervisor who is not a member cannot read the conversation.
 6. For `critical_symptom` (latent: no writer today), call the sender first (section 4) and state in the log who owns the
    decision to call 911 / the agency emergency procedure (**OPEN**, provisional: the clinical supervisor on duty, acting on
-   the sender's verbal account; they do not wait for WardenX). If both the sender and the assignee are unreachable or
-   unknown, the supervisor can still reassign to a reachable qualified colleague, but a patient who may be in crisis is the agency emergency procedure's, not WardenX's. Whether this is enough for the clinical lead is **OPEN** (brief section 13).
-7. A verbal "I've got it" from someone who has **not seen the content in WardenX does not close anything**. The request is
+   the sender's verbal account; they do not wait for ChartWarden). If both the sender and the assignee are unreachable or
+   unknown, the supervisor can still reassign to a reachable qualified colleague, but a patient who may be in crisis is the agency emergency procedure's, not ChartWarden's. Whether this is enough for the clinical lead is **OPEN** (brief section 13).
+7. A verbal "I've got it" from someone who has **not seen the content in ChartWarden does not close anything**. The request is
    closed only when it is `acknowledged` in the system.
 8. Never ask anyone to sign in as someone else or to share a session. Never acknowledge on behalf of another person. No direct database writes, ever.
 

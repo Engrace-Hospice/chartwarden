@@ -1,7 +1,7 @@
 /**
- * WardenX - AI governance catalog check
+ * ChartWarden - AI governance catalog check
  * -------------------------------------
- * Enforces the source files required by docs/architecture/WARDENX_AI_GOVERNANCE_v0.2.md
+ * Enforces the source files required by docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
  * section 4.1 and 4.4, AND joins the three parallel AI-capability registries that used to have
  * no gate connecting them (ARCH-019 / TASK-062):
  *

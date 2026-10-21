@@ -5,7 +5,7 @@
 ### Overall Status
 Blocked
 
-The implemented WardenX surface is architecturally disciplined, with strong manifest-driven boundaries, generated status reports, RLS/audit-trigger conventions, and substantial landed work across M2-M14, M17, M18, M22, M33, M34, M36, M38, M39, and M40. The current working tree is nevertheless blocked because the in-progress M30 Quality slice is partially added: repository code references database schema symbols that are not exported, boundary rules fail, tenancy rules fail, tests fail, and the status matrix is stale.
+The implemented ChartWarden surface is architecturally disciplined, with strong manifest-driven boundaries, generated status reports, RLS/audit-trigger conventions, and substantial landed work across M2-M14, M17, M18, M22, M33, M34, M36, M38, M39, and M40. The current working tree is nevertheless blocked because the in-progress M30 Quality slice is partially added: repository code references database schema symbols that are not exported, boundary rules fail, tenancy rules fail, tests fail, and the status matrix is stale.
 
 This audit does not penalize planned modules that remain honest placeholders. The highest risks are implemented-or-referenced behavior that is not wired safely in production: ABAC/step-up evaluator installation, PHI read audit coverage, route-level frontend auth guarding, PHI leakage through URLs/localStorage/logs, document export controls, M34 platform-bypass audit wiring, and M30 quality schema/migration drift.
 

@@ -99,7 +99,7 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: AdmissionDetail,
     },
     {
-      // Discharge / revocation / transfer-out stepper (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER) — reached
+      // Discharge / revocation / transfer-out stepper (CHARTWARDEN_UI_DISCHARGE_REVOCATION_TRANSFER) — reached
       // from the Admission Detail header of an active / on-hold admission; omitted from nav (param path).
       // `discharge.create` is the umbrella key (route 39's fallback gate); the server derives the real
       // per-reason key (`discharge.moved`, `transfer.out`, `revocation.create`, …) on submit.
@@ -163,7 +163,7 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: PatientElectionCert,
     },
     {
-      // Death & Pronouncement (WARDENX_UI_DEATH_PRONOUNCEMENT) — launched from the admission detail.
+      // Death & Pronouncement (CHARTWARDEN_UI_DEATH_PRONOUNCEMENT) — launched from the admission detail.
       id: "admission.death-pronouncement",
       path: "/admissions/:id/death",
       title: "Death & Pronouncement",
@@ -171,7 +171,7 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       screen: DeathPronouncement,
     },
     {
-      // Transfer-in (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER, separate entry) — pre-activation intake.
+      // Transfer-in (CHARTWARDEN_UI_DISCHARGE_REVOCATION_TRANSFER, separate entry) — pre-activation intake.
       id: "admission.transfer-in",
       path: "/admissions/:id/transfer-in",
       title: "Transfer-in",

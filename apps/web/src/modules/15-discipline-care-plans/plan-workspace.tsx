@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the SHARED DISCIPLINE PLAN WORKSPACE (§5.1 #2/#6/#8/#9).
-// Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
 //
 // The four kind views differ in their EXTRAS (aide → supervisory ledger; volunteer → assignments), not in
 // their spine: every discipline plan is goals + interventions + assessments over a signed version chain.

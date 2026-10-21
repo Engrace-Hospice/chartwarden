@@ -19,7 +19,7 @@ import { DegradedError, type IqiesOperation } from "./errors";
  *
  * `correlationId` is the IDEMPOTENCY KEY, not a log tag: `iqies-submit-worker` derives it
  * deterministically from the submission id, so a retry after an ambiguous failure is the same request.
- * That is what makes the worker's at-least-once delivery safe (`WARDENX_INTEGRATIONS_v0_1.md` §5).
+ * That is what makes the worker's at-least-once delivery safe (`CHARTWARDEN_INTEGRATIONS_v0_1.md` §5).
  */
 export interface SubmitBatchRequest {
   readonly envelope: HopeSubmissionEnvelope;

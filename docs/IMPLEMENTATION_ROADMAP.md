@@ -1,6 +1,6 @@
-# WardenX — Implementation Roadmap (index)
+# ChartWarden — Implementation Roadmap (index)
 
-**Status:** Living index. Phasing is authoritative from `WARDENX_ARCHITECTURE_v0_11.md` §20
+**Status:** Living index. Phasing is authoritative from `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20
 (Build Sequence) and §20.A (Phased Delivery Plan); these plan files **operationalize** those
 sections into buildable waves. If a plan file ever conflicts with architecture §20/§20.A,
 **architecture wins** (per the repo authority rule) and the plan file is corrected.
@@ -18,7 +18,7 @@ sections into buildable waves. If a plan file ever conflicts with architecture �
 New builds: Phase 1 = 29, Phase 2 = 10, Phase 3 = 1 (M37) → 40 modules, each built exactly once.
 Phase 2/3 "upgrades" re-open already-built modules to flip default-off flags; they are not new module
 counts. (Architecture §20.A previously had an off-by-one — prose "28" vs 29 enumerated — now corrected
-in `WARDENX_ARCHITECTURE_v0_11.md`.)
+in `CHARTWARDEN_ARCHITECTURE_v0_11.md`.)
 
 ## Phase 1 wave plans (Archon task plans)
 

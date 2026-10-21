@@ -1,5 +1,5 @@
 name: Audit finding
-description: A reproduced production-readiness finding (see docs/reviews/PROMPT_5_WARDENX_PRODUCTION_READINESS_AUDIT.md)
+description: A reproduced production-readiness finding (see docs/reviews/PROMPT_5_CHARTWARDEN_PRODUCTION_READINESS_AUDIT.md)
 title: "F-NNN · <area> — <one-line defect>"
 labels: ["audit", "status/available"]
 body:

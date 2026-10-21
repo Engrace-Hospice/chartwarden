@@ -1,4 +1,4 @@
-# WardenX — Go-Live Action Checklist
+# ChartWarden — Go-Live Action Checklist
 
 **Compiled:** 2026-06-13 · **Branch:** `fix/manifest-spec-mismatches`
 
@@ -19,7 +19,7 @@ Status: ☐ open · ◐ in progress · ☑ done.
 | ☐ | **Ratify ADR-0026** (M19-F03: vendor-operator auth via a new M2 `external_triage_vendor` session class) — then the M2 + M19 spec edits can be applied. | ADR-0026 (Proposed) + SEC-006 App. A.3 | M19 Hybrid/Centralized models | `docs/adr/ADR-0026-*.md` |
 | ☐ | **Manifest foundation-edge consistency** — the manifest is inconsistent on whether foundation deps 1–4 are listed as edges (M34=`[2,3,4,36]` lists them; M22=`[1,5]`/M16=`[5,6,36]` don't). Normalize the convention corpus-wide; specs now mirror the manifest as-is. | ADR-0005 | dependency-cruiser determinism | `audit/TRIAGE_RESULTS.md` (Batch-3) |
 | ☐ | **M18 `codePaths` += `packages/evv-aggregators`** (M18 owns the per-state adapter package; it's missing from `M18.codePaths` → no ownership coverage). | ARCH-141 / check-table-ownership | M18 ownership lint | `audit/RE_AUDIT_BLOCKERS_2026-06-13.md` |
-| ☐ | **Architecture filename vs content** — `WARDENX_ARCHITECTURE_v0_11.md` is internally "v0.12"; rename the file (and ~15 references) or accept the divergence. | doc hygiene | discoverability | initial review |
+| ☐ | **Architecture filename vs content** — `CHARTWARDEN_ARCHITECTURE_v0_11.md` is internally "v0.12"; rename the file (and ~15 references) or accept the divergence. | doc hygiene | discoverability | initial review |
 | ☐ | **Banner-vs-body re-verification** before honoring any module "Locked" — this session caught M34's remediation banner over-claiming the org_id schema and the platform_ops re-base. Spot-check every module changelog claim against its body. | ADR re-lock gate | re-lock integrity | `audit/RE_AUDIT_BLOCKERS_2026-06-13.md` |
 
 ## 2. Legal / Contracts — BAA / ZDR / QSOA executions (INT-014 hard gate)

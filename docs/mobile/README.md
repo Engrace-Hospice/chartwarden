@@ -1,8 +1,8 @@
-# WardenX Mobile — cadrage et contrats inter-repositories
+# ChartWarden Mobile — cadrage et contrats inter-repositories
 
 ## Statut et périmètre
 
-Ce dossier est le cadrage documentaire de l’application métier mobile WardenX. La cible est la
+Ce dossier est le cadrage documentaire de l’application métier mobile ChartWarden. La cible est la
 parité fonctionnelle progressive avec `apps/web` pour les professionnels hospice. `apps/portal` et
 `apps/admin` ne sont pas des sources de routes à porter dans ce lot. Ils restent des éléments de
 l’écosystème, pas des fonctionnalités déclarées hors cible.
@@ -19,7 +19,7 @@ native. L’EVV offline, les notifications natives et les écrans métier resten
   Native, dans le repository séparé. Sa ratification d’architecture demeure une décision humaine.
 - Expo SecureStore pour les secrets appropriés. AsyncStorage est limité aux préférences non sensibles ;
   aucune PHI et aucun jeton n’y sont admis.
-- Le design mobile reprend les tokens WardenX : bleu clinique `#1a56eb`, surfaces slate, Inter pour
+- Le design mobile reprend les tokens ChartWarden : bleu clinique `#1a56eb`, surfaces slate, Inter pour
   l’interface et IBM Plex Mono pour les identifiants. Les composants sont natifs React Native ; aucun
   composant DOM n’est importé.
 - Le backend reste l’autorité pour les permissions, les scopes, les validations et les transitions.

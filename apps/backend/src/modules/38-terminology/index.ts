@@ -15,7 +15,7 @@
 // DR/INT (ADR-0009): M38 is **DR Tier 4** — terminology is reference data; a degradation pauses
 // version LOADS while cached/last-loaded lookups keep serving, so patient care and billing are
 // unaffected (no RTO pressure). Its sole external surface — the terminology source feeds (CMS
-// ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm) — is row #23 of `WARDENX_INTEGRATIONS_v0_1`
+// ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm) — is row #23 of `CHARTWARDEN_INTEGRATIONS_v0_1`
 // (inbound, scheduled, no PHI, platform license creds, `packages/terminology-loader`, Tier 4).
 export {
   type TerminologySeamDeps,

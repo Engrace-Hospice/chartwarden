@@ -1,6 +1,6 @@
 import { CenteredCardLayout } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Reset Password (M2 Auth, AUTH polish).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "password reset" (step 2, /reset-password). The reset
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "password reset" (step 2, /reset-password). The reset
 // link from /forgot lands here with `?token=…` (or `?error=…` if Better Auth rejected it before redirect).
 // Set a new password (length floor mirrors the server's minPasswordLength=12; the server stays
 // authoritative and also runs the HIBP breach check), then hand off to /login.

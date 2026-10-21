@@ -1,8 +1,8 @@
 # Module 12 (DoseSpot Integration) — DR Tier + Integration Inventory + STRIDE
 
 M12-T09 (spec §1.2/§1.3, §2.2 D2, §2.6, §2.7 D9, §7.4 D7, §7.7, §8). Companion to the module code;
-cross-references `docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
-`WARDENX_SECURITY_HARDENING_v0_2.md`, and the M12 spec. Prescribing sits on the bedside-care path (a verbal
+cross-references `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
+`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and the M12 spec. Prescribing sits on the bedside-care path (a verbal
 medication order is clinically active the instant it is recorded, 42 CFR 418.104(b)); the DoseSpot
 transmission track is externally dependent and deliberately decoupled. **`dosespot.epcs` is OFF in Phase 1**
 — controlled-substance signing is architecture-only (deny-stub); no Phase-1 path depends on EPCS.

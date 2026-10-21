@@ -1,4 +1,4 @@
-# WardenX — Product Requirements Document (Retrospective Intent)
+# ChartWarden — Product Requirements Document (Retrospective Intent)
 
 > **Status**: Retrospective intent record, written 2026-08-14, after the 40-module build reached
 > feature-complete on `main`. A PRD is normally written *before* building; this one exists to make
@@ -8,7 +8,7 @@
 >
 > **Scope guard**: this document contains *product intent only*. Every engineering decision
 > (stack, data model, security boundaries, testing architecture) lives in the authoritative
-> architecture corpus — `docs/architecture/` (top authority: `WARDENX_ARCHITECTURE_v0_11.md`) and
+> architecture corpus — `docs/architecture/` (top authority: `CHARTWARDEN_ARCHITECTURE_v0_11.md`) and
 > `docs/adr/`. Where this document and architecture conflict, **architecture wins**.
 
 ---
@@ -40,7 +40,7 @@ after-hours documentation — each individually survivable, together an existent
 mid-size operators and a wall in front of new ones.
 
 *(Intent framing check: nothing above prescribes a solution — an incumbent could answer this
-problem with services, a rules engine, or an AI layer. WardenX's answer is the thesis below.)*
+problem with services, a rules engine, or an AI layer. ChartWarden's answer is the thesis below.)*
 
 ## 2. Evidence
 
@@ -60,7 +60,7 @@ while its **value** leg is still mostly assumption.
 
 **Why this**: compliance in hospice is not a reporting problem, it is a *point-of-care* problem.
 Every deficiency, denial, and cap surprise traces back to a moment where the system could have
-known the rule and didn't. WardenX's bet is that encoding the regulatory mesh **into the write
+known the rule and didn't. ChartWarden's bet is that encoding the regulatory mesh **into the write
 path itself** — the visit can't publish without its gate, the med can't administer without five
 rights, the meeting can't adjourn past a patient's review floor, the tenant can tighten a floor
 but never loosen it — converts compliance from an audit finding into a non-event.
@@ -68,7 +68,7 @@ but never loosen it — converts compliance from an audit finding into a non-eve
 **Why it beats how they cope today** — four pillars, in priority order:
 
 1. **Compliance-native depth**: CoP/HOPE/HQRP/EVV/Part-2 rules enforced at the moment of
-   documentation, not discovered at survey. Incumbents retrofit rules as warnings; WardenX makes
+   documentation, not discovered at survey. Incumbents retrofit rules as warnings; ChartWarden makes
    the compliant path the only path (with audited, step-up-gated overrides where clinical reality
    demands them).
 2. **Full cycle in one tenant**: clinical documentation through claims, remittance, cap
@@ -89,7 +89,7 @@ afterthoughts. The window is the gap between AI being possible and incumbents ma
 **Who switches**: a barbell —
 
 - **Mid–large multi-site operators**, who feel the compliance and revenue-cycle pain at scale and
-  have the depth (IPU, cap management, multi-location ops) to use what WardenX built; and
+  have the depth (IPU, cap management, multi-location ops) to use what ChartWarden built; and
 - **De novo hospice operators**, who have no incumbent to displace and need the entire stack —
   EHR, billing, EVV, quality — on day one.
 
@@ -98,7 +98,7 @@ afterthoughts. The window is the gap between AI being possible and incumbents ma
 ```
 We believe a hospice EHR that enforces the regulatory mesh in the write path — and uses
 governed AI to cut documentation burden — will cause mid-size multi-site operators and de
-novo hospices to run their full operation (clinical through claims) on WardenX, resulting
+novo hospices to run their full operation (clinical through claims) on ChartWarden, resulting
 in fewer deficiencies/denials for the org and less after-hours charting for clinicians.
 
 We'll know we're RIGHT if 1–3 pilot hospices go fully live — admissions through billed and
@@ -125,7 +125,7 @@ burden. If this persona rejects the product, no buyer-level pillar survives (tha
 **Secondary personas** (buyers and daily operators, not the anchor): clinical director / DON
 (IDG cadence, supervisory compliance, survey readiness) · owner-administrator (census, cap
 exposure, clean claims) · compliance officer (audit trails, Part-2, HQRP) · biller · platform
-operator (WardenX's own tenant-ops staff).
+operator (ChartWarden's own tenant-ops staff).
 
 **Non-users**: see Non-goals (§8).
 
@@ -154,8 +154,8 @@ Outcome-shaped, measured at the pilot(s); baselines to be captured at go-live.
 
 | Metric | Target | How measured |
 |---|---|---|
-| Pilot tenants fully live on the core loop | 1–3 tenants within ~2 quarters of first go-live | Tenant runs admissions→claims→payment in WardenX only |
-| First-pass claim acceptance ("clean claims") | ≥ the tenant's pre-WardenX baseline (target: exceed it) | MAC acceptance/denial rates from remittance data, vs. tenant's prior-system baseline |
+| Pilot tenants fully live on the core loop | 1–3 tenants within ~2 quarters of first go-live | Tenant runs admissions→claims→payment in ChartWarden only |
+| First-pass claim acceptance ("clean claims") | ≥ the tenant's pre-ChartWarden baseline (target: exceed it) | MAC acceptance/denial rates from remittance data, vs. tenant's prior-system baseline |
 | HOPE submission acceptance | Accepted CMS submission for the pilot cohort, on time | Submission status per timepoint cohort |
 | Same-day documentation rate | Sustained increase over tenant baseline; late-entry tiers trend down | Encounter timestamps vs. visit times (the system already classifies late-entry tiers) |
 | After-hours charting time | Measurable reduction vs. go-live baseline (target TBD with pilot) | Time-in-system telemetry outside scheduled hours |
@@ -169,7 +169,7 @@ Outcome-shaped, measured at the pilot(s); baselines to be captured at go-live.
   universe; explicitly out, even though incumbent vendors bundle it.
 - **Palliative-only practices** — community palliative programs without a hospice benefit
   election are out of scope for this product generation.
-- **Compliance as advice** — WardenX does not ship a rules engine that *suggests*; where a rule
+- **Compliance as advice** — ChartWarden does not ship a rules engine that *suggests*; where a rule
   is a floor, it enforces (with audited overrides). "Warning fatigue parity" with incumbents is a
   non-goal.
 - **Autonomous AI documentation** — AI that writes the chart without a human in the loop is

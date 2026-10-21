@@ -10,7 +10,7 @@ M36's `selectTransactionalEmailTransport` had no provider slot filled, `transact
 - **Adapter** - `packages/messaging/src/notification/postmark-transactional-email.ts`. Implements the existing
   provider-agnostic `TransactionalEmailTransport` port over Postmark's `POST {base}/email` with the
   `X-Postmark-Server-Token` header. Postmark is the vendor the integration catalog names (DR/INT #14,
-  `WARDENX_INTEGRATIONS_v0_1.md` rows 14 / 241 / 268: BAA as defence in depth, **no PHI in the payload by rule**). SES can
+  `CHARTWARDEN_INTEGRATIONS_v0_1.md` rows 14 / 241 / 268: BAA as defence in depth, **no PHI in the payload by rule**). SES can
   follow as a sibling file implementing the same port.
   - 10 s request timeout (AbortController); up to 3 attempts; exponential backoff (250 ms, capped 5 s) honouring a numeric
     `Retry-After`; retry on 429, 5xx, network error and timeout; **permanent** failure on every other 4xx (bad token,

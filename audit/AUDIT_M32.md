@@ -1,8 +1,8 @@
-# WardenX Module Audit — Module 32 (AI Platform)
+# ChartWarden Module Audit — Module 32 (AI Platform)
 
-**Auditor:** WardenX Module Compliance Auditor (Principal Architect / HIPAA / Medicare / AI-Governance hat)
-**Spec under audit:** `WARDENX_MODULE_32_AI_PLATFORM_SPEC_v0_2.md` (Spec status: Locked v0.2)
-**Authoritative sources consulted:** `WARDENX_ARCHITECTURE_v0_11.md`, `WARDENX_AI_GOVERNANCE_v0.2.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `WARDENX_SYSTEM_DESIGN_v0.3.md`, `module-manifest.ts`, plus criteria packs ARCHITECTURE / SECURITY_AI / OPS_DR_INTEGRATIONS.
+**Auditor:** ChartWarden Module Compliance Auditor (Principal Architect / HIPAA / Medicare / AI-Governance hat)
+**Spec under audit:** `CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC_v0_2.md` (Spec status: Locked v0.2)
+**Authoritative sources consulted:** `CHARTWARDEN_ARCHITECTURE_v0_11.md`, `CHARTWARDEN_AI_GOVERNANCE_v0.2.md`, `CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`, `module-manifest.ts`, plus criteria packs ARCHITECTURE / SECURITY_AI / OPS_DR_INTEGRATIONS.
 **Date:** 2026-06-11
 
 ---
@@ -115,4 +115,4 @@ The proposal→approval→logging→eval→kill-switch lifecycle is substantiall
 
 ---
 
-*End AUDIT_M32. Findings cite criteria IDs from CRITERIA_ARCHITECTURE / CRITERIA_SECURITY_AI / CRITERIA_OPS_DR_INTEGRATIONS and were verified against WARDENX_AI_GOVERNANCE_v0.2.md and WARDENX_SECURITY_HARDENING_v0_2.md / WARDENX_ARCHITECTURE_v0_11.md directly for all BLOCKER items.*
+*End AUDIT_M32. Findings cite criteria IDs from CRITERIA_ARCHITECTURE / CRITERIA_SECURITY_AI / CRITERIA_OPS_DR_INTEGRATIONS and were verified against CHARTWARDEN_AI_GOVERNANCE_v0.2.md and CHARTWARDEN_SECURITY_HARDENING_v0_2.md / CHARTWARDEN_ARCHITECTURE_v0_11.md directly for all BLOCKER items.*

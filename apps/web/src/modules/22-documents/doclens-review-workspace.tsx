@@ -10,7 +10,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — INTAKE.ReviewSideBySide (DocLens, F-237; spec
-// docs/design/screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md "Review Workspace"). The human-in-the
+// docs/design/screens/clinical/CHARTWARDEN_UI_DOCLENS_EXTRACTION_REVIEW.md "Review Workspace"). The human-in-the
 // -loop boundary for DocLens: the source page on the left with every extracted value's bounding box laid
 // over it, the extracted fields on the right, and nothing reaches the chart until a reviewer has looked at
 // each value against the page and the review is completed with an attestation.

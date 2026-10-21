@@ -1,8 +1,8 @@
 # Module 17 (Scheduling & Route Optimization) — DR Tier + Integration Inventory + STRIDE
 
 M17-T08 (spec §8.3, §8.4, §8.5). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
-`WARDENX_SECURITY_HARDENING_v0_2.md`, and the M17 spec. Scheduling is **operational** infrastructure — the
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
+`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and the M17 spec. Scheduling is **operational** infrastructure — the
 field clinician's "My Visits" / day view is the first surface they need after a failure, and an EVV check-in
 (M18) brackets a visit only if the visit row is reachable — so the read path (visits, day/week views) carries
 the availability priority. Route optimization is OFF in Phase 1 (`scheduling.route_optimization`); the §7.9

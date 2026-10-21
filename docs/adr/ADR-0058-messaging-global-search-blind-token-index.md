@@ -118,7 +118,7 @@ Doing P1 before launch is far cheaper than after (there is no production search 
 
 Until every row is re-wrapped, `MESSAGING_ENCRYPTION_KEY` is the **only** way to read legacy message bodies and revisions, and the
 runbook says it is "not rotatable" and that message bodies "are not" recoverable by re-entry
-(`docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md` §8.3.3, lines ~1184-1190; table row ~1017). Losing it before the backfill finishes is
+(`docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §8.3.3, lines ~1184-1190; table row ~1017). Losing it before the backfill finishes is
 unrecoverable data loss, so the key is escrowed as a **precondition of P1**. This is custody on top of the existing model, not a
 replacement for it:
 
@@ -351,7 +351,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
      re-derives the tags on every page. A leaked cursor therefore reveals a timestamp and a message id the holder could already read.
 10. **Operational leakage hygiene.** Tags are always bound parameters; database statement logging, `pg_stat_statements` parameter
     capture, `auto_explain` and slow-query logs must not record them. **Owner and control:** the platform/DBA role (owner named in
-    the ops runbook, `docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md`, as a new checklist item "search tags are not logged") owns the
+    the ops runbook, `docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md`, as a new checklist item "search tags are not logged") owns the
     setting, and it is verified two ways: (a) a **runbook item** run at each environment change and each CNPG upgrade (ADR-0050):
     `SHOW log_statement`, `log_min_duration_statement` (set high or `-1` for the app role), `auto_explain.log_parameter_max_length`
     (`0`) and `pg_stat_statements.track_utility`/parameter behaviour; (b) a **live test** that runs a search with a sentinel token,

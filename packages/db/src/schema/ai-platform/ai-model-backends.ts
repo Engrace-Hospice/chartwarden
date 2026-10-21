@@ -55,7 +55,7 @@ export const aiModelBackend = pgTable(
     /** { structured_output, tool_use, vision, streaming } — a verbatim vendor-capability record. */
     supportedFeatures: jsonb("supported_features").notNull(),
 
-    /** Cloud-only; refs WARDENX_INTEGRATIONS + the signed contract. Required by the cloud CHECK. */
+    /** Cloud-only; refs CHARTWARDEN_INTEGRATIONS + the signed contract. Required by the cloud CHECK. */
     baaReference: text("baa_reference"),
     zdrStatus: text("zdr_status").notNull().default("not_applicable"),
 

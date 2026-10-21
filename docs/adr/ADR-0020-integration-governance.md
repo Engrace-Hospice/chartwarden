@@ -5,7 +5,7 @@
 - **Phase:** 5 (integration governance)
 - **Resolves:** X8, H5; M18-F01, M21 (DME/pharmacy), M22 (print/mail + fax/email ingest), M19
   (triage vendor), M02-F10 (HIBP), M11 (outbound ORM), M12 (DoseSpot webhook types), M30 (CAHPS)
-- **Changes:** `WARDENX_INTEGRATIONS_v0_1.md` (§2 inventory + §5 BAA register + §8 degraded-mode);
+- **Changes:** `CHARTWARDEN_INTEGRATIONS_v0_1.md` (§2 inventory + §5 BAA register + §8 degraded-mode);
   M18/M21/M22/M19/M02/M11/M12/M30 (remediation banners)
 
 ## Context
@@ -22,7 +22,7 @@ surfaces (the analogue of the module manifest); a surface that is not in it is n
 
 No external adapter is built or merged until its surface has all five:
 
-1. an **Integration-Inventory row** (`WARDENX_INTEGRATIONS §2`) — direction, protocol, PHI flag,
+1. an **Integration-Inventory row** (`CHARTWARDEN_INTEGRATIONS §2`) — direction, protocol, PHI flag,
    BAA-required flag, credential scope, owning module(s), adapter package, DR tier;
 2. a **§6 per-integration contract** (auth, endpoints, idempotency, retry/backoff, error mapping);
 3. a **§5 BAA-register entry** (vendor, PHI?, BAA status, signer, date);
@@ -46,7 +46,7 @@ to paper, or block with a clear operator message).
 
 ### D4 — The catalogued surfaces
 
-The following surfaces were uncatalogued and are added to `WARDENX_INTEGRATIONS §2` (inventory
+The following surfaces were uncatalogued and are added to `CHARTWARDEN_INTEGRATIONS §2` (inventory
 26–33) with BAA-register entries:
 
 | Surface | Module | PHI | BAA / agreement |
@@ -65,7 +65,7 @@ DoseSpot webhook event types (M12) are an addition to the **already-catalogued**
 
 ## Consequences
 
-- `WARDENX_INTEGRATIONS` gains inventory rows 26–33, BAA-register entries, and degraded-mode rows.
+- `CHARTWARDEN_INTEGRATIONS` gains inventory rows 26–33, BAA-register entries, and degraded-mode rows.
 - M18/M21/M22 Phase-1 "done" gates are **no longer conditioned on un-executed-BAA PHI surfaces** —
   for Engrace go-live (Oregon), the EVV-aggregator path is only required where Oregon Medicaid
   mandates EVV (ADR-0008), and its BAA must be executed first.

@@ -1,4 +1,4 @@
-# WardenX API — changes for integrators
+# ChartWarden API — changes for integrators
 
 Dated notes on API changes an integrator has to act on. The machine-readable contract is
 [`openapi.json`](./openapi.json) (regenerated with `bun run openapi:emit`); every field named below carries
@@ -10,7 +10,7 @@ its full description there. Newest first.
 
 **Why.** A Medicare hospice claim must report the patient discharge status (UB-04 FL 17 / 837I CL103,
 CMS Pub. 100-04 Ch. 11 §30.3). For a death that status depends on **where the patient died**; for a transfer
-to another hospice it depends on **where the receiving hospice cares for the patient**. WardenX now records
+to another hospice it depends on **where the receiving hospice cares for the patient**. ChartWarden now records
 both and derives the claim codes from them. Requests that do not send them are refused with a specific error,
 and records created before this change can be completed afterwards.
 
@@ -115,7 +115,7 @@ POST /api/v1/discharges/cccccccc-cccc-4ccc-8ccc-cccccccccccc/place-of-death
   claim is final **811/814**, no longer interim **812/813**. Re-validation updates unsubmitted claims
   automatically. Claims already **submitted** with 812/813 need a replacement (TOB 817,
   `POST /api/v1/billing/claims/{id}/replace`) once the MAC has accepted them; a claim in `partial_paid` or
-  `denied` cannot be replaced in WardenX and must be adjusted with the MAC directly.
+  `denied` cannot be replaced in ChartWarden and must be adjusted with the MAC directly.
 - `GET /api/v1/billing/claims` and `GET /api/v1/billing/claims/{id}` items carry an optional `attention` block:
   `stayEnd`, `typeOfBill { stored, derived, changed, remedy }` (`remedy`: `revalidate`,
   `await_acknowledgment`, `replace`, `manual`), `missingDischargeDetail` and `flags`.

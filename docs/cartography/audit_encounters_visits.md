@@ -1,4 +1,4 @@
-# WardenX Focused Audit: Encounters / Visits
+# ChartWarden Focused Audit: Encounters / Visits
 
 Source of truth: running repository implementation as inspected on 2026-08-30. This audit intentionally does not treat specs as authoritative unless the production code implements them.
 

@@ -1,7 +1,7 @@
 # Questions for Stedi: hospice DDE/clearinghouse integration
 
 **Date:** 2026-10-08
-**Context:** WardenX is a multi-tenant hospice EHR. We want to submit Medicare hospice institutional
+**Context:** ChartWarden is a multi-tenant hospice EHR. We want to submit Medicare hospice institutional
 claims, Notices of Election (NOE, TOB 8xA) and Notices of Termination/Revocation (NOTR, TOB 8xB)
 through Stedi, receive 277CA and 835 responses, and run Medicare eligibility checks.
 

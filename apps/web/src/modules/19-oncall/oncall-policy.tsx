@@ -1,5 +1,5 @@
 // apps/web/src/modules/19-oncall — S19.10 TENANT ON-CALL POLICY (`/triage/policy`, §5.1, Track B /
-// ADR-0030). Spec: WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md — the Escalation-Tier Editor tab.
+// ADR-0030). Spec: CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md — the Escalation-Tier Editor tab.
 //
 // THE POLICY ROW IS PER (ORG, PROVIDER ENTITY) AND IS NOT AUTO-CREATED ON READ. The escalation ladder in
 // force on a shift is PINNED onto that shift when it activates, so a default invented at read time would

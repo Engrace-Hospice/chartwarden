@@ -1,4 +1,4 @@
-# WardenX — Repository Guide
+# ChartWarden — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness kit +
 staged implementation monorepo**. All 40 modules have real implementation on `main`; the generated
@@ -32,11 +32,11 @@ Shared list-screen `wx-*` chrome lives in `packages/ui/src/web/styles/list-chrom
 - **Module specs** → [`docs/modules/`](./docs/modules/) (index: `docs/modules/README.md`). Resolve specs
   there, not the repo root. Module 29 sub-tasks: `docs/modules/module-29-tasks/`.
 - **UI screen specs** → [`docs/design/screens/`](./docs/design/screens/), indexed by
-  `docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`; layout patterns in
-  `docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`. Check with `bun run docs:ui`.
-- **Architecture (authoritative)** → [`docs/architecture/`](./docs/architecture/): `WARDENX_ARCHITECTURE_v0_11.md`,
-  `WARDENX_SYSTEM_DESIGN_v0.3.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `WARDENX_AI_GOVERNANCE_v0.2.md`,
-  `WARDENX_DR_BCP_v0.1.md`, `WARDENX_OPS_RUNBOOK_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
+  `docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md`; layout patterns in
+  `docs/design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`. Check with `bun run docs:ui`.
+- **Architecture (authoritative)** → [`docs/architecture/`](./docs/architecture/): `CHARTWARDEN_ARCHITECTURE_v0_11.md`,
+  `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`, `CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, `CHARTWARDEN_AI_GOVERNANCE_v0.2.md`,
+  `CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_OPS_RUNBOOK_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
   `ARCHITECTURE_25_15_FITNESS.md`.
 - **ADRs** → `docs/adr/`. **Review prompt templates** → `docs/reviews/`. **Audit reports** → `audit/`
   (they reference module specs by filename; resolve under `docs/modules/`).

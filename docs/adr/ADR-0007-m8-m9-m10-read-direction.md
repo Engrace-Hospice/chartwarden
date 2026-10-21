@@ -5,7 +5,7 @@
 - **Phase:** 0 (architecture / manifest correction)
 - **Resolves:** M09-F02, M09-DC1, M10-F03; X10; Build-Blocking #6/#9
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md)
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §10.5.4 / §11 Module 8 note (no manifest edit)
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §10.5.4 / §11 Module 8 note (no manifest edit)
 
 ## Context
 

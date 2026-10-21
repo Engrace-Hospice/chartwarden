@@ -1,5 +1,5 @@
 /**
- * WardenX — UI Implementation-Parity Report (audit remediation #5; UI-011 widened it to all 3 apps)
+ * ChartWarden — UI Implementation-Parity Report (audit remediation #5; UI-011 widened it to all 3 apps)
  * ---------------------------------------------------------------------------------------------
  * `docs:ui` proves the UI screen-spec CORPUS is internally consistent; it says nothing about
  * how much of that documented surface is actually BUILT. This report bridges the documented
@@ -58,7 +58,7 @@ const read = (rel: string) => {
 };
 
 // ---- documented surface: UI screen-spec files listed in the index --------------------------
-const indexSrc = read("docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md");
+const indexSrc = read("docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md");
 const docSpecs = [...indexSrc.matchAll(/`(screens\/[^`]+\.md)`/g)].map((m) => m[1]!);
 const docByCategory = new Map<string, number>();
 for (const f of docSpecs) {
@@ -203,7 +203,7 @@ const implementedModules = [...new Set(screens.map((s) => `${s.app}/${s.module}`
 
 function renderMarkdown(): string {
   const L: string[] = [];
-  L.push("# WardenX — UI Implementation-Parity Report");
+  L.push("# ChartWarden — UI Implementation-Parity Report");
   L.push("");
   L.push(
     "> **Generated, advisory report** (`bun run ui:parity`). `docs:ui` proves the screen-spec",

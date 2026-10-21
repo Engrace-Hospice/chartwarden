@@ -5,7 +5,7 @@
   remain open and are settled during Phase 2 or by Stedi's answer to question 3.
 - **Date:** 2026-10-08
 - **Phase:** post-launch billing work (Medicare submission paths).
-- **Extends:** `docs/design/screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` (NOE Submission Manager
+- **Extends:** `docs/design/screens/revenue/CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md` (NOE Submission Manager
   line "record manual DDE submission + receipt"), which today has no persistence model, API or workflow.
 - **Related:** [ADR-0010](ADR-0010-tenancy-rls-invariants.md) (`app.org_id` is the only tenancy GUC),
   [ADR-0027](ADR-0027-phase-0-toolchain-and-scaffold.md) (manifest is the source of truth for owned tables).
@@ -50,7 +50,7 @@ FKs to M5/M6/M40 ids, per the existing policy.
 
 ### D2 — It is human work tracking, never an integration
 
-WardenX stores no DDE credentials, performs no screen automation, and never submits to FISS. The queue
+ChartWarden stores no DDE credentials, performs no screen automation, and never submits to FISS. The queue
 tells a biller what must be keyed, by when, and records what came back. Recording that an item was keyed
 in DDE is an attestation by the operator, not a verified fact.
 
@@ -153,7 +153,7 @@ Non-partitioned; retention class `compliance`.
   sanitised X12 status codes ride in the `create` history detail, **not** in `rtp_reason_code`, because a 277CA status code
   is not a FISS RTP reason code (the operator keys that from DDE). A 999 or clearinghouse-stage rejection is a front-end
   syntax or edit failure that never reached the MAC's claim file, so it queues nothing. The 36-month hold is how long FISS
-  keeps a returned claim, not a filing window WardenX tracks, so no deadline is set. A later acceptance of the claim does
+  keeps a returned claim, not a filing window ChartWarden tracks, so no deadline is set. A later acceptance of the claim does
   **not** close the item; closing stays the operator's call.
   **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
   type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.

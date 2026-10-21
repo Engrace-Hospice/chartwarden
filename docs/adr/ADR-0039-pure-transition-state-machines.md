@@ -5,7 +5,7 @@
 - **Date:** 2026-08-14
 - **Phase:** post-build divergence record (the convention was set by the clinical-core lifecycle
   wave and held for all 40 modules).
-- **Supersedes (wording):** `WARDENX_ARCHITECTURE_v0_11.md` §25.1's XState mandate, and every
+- **Supersedes (wording):** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §25.1's XState mandate, and every
   module spec's "XState v5 machine" phrasing (module specs are proposals; several were already
   overridden in code with in-file architecture-over-spec notes).
 

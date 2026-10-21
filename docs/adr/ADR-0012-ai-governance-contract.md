@@ -5,7 +5,7 @@
 - **Phase:** 3 (governed subsystems)
 - **Resolves:** X7; M32-F01/F02/F03/F08; M08-F01; the AI-governance under-implementation across
   M07/M14/M16/M19/M22/M23/M24/M30/M36/M38
-- **Changes:** `WARDENX_MODULE_32_AI_PLATFORM_SPEC` (the substrate), `WARDENX_MODULE_08`, every AI-touching module (CI-gated)
+- **Changes:** `CHARTWARDEN_MODULE_32_AI_PLATFORM_SPEC` (the substrate), `CHARTWARDEN_MODULE_08`, every AI-touching module (CI-gated)
 
 ## Context
 

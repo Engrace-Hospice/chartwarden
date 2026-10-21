@@ -41,7 +41,7 @@ describe("F-072 — the transmit idempotency key", () => {
     // A transmit that times out may or may not have reached CMS. `releaseSubmission` puts the batch
     // back to `queued` so a later tick retries it, and the ONLY thing that makes that safe is the
     // retry carrying the same correlation id — the at-least-once-plus-idempotency-key posture
-    // WARDENX_INTEGRATIONS_v0_1.md §5 prescribes for every outbox-driven external call.
+    // CHARTWARDEN_INTEGRATIONS_v0_1.md §5 prescribes for every outbox-driven external call.
     expect(transmitCorrelationId("sub-a")).toBe(transmitCorrelationId("sub-a"));
     expect(transmitCorrelationId("sub-a")).not.toBe(transmitCorrelationId("sub-b"));
   });

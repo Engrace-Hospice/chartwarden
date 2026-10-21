@@ -1,4 +1,4 @@
-# WardenX — Consolidated Open-Blockers Ledger (June-13 re-audits)
+# ChartWarden — Consolidated Open-Blockers Ledger (June-13 re-audits)
 
 **Compiled:** 2026-06-13
 **Source:** the 12 per-module re-audit files modified 2026-06-13 under `audit/AUDIT_*.md`
@@ -19,7 +19,7 @@ editing.
 
 **Proven example — M26-F01 (graded BLOCKER):** the audit says "revert the cap year to Nov 1–Oct 31
 until an ADR exists." But **ADR-0002 already ratifies Oct 1–Sep 30** (federal FY, BBA-2018 §51005(b)),
-the M26 spec already cites it (`WARDENX_MODULE_26…v0_3.md` lines 16–18, 68), and Oct 1–Sep 30 is the
+the M26 spec already cites it (`CHARTWARDEN_MODULE_26…v0_3.md` lines 16–18, 68), and Oct 1–Sep 30 is the
 *correct* regulatory value. Applying the audit's fix would **reintroduce the pre-2017 bug.** → Status:
 **RESOLVED (cite ADR-0002); do not act on the audit recommendation.**
 

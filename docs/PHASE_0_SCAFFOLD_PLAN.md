@@ -1,4 +1,4 @@
-# WardenX — Phase 0 Scaffold Plan (proposal)
+# ChartWarden — Phase 0 Scaffold Plan (proposal)
 
 **Status:** ✅ EXECUTED 2026-06-14 (PR-0.1 … PR-0.7). Toolchain (§2) ratified in
 [ADR-0027](./adr/ADR-0027-phase-0-toolchain-and-scaffold.md); runbook in [DEVELOPMENT.md](./DEVELOPMENT.md).

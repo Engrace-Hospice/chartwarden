@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Summary (M7 §5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The printable, patient/family-friendly view, generated server-side from the active version's state.
 // §7.6: SUD content is excluded unless the calling session has a matched consent — the response carries
 // `redacted: true` when anything was filtered (the filter is SERVER-side, never a frontend hide).

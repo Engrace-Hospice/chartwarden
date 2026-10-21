@@ -80,7 +80,7 @@
 - Evidence: Routes exist, but DB service delegates every legally operative mutation to `lifecycleNotWired`; web module registers only three read-oriented screens.
 - File(s): `apps/backend/src/modules/39-consent/routes/consent-routes.ts:165-269,449-470`; `apps/backend/src/modules/39-consent/consent-store-db.ts:191-196,338-380`; `apps/web/src/modules/39-consent/screens.ts:1-31`
 - Symbol(s): `createDbConsentStore`, `lifecycleNotWired`
-- Description: Disclosure evaluation can read consent rows, but staff cannot lawfully create or maintain them through WardenX.
+- Description: Disclosure evaluation can read consent rows, but staff cannot lawfully create or maintain them through ChartWarden.
 - Root cause: Read/evaluator slice landed before evidence capture, signature, encryption, supersession, and render workflow.
 - User impact: Required disclosure and outreach workflows are blocked or must occur outside the system.
 - Technical impact: UI/backend capability mismatch and no authoritative lifecycle trail.

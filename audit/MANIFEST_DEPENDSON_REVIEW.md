@@ -1,4 +1,4 @@
-# WardenX — Manifest `dependsOn` Review (proposed-patch add-edge analysis)
+# ChartWarden — Manifest `dependsOn` Review (proposed-patch add-edge analysis)
 
 **Status:** Architecture review — recommendation for the architecture owner to ratify.
 **Scope:** The ~26 module specs that carry an unapplied "proposed manifest patch" changing

@@ -5,7 +5,7 @@
 - **Phase:** 0 (manifest correction)
 - **Resolves:** M22-DC1, M22-F01; X1; Build-Blocking #1
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md)
-- **Changes:** `module-manifest.ts`, `module-manifest.cjs`, `WARDENX_ARCHITECTURE_v0_11.md` §20 (build-sequence M39 row + §20 note)
+- **Changes:** `module-manifest.ts`, `module-manifest.cjs`, `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20 (build-sequence M39 row + §20 note)
 
 ## Context
 

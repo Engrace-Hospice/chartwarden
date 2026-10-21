@@ -1,10 +1,10 @@
-# WardenX M7 Patient Care Plan Audit
+# ChartWarden M7 Patient Care Plan Audit
 
 Date: 2026-08-29
 
 Scope: actual running repository implementation of Module 7 Patient Care Plan, including backend, schema, migrations, frontend, tests, and cross-module wiring with M6, M8, M9/M10, M11, M14, M15, M17, and M30.
 
-Bottom line: WardenX does not currently support a real interdisciplinary Patient Care Plan workflow end-to-end. M7 has substantial production data structures, routes, route service logic, RLS/audit coverage, a quorum engine, manual bootstrap, authoring APIs, and a live M14 IDG consumer. The workflow breaks because admission activation does not create the care plan in production, the frontend is read-only, the terminal-problem activation guard is not enforced by the production signing path, discharge does not close M7, IDG decisions silently mutate active plan elements before signature, and signed versions do not preserve immutable clinical content snapshots.
+Bottom line: ChartWarden does not currently support a real interdisciplinary Patient Care Plan workflow end-to-end. M7 has substantial production data structures, routes, route service logic, RLS/audit coverage, a quorum engine, manual bootstrap, authoring APIs, and a live M14 IDG consumer. The workflow breaks because admission activation does not create the care plan in production, the frontend is read-only, the terminal-problem activation guard is not enforced by the production signing path, discharge does not close M7, IDG decisions silently mutate active plan elements before signature, and signed versions do not preserve immutable clinical content snapshots.
 
 ## A. What exists today
 

@@ -1,11 +1,11 @@
-# WardenX Pencil Generation — Prompts & Workflow
+# ChartWarden Pencil Generation — Prompts & Workflow
 
-How we turn the WardenX screen corpus into **Pencil** (pencil.dev) designs that are on-system
+How we turn the ChartWarden screen corpus into **Pencil** (pencil.dev) designs that are on-system
 by construction. Every prompt here fuses three inputs:
 
 1. the **Lantern design system** ([`../DESIGN.md`](../DESIGN.md)) — color/type/components/rules,
-2. the screen's **layout pattern** ([`../WARDENX_UI_LAYOUT_PATTERNS.md`](../WARDENX_UI_LAYOUT_PATTERNS.md)),
-3. the screen's **spec** ([`../screens/**`](../WARDENX_UI_COMPLETE_SCREEN_INDEX.md)) — fields,
+2. the screen's **layout pattern** ([`../CHARTWARDEN_UI_LAYOUT_PATTERNS.md`](../CHARTWARDEN_UI_LAYOUT_PATTERNS.md)),
+3. the screen's **spec** ([`../screens/**`](../CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md)) — fields,
    states, and the `Pencil Notes` variant list.
 
 Status/ownership for every screen lives in [`../SCREENS.md`](../SCREENS.md).
@@ -14,7 +14,7 @@ Status/ownership for every screen lives in [`../SCREENS.md`](../SCREENS.md).
 
 ## The Lantern preamble (prepend to every generation prompt)
 
-> **WardenX "Lantern" design system.** Warm-paper canvas `#F6F5F2` (dark: twilight ink
+> **ChartWarden "Lantern" design system.** Warm-paper canvas `#F6F5F2` (dark: twilight ink
 > `#15151B`). Brand = twilight indigo `#3B45A8` (gradient to `#2B338A` for primary CTAs, pill
 > radius). Lantern-gold `#C98A1F` is brand warmth only — **never** a status color. Semantic:
 > success `#1F8A5B`, warning (burnt amber) `#9A5B00`, error `#C12B3B`, critical/safety `alert`
@@ -37,7 +37,7 @@ Each per-screen prompt below assumes this preamble; the phase files restate a on
 
 Pencil is a desktop editor for `.pen` files; the MCP operates on the **currently open file**.
 
-1. **Open** a WardenX `.pen` file in the Pencil app. (The MCP errors with *"A file needs to be
+1. **Open** a ChartWarden `.pen` file in the Pencil app. (The MCP errors with *"A file needs to be
    open"* until then — this is the one manual step.)
 2. **Learn the schema** — `mcp__pencil__get_app_state({ include_schema: true })` and
    `mcp__pencil__get_guidelines()`. Always do this before any design call.
@@ -64,12 +64,12 @@ When a screen below isn't fully written out, generate its prompt from this templ
 ```
 [Lantern preamble — one line]
 
-Design "<Screen Name>" for WardenX, a multi-tenant hospice EHR. Owning module: <Mxx>.
+Design "<Screen Name>" for ChartWarden, a multi-tenant hospice EHR. Owning module: <Mxx>.
 LAYOUT PATTERN: <pattern from glossary> — render its regions:
   <list regions from the glossary entry for that pattern>.
 CONTENT (from spec ../screens/<path>):
   <the spec's section headers / key fields / table columns / actions>.
-WARDENX SYSTEMS that apply on this screen:
+CHARTWARDEN SYSTEMS that apply on this screen:
   - Guardrails: <which actions are guarded + their blocking conditions>
   - Provenance/AI: <any AI-suggested or system-derived content>
   - Sensitivity: <PHI masking / SUD redaction / consent gates / break-glass>

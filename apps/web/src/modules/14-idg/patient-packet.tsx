@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — Per-Patient Packet (read-only chart embed) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (packet
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (packet
 // reading surface). 2026-09 "Lantern Clinical 2.0" redesign: the patient chart banner + tab strip, flat sections,
 // and the patient summary in the right rail. Shows what the platform returns for one patient in one meeting:
 // the packet digest (freeze state), the meeting context, the decisions recorded about this patient (kinds and

@@ -23,7 +23,7 @@ Statut : terminé — base de travail des phases 1 à 3
 
 ## Matrice référence → règle → composant
 
-| Référence visuelle | Règle WardenX | Primitive/layer cible | Premier consommateur |
+| Référence visuelle | Règle ChartWarden | Primitive/layer cible | Premier consommateur |
 | --- | --- | --- | --- |
 | CTA bleu arrondi, secondaire tonal, destructif distinct | Libellé visible, focus AA, loading/disabled explicites, couleur jamais seule. | `Button` | M05, M06, M30 |
 | Champs gris doux avec libellé et erreur | Label lié, aide/erreur annoncée, pas de PHI mémorisée par la primitive. | `TextField`, `SelectField`, `TextAreaField` | M06 |

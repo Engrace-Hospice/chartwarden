@@ -17,7 +17,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — Live Meeting Surface (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace".
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace".
 // 2026-09 "Lantern Clinical 2.0" redesign: flat sections (no boxes-in-boxes), three panes —
 //   left   agenda / patient worklist (agenda kinds, carry-forward flag, packet state),
 //   centre patient packet digest + the decision ledger and recorder,

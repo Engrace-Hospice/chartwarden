@@ -55,7 +55,7 @@ en double.
 
 Les statuts doivent rester distincts : 401 session absente/expirée ; 403 permission ou step-up selon le
 code d’enveloppe ; 409 conflit d’état/version ; 422 validation ; 423 verrouillage si renvoyé ; 503
-indisponibilité. Le client lit l’enveloppe WardenX et le correlation ID ; il ne transforme pas toutes
+indisponibilité. Le client lit l’enveloppe ChartWarden et le correlation ID ; il ne transforme pas toutes
 les erreurs en « reconnectez-vous ».
 
 ### CSRF et transport

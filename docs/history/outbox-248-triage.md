@@ -61,7 +61,7 @@ requested. `m27.cost_report.submitted` follows the F-108 precedent directly — 
 `m27.artifact.render_requested` is the real handshake. `m37.body_release.funeral_home_identified` is the
 ordinary case: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same
 transition. **Net: 8 of 66 m22 pairs resolved (429 → 421).** The other 58 divide three ways, verified
-against the M22 spec's own §4.11 consumer table (`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md`) rather than
+against the M22 spec's own §4.11 consumer table (`CHARTWARDEN_MODULE_22_DOCUMENTS_SPEC_v0_5.md`) rather than
 assumed: events the spec explicitly names for a dedicated per-source consumer that was never built —
 `packages/22-documents` has no `consumers/` directory at all, only the generic `outbox-consumers/`
 document-request mirror, so EVERY spec-named dedicated consumer (`m11-order-results-received.ts`,
@@ -959,7 +959,7 @@ gap still agrees with what is actually bound.
   producer-clustered forks** (M11's 8 order events; M13's 12 eMAR events; M6's 9 admission/compliance/F2F
   events; M15's 4 + M16's residual 6; M20's 3 + M21's 5; and nine smaller producers spanning M14/M23/M25/
   M26/M37/M39/M12/M8/M9), each checked against M30's own §1.1 relationship inventory
-  (`docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md`) and its own blanket architectural principle
+  (`docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md`) and its own blanket architectural principle
   ("Outbox publication is the only cross-module communication M30 performs at the boundary … M30 *calls*
   … reader seams as in-process function calls," never a subscription) plus each PRODUCING module's own
   spec. **11 moved to `seamConsumers` rather than dropped bare** — all 8 M11 order events (M11's own §D14

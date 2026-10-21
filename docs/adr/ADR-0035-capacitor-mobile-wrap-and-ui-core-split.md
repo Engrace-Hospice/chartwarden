@@ -8,12 +8,12 @@
 - **Phase:** pre-build governance (affects every module that ships `apps/web` screens; precedes the first
   Capacitor build and the `packages/ui` reorganization).
 - **Confirms (does not introduce):** native iOS/Android delivery was already resolved —
-  - `WARDENX_ARCHITECTURE_v0_11.md` §"Mobile (clinical and field roles — `apps/mobile/`)": *"Capacitor
+  - `CHARTWARDEN_ARCHITECTURE_v0_11.md` §"Mobile (clinical and field roles — `apps/mobile/`)": *"Capacitor
     6.x wrapping … frontend for native iOS and Android delivery"* + the closed mobile-strategy decision
     (ADR-008-era) that removed "Native mobile applications" from Non-goals.
   - [ADR-0030](ADR-0030-core-frontend-app-ownership.md) §"Surfaces & mobile": *"Capacitor 'mobile
     variants' wrap the `apps/web` build (one app, a native shell) rather than a separate `apps/mobile`."*
-  - `WARDENX_SECURITY_HARDENING_v0_2.md` §12 "Mobile Device Security (Capacitor)" — the full device-posture
+  - `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` §12 "Mobile Device Security (Capacitor)" — the full device-posture
     / SecureStore / `FLAG_SECURE` / jailbreak-detection / MDM spec, written for Capacitor.
 - **Extends:** [ADR-0030](ADR-0030-core-frontend-app-ownership.md) (frontend home + screen registry),
   [ADR-0032](ADR-0032-frontend-api-transport-and-client.md) (Vite for `apps/web`; OpenAPI client in the
@@ -23,7 +23,7 @@
 
 ## Context
 
-A request to deliver WardenX as **both** a web app and native iOS/Android apps prompted a check of whether
+A request to deliver ChartWarden as **both** a web app and native iOS/Android apps prompted a check of whether
 mobile is in the architecture. It is — **and the technology is already chosen: Capacitor, not React
 Native.** Three authoritative places commit to it (see *Confirms* above), and §12 of the Security
 Hardening doc is a complete Capacitor-specific mobile-security spec. So this ADR **records and sharpens an
@@ -128,7 +128,7 @@ Capacitor produces real App Store / Play binaries with native plugins, biometric
 ## Consequences
 
 - **No architecture *decision* changes; two corpus texts get reconciled.** On ratification: an in-place
-  Remediation Changelog edit to `WARDENX_ARCHITECTURE_v0_11.md` (mobile target = Capacitor wrap of the
+  Remediation Changelog edit to `CHARTWARDEN_ARCHITECTURE_v0_11.md` (mobile target = Capacitor wrap of the
   **Vite/React 18 `apps/web`**, not TanStack Start; `apps/mobile/` workspace language → "Capacitor
   projects under `apps/web`") citing this ADR. §12 needs no change.
 - **`packages/ui` reorganization is a follow-up PR** (gated on this ADR): move neutral code to
@@ -186,6 +186,6 @@ not a dead end.
 - [ADR-0030](ADR-0030-core-frontend-app-ownership.md) §"Surfaces & mobile" (Capacitor wraps `apps/web`)
 - [ADR-0032](ADR-0032-frontend-api-transport-and-client.md) (Vite for `apps/web`; client in `packages/ui`)
 - [ADR-0028](ADR-0028-adapter-package-codepaths.md) (mobile-offline manifest exemption precedent)
-- `WARDENX_ARCHITECTURE_v0_11.md` §"Mobile (clinical and field roles — `apps/mobile/`)"
-- `WARDENX_SECURITY_HARDENING_v0_2.md` §12 "Mobile Device Security (Capacitor)"
+- `CHARTWARDEN_ARCHITECTURE_v0_11.md` §"Mobile (clinical and field roles — `apps/mobile/`)"
+- `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` §12 "Mobile Device Security (Capacitor)"
 - Field/mobile modules: M18 EVV, M20 Field Safety; DR/BCP §11.1 degraded-mode offline drafting

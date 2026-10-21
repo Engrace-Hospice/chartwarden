@@ -16,7 +16,7 @@
 // fields this file needs (host/port/protocol/pin/wire message/timeouts) and nothing this file has no
 // business holding (no credential material, no DB row, no org context).
 //
-// DEVIATION FROM `docs/modules/module-29-tasks/WARDENX_T-29.08_OUTBOUND_ORM.md` §6 (the
+// DEVIATION FROM `docs/modules/module-29-tasks/CHARTWARDEN_T-29.08_OUTBOUND_ORM.md` §6 (the
 // `MllpOutboundClient` addendum design). That doc additionally does CLIENT-CERTIFICATE mTLS (per-feed
 // `clientCertPem`/`clientKeyPem`/`expectedServerCaPem` decrypted out of `external_feed_credential`) and
 // an in-memory CRL revocation check. This file implements ONLY the `channelCertPin` server-certificate

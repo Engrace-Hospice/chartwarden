@@ -1,4 +1,4 @@
-# WardenX Private Cloud — Platform Tools Manual
+# ChartWarden Private Cloud — Platform Tools Manual
 
 Oct 2, 2026 · @FabDev · imported into the repo 2026-10-05
 
@@ -15,17 +15,17 @@ Oct 2, 2026 · @FabDev · imported into the repo 2026-10-05
 > - document blobs are **not** yet encrypted before upload (an open gap, chapter 8);
 > - leftover NATS references are removed.
 
-**Updated 2026-10-02 to match the WardenX codebase and the ChartWarden Infrastructure Build Plan (external).** Main changes: Pangolin is now the public edge, with Envoy Gateway as internal ingress behind it. OpenBao moves to stage 1 because production keys must leave `.env.production`. Valkey is required, since the code runs its job queues on BullMQ. NATS is deferred, since the code uses a transactional outbox (ADR-0036). Garage holds one bucket per tenant. Chapters with changes carry an "Update" note under their stage line.
+**Updated 2026-10-02 to match the ChartWarden codebase and the ChartWarden Infrastructure Build Plan (external).** Main changes: Pangolin is now the public edge, with Envoy Gateway as internal ingress behind it. OpenBao moves to stage 1 because production keys must leave `.env.production`. Valkey is required, since the code runs its job queues on BullMQ. NATS is deferred, since the code uses a transactional outbox (ADR-0036). Garage holds one bucket per tenant. Chapters with changes carry an "Update" note under their stage line.
 
 ## 1. About this manual
 
-This manual is the operating reference for every open-source tool in the WardenX private cloud: what each one does, how WardenX uses it, how to run it day to day, and what to do when it fails. It is written for the person operating the platform today, a solo founder-engineer, and for any engineer who joins later.
+This manual is the operating reference for every open-source tool in the ChartWarden private cloud: what each one does, how ChartWarden uses it, how to run it day to day, and what to do when it fails. It is written for the person operating the platform today, a solo founder-engineer, and for any engineer who joins later.
 
 Each tool chapter follows the same structure:
 
 | Part | What it answers |
 | --- | --- |
-| Role in WardenX | Why the tool is here and what it replaces |
+| Role in ChartWarden | Why the tool is here and what it replaces |
 | Stage | When it is adopted (see below) |
 | Key concepts | The vocabulary you need to operate it |
 | Deployment baseline | How it is installed and the settings that matter |
@@ -104,7 +104,7 @@ OpenBao is now stage 1. The codebase holds its platform key-encryption keys (`M3
 
 **Stage 1 · Production · Node operating system**
 
-### Role in WardenX
+### Role in ChartWarden
 
 Talos is the operating system on every node. It exists only to run Kubernetes: it is immutable, has no shell, no SSH, and no package manager, and is managed entirely through an authenticated API. This removes configuration drift and most of the host attack surface, which matters more than usual on hosts that store PHI.
 
@@ -112,7 +112,7 @@ Talos is the operating system on every node. It exists only to run Kubernetes: i
 
 - **Machine config:** one YAML document per node that declares everything about it: disks, network, cluster membership, kubelet settings. The config is the node.
 - **talosctl:** the CLI that talks to the Talos API over mutual TLS. It replaces SSH for every administrative task.
-- **Control plane vs worker:** control-plane nodes run etcd and the Kubernetes API; workers run workloads. WardenX runs three control-plane nodes for etcd quorum.
+- **Control plane vs worker:** control-plane nodes run etcd and the Kubernetes API; workers run workloads. ChartWarden runs three control-plane nodes for etcd quorum.
 - **Image Factory and system extensions:** custom Talos images that add drivers or tools (for example, storage or GPU drivers) without breaking immutability.
 - **A/B upgrades:** Talos writes the new version beside the old one and can roll back if a node fails to boot.
 
@@ -155,13 +155,13 @@ Talos is the operating system on every node. It exists only to run Kubernetes: i
 
 **Stage 1 · Production · Orchestration**
 
-### Role in WardenX
+### Role in ChartWarden
 
-Kubernetes schedules and heals every WardenX workload: the API, web frontend, background workers, and the platform services in this manual. It replaces Dokploy and Docker Compose for production and gives the platform one declarative model that Argo CD can reconcile from Git.
+Kubernetes schedules and heals every ChartWarden workload: the API, web frontend, background workers, and the platform services in this manual. It replaces Dokploy and Docker Compose for production and gives the platform one declarative model that Argo CD can reconcile from Git.
 
 ### Key concepts
 
-- **Namespace:** a boundary for policy, quotas, and RBAC. WardenX uses one namespace per platform concern, not per customer.
+- **Namespace:** a boundary for policy, quotas, and RBAC. ChartWarden uses one namespace per platform concern, not per customer.
 - **Deployment vs StatefulSet vs operator:** stateless services use Deployments; stateful systems (PostgreSQL via CloudNativePG, OpenBao) are run by their operators, which encode failover and backup logic.
 - **RBAC:** who can do what. Humans get read access in production by default; write access flows through Argo CD's service account.
 - **Pod Security Admission:** built-in enforcement of the `restricted` profile (non-root, no privilege escalation, seccomp).
@@ -223,7 +223,7 @@ Namespaces:
 
 **Stage 1 · Production · Networking and network policy**
 
-### Role in WardenX
+### Role in ChartWarden
 
 Cilium is the cluster network (CNI). It connects pods using eBPF, enforces which workloads may talk to which, encrypts traffic between nodes, and shows every flow through Hubble. It is the main control that stops a compromised frontend from reaching the database directly.
 
@@ -288,7 +288,7 @@ Everything else, including web to database and any pod to the internet, is denie
 
 **Update (2026-10-02):** Envoy Gateway is no longer the public front door. Pangolin on the edge VPS terminates public TLS and tunnels into the cluster, where Envoy Gateway routes to services. Give Envoy no public LoadBalancer IP. Current hostnames in the repo's Nginx configs are `wardenx.chartwarden.cloud`, the API host, and `storage.wardenx.chartwarden.cloud` for presigned document URLs (`STORAGE_PUBLIC_ORIGIN`); all three move behind Pangolin.
 
-### Role in WardenX
+### Role in ChartWarden
 
 Envoy Gateway is the cluster's internal ingress behind Pangolin. Per ADR-0049, every tenant is served at
 `<slug>.<TENANT_BASE_DOMAIN>`, and Envoy routes each tenant host by path:
@@ -313,7 +313,7 @@ so Envoy never holds a public certificate. cert-manager issues and renews every 
 - Traffic path: Pangolin (public TLS, wildcard resource, `Host` preserved) → Newt tunnel → Envoy Gateway → services.
 - One Gateway in `ingress` with listeners for the public hostnames only. Internal tools (Grafana, Argo CD, Harbor) get a separate internal Gateway on the management network.
 - TLS 1.2 minimum, TLS 1.3 preferred; HSTS on all public hosts.
-- ACME ClusterIssuer using DNS-01 through the DNS provider's API token (scoped to the WardenX zones, stored as a secret).
+- ACME ClusterIssuer using DNS-01 through the DNS provider's API token (scoped to the ChartWarden zones, stored as a secret).
 - Rate limits on `auth.` and login endpoints; request body size limits on upload routes.
 - Restore the real client IP (PROXY protocol or X-Forwarded-For from trusted load balancers only) so audit events record the correct source IP.
 
@@ -348,7 +348,7 @@ so Envoy never holds a public certificate. cert-manager issues and renews every 
 
 **Update (2026-10-02):** The code is ready for this design. It runs as a `NOBYPASSRLS` role (`wardenx_app`), keeps a separate platform role, generates every RLS policy keyed on `app.org_id` (ADR-0010), and applies its forward-only migrations (`packages/db/migrations/`) with `bun run scripts/db/migrate.ts` plus `provision-runtime-roles.ts`. Run those as a Kubernetes Job before each rollout. The image is `pgvector/pgvector:pg18`, so the CloudNativePG image must include the pgvector extension.
 
-### Role in WardenX
+### Role in ChartWarden
 
 PostgreSQL holds every clinical, billing, and audit record. CloudNativePG (CNPG) is the Kubernetes operator that runs it: it creates the primary and replicas, fails over automatically, archives WAL, takes base backups, and performs point-in-time recovery. PgBouncer pools connections so many API and worker pods do not exhaust PostgreSQL's connection limit. This is the single most important component on the platform.
 
@@ -424,14 +424,14 @@ Targets (engineering objectives, proven only by drills):
 **Update (2026-10-02):** The code uses **one bucket per tenant** (`deriveTenantBucket` in M22), not a single `wardenx-documents` bucket. Tenant buckets are created and destroyed through the M34 provision gateway, which does not exist yet and must call Garage's admin API. The adapter (`s3-object-store.ts`) is plain SigV4 with path-style URLs and 300-second presigned GETs, so it works with Garage by setting `MINIO_ENDPOINT` and `MINIO_REGION` (Garage's region, `garage` by default). Platform buckets (`cnpg-wal`, `cnpg-base`) stay as listed below. Local development keeps MinIO (product-owner decision, 2026-10-05). CI runs a live suite that exercises the real
 adapter against a Garage container, so production's store is still tested (ADR-0050 D6).
 
-### Role in WardenX
+### Role in ChartWarden
 
-Garage stores files: signed consent forms, scanned documents, PDFs, attachments, exports, and the PostgreSQL WAL archive. It speaks the S3 API, so WardenX code uses an `ObjectStore` interface with a Garage adapter in the private cloud and an S3 adapter anywhere else. Garage replaces MinIO, whose open-source edition is no longer a stable foundation.
+Garage stores files: signed consent forms, scanned documents, PDFs, attachments, exports, and the PostgreSQL WAL archive. It speaks the S3 API, so ChartWarden code uses an `ObjectStore` interface with a Garage adapter in the private cloud and an S3 adapter anywhere else. Garage replaces MinIO, whose open-source edition is no longer a stable foundation.
 
 ### Key concepts
 
 - **Layout:** the map of nodes, their zones (failure domains), and capacity. Changes are staged and then applied with a version number.
-- **Replication factor:** how many copies of each object exist. WardenX uses 3, one per zone.
+- **Replication factor:** how many copies of each object exist. ChartWarden uses 3, one per zone.
 - **Zones:** Garage places each copy in a different zone. Map zones to physical hosts (single region) or to sites.
 - **Buckets and keys:** S3 buckets with per-key access grants (read, write, owner).
 - **Metadata vs data:** metadata lives in an embedded database on fast disk; object data can sit on larger disks.
@@ -460,7 +460,7 @@ Garage stores files: signed consent forms, scanned documents, PDFs, attachments,
 ### Security and HIPAA notes
 
 - Documents are PHI. Never put patient identifiers in object keys (the code uses opaque, PHI-free keys), log every
-  access through the WardenX audit ledger, and close the encrypt-before-upload gap above.
+  access through the ChartWarden audit ledger, and close the encrypt-before-upload gap above.
 - Download URLs given to browsers are short-lived presigned URLs, issued only after an authorization check.
 
 ### Failure modes
@@ -479,9 +479,9 @@ Garage stores files: signed consent forms, scanned documents, PDFs, attachments,
 
 ## 9. NATS JetStream
 
-**Deferred · not used by the current code.** WardenX carries cross-module events through a transactional outbox in PostgreSQL (`packages/shared/src/outbox`) and runs background work on BullMQ over Valkey. ADR-0036 records that no realtime backbone was built. Keep this chapter as reference only; adopt NATS only through a new ADR.
+**Deferred · not used by the current code.** ChartWarden carries cross-module events through a transactional outbox in PostgreSQL (`packages/shared/src/outbox`) and runs background work on BullMQ over Valkey. ADR-0036 records that no realtime backbone was built. Keep this chapter as reference only; adopt NATS only through a new ADR.
 
-### Role in WardenX
+### Role in ChartWarden
 
 NATS with JetStream carries domain events and background commands: `PatientAdmitted`, `HOPEAssessmentCompleted`, `ClaimSubmitted`, `DocumentSigned`, and the jobs they trigger (billing, notifications, audit fan-out). It replaces AWS SQS, SNS, and EventBridge. PostgreSQL stays authoritative; NATS only moves facts that are already committed.
 
@@ -534,7 +534,7 @@ NATS with JetStream carries domain events and background commands: `PatientAdmit
 
 **Stage 1 · Required.** The worker process runs its job queues on BullMQ, and the API uses Valkey for the rate limiter. Losing Valkey stops background work such as claim submission and document processing. Run it with AOF persistence, `maxmemory-policy noeviction` (BullMQ requires it), and replication with Sentinel failover across the three nodes.
 
-### Role in WardenX
+### Role in ChartWarden
 
 Valkey, the open-source fork of Redis, holds two kinds of data:
 
@@ -548,7 +548,7 @@ every job must be idempotent and re-creatable from PostgreSQL state.
 ### Key concepts
 
 - **Key TTLs:** every key expires. A key without a TTL is a bug.
-- **Primary/replica with Sentinel:** one primary, replicas that follow it, and Sentinel processes that promote a replica on failure. Simpler than cluster mode and sufficient for WardenX's size.
+- **Primary/replica with Sentinel:** one primary, replicas that follow it, and Sentinel processes that promote a replica on failure. Simpler than cluster mode and sufficient for ChartWarden's size.
 - **Persistence modes:** RDB snapshots and AOF logs. For a pure cache, persistence can be off; for sessions, light persistence avoids mass logouts on restart.
 - **ACLs:** per-user command and key-pattern permissions.
 - **Eviction policy:** what happens at the memory limit. BullMQ **requires `noeviction`**: an evicted job key is a
@@ -592,7 +592,7 @@ every job must be idempotent and re-creatable from PostgreSQL state.
 
 **Stage 1 · Security and recovery.** Three-node Raft cluster, one node per server. First job: deliver every secret now in `.env.production`, above all `M34_TENANT_KEK` (wraps each tenant's data key, ADR-0045) and `M35_PSEUDONYM_KEY_KEK`. Second job: bind the code's `kekUnwrap` port (ADR-0038 §3) to the Transit engine, so the platform KEK never sits in application memory.
 
-### Role in WardenX
+### Role in ChartWarden
 
 OpenBao, the open-source fork of HashiCorp Vault, is the vault for every secret and key: database credentials, API tokens for clearinghouses and partners, signing keys, and the encryption keys that protect documents and sensitive columns. Its transit engine encrypts and decrypts data without ever revealing the key to the application. It replaces AWS KMS and Secrets Manager.
 
@@ -613,7 +613,7 @@ OpenBao, the open-source fork of HashiCorp Vault, is the vault for every secret 
 - Kubernetes auth with one role per service account; each role maps to a least-privilege policy.
 - Database secrets engine issuing PostgreSQL credentials with a TTL measured in hours (stage 2; stage 1 uses
   static credentials in KV).
-- Transit keys per purpose (`documents`, `phi-columns`, `exports`) with rotation enabled; WardenX stores only ciphertext and key version.
+- Transit keys per purpose (`documents`, `phi-columns`, `exports`) with rotation enabled; ChartWarden stores only ciphertext and key version.
 - Secrets reach pods through an injector or the External Secrets Operator, never by baking them into images or Git.
 - File audit device enabled, shipped to the security log pipeline.
 
@@ -648,11 +648,11 @@ OpenBao, the open-source fork of HashiCorp Vault, is the vault for every secret 
 
 **Stage 2 · Security and recovery · Administrator single sign-on**
 
-**Update (2026-10-02):** authentik is for staff and admin access to platform tools through Pangolin. Hospice users sign in to WardenX itself through Better Auth (ADR-0033), which stays as is.
+**Update (2026-10-02):** authentik is for staff and admin access to platform tools through Pangolin. Hospice users sign in to ChartWarden itself through Better Auth (ADR-0033), which stays as is.
 
-### Role in WardenX
+### Role in ChartWarden
 
-authentik is the identity provider for people who operate the platform: one login, with phishing-resistant MFA, for Grafana, Argo CD, Harbor, Forgejo, OpenBao, and Hubble. It does not authenticate hospice staff using WardenX; that stays behind WardenX's own authentication layer (Better Auth), so the EHR is not coupled to infrastructure identity.
+authentik is the identity provider for people who operate the platform: one login, with phishing-resistant MFA, for Grafana, Argo CD, Harbor, Forgejo, OpenBao, and Hubble. It does not authenticate hospice staff using ChartWarden; that stays behind ChartWarden's own authentication layer (Better Auth), so the EHR is not coupled to infrastructure identity.
 
 ### Key concepts
 
@@ -691,7 +691,7 @@ authentik is the identity provider for people who operate the platform: one logi
 
 ### Do not
 
-- Use authentik as the login for WardenX end users.
+- Use authentik as the login for ChartWarden end users.
 - Allow password-only admin logins, even temporarily.
 - Expose authentik to the public internet.
 
@@ -701,9 +701,9 @@ authentik is the identity provider for people who operate the platform: one logi
 
 **Update (2026-10-02) · open decision.** The repo runs on GitHub Actions (`ci.yml`, `deploy.yml`), publishes to GHCR, and signs images with keyless Cosign bound to the GitHub workflow identity. The current plan is a self-hosted GitHub runner on the Hostinger VPS. Moving to Forgejo means re-anchoring that signing identity, so decide before building this chapter.
 
-### Role in WardenX
+### Role in ChartWarden
 
-Forgejo is a self-hosted Git forge (a community fork of Gitea) for the WardenX application and infrastructure repositories. Forgejo Actions runs CI pipelines using GitHub Actions-compatible workflow syntax; Woodpecker CI is an alternative. In stage 1, the repositories can stay on GitHub with self-hosted runners; moving to Forgejo is about owning the whole software factory, not a prerequisite for production.
+Forgejo is a self-hosted Git forge (a community fork of Gitea) for the ChartWarden application and infrastructure repositories. Forgejo Actions runs CI pipelines using GitHub Actions-compatible workflow syntax; Woodpecker CI is an alternative. In stage 1, the repositories can stay on GitHub with self-hosted runners; moving to Forgejo is about owning the whole software factory, not a prerequisite for production.
 
 ### Key concepts
 
@@ -762,9 +762,9 @@ Standard pipeline:
 
 **Update (2026-10-02):** Images are in GHCR today, already scanned with Trivy, described with a Syft SBOM, and signed with Cosign by the release workflow. Harbor stays stage 2; nothing blocks go-live on it.
 
-### Role in WardenX
+### Role in ChartWarden
 
-Harbor is the private registry for every container image and Helm chart WardenX runs. It scans images for vulnerabilities, stores signatures and SBOMs beside them, replicates images to the DR region, and caches upstream images so production never pulls from Docker Hub at deploy time. It replaces AWS ECR or GitHub Container Registry.
+Harbor is the private registry for every container image and Helm chart ChartWarden runs. It scans images for vulnerabilities, stores signatures and SBOMs beside them, replicates images to the DR region, and caches upstream images so production never pulls from Docker Hub at deploy time. It replaces AWS ECR or GitHub Container Registry.
 
 ### Key concepts
 
@@ -816,7 +816,7 @@ Harbor is the private registry for every container image and Helm chart WardenX 
 
 **Update (2026-10-02):** The repo has no Kubernetes manifests or Helm chart. It deploys with Docker Compose over SSH (`deploy/production/deploy.sh`). Before Argo CD has anything to sync, write manifests for the `api`, `worker` and `web` processes, the migration Job, and the smoke test (`smoke.sh`, four tiers) as a post-sync hook.
 
-### Role in WardenX
+### Role in ChartWarden
 
 Argo CD is the only thing that changes production. It watches the `gitops` repository and continuously makes the cluster match it: new image digests, configuration changes, platform upgrades. Every production change is therefore a reviewed Git commit with an author, a timestamp, and a diff, which doubles as the change-management record.
 
@@ -871,9 +871,9 @@ Argo CD is the only thing that changes production. It watches the `gitops` repos
 
 **Stage 1 (scanners, Renovate) / Stage 2 (signing, SBOM attestation) · Software factory**
 
-### Role in WardenX
+### Role in ChartWarden
 
-These tools make sure every release is built from known code and dependencies, contains no secrets or known critical vulnerabilities, and can be proven to come from the WardenX pipeline. They run as CI steps; Kyverno enforces their results at deploy time.
+These tools make sure every release is built from known code and dependencies, contains no secrets or known critical vulnerabilities, and can be proven to come from the ChartWarden pipeline. They run as CI steps; Kyverno enforces their results at deploy time.
 
 | Tool | Job | Runs | Blocks the build when |
 | --- | --- | --- | --- |
@@ -888,7 +888,7 @@ These tools make sure every release is built from known code and dependencies, c
 ### Key concepts
 
 - **SBOM:** a full inventory of packages inside an image. Lets you answer "are we affected?" within minutes when a new CVE lands.
-- **Signature and attestation:** a Cosign signature proves the image came from the WardenX pipeline; attestations attach signed metadata (SBOM, build provenance).
+- **Signature and attestation:** a Cosign signature proves the image came from the ChartWarden pipeline; attestations attach signed metadata (SBOM, build provenance).
 - **Keyless vs key-based signing:** keyless uses short-lived certificates from an OIDC identity; key-based uses a long-lived key. For a self-hosted factory, key-based signing with the key held in OpenBao is simpler to operate.
 - **Vulnerability exceptions:** a documented, time-limited acceptance of a known issue, with a reason and an expiry date.
 
@@ -927,7 +927,7 @@ These tools make sure every release is built from known code and dependencies, c
 `deploy.sh` checks it today (F-040). The signature and digest-pinning policies are therefore stage 1, enforced from
 the first production sync.
 
-### Role in WardenX
+### Role in ChartWarden
 
 Kyverno checks every resource before Kubernetes accepts it. If a Deployment uses an unsigned image, runs as root, lacks resource limits, or pulls from an unapproved registry, Kyverno rejects it and the workload never runs. It turns this manual's rules into enforced code, so they hold even when someone is tired or an agent-written manifest slips through review.
 
@@ -989,21 +989,21 @@ Production policies, enforced in all `wardenx-*`, `database`, `storage`, `messag
 
 **Stage 3 · Security and recovery · Runtime threat detection**
 
-### Role in WardenX
+### Role in ChartWarden
 
 Falco watches what containers actually do at runtime, using kernel events through eBPF, and raises alerts when behavior looks like an attack: a shell spawned in an API pod, a binary that was not in the image, writes to `/etc`, an unexpected outbound connection, or a process reading credential files. Kyverno decides what may start; Falco watches what it does after starting.
 
 ### Key concepts
 
 - **Rules:** conditions on system calls and Kubernetes metadata, with a priority (from Debug to Emergency) and an output message.
-- **Macros and lists:** reusable rule fragments, used to tune rules to WardenX's normal behavior.
+- **Macros and lists:** reusable rule fragments, used to tune rules to ChartWarden's normal behavior.
 - **Drivers:** modern eBPF probe (default on recent kernels) observes system calls with no kernel module.
 - **Falcosidekick:** forwards alerts to chat, email, Loki, Wazuh, or webhooks.
 
 ### Deployment baseline
 
 - DaemonSet on every node with the modern eBPF driver; runs in `security` under a named Kyverno exception (it needs privileges).
-- Start with the default ruleset, then add WardenX rules: no shells in `wardenx-*` pods, no outbound connections from `database` except to replicas and the backup target, no reads of service-account tokens by application processes.
+- Start with the default ruleset, then add ChartWarden rules: no shells in `wardenx-*` pods, no outbound connections from `database` except to replicas and the backup target, no reads of service-account tokens by application processes.
 - Falcosidekick forwards Warning and above to the alert channel and all events to Loki (stage 3: also Wazuh).
 - Tune noise for two weeks before paging on any rule.
 
@@ -1035,11 +1035,11 @@ Falco watches what containers actually do at runtime, using kernel events throug
 
 **Update (2026-10-02):** Until this stack is running, Beszel and Uptime Kuma on a monitoring VPS outside OVH cover host metrics and endpoint checks. Uptime Kuma checks the public URL through Pangolin, so it catches an edge or OVH failure that in-cluster monitoring would miss.
 
-### Role in WardenX
+### Role in ChartWarden
 
-This stack answers "is WardenX healthy, and if not, why?" OpenTelemetry instruments the application once in a vendor-neutral way; Prometheus stores metrics; Loki stores logs; Tempo stores traces; Alertmanager routes alerts; Grafana shows all of it in one place. It is operational telemetry, not the HIPAA audit trail, which lives in WardenX's own audit ledger.
+This stack answers "is ChartWarden healthy, and if not, why?" OpenTelemetry instruments the application once in a vendor-neutral way; Prometheus stores metrics; Loki stores logs; Tempo stores traces; Alertmanager routes alerts; Grafana shows all of it in one place. It is operational telemetry, not the HIPAA audit trail, which lives in ChartWarden's own audit ledger.
 
-| Component | Stores or does | WardenX use |
+| Component | Stores or does | ChartWarden use |
 | --- | --- | --- |
 | OpenTelemetry SDK + Collector | Instruments code; receives, processes, and exports telemetry | Fastify/Go services emit traces, metrics, logs; the Collector scrubs attributes and routes data |
 | Prometheus | Time-series metrics, scraped from targets | Request rates, error rates, latency, queue lag, database and node health |
@@ -1074,7 +1074,7 @@ This stack answers "is WardenX healthy, and if not, why?" OpenTelemetry instrume
 
 - **No PHI in telemetry.** The application logs IDs and outcomes, never names, dates of birth, diagnoses, notes, or request bodies. The Collector's scrubbing processor is a second line of defence, not the first.
 - Treat observability data as sensitive anyway: it reveals usage patterns and IP addresses. Access is restricted to platform admins.
-- Separate the WardenX audit ledger (who accessed which patient record, append-only, hash-chained) from these logs. Auditors and patients' access-report requests are served from the ledger.
+- Separate the ChartWarden audit ledger (who accessed which patient record, append-only, hash-chained) from these logs. Auditors and patients' access-report requests are served from the ledger.
 
 ### Failure modes
 
@@ -1094,7 +1094,7 @@ This stack answers "is WardenX healthy, and if not, why?" OpenTelemetry instrume
 
 **Stage 3 · Security and recovery · SIEM and security monitoring**
 
-### Role in WardenX
+### Role in ChartWarden
 
 Wazuh collects security events from across the platform, correlates them against rules, and keeps a searchable, long-retention security record. Where Falco catches suspicious behavior inside containers, Wazuh connects the dots across sources: repeated failed admin logins in authentik, followed by an OpenBao policy change, followed by an Argo CD sync. It runs in the security domain, so a production compromise cannot erase the evidence.
 
@@ -1102,8 +1102,8 @@ Wazuh collects security events from across the platform, correlates them against
 
 - **Manager:** analyzes incoming events against decoders and rules and raises alerts.
 - **Indexer and dashboard:** store and search events (based on OpenSearch).
-- **Agents vs agentless ingestion:** Talos nodes do not run traditional agents, so WardenX feeds Wazuh by log forwarding (syslog or a collector) rather than host agents.
-- **Rules and levels:** severity from 0 to 15; custom rules map WardenX-specific events.
+- **Agents vs agentless ingestion:** Talos nodes do not run traditional agents, so ChartWarden feeds Wazuh by log forwarding (syslog or a collector) rather than host agents.
+- **Rules and levels:** severity from 0 to 15; custom rules map ChartWarden-specific events.
 - **Compliance mappings:** built-in tags that map rules to frameworks, including HIPAA.
 
 ### Deployment baseline
@@ -1141,7 +1141,7 @@ Wazuh collects security events from across the platform, correlates them against
 
 **Stage 1 · Security and recovery · Kubernetes resource and volume backup**
 
-### Role in WardenX
+### Role in ChartWarden
 
 Velero backs up Kubernetes objects (and, where needed, persistent volumes) to object storage and restores them into the same or a new cluster. It covers what Git does not: live state such as operator-created resources, PVC data for non-database components, and namespace snapshots before risky changes. It does not back up PostgreSQL; CloudNativePG owns that.
 
@@ -1187,7 +1187,7 @@ Velero backs up Kubernetes objects (and, where needed, persistent volumes) to ob
 
 **Stage 1 · Software factory · Infrastructure as code**
 
-### Role in WardenX
+### Role in ChartWarden
 
 OpenTofu, the open-source fork of Terraform, declares everything outside Kubernetes: servers, networks, firewalls, DNS records, load balancers, and object-storage buckets at the hosting provider. Ansible covers the few imperative tasks OpenTofu cannot express well, such as bootstrapping a bare-metal server into Talos maintenance mode or configuring a WireGuard bastion. Together with Talos configs and the `gitops` repo, they make the whole cloud rebuildable from Git.
 
@@ -1258,9 +1258,9 @@ infrastructure/
 **Update (2026-10-05):** The code uses the PostgreSQL outbox and BullMQ on Valkey, not NATS. Local development keeps
 MinIO, and CI runs a Garage live suite so production's store is still exercised.
 
-### Role in WardenX
+### Role in ChartWarden
 
-Floci emulates AWS service APIs (such as S3, SQS, and SNS) locally, so code paths that talk to AWS can be tested on a laptop or in CI without an AWS account or bill. In WardenX it has one narrow job: testing the AWS adapters behind WardenX's portability interfaces (`ObjectStore`, event bus) for customers or deployments that may run on AWS. It is never part of production.
+Floci emulates AWS service APIs (such as S3, SQS, and SNS) locally, so code paths that talk to AWS can be tested on a laptop or in CI without an AWS account or bill. In ChartWarden it has one narrow job: testing the AWS adapters behind ChartWarden's portability interfaces (`ObjectStore`, event bus) for customers or deployments that may run on AWS. It is never part of production.
 
 ### Where it fits
 
@@ -1276,7 +1276,7 @@ The main test suite runs against the same kinds of components production uses. E
 
 - Run Floci as a container in the local Compose file and as an ephemeral service in the CI adapter-test job; destroy it after each run.
 - Point the AWS SDK at Floci's endpoint through configuration, never through code branches.
-- Contract tests: the same test suite runs against both adapters (Garage and Floci S3) to prove they behave the same for the operations WardenX uses.
+- Contract tests: the same test suite runs against both adapters (Garage and Floci S3) to prove they behave the same for the operations ChartWarden uses.
 - Pin the Floci version; confirm which AWS APIs and features it supports against its documentation before relying on them.
 
 ### Security and HIPAA notes
@@ -1300,13 +1300,13 @@ The main test suite runs against the same kinds of components production uses. E
 
 **Stage 1 (HIPAA policies and risk analysis now) · Software factory host · Compliance program system of record**
 
-### Role in WardenX
+### Role in ChartWarden
 
-A compliance platform is the system of record for the compliance program itself: policies, the risk register, controls, vendors (including BAAs), evidence, and audit preparation. It replaces a commercial platform such as Vanta or Drata. It does not replace the security tools in this manual; it tracks the evidence they produce. Two open-source options fit WardenX's self-hosted direction: Probo and Comp AI.
+A compliance platform is the system of record for the compliance program itself: policies, the risk register, controls, vendors (including BAAs), evidence, and audit preparation. It replaces a commercial platform such as Vanta or Drata. It does not replace the security tools in this manual; it tracks the evidence they produce. Two open-source options fit ChartWarden's self-hosted direction: Probo and Comp AI.
 
 ### Key concepts
 
-- **HIPAA is not a certification.** There is no HIPAA equivalent of a SOC 2 report. What hospice customers ask for first is a signed BAA from WardenX, a completed security questionnaire, and evidence of a HIPAA risk analysis and written policies. That is the first job for this tool.
+- **HIPAA is not a certification.** There is no HIPAA equivalent of a SOC 2 report. What hospice customers ask for first is a signed BAA from ChartWarden, a completed security questionnaire, and evidence of a HIPAA risk analysis and written policies. That is the first job for this tool.
 - **SOC 2 comes later.** A SOC 2 Type I or Type II report is issued by an independent CPA firm. The platform organizes the evidence; the auditor is a separate cost, paid only when a customer requires the report.
 - **Controls and evidence.** A control is a commitment ("backups are restored monthly"); evidence proves it operates (the restore drill output). One control can satisfy several frameworks.
 - **In audit scope.** A self-hosted compliance platform becomes part of what an auditor reviews, so it needs the same access control, backups, and patching as everything else.
@@ -1320,7 +1320,7 @@ A compliance platform is the system of record for the compliance program itself:
 | Automation interface | Web console, CLI, GraphQL API, MCP API | Web app, integrations | GraphQL API |
 | Evidence automation | Collection and access reviews | Strongest SOC 2 workflow and integrations | Automated checks still on the roadmap |
 | Paid option | Optional compliance-officer service | Managed plans and bundled audit, priced by quote | Hosted service and licensed frameworks |
-| Fit for WardenX | Best fit for agent-driven work and the simplest license | Best fit if SOC 2 workflow polish matters most | Watch; not yet mature enough |
+| Fit for ChartWarden | Best fit for agent-driven work and the simplest license | Best fit if SOC 2 workflow polish matters most | Watch; not yet mature enough |
 
 Recommendation: **Probo**, because Fable can maintain the risk register, controls, and evidence through its MCP and GraphQL APIs, and its MIT license carries no copyleft obligations. Choose Comp AI instead if its SOC 2 workflow proves stronger during a pilot. Do not run both.
 

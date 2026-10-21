@@ -1,6 +1,6 @@
 # Clearinghouse integration
 
-Everything about connecting WardenX to clearinghouses for the full claim cycle (eligibility → NOE → claim →
+Everything about connecting ChartWarden to clearinghouses for the full claim cycle (eligibility → NOE → claim →
 acks → 835 → posting → denials → NOTR).
 
 | Document | What it is |

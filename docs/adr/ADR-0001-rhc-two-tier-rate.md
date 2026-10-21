@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** M23-F01, M23-F02, M23-F03; Medicare-Hospice gaps in `AUDIT_CONSOLIDATED_FINAL.md`; Build-Blocking #9
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §H Module 23, §11.A validation library
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §H Module 23, §11.A validation library
 
 ## Context
 

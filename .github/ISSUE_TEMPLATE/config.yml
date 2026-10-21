@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Audit methodology
-    url: https://github.com/Engrace-Hospice/wardenx/blob/develop/docs/reviews/PROMPT_5_WARDENX_PRODUCTION_READINESS_AUDIT.md
+    url: https://github.com/Engrace-Hospice/wardenx/blob/develop/docs/reviews/PROMPT_5_CHARTWARDEN_PRODUCTION_READINESS_AUDIT.md
     about: How production-readiness findings are reproduced, filed, fixed, and verified.
   - name: Pre-migration backlog (read-only)
     url: https://github.com/fabwebdev/wardenx/issues

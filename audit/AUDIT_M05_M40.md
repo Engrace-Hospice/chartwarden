@@ -1,9 +1,9 @@
-# WardenX Module Audit — Module 05 (Patient & Demographics) and Module 40 (Master Data Management)
+# ChartWarden Module Audit — Module 05 (Patient & Demographics) and Module 40 (Master Data Management)
 
 **Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0 — criteria packs CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md; manifest `/Users/fabrice/Apps/WardenX/module-manifest.ts`.
 **Specs audited (in full):**
-- `WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md` (v0.4 Consolidated, "Locked")
-- `WARDENX_MODULE_40_MDM_SPEC_v0_4.md` (v0.4 Consolidated, "Locked")
+- `CHARTWARDEN_MODULE_05_PATIENT_SPEC_v0_4.md` (v0.4 Consolidated, "Locked")
+- `CHARTWARDEN_MODULE_40_MDM_SPEC_v0_4.md` (v0.4 Consolidated, "Locked")
 
 **Date:** 2026-06-10
 
@@ -115,7 +115,7 @@ The canonical/overlay implementation of SD §4.6 pattern 3 is faithful and well 
 
 ## DOC-CONFLICTs Encountered (M40)
 
-- **DOC-CONFLICT-1:** WARDENX_ARCHITECTURE_v0_11.md §25.13 ("Anti-pattern: Modules directly reaching into other modules' database tables. Always go through the owning module's service API." — line 3015) vs WARDENX_SYSTEM_DESIGN_v0.3.md §4.6 Module-40 merge workflow step 1 ("All references to `duplicate_id` re-pointed to `canonical_id` via foreign-key update jobs (per-table, batched)" — line 788), which is silent on **which module executes** the FK updates. The M40 spec followed the SD's literal reading (M40-owned `repoint.ts` writing consumer tables). Recorded per protocol rule 5; M40-F05 is held at MAJOR (not BLOCKER) pending lead/ADR adjudication of the executor.
+- **DOC-CONFLICT-1:** CHARTWARDEN_ARCHITECTURE_v0_11.md §25.13 ("Anti-pattern: Modules directly reaching into other modules' database tables. Always go through the owning module's service API." — line 3015) vs CHARTWARDEN_SYSTEM_DESIGN_v0.3.md §4.6 Module-40 merge workflow step 1 ("All references to `duplicate_id` re-pointed to `canonical_id` via foreign-key update jobs (per-table, batched)" — line 788), which is silent on **which module executes** the FK updates. The M40 spec followed the SD's literal reading (M40-owned `repoint.ts` writing consumer tables). Recorded per protocol rule 5; M40-F05 is held at MAJOR (not BLOCKER) pending lead/ADR adjudication of the executor.
 
 ---
 

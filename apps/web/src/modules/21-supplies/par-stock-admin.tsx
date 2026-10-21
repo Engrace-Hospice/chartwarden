@@ -1,5 +1,5 @@
 // apps/web/src/modules/21-supplies — S21.6 PAR-STOCK ADMIN (`/supplies/par-stock`, §5.7,
-// Track B / ADR-0030). Spec: docs/design/screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md —
+// Track B / ADR-0030). Spec: docs/design/screens/clinical/CHARTWARDEN_UI_SUPPLY_DME_INVENTORY.md —
 // "Use Work Queue."
 //
 // NO PATIENT APPEARS ON THIS SURFACE. A par row is agency inventory at a Location; §3.1.6 is explicit that

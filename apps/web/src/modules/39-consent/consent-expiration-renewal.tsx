@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT EXPIRATION & RENEWAL (§5.1, Track B / ADR-0030).
-// Spec: docs/design/screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md — "Use Patient Workspace."
+// Spec: docs/design/screens/compliance/CHARTWARDEN_UI_CONSENT_EXPIRATION_RENEWAL.md — "Use Patient Workspace."
 //
 // The renewal window: which of the patient's consents lapse soon, banded by urgency, with the contributing
 // records underneath. Reads GET /api/v1/patients/:patientId/expiring-consents (cursor-paginated, §4.12)

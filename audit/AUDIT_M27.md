@@ -1,9 +1,9 @@
-# WardenX Module Audit — Module 27 Cost Report
+# ChartWarden Module Audit — Module 27 Cost Report
 
-**Auditor:** WardenX Module Compliance Auditor (per `audit/_criteria/AUDITOR_INSTRUCTIONS.md`)
-**Spec under audit:** `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md` (Spec status: Locked v0.2)
+**Auditor:** ChartWarden Module Compliance Auditor (per `audit/_criteria/AUDITOR_INSTRUCTIONS.md`)
+**Spec under audit:** `CHARTWARDEN_MODULE_27_COST_REPORT_SPEC_v0_2.md` (Spec status: Locked v0.2)
 **Date:** 2026-06-11
-**Authoritative sources consulted:** `WARDENX_ARCHITECTURE_v0_11.md` (§11 M27, §11.B, §20, §24), `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`, the three criteria packs, `WARDENX_INTEGRATIONS_v0_1.md` / `WARDENX_DR_BCP_v0.1.md` (via criteria pack).
+**Authoritative sources consulted:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` (§11 M27, §11.B, §20, §24), `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`, the three criteria packs, `CHARTWARDEN_INTEGRATIONS_v0_1.md` / `CHARTWARDEN_DR_BCP_v0.1.md` (via criteria pack).
 
 ---
 

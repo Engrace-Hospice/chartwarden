@@ -1,4 +1,4 @@
-# WardenX — Architecture Fitness & Boundary Enforcement
+# ChartWarden — Architecture Fitness & Boundary Enforcement
 
 **Intended placement:** companion to ARCHITECTURE §25 (Patterns Catalog). *(The architecture
 document's §25.15 is "Mobile Considerations"; this fitness content is the normative companion the

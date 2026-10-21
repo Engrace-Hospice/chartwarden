@@ -5,7 +5,7 @@
 - **Phase:** dispute resolution (post June-13 re-audit)
 - **Resolves:** M35-F02 (DISPUTED); `audit/TRIAGE_RESULTS.md` §Batch-3
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md); precedent [ADR-0006](ADR-0006-resolve-manifest-22-39-cycle.md), [ADR-0007](ADR-0007-m8-m9-m10-read-direction.md)
-- **Changes (on acceptance):** `module-manifest.ts` / `.cjs` (M35 row), `WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md` (D23/D24, §13), `WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md` (D23, §13)
+- **Changes (on acceptance):** `module-manifest.ts` / `.cjs` (M35 row), `CHARTWARDEN_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md` (D23/D24, §13), `CHARTWARDEN_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md` (D23, §13)
 
 ## Context
 

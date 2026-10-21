@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/outbox-consumers/m11-recertification-signed.ts — the live
 // `m11.order.recertification_signed` → "open the next PENDING election period" binding (F-223, #248).
 //
-// M11 D10 (WARDENX_MODULE_11_ORDERS_SPEC §11): "Recertification orders are advisory; M6 owns CTI / F2F
+// M11 D10 (CHARTWARDEN_MODULE_11_ORDERS_SPEC §11): "Recertification orders are advisory; M6 owns CTI / F2F
 // enforcement, period sequencing, and benefit-period state. M11 emits `m11.order.recertification_signed`;
 // M6 subscribes and ... transitions the next period." The user APPROVED the reading that a signed recert
 // order auto-opens the next pending period (F-217 had reduced the blocker from a design gap to that one

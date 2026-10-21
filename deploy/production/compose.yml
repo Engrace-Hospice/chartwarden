@@ -167,7 +167,7 @@ services:
   # content and sets StreamMaxLength >= the 25 MB upload cap. The signature DB persists in `clamav-data` and
   # freshclam refreshes it in-container (CLAMAV_NO_FRESHCLAMD unset). api/worker do NOT `depends_on` it: a down or
   # still-updating scanner leaves attachments `pending` (nothing is delivered), it must never block the EHR.
-  # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md).
+  # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md).
   clamav:
     image: clamav/clamav-debian:1.4
     restart: unless-stopped

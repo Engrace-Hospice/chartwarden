@@ -2,7 +2,7 @@
 
 > **Status:** Proposal for approval · **Date:** 2026-10-11 · **Owner module:** M36 (Secure Messaging & Alerts)
 > **Authority:** Architecture documents win on conflict ([`CLAUDE.md`](../../CLAUDE.md) authority rule). This plan
-> extends [Module 36](../modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md); where it needs to change M36 or a
+> extends [Module 36](../modules/CHARTWARDEN_MODULE_36_MESSAGING_SPEC_v0_4.md); where it needs to change M36 or a
 > neighbouring module's contract, it says so and names the ADR that must land first (see
 > [`02-architecture-and-domain.md` §8](./02-architecture-and-domain.md#8-adrs-to-write-before-the-phases-that-need-them)).
 > It is **not** under `docs/plans/**` on purpose: that tree is read-only to automation (`arch:plan-integrity`).

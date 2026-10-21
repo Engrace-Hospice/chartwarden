@@ -4,8 +4,8 @@
   remediation AR-03; see `audit/ARCHITECTURE_DOC_REMEDIATION_PLAN.md`).
 - **Date:** 2026-08-14
 - **Phase:** post-build divergence record (revenue-cycle wave R2 shipped this way).
-- **Supersedes (wording):** `WARDENX_ARCHITECTURE_v0_11.md` §12 (the Python sidecar service tier)
-  and `WARDENX_SYSTEM_DESIGN_v0.3.md`'s sidecar topology — both sections are
+- **Supersedes (wording):** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §12 (the Python sidecar service tier)
+  and `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`'s sidecar topology — both sections are
   `STATUS: TARGET — NOT BUILT` in their entirety and banner-marked.
 - **Related:** [ADR-0028](ADR-0028-adapter-package-codepaths.md) /
   [ADR-0029](ADR-0029-x12-worker-client-split.md) (the adapter-package layout that replaced the
@@ -34,7 +34,7 @@ The architecture corpus describes a Python sidecar tier (`services/`, `infra/`) 
    highest-compliance-weight money code from every fitness gate this repo runs.
 2. **Transport remains a bound-later port.** Actually moving an 837 to a MAC (or ingesting an 835
    from one) is a vendor adapter behind the existing typed port; wiring it is integration work
-   (see `WARDENX_INTEGRATIONS` wiring-status column), not a language decision.
+   (see `CHARTWARDEN_INTEGRATIONS` wiring-status column), not a language decision.
 3. If an isolated execution environment is ever genuinely required (e.g. a vendor SDK that only
    ships for another runtime), that is a *new* ADR with a concrete vendor in hand — not a
    standing sidecar tier waiting for a workload.

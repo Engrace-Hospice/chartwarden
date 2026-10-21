@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — the packet's built-snapshot content, shared by the full packet page and the
-// live-meeting centre panel. Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md "Patient Packet (center)".
+// live-meeting centre panel. Spec: docs/design/screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md "Patient Packet (center)".
 //
 // Semantics the server guarantees (and this file never papers over):
 //  - `content: null` ⇒ the snapshot is missing / unsupported — said so, never blank.

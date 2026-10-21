@@ -1,4 +1,4 @@
-// apps/web/src/modules/04-audit — HIPAA privacy work queue (GAP-012; WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE).
+// apps/web/src/modules/04-audit — HIPAA privacy work queue (GAP-012; CHARTWARDEN_UI_HIPAA_PRIVACY_DISCLOSURE).
 // The staff surface for the individual-rights obligations that already have backend routes:
 //   · Amendment requests (§164.526, 60-day clock): list pending, accept / deny (denial reason required).
 //   · Accounting of disclosures (§164.528): GET /api/v1/audit/patients/:patientId/accounting.

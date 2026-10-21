@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT RECORD MANAGER (§5.1, Track B / ADR-0030).
-// Spec: docs/design/screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md — "Use Patient Workspace."
+// Spec: docs/design/screens/compliance/CHARTWARDEN_UI_CONSENT_RECORD_MANAGER.md — "Use Patient Workspace."
 //
 // The patient's consent record set: what is on file, what it authorises, and what state each record is in.
 // Reads GET /api/v1/patients/:patientId/consents (+ the patient summary for the banner) through the typed

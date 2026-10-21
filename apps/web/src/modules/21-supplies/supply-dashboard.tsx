@@ -1,5 +1,5 @@
 // apps/web/src/modules/21-supplies — S21.1 SUPPLY TEAM DASHBOARD (`/supplies`, §5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_SUPPLIES_DME_COMFORT_KIT.md — "Use Work Queue."
 //
 // Four reads compose this screen: the open supply-request worklist (row 2), the overdue return worklist
 // (row 25), the shelf (row 32) and the dispatch list (row 21) for the reconciled-with-discrepancy tail.

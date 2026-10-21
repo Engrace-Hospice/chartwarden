@@ -25,7 +25,7 @@ gap — deliberate divergences never recorded — is now closed by ADR-0042/0043
 | 0008 D4 | Launch aggregator shipped as Sandata multi-state, not the decided OR-PTC/Oregon | **ADR-0044** ratifies Sandata behind the per-state adapter registry. |
 | 0032 (gap) | "No `apps/web`→`apps/backend` import edge" was true but mechanically unenforceable (a module owns both sub-paths) | New dependency-cruiser rule `spa-never-imports-backend` (all three SPAs). |
 | index | ADR-0032's row credited `@fastify/swagger` (which that ADR rejects and 0040 bans); stale Phase-0-only framing; conventions clause pointing at nonexistent changelog sections; a blank line splitting the table | All corrected in `docs/adr/README.md`. |
-| 0035 (doc obligation) | The promised in-place architecture edits were never made (§4 tree + §Mobile still said TanStack/`apps/mobile`) | Made now in `WARDENX_ARCHITECTURE_v0_11.md`. |
+| 0035 (doc obligation) | The promised in-place architecture edits were never made (§4 tree + §Mobile still said TanStack/`apps/mobile`) | Made now in `CHARTWARDEN_ARCHITECTURE_v0_11.md`. |
 
 ## 2. The governance finding — ADR-0026 (needs a human decision)
 

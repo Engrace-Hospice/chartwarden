@@ -28,7 +28,7 @@ so screens reference them:
 ## 0.1 App Shell & Role Home — M01 · `Use App Shell` (Dashboard content)
 
 ```
-Design "App Shell & Role Home" for WardenX hospice EHR. Module M01.
+Design "App Shell & Role Home" for ChartWarden hospice EHR. Module M01.
 LAYOUT: App Shell — Top Navigation (glass, org context · ⌘K search · notifications · user) over a
 [Support/Degraded-mode banner slot] over (Left Nav Rail | Content Outlet). The content outlet
 renders a role-based home using the Dashboard pattern.
@@ -46,7 +46,7 @@ Admin home · degraded-mode · empty/new-user · dark mode.
 ## 0.2 Authentication & Session — M02 · `Use Auth Flow`
 
 ```
-Design "Authentication & Session" for WardenX hospice EHR. Module M02.
+Design "Authentication & Session" for ChartWarden hospice EHR. Module M02.
 LAYOUT: Auth Flow — centered card on warm-paper canvas; lantern brand mark; one focused action
 per step; primary CTA (indigo gradient); secondary/recovery links. Accessibility first-class.
 STEPS (one frame each): Sign-in (email/password + passkey option) · MFA challenge (TOTP/passkey) ·
@@ -61,7 +61,7 @@ VARIANTS: each step above · error states · dark mode.
 ## 0.3 System / Utility Pages — M01 · `Use System Page`
 
 ```
-Design "System / Utility Pages" for WardenX. Module M01.
+Design "System / Utility Pages" for ChartWarden. Module M01.
 LAYOUT: System Page — centered status (Material Symbols Rounded icon · Fraunces headline · plain
 explanation · forward action · optional correlation id in mono). No PHI, no stack traces.
 VARIANTS (frames): 403 no-access · 404 not-found · 500 error (with correlation id) · offline ·
@@ -71,7 +71,7 @@ maintenance/scheduled-downtime (countdown) · session-expired · tenant-suspende
 ## 0.4 Patient Chart — M05 · `Use Patient Workspace`
 
 ```
-Design "Patient Chart" for WardenX hospice EHR. Module M05. The central per-patient hub.
+Design "Patient Chart" for ChartWarden hospice EHR. Module M05. The central per-patient hub.
 LAYOUT: Patient Workspace — sticky Patient Banner over (Left: Module Nav Rail | Center: active
 module / Summary | Right: Alerts / Tasks).
 PATIENT BANNER (sticky): name (Fraunces headline-md) + pronouns; DOB/age/sex; MRN + MBI(last4) in
@@ -95,7 +95,7 @@ revealed · dark mode.
 ## 0.5 Patient List / Census — M05 · `Use Work Queue`
 
 ```
-Design "Patient List / Census" for WardenX. Module M05.
+Design "Patient List / Census" for ChartWarden. Module M05.
 LAYOUT: Work Queue — Page Header; KPI strip (Census, Admissions today, Discharges, GIP, Recerts
 due); Filter Bar (team, LOC, status, payer, deadline — saveable); Work Table | Right Detail Panel.
 TABLE COLUMNS: patient (name + MRN mono), status pill, LOC, benefit period, primary team, next
@@ -111,7 +111,7 @@ VARIANTS: full census · my-caseload · by-team · deadline-critical filter · d
 ## 0.6 Global Search Results — M01 · M33 · `Use Work Queue`
 
 ```
-Design "Global Search Results" for WardenX (the ⌘K destination). Modules M01 · M33.
+Design "Global Search Results" for ChartWarden (the ⌘K destination). Modules M01 · M33.
 LAYOUT: Work Queue — query header; result groups (Patients, Staff, Documents, Orders, Claims,
 Screens/Actions); each row typed with an icon, mono identifier, and a permission-aware open.
 SYSTEMS: results respect RLS/permission (no out-of-scope leakage); PHI in previews masked;
@@ -123,7 +123,7 @@ VARIANTS: mixed results · patient-only · zero-results · dark mode.
 ## 0.7 Notifications & Tasks — M01 · M36 · `Use Work Queue`
 
 ```
-Design "Notifications & Tasks" for WardenX. Modules M01 · M36.
+Design "Notifications & Tasks" for ChartWarden. Modules M01 · M36.
 LAYOUT: Work Queue — tabs (Tasks · Notifications · Mentions); KPI strip (Due today, Overdue,
 Unread); table rows = task/notification with priority, source module, due countdown chip, actor;
 Right Detail = item detail + quick-complete.
@@ -136,7 +136,7 @@ VARIANTS: tasks · notifications · overdue filter · empty/inbox-zero · dark m
 ## 0.8 Staff Messaging — M36 · `Use Conversation View`
 
 ```
-Design "Staff Messaging" for WardenX. Module M36.
+Design "Staff Messaging" for ChartWarden. Module M36.
 LAYOUT: Conversation View — Conversation List | Message Thread | Right: participants / patient
 context. Bubbles per DESIGN.md §6.8 (me = indigo, other = surface-low). Patient-scoped threads
 show a patient context chip; urgent flag uses ALERT.
@@ -149,7 +149,7 @@ VARIANTS: inbox · active thread · new/compose (role fan-out) · patient-scoped
 ## 0.9 Reporting & Analytics — M33 · `Use Dashboard`
 
 ```
-Design "Reporting & Analytics" for WardenX. Module M33.
+Design "Reporting & Analytics" for ChartWarden. Module M33.
 LAYOUT: Dashboard — Page Header (date range, export); KPI strip; charts (census trend, LOC mix,
 visit compliance, revenue); contributing-records table | Right: filters / saved reports / export.
 SYSTEMS: all data RLS-scoped; reports never cross tenant; numbers tabular-nums; export is audited.
@@ -160,7 +160,7 @@ VARIANTS: operational · clinical-quality · financial · saved-report view · d
 ## 0.10 Agency Command Center — M33 · M01 · `Use Dashboard`
 
 ```
-Design "Agency Command Center" for WardenX (live agency-wide operational view). Modules M33 · M01.
+Design "Agency Command Center" for ChartWarden (live agency-wide operational view). Modules M33 · M01.
 LAYOUT: Dashboard — big KPI strip (census, admissions/discharges, GIP utilization, visits today &
 completion %, unsigned notes, recerts due, cap exposure, on-call status); trend charts; a
 "requires attention" cross-module work list | Right: risk / alerts / coverage status.
@@ -177,7 +177,7 @@ VARIANTS: day · on-call/after-hours · degraded-mode · dark mode.
 ### Overlay A — Guardrail blockers (`alert-dialog` template)
 
 ```
-Design the WardenX "Invariant Blocking Dialog" symbol set. One template: ALERT-toned header, the
+Design the ChartWarden "Invariant Blocking Dialog" symbol set. One template: ALERT-toned header, the
 unmet invariants as a checklist (each with a fix deep-link), and two paths — Fix or Override
 (override only where policy allows; captures actor + reason to audit). Glass scrim, shadow-float,
 focus-trapped.
@@ -190,7 +190,7 @@ Also: the inline "Guard Chip" (disabled action + reason + fix link) and the "Gat
 ### Overlay B — Signature Ceremony
 
 ```
-Design the WardenX "Signature Ceremony" symbol set — modal ceremonies for irreversible actions.
+Design the ChartWarden "Signature Ceremony" symbol set — modal ceremonies for irreversible actions.
 Template: what is being attested (summary), the legal/attestation text, signer identity, an
 embedded step-up auth challenge (reuse §0.2 step-up), and one deliberate commit. shadow-float,
 glass scrim, focus-trap.
@@ -202,7 +202,7 @@ Cosignature.
 ### Overlay C — Provenance & AI
 
 ```
-Design the WardenX "Provenance" symbol set (DESIGN.md §9). Three states, visually distinct:
+Design the ChartWarden "Provenance" symbol set (DESIGN.md §9). Three states, visually distinct:
 Human-authored (default, no chrome) · AI-suggested (success-tinted container + soft halo +
 auto_awesome glyph + provenance line "model · confidence · review before relying" + Accept/Edit/
 Dismiss + citation link) · System-derived (quiet info chip "derived from…/imported via HL7 ADT").
@@ -215,7 +215,7 @@ system-derived chip · governance bar · hard-blocked state · HITL feedback.
 ### Overlay D — Sensitivity & Consent
 
 ```
-Design the WardenX "Sensitivity" symbol set (DESIGN.md §8). FRAMES: PHI masked field
+Design the ChartWarden "Sensitivity" symbol set (DESIGN.md §8). FRAMES: PHI masked field
 (xxx-xx-#### mono + step-up reveal affordance) · SUD/42-CFR-Part-2 sealed block ("Protected —
 Part 2 consent required" + lock glyph, visible-as-redaction) · consent-gated privacy badge
 (shield chip + hover authority) · break-glass active-session banner (persistent ALERT bar across

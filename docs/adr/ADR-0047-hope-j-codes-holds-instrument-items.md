@@ -44,7 +44,7 @@ check the boundary already makes synchronously and absolutely. It could only eve
 same defect class as F-029, F-042, F-051 and F-057 itself: a control that can only answer one way, and
 therefore tells nobody anything. A rule set is not improved by adding a rule that cannot fire.
 
-**The symptom codes are not terminology.** `HOPE_J2051_SYMPTOM_CODES` is a WardenX-internal
+**The symptom codes are not terminology.** `HOPE_J2051_SYMPTOM_CODES` is a ChartWarden-internal
 vocabulary defined in `@chartwarden/types`. Placing it in a terminology *service* value set would assert
 it is externally governed, invite a tenant extension to widen it (M38 permits tenants to ADD to a
 platform set), and split its authority across two modules. The instrument's item roster genuinely is

@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — prescriber medication sign inbox (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (sign inbox). The
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (sign inbox). The
 // prescriber's queue of medication orders awaiting their signature (status pending_signature), KPI'd by
 // controlled-vs-standard, sorted by created. A controlled order signs through the EPCS 2FA path (W-MR-02) —
 // surfaced here as a badge; the actual sign step-up (and the verbal-pending section) fill in as their write

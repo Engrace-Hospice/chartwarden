@@ -1,5 +1,5 @@
 // apps/web/src/modules/19-oncall — S19.11 ON-CALL PROGRAM METRICS (`/triage/metrics`, §5.1, Track B /
-// ADR-0030). Spec: WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md — the Performance Metrics tab.
+// ADR-0030). Spec: CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md — the Performance Metrics tab.
 //
 // READ THIS BEFORE READING A NUMBER ON THIS PAGE: EVERY FIGURE IS PAGE-DERIVED, AND SEVERAL §5.1 METRICS
 // ARE NOT BUILT AT ALL.

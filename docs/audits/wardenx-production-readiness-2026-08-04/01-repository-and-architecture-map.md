@@ -3,7 +3,7 @@
 ## Repository Map
 
 ```text
-WardenX
+ChartWarden
 |-- apps
 |   |-- backend       Fastify API, composition root, BullMQ workers, module routes
 |   |-- web           Staff/clinical/revenue React SPA

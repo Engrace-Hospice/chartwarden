@@ -10,7 +10,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — IDG Schedule (per-location) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign:
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign:
 // the org-level page anatomy shared with Billing / Admissions (idg-page-kit.tsx): page head, sub-page tabs,
 // a label-first KPI strip derived from the rows actually returned, a boxed filter panel (search + Location
 // + Status), the meetings table (one row per meeting with its §2.2 lifecycle chip) and a right rail (next

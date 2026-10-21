@@ -1,6 +1,6 @@
 import { CenteredCardLayout, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — MFA Challenge (M2 Auth, ADR-0034 task 4).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "MFA challenge" (/login/2fa). Matched to the P0
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "MFA challenge" (/login/2fa). Matched to the P0
 // Pencil frame (wardenx-P0-foundation.pen `a1dbhD`, "Card Two-factor verification"): branded card,
 // Fraunces title + subtitle, a segmented 6-digit code input, a full-width pill Verify button, and a
 // footer link. Reached when sign-in returns twoFactorRedirect (a 2FA-enrolled user). TOTP 6-digit or a

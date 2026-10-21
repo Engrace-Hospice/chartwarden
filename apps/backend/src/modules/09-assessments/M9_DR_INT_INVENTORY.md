@@ -1,7 +1,7 @@
 # Module 9 (Clinical Assessments Suite) — DR Tier + Integration Inventory + STRIDE
 
 M9-T07 (spec §5.6, §4.7, §4.8, §8.4, §8.5). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md` and `WARDENX_INTEGRATIONS_v0_1.md`.
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` and `CHARTWARDEN_INTEGRATIONS_v0_1.md`.
 
 ## DR posture — **Tier 2** (patient-safety-critical clinical scale data; §5.6 / M09-F10 / DR-010)
 

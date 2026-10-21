@@ -1,12 +1,12 @@
-# WardenX Module Audit — Module 02 (Identity & Org) and Module 03 (Authorization)
+# ChartWarden Module Audit — Module 02 (Identity & Org) and Module 03 (Authorization)
 
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs applied:** CRITERIA_ARCHITECTURE (ARCH-###), CRITERIA_SECURITY_AI (SD-/SEC-/AI-###), CRITERIA_OPS_DR_INTEGRATIONS (DR-/OPS-/INT-###), `module-manifest.ts`
 **Specs audited:**
-- `WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md` (v0.4 Consolidated, Locked, 2026-06-10, 1,605 lines — read in full)
-- `WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md` (audited at v0.2 Locked, 2026-06-10; renamed to v0.3 for the `m3.` event-naming migration)
+- `CHARTWARDEN_MODULE_02_IDENTITY_SPEC_v0_4.md` (v0.4 Consolidated, Locked, 2026-06-10, 1,605 lines — read in full)
+- `CHARTWARDEN_MODULE_03_AUTHORIZATION_SPEC_v0_3.md` (audited at v0.2 Locked, 2026-06-10; renamed to v0.3 for the `m3.` event-naming migration)
 
-All BLOCKER findings were verified directly against `WARDENX_ARCHITECTURE_v0_11.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, and `module-manifest.ts`.
+All BLOCKER findings were verified directly against `CHARTWARDEN_ARCHITECTURE_v0_11.md`, `CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and `module-manifest.ts`.
 
 ---
 
@@ -77,7 +77,7 @@ The three-layer model, deny-by-default pipeline, break-glass, engagement scoping
 | M03-F10 | MINOR | D9 (own decision), internal (J) | Namespace and reference drift: §8.1 audit actions (`authz.denied`, `role.assigned`, `breakglass.invoked`, `engagement.created`) violate M3's own ratified D9 rule that audit actions live under the module's `mN.` prefix; §4.4 cites "§11 Open Question 2" which v0.2 renamed to Resolved Decision D2; §3.3 cites "Module 2 §4.5" but M2 v0.4's key registry is §4.7. | §8.1; §4.4 note; §3.3 comments. | Re-prefix to `m3.*` (or scope D9 to outbox/alert names only — explicitly); fix stale references. |
 | M03-F11 | MINOR | ARCH-262, ARCH-263/SD-053, ARCH-250 | `authz.reap_breakglass`, `authz.close_engagements`, `authz.cache_invalidate` declare no priority/retry/backoff/concurrency/DLQ and no idempotency statement (DR-022 requires idempotent consumers — expiry/close jobs must tolerate re-execution); mutating routes (role create/assign, break-glass invoke) don't state `Idempotency-Key` semantics; `security` retention class not in the §24 matrix (same as M02-F12). | §4.5; §8.1. | Declare queue parameters + idempotency; map retention classes to §24. |
 | M03-F12 | MINOR | ARCH-234 vs D8 | D8 places the consolidated `REQUIRED_SEAMS` registry in M3, checked by M1's boot-time `validateSeams()` — but M1 (`dependsOn []`) cannot import an M3-owned registry; ARCH-234 puts seam wiring in M1's `apps/backend/src/bootstrap/seams.ts` with modules registering at init. Workable only if framed as runtime registration (modules push declarations into M1's registry), which D8's ownership language does not say. | §11 D8. | Reword D8: M1 owns the registry/gate; M3 owns the *schema* of seam declarations and contributes its entries at init like every module. |
-| M03-F13 | MINOR | ARCH-190, ARCH-186, internal (J) | `break_glass_event.consent_ref` is a bare uuid with no FK or declared owner — the "tenant consent record" required for cross-tenant WardenX break-glass (ARCH-186) has no specified home (Module 34? 39?); D5's sampling rate for routine `authz.denied` audit is unspecified (what fraction, and is the sample deterministic for forensics?); `role.enabled=false` effect on in-flight sessions stated only via cache invalidation. | §3.5; §11 D5. | Type `consent_ref` against the owning entity once M34 is specced; pin the sampling policy. |
+| M03-F13 | MINOR | ARCH-190, ARCH-186, internal (J) | `break_glass_event.consent_ref` is a bare uuid with no FK or declared owner — the "tenant consent record" required for cross-tenant ChartWarden break-glass (ARCH-186) has no specified home (Module 34? 39?); D5's sampling rate for routine `authz.denied` audit is unspecified (what fraction, and is the sample deterministic for forensics?); `role.enabled=false` effect on in-flight sessions stated only via cache invalidation. | §3.5; §11 D5. | Type `consent_ref` against the owning entity once M34 is specced; pin the sampling policy. |
 
 ## Dimensions A–J Coverage Notes — Module 03
 
