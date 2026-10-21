@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 3 (governed subsystems)
 - **Resolves:** H2, S11; M29-F03, M39-F05, M09 (AIMS), M06, M19 (re-disclosure)
-- **Changes:** `WARDENX_MODULE_29`, `WARDENX_MODULE_39`, and the SUD-touching modules (M05/M06/M09/M19/M28)
+- **Changes:** `CHARTWARDEN_MODULE_29`, `CHARTWARDEN_MODULE_39`, and the SUD-touching modules (M05/M06/M09/M19/M28)
 
 ## Context
 

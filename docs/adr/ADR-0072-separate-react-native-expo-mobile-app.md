@@ -1,4 +1,4 @@
-# ADR-0072 — Mobile is a separate React Native/Expo application consuming versioned WardenX APIs
+# ADR-0072 — Mobile is a separate React Native/Expo application consuming versioned ChartWarden APIs
 
 - **Status:** **Proposed for formal architecture ratification.** The product direction was fixed on
   2026-10-16 for Mobile PR B, but the Frontend/Architecture Owner ratification required by ADR-0030 and
@@ -23,7 +23,7 @@ application into a WebView.
 
 This choice accepts the cost ADR-0035 avoided: every mobile screen has a second renderer and its own
 device tests. It does not duplicate domain authority. Backend permissions, ABAC, RLS, workflow
-transitions, validation, session state and auditing remain WardenX server responsibilities.
+transitions, validation, session state and auditing remain ChartWarden server responsibilities.
 
 ## Decision
 
@@ -33,7 +33,7 @@ transitions, validation, session state and auditing remain WardenX server respon
 2. React DOM components and hooks coupled to DOM/browser globals are not shared. Reusable material is
    limited to renderer-free values and contracts: OpenAPI, plain TypeScript types, documented permission
    keys, design tokens and pure utilities that have no DOM, Node or server dependency.
-3. `docs/api/openapi.json` is the versioned cross-repository contract. PR C pins a WardenX commit or
+3. `docs/api/openapi.json` is the versioned cross-repository contract. PR C pins a ChartWarden commit or
    release artifact and generates its Axios-facing types in `wardenx-mobile`; it does not import
    `packages/ui` or reach into this monorepo by relative/workspace path. Breaking API changes use the
    existing `/api/vN` policy. The mobile client sends its build/contract version for diagnostics only;
@@ -47,7 +47,7 @@ transitions, validation, session state and auditing remain WardenX server respon
    contains exact custom schemes such as `wardenx://` and is consumed only by Better Auth. Wildcards,
    `Origin: null`, `exp://` and implicit production localhost values are forbidden. Universal/App Links
    are HTTPS and therefore use the reviewed web-origin list.
-6. WardenX's cookie-authenticated `/api/v1/*` mutations keep the double-submit CSRF control. A native
+6. ChartWarden's cookie-authenticated `/api/v1/*` mutations keep the double-submit CSRF control. A native
    client obtains the nonce from authenticated `GET /api/v1/auth/csrf`, then sends the Better Auth
    cookie plus `wardenx_csrf=<nonce>` in `Cookie` and the same nonce in `X-CSRF-Token`. No native
    marker, User-Agent or absent Origin bypass exists.
@@ -69,7 +69,7 @@ device evidence; PR B provides backend contracts and marks the rest accurately.
 | App foreground lock and biometric unlock | Expo local-authentication or reviewed native module; backend timeout remains authoritative | Deferred to PR C/device tests |
 | Android screenshot blocking / iOS capture response | Reviewed native configuration/plugin per PHI screen | Deferred; no claim of implementation |
 | Root/jailbreak and emulator posture | Managed native attestation/integrity adapter with a documented failure policy | Deferred; server flag remains off |
-| Device attestation | Existing WardenX challenge/verification routes plus a supported iOS/Android provider | Deferred to dedicated lot |
+| Device attestation | Existing ChartWarden challenge/verification routes plus a supported iOS/Android provider | Deferred to dedicated lot |
 | Certificate pinning | Native network-security configuration with a rotation and emergency-unpin runbook | Decision and device proof required |
 | Encrypted offline drafts/cache | Reviewed encrypted SQLite/file store, user+org binding, TTL, backup exclusion and purge | Deferred; PHI in AsyncStorage forbidden |
 | MDM distribution/configuration | EAS/native builds distributed by the selected MDM with managed config | Operational lot |
@@ -79,10 +79,10 @@ device evidence; PR B provides backend contracts and marks the rest accurately.
 
 - Two renderers increase design, accessibility and regression cost. Feature parity is measured through
   explicit mobile routes/capabilities, not by copying web components.
-- WardenX keeps one authorization and tenancy implementation. Mobile roles may choose shortcuts, but
+- ChartWarden keeps one authorization and tenancy implementation. Mobile roles may choose shortcuts, but
   effective permissions come from `/api/v1/auth/context` and every action is rechecked server side.
 - `architecture/module-manifest.ts` and its CJS mirror do not change: the separate repository is an API
-  consumer, not a WardenX codePath. A future published shared package would require its own ownership
+  consumer, not a ChartWarden codePath. A future published shared package would require its own ownership
   decision and manifest change.
 - Device behavior, associated domains and release signing cannot be certified in this backend PR.
 

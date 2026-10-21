@@ -940,7 +940,7 @@
     once the underlying advisory clears (so an accepted exception can't quietly outlive the
     vulnerability). This IS the "clean audit/approved exception" acceptance criterion.
   - **Router advisory (documented, not upgraded)**: SEC-003 is GHSA-qwww-vcr4-c8h2 (react-router RSC
-    Mode CSRF Bypass, range `>=7.12.0 <8.3.0`). Verified WardenX has no RSC/framework-mode usage
+    Mode CSRF Bypass, range `>=7.12.0 <8.3.0`). Verified ChartWarden has no RSC/framework-mode usage
     anywhere in the three SPAs' source (grep for `@react-router/dev`, `unstable_RSC*`,
     `renderToReadableStream` — zero hits outside build artifacts) — the vulnerable code path is not
     reachable. **No upgrade was possible**: as of 2026-08-05 the latest published `react-router-dom`

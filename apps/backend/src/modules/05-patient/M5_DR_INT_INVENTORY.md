@@ -1,7 +1,7 @@
 # Module 5 (Patient & Demographics) — DR Tier + Integration Inventory
 
 M5-T12 (spec §8, §10). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md` and `WARDENX_INTEGRATIONS_v0_1.md`.
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` and `CHARTWARDEN_INTEGRATIONS_v0_1.md`.
 
 ## DR posture — **Tier 1** (critical path)
 

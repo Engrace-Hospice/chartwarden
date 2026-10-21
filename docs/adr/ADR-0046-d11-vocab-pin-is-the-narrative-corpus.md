@@ -92,7 +92,7 @@ seam is involved and no new cross-module dependency is created** — the module 
 
 ## Documents this changes
 
-- `docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md` §2.7 / §3 — the "active M38 version"
+- `docs/modules/CHARTWARDEN_MODULE_08_ENCOUNTERS_SPEC_v0_2.md` §2.7 / §3 — the "active M38 version"
   wording and the `vocab_version_id` column comment are superseded by this ADR.
 - `packages/db/src/schema/encounter/encounters.ts` — column comment updated to cite ADR-0046.
 - `apps/backend/src/modules/08-encounters/gate/checks.ts` — check 12's register entry.

@@ -1,5 +1,5 @@
 // apps/web/src/modules/19-oncall — S19.1 INBOUND CALL INTAKE (`/triage/intake`, §5.1, Track B /
-// ADR-0030). Spec: docs/design/screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md — the "Create call" action.
+// ADR-0030). Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ON_CALL_TRIAGE.md — the "Create call" action.
 //
 // The form stays deliberately short. Source, covering shift, red-flag evaluation and AI suggestion are
 // server-derived; the client captures only what a human intake operator can truthfully know at call open.

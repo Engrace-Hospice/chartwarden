@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/09-assessments — Scale-license registry, admin (M9 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // One row per (org × scale): status chip (active / pending_renewal / expired), vendor, effective/expiry dates,
 // seats. Expired licensed scales are auto-disabled for new writes (D3) — historical reads are preserved. The
 // Record uses POST; Edit and Renew update the existing (org × scale) row through PATCH. The server

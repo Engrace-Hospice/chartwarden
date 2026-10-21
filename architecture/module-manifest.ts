@@ -1,5 +1,5 @@
 /**
- * WardenX — Module Manifest (single source of truth for architecture fitness)
+ * ChartWarden — Module Manifest (single source of truth for architecture fitness)
  * ---------------------------------------------------------------------------
  * Encodes, per logical module (the 40 in ARCHITECTURE §11):
  *   - codePaths:   the package(s) and backend route dir(s) that BELONG to the module

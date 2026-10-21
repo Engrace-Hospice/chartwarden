@@ -1,6 +1,6 @@
-# WARDENX ARCHITECTURE COMPLIANCE AUDIT — CONSOLIDATED FINAL REPORT
+# CHARTWARDEN ARCHITECTURE COMPLIANCE AUDIT — CONSOLIDATED FINAL REPORT
 
-**Scope:** All 40 module specifications audited against the authoritative architecture set — WARDENX_ARCHITECTURE_v0.11, SYSTEM_DESIGN_v0.3, SECURITY_HARDENING_v0.2, AI_GOVERNANCE_v0.2, DR_BCP_v0.1, OPS_RUNBOOK_v0.1, INTEGRATIONS_v0.1 — plus ARCHITECTURE_25_15_FITNESS, MODULE_MANIFEST (`module-manifest.ts`), TABLE_OWNERSHIP_CHECKER (`check-table-ownership.ts`), and the SEAM_REGISTRY.
+**Scope:** All 40 module specifications audited against the authoritative architecture set — CHARTWARDEN_ARCHITECTURE_v0.11, SYSTEM_DESIGN_v0.3, SECURITY_HARDENING_v0.2, AI_GOVERNANCE_v0.2, DR_BCP_v0.1, OPS_RUNBOOK_v0.1, INTEGRATIONS_v0.1 — plus ARCHITECTURE_25_15_FITNESS, MODULE_MANIFEST (`module-manifest.ts`), TABLE_OWNERSHIP_CHECKER (`check-table-ownership.ts`), and the SEAM_REGISTRY.
 **Method:** Per-module deep audits under the shared auditor protocol (`audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0), dimensions A–J, BLOCKER findings verified against the source documents directly. Architecture documents are authoritative; where a module conflicts with architecture, the finding is recorded against the module.
 **Per-module evidence:** `audit/AUDIT_M*.md` (29 files; finding IDs `M<NN>-F<seq>`).
 **Date:** 2026-06-11
@@ -135,7 +135,7 @@ M18, M20 (and others) build on M2 surfaces — `device_attestation`, `step_up_se
 
 | # | Gap | Modules | Severity |
 |---|---|---|---|
-| S1 | **Multi-tenancy invariant broken in the module that defines it** — most tenant tables lack `organization_id`; `platform_ops` session class invented (never evaluates true); WardenX-support PHI access decoupled from the mandated break-glass + tenant-consent dual control. | M34 | BLOCKER |
+| S1 | **Multi-tenancy invariant broken in the module that defines it** — most tenant tables lack `organization_id`; `platform_ops` session class invented (never evaluates true); ChartWarden-support PHI access decoupled from the mandated break-glass + tenant-consent dual control. | M34 | BLOCKER |
 | S2 | **PHI in signed-URL filenames** (`{patientLastName}-…pdf`) — lands in proxy/CDN/MinIO logs (SEC-015). | M22 | BLOCKER |
 | S3 | **Reporting bulk-export emits a CSV of patient-identifiable links**, and the load-bearing "no row-level PHI leaves M33" thesis is contradicted by its own drilldown/export. | M33 | BLOCKER |
 | S4 | **Roll-your-own authentication** — module-local vendor-operator SSO binding outside Better Auth (SEC App. A.3 requires Security-Owner approval). | M19 | BLOCKER |

@@ -144,7 +144,7 @@ PR touched (other PRs may share them).
 | #76 | `46414c60` | 9 | 557 | no | — | fix(authz): gate the context-attribute bag, and retire the `systemPrincipal` name (#75) (#76) |
 | #77 | `6b3a825b` | 28 | 1142 | no | 1 | fix(authz): mint the portal session classes, and close a NULL hole in session_scope_chk (#75) (#77) |
 | #78 | `018f03f4` | 20 | 210 | no | — | fix(authz): one name for the session's pinned patient — it had three, and no writer (#75) (#78) |
-| #79 | `13e0361e` | 6 | 171 | no | — | fix(authz): every WardenX invitation said "Organization" — resolve the real name (#75) (#79) |
+| #79 | `13e0361e` | 6 | 171 | no | — | fix(authz): every ChartWarden invitation said "Organization" — resolve the real name (#75) (#79) |
 | #80 | `e2c734d5` | 2 | 0 | yes | — | revert: restore the two tracked spec artifacts #79 deleted by accident (#80) |
 | #81 | `3eb2563e` | 3 | 5 | no (applies cleanly alone) | — | chore: drop the two spec zips from the tree (deliberate, confirmed) (#81) |
 | #82 | `759bc347` | 7 | 251 | no | — | fix(authz): M27/M30's permission checks read a bag key; the check-don't-gate seam was always there (#75) (#82) |

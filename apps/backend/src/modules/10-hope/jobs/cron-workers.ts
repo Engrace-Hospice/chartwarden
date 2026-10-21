@@ -610,7 +610,7 @@ export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<As
 // transmit that previously had no transmit-time to run in.
 //
 // The iQIES WIRE PROTOCOL is still absent and is not invented here: the CMS endpoint, its auth flow and
-// the HOPE submission XML schema are not in this repository, and `WARDENX_INTEGRATIONS_v0_1.md` §6.7
+// the HOPE submission XML schema are not in this repository, and `CHARTWARDEN_INTEGRATIONS_v0_1.md` §6.7
 // specifies the integration's shape without them. Everything below runs against the typed `IqiesAdapter`
 // port, so binding a real transport means implementing three methods — and until one is bound,
 // `createUnboundIqiesAdapter` denies with `retryable: false`, the job DLQs, and the M36 DLQ alert fires.
@@ -631,7 +631,7 @@ export const IQIES_BATCHES_PER_TICK = 25;
  *
  * A retry after an ambiguous failure (a timeout where CMS may or may not have received the batch) must
  * be the SAME request, not a second one. That is what makes `releaseSubmission`'s roll-back-to-queued
- * safe, and it is the at-least-once-plus-idempotency-key posture `WARDENX_INTEGRATIONS_v0_1.md` §5
+ * safe, and it is the at-least-once-plus-idempotency-key posture `CHARTWARDEN_INTEGRATIONS_v0_1.md` §5
  * prescribes for every outbox-driven external call.
  */
 export function transmitCorrelationId(submissionId: string): string {

@@ -1,4 +1,4 @@
-# /WardenX Production Readiness Audit - Executive Summary
+# /ChartWarden Production Readiness Audit - Executive Summary
 
 **iAudit date:** 2026-08-04
 **Audited revision:** `dbb5aaff` on `main`
@@ -8,7 +8,7 @@
 
 ## What Exists
 
-WardenX is a large, coherent modular-monolith implementation rather than a UI mock. It contains four applications, 48 shared/domain packages, 40 manifest-owned modules, 453 owned tables, 165 forward migrations, 1,221 registered API routes, and 271 registered screens across the staff, portal, and platform-admin SPAs. The core security posture is materially strong: strict TypeScript passes; RBAC, ABAC, RLS, step-up, read-audit coverage, production-env validation, PHI-safe logging, and live authentication tests are present; a clean PostgreSQL 18 migration and representative cross-tenant suites passed.
+ChartWarden is a large, coherent modular-monolith implementation rather than a UI mock. It contains four applications, 48 shared/domain packages, 40 manifest-owned modules, 453 owned tables, 165 forward migrations, 1,221 registered API routes, and 271 registered screens across the staff, portal, and platform-admin SPAs. The core security posture is materially strong: strict TypeScript passes; RBAC, ABAC, RLS, step-up, read-audit coverage, production-env validation, PHI-safe logging, and live authentication tests are present; a clean PostgreSQL 18 migration and representative cross-tenant suites passed.
 
 The implementation-status matrix is not a production-completeness oracle. It records all 40 modules as green because schemas, routes, tests, screens, and adapters exist. Several registered workers still receive deliberate lazy `*WorkerPortUnbound` implementations, and several HTTP routes return success for persistence that is not operationally complete.
 

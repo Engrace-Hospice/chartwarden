@@ -13,7 +13,7 @@ not exist in the repo.
 
 This matters more here than in a normal codebase because of the repo's own **authority rule**:
 architecture docs win over module specs on conflict. A conflict resolved today in favor of
-`WARDENX_ARCHITECTURE_v0_11.md` would produce wrong code.
+`CHARTWARDEN_ARCHITECTURE_v0_11.md` would produce wrong code.
 
 ---
 
@@ -94,7 +94,7 @@ while everything else stayed pinned.
 Severity: **A** = would cause wrong action if followed · **B** = materially false ·
 **C** = stale/cosmetic.
 
-### 3.1 `WARDENX_OPS_RUNBOOK_v0.1.md` + `WARDENX_DR_BCP_v0.1.md` — severity A
+### 3.1 `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` + `CHARTWARDEN_DR_BCP_v0.1.md` — severity A
 
 A runbook with wrong commands is worse than no runbook. Both docs describe an infrastructure fleet
 (Pangolin, PgBouncer, PBS, MinIO cluster, PagerDuty, Grafana, Sentry, `wardenx-app-01`…) that
@@ -129,7 +129,7 @@ doc carries that caveat.**
   `OPS_ALERT_WEBHOOK_URL`, the `db:provision-roles` precondition, and the ~22-var production env
   contract in `bootstrap/env.ts` (§8.1 lists 3 of them and invents two that don't exist).
 
-### 3.2 `WARDENX_ARCHITECTURE_v0_11.md` — severity B (authoritative doc)
+### 3.2 `CHARTWARDEN_ARCHITECTURE_v0_11.md` — severity B (authoritative doc)
 
 - **Frontend is not TanStack Start.** All three SPAs are Vite 6 + `react-router-dom` ^7. No
   `@tanstack/*` anywhere. Affects §4, §5, §11.
@@ -156,7 +156,7 @@ doc carries that caveat.**
   `packages/rules-engine`, `packages/db/src/repos`, `apps/mobile` and 5 other cited paths don't exist.
   26 of 47 real packages are undocumented.
 
-### 3.3 `WARDENX_INTEGRATIONS_v0_1.md` — severity B
+### 3.3 `CHARTWARDEN_INTEGRATIONS_v0_1.md` — severity B
 
 - **15 of 33 adapter package paths are wrong** — superseded by ADR-0028/0029, which post-date the
   doc by one day. `packages/hl7-worker`, `packages/anthropic-client`, `packages/nppes-client`,
@@ -177,7 +177,7 @@ doc carries that caveat.**
   no route or worker. The most-wired vendor surface in the repo is **inbound Twilio/Postmark webhooks**;
   outbound email is a no-op in production. Real network `fetch` exists in exactly 6 non-test files.
 
-### 3.4 `WARDENX_SECURITY_HARDENING_v0_2.md` — severity B
+### 3.4 `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` — severity B
 
 - **§1.4 states "fail closed… never default to allow on error" with no carve-out**, but the rate
   limiter deliberately fails open on store outage. The code is right (it's an availability control);
@@ -214,14 +214,14 @@ doc carries that caveat.**
   tables and no empty `ownedTables`. (Note: `CLAUDE.md`'s "460 tables" is also stale — actual 463.)
 - 16 gates exist with no doc coverage; `audit-fitness.ts` is wired to no script or CI step.
 
-### 3.6 `WARDENX_SYSTEM_DESIGN_v0.3.md` — severity B
+### 3.6 `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md` — severity B
 
 Same TanStack / Socket.IO / Python-sidecar / Valkey-idempotency drift as §3.2, plus: dev topology
 describes `docker compose -f infra/docker/dev.compose.yaml` with valkey/minio/mailpit/mlflow
 containers (real: a bare `docker run` of Postgres on **port 5440**); ports 4180/4181 (real: 5173 /
 3000); lefthook (real: `.githooks`); and five `bun` commands in §12.6 that don't exist.
 
-### 3.7 `WARDENX_AI_GOVERNANCE_v0.2.md` — severity B, but best-maintained
+### 3.7 `CHARTWARDEN_AI_GOVERNANCE_v0.2.md` — severity B, but best-maintained
 
 The capability inventory is **current and correct** (18 catalogued, matching `docs/ai/`, with
 `level_of_care_prediction` ratified High), the 8-state lifecycle FSM matches code edge-for-edge, and
@@ -248,15 +248,15 @@ the backend inventory matches. Problems:
 - **HOPE retention conflict.** `OPS_RUNBOOK:425` says 6 years; ADR-0004 closed OPEN-021 moving
   clinical-record + HOPE retention **6 → 7 years**, and `ARCHITECTURE:2874` says 7. The runbook
   carries the pre-ADR value.
-- **Filename vs. content version mismatches**: `WARDENX_ARCHITECTURE_v0_11.md` declares "v0.12";
-  `WARDENX_INTEGRATIONS_v0_1.md` declares "v0.2". Two v0.2 files end with "End of … v0.1."
+- **Filename vs. content version mismatches**: `CHARTWARDEN_ARCHITECTURE_v0_11.md` declares "v0.12";
+  `CHARTWARDEN_INTEGRATIONS_v0_1.md` declares "v0.2". Two v0.2 files end with "End of … v0.1."
 - **11 stale cross-doc version citations** — every `Companion to:` line but one cites a superseded
   architecture version (v0.9/v0.10 against v0.12 on disk).
 - **63 distinct nonexistent repo paths** (~78 occurrences) cited across the corpus. `infra/`,
   `docs/ops/`, `docs/policies/`, `docs/runbooks/`, `docs/dr-drills/`, `docs/feature-flags/` and
   `docs/architecture/vendor-escalation.md` do not exist.
 - **Module-spec path convention wrong in three docs** — two variants cited, neither matching the real
-  flat `docs/modules/WARDENX_MODULE_NN_*_SPEC_vX_Y.md`.
+  flat `docs/modules/CHARTWARDEN_MODULE_NN_*_SPEC_vX_Y.md`.
 - **"Phase" is overloaded** — audit-remediation phases vs. product-launch phases, with no
   disambiguation. A live reader trap.
 - Clean: module identifiers (M1–M40 all resolve), session timeouts (agree across four docs),

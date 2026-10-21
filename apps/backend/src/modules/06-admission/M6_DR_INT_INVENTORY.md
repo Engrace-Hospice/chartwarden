@@ -1,7 +1,7 @@
 # Module 6 (Admission, Election & Certification) — DR Tier + Integration Inventory
 
 M6-T12 (spec §5, §6, §7, §8). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md` and `WARDENX_INTEGRATIONS_v0_1.md`.
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` and `CHARTWARDEN_INTEGRATIONS_v0_1.md`.
 
 ## DR posture — **Tier 1** (critical path)
 

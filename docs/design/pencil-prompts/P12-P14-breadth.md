@@ -24,7 +24,7 @@ they're excluded here.)
 ## P12 — Prescribing & Consent
 
 ### 12.1 DoseSpot Prescriber Roster — M12 · `Admin Hierarchy Layout`
-[spec](../screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_DOSESPOT_PRESCRIBER_ROSTER.md)
 ```
 Admin Hierarchy (provider tree | prescriber detail | validation). Prescriber enrollment: NPI/DEA/
 DoseSpot id, IAL2 identity-proofing status, dea_authorized_schedules, epcs_enabled toggle (Phase-1
@@ -33,7 +33,7 @@ feature-flag). Bulk IAL2 enroll. SYSTEMS: EPCS-not-certified renders as a guard 
 ```
 
 ### 12.2 Medication Refill Inbox — M12 · `Work Queue`
-[spec](../screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_MEDICATION_REFILL_INBOX.md)
 ```
 Work Queue. Pharmacy-initiated refill requests with 72h SLA timer; approve/deny; approval mints a
 derived medication_order (preview). SYSTEMS: controlled-substance refill rules gate; C-II shows the
@@ -42,7 +42,7 @@ order preview · C-II EPCS gate · denied · empty.
 ```
 
 ### 12.3 DoseSpot Transmit / Failure Queue — M12 · `Status Board`
-[spec](../screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_DOSESPOT_TRANSMIT_QUEUE.md)
 ```
 Status Board. Outbound NewRx transmission monitor: queued_for_transmission → transmitted → ack/nack/
 transmission_failed; NACK pharmacy feedback; retry-eligible. SYSTEMS: degraded-mode banner (D3) when
@@ -51,7 +51,7 @@ NACK detail · retrying · degraded · all-clear.
 ```
 
 ### 12.4 Consent Record Manager — M39 · `Stepper Workflow`
-[spec](../screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md)
+[spec](../screens/compliance/CHARTWARDEN_UI_CONSENT_RECORD_MANAGER.md)
 ```
 Stepper. Staff-side capture across the 10 consent types: type → grantor/subject identity → scope →
 capture method (e-signature / uploaded PDF / witnessed-verbal) → effective/expiration → sign & publish
@@ -61,7 +61,7 @@ supersede-existing · published.
 ```
 
 ### 12.5 Consent Recipients & DPOA Agents — M39 · `Detail Page`
-[spec](../screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md)
+[spec](../screens/compliance/CHARTWARDEN_UI_CONSENT_RECIPIENTS_DPOA.md)
 ```
 Detail Page. Per-recipient grants (42 CFR Part 2 / HIPAA release / family-caregiver access scope) +
 DPOA agent roster (primary/alternates, activation condition, scope, term). SYSTEMS: delegated_access
@@ -70,7 +70,7 @@ recipients list · add-recipient · DPOA matrix · activated-alternate · revoke
 ```
 
 ### 12.6 Consent Expiration & Renewal — M39 · `Dashboard`
-[spec](../screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md)
+[spec](../screens/compliance/CHARTWARDEN_UI_CONSENT_EXPIRATION_RENEWAL.md)
 ```
 Dashboard. Expiring consents color-coded by urgency (90/30/14/7/1-day); renewal-cycle status; re-
 capture trigger; M36 alert-delivery status. SYSTEMS: deadline chips; tabular-nums. VARIANTS: dashboard
@@ -82,7 +82,7 @@ capture trigger; M36 alert-delivery status. SYSTEMS: deadline chips; tabular-num
 ## P13 — Medicaid & Cap Settlement
 
 ### 13.1 Medicaid R&B Arrangement Manager — M24 · `Admin Hierarchy Layout`
-[spec](../screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md)
+[spec](../screens/revenue/CHARTWARDEN_UI_MEDICAID_RB_ARRANGEMENT.md)
 ```
 Admin Hierarchy (facility/arrangement tree | contract detail | per-diem rates). Room & Board for NF/
 SNF-resident hospice patients: rb_arrangement contract (per-LOC per-diem, pass-through/retention %
@@ -91,7 +91,7 @@ deadline chips. VARIANTS: arrangements · contract detail · rate editor · expi
 ```
 
 ### 13.2 Medicaid Eligibility & MCO Routing — M24 · `Gated Action Flow`
-[spec](../screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md)
+[spec](../screens/revenue/CHARTWARDEN_UI_MEDICAID_ELIGIBILITY_MCO.md)
 ```
 Gated Action Flow. Query state Medicaid eligibility (30-day freshness), resolve state Recipient ID,
 cache MCO/CCO assignment, auto-detect submission channel (CCO clearinghouse vs direct MMIS). SYSTEMS:
@@ -100,7 +100,7 @@ VARIANTS: pre-check · querying · eligible+MCO · ineligible · stale-cache · 
 ```
 
 ### 13.3 Medicaid Trading-Partner Credentials — M24 · `Admin Settings Layout`
-[spec](../screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md)
+[spec](../screens/revenue/CHARTWARDEN_UI_MEDICAID_TRADING_PARTNER_CREDS.md)
 ```
 Admin Settings. Per-ProviderEntity per-state per-channel submission credentials (client_secret KMS-
 wrapped, masked display); active/inactive; rotation date. SYSTEMS: secret reveal = step-up (D1/D2);
@@ -109,7 +109,7 @@ rotate · inactive.
 ```
 
 ### 13.4 Medicaid Validation Override — M24 · `Work Queue`
-[spec](../screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md)
+[spec](../screens/revenue/CHARTWARDEN_UI_MEDICAID_VALIDATION_OVERRIDE.md)
 ```
 Work Queue. Failed-rule overrides on rejected Medicaid claims: failed rules + explain-why, ≥40-char
 override reason, elevated-role step-up gate, audit signature. SYSTEMS: override is a Guardrail gate
@@ -118,7 +118,7 @@ approved · denied.
 ```
 
 ### 13.5 Cap Year Close & Settlement — M26 · `Stepper Workflow`
-[spec](../screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md)
+[spec](../screens/revenue/CHARTWARDEN_UI_CAP_SETTLEMENT.md)
 ```
 Stepper (the cap-year CLOSE workflow; monitoring stays in the existing Cap Management dashboard).
 Reconcile PS&R → compute aggregate-cap overpayment/refund → self-report to MAC → settlement proposal
@@ -132,7 +132,7 @@ self-report · sign-off · settled · blocked-variances.
 ## P14 — Ops, Gateway & MDM
 
 ### 14.1 On-Call Roster & Protocols — M19 · `Work Queue`
-[spec](../screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md)
 ```
 Work Queue. The on-call ROSTER + shift schedule + triage-protocol/escalation management (distinct
 from the live On-Call Triage call screen): coverage calendar, coverage-gap alerts, protocol library
@@ -142,7 +142,7 @@ coverage-gap · protocol library · escalation editor · metrics.
 ```
 
 ### 14.2 Field Staff Safety Incidents — M20 · `Work Queue`
-[spec](../screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY_INCIDENTS.md)
 ```
 Work Queue. Report/track/remediate field safety incidents (assault, threat, unsafe environment,
 injury) per staff+location: incident log, type/severity, witness, remediation action, management
@@ -151,7 +151,7 @@ log · new incident · investigation · acknowledged · trend · empty.
 ```
 
 ### 14.3 Supply & DME Inventory — M21 · `Work Queue`
-[spec](../screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_SUPPLY_DME_INVENTORY.md)
 ```
 Work Queue. Physical supply + DME inventory/replenishment (distinct from the patient-facing Supplies
 screen): on-hand stock by category, low-stock reorder, DME equipment tracker (serial #, maintenance
@@ -160,7 +160,7 @@ action. VARIANTS: inventory · low-stock · DME tracker · maintenance-due · tr
 ```
 
 ### 14.4 FHIR Gateway & Client Management — M28 · `Admin Settings Layout`
-[spec](../screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md)
+[spec](../screens/admin/CHARTWARDEN_UI_FHIR_GATEWAY_CLIENTS.md)
 ```
 Admin Settings. SMART OAuth client management + FHIR API monitoring (distinct from the FHIR Interop
 API reference screen): client registration (app, redirect URI, scopes, rate limits), active clients,
@@ -170,7 +170,7 @@ VARIANTS: clients · register · metrics · disclosure log · sunsetting · scop
 ```
 
 ### 14.5 MDM Health Check & Sync — M40 · `Status Board`
-[spec](../screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md)
+[spec](../screens/admin/CHARTWARDEN_UI_MDM_HEALTH_SYNC.md)
 ```
 Status Board. Master-data sync HEALTH (distinct from the golden-record MDM screen): per-category last-
 sync (providers/facilities/pharmacies/payers/rate-schedules), NPI/DEA/NCPDP lookup success/failure

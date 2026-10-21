@@ -185,13 +185,13 @@
   "dispositions": [
     {
       "frameNode": "B1Wukv",
-      "spec": "screens/revenue/WARDENX_UI_CAP_MANAGEMENT.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_CAP_MANAGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/26-cap`"
     },
     {
       "frameNode": "C0ljC",
-      "spec": "screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md",
+      "spec": "screens/platform/CHARTWARDEN_UI_SUBSCRIPTION_BILLING.md",
       "kind": "unmatched",
       "detail": "built · `admin/35-subscription-billing` `web/35-subscription`"
     },
@@ -203,13 +203,13 @@
     },
     {
       "frameNode": "CsLJv",
-      "spec": "screens/admin/WARDENX_UI_INTEGRATION_MONITORING.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_INTEGRATION_MONITORING.md",
       "kind": "deferred",
       "detail": "M29 has no screen set; interface health is read from the ops outbox console and logs."
     },
     {
       "frameNode": "CzFUq",
-      "spec": "screens/portal/WARDENX_UI_FACILITY_NURSE_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_FACILITY_NURSE_PORTAL.md",
       "kind": "deferred",
       "detail": "No facility-nurse portal app."
     },
@@ -221,19 +221,19 @@
     },
     {
       "frameNode": "ERZ5p",
-      "spec": "screens/staffing/WARDENX_UI_TIMESHEETS_PAYROLL.md",
+      "spec": "screens/staffing/CHARTWARDEN_UI_TIMESHEETS_PAYROLL.md",
       "kind": "deferred",
       "detail": "No timesheet / payroll screen; payroll export is out of scope of every shipped module."
     },
     {
       "frameNode": "FkRoZ",
-      "spec": "screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_SUPPLY_DME_INVENTORY.md",
       "kind": "unmatched",
       "detail": "built · `web/21-supplies`"
     },
     {
       "frameNode": "GQMdF",
-      "spec": "screens/compliance/WARDENX_UI_PATIENT_RIGHTS_GRIEVANCES.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_PATIENT_RIGHTS_GRIEVANCES.md",
       "kind": "deferred",
       "detail": "No grievance screen; M30 models QAPI incidents and mortality, not patient-rights grievances."
     },
@@ -245,127 +245,127 @@
     },
     {
       "frameNode": "H3JUcW",
-      "spec": "screens/core/WARDENX_UI_REPORTING_ANALYTICS.md",
+      "spec": "screens/core/CHARTWARDEN_UI_REPORTING_ANALYTICS.md",
       "kind": "unmatched",
       "detail": "built · `web/33-reporting`"
     },
     {
       "frameNode": "H6PP83",
-      "spec": "screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ON_CALL_TRIAGE.md",
       "kind": "unmatched",
       "detail": "built · `web/19-oncall`"
     },
     {
       "frameNode": "HFIqN",
-      "spec": "screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_MEDICAID_VALIDATION_OVERRIDE.md",
       "kind": "unmatched",
       "detail": "built · `web/24-billing-medicaid`"
     },
     {
       "frameNode": "HIRCS",
-      "spec": "screens/portal/WARDENX_UI_EXTERNAL_PHYSICIAN_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_EXTERNAL_PHYSICIAN_PORTAL.md",
       "kind": "deferred",
       "detail": "No external-physician portal app; apps/portal serves patient/family only."
     },
     {
       "frameNode": "I9nE3S",
-      "spec": "screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_MDM_HEALTH_SYNC.md",
       "kind": "unmatched",
       "detail": "partial · `web/40-mdm`"
     },
     {
       "frameNode": "JvkW0",
-      "spec": "screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_PATIENT_STATEMENTS_ASSISTANCE.md",
       "kind": "deferred",
       "detail": "No patient-statement / financial-assistance screen; no route models patient responsibility statements."
     },
     {
       "frameNode": "KfY70",
-      "spec": "screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_PATIENT_CLINICAL_TIMELINE.md",
       "kind": "unmatched",
       "detail": "built · `web/09-assessments` `web/10-hope`"
     },
     {
       "frameNode": "KpBpz",
-      "spec": "screens/core/WARDENX_UI_ROLE_DASHBOARDS.md",
+      "spec": "screens/core/CHARTWARDEN_UI_ROLE_DASHBOARDS.md",
       "kind": "unmatched",
       "detail": "built · `web/33-reporting`"
     },
     {
       "frameNode": "L9t1M",
-      "spec": "screens/admin/WARDENX_UI_REFERRAL_SOURCE_CRM.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_REFERRAL_SOURCE_CRM.md",
       "kind": "deferred",
       "detail": "No CRM / community-liaison screen; M6 referrals carry the source channel only."
     },
     {
       "frameNode": "L9tUSV",
-      "spec": "screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_MEDICATION_REFILL_INBOX.md",
       "kind": "unmatched",
       "detail": "built · `web/12-dosespot`"
     },
     {
       "frameNode": "LISN8",
-      "spec": "screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_SURVEYOR_ACCESS_PORTAL.md",
       "kind": "deferred",
       "detail": "No surveyor portal app; M23/M24 expose surveyor read-only views inside the staff app."
     },
     {
       "frameNode": "LRfYv",
-      "spec": "screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md",
+      "spec": "screens/core/CHARTWARDEN_UI_AGENCY_COMMAND_CENTER.md",
       "kind": "unmatched",
       "detail": "partial · `web/33-reporting`"
     },
     {
       "frameNode": "LXxxD",
-      "spec": "screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ELECTION_CERTIFICATION.md",
       "kind": "unmatched",
       "detail": "built · `web/06-admission`"
     },
     {
       "frameNode": "LcUWy",
-      "spec": "screens/admin/WARDENX_UI_TENANT_SETTINGS.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_TENANT_SETTINGS.md",
       "kind": "unmatched",
       "detail": "partial · `web/34-saas`"
     },
     {
       "frameNode": "MZZY2",
-      "spec": "screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_ORG_PROVIDER_LOCATION_SETUP.md",
       "kind": "unmatched",
       "detail": "partial · `web/34-saas` `web/40-mdm`"
     },
     {
       "frameNode": "NRM8F",
-      "spec": "screens/portal/WARDENX_UI_TELEHEALTH_VISIT_ROOM.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_TELEHEALTH_VISIT_ROOM.md",
       "kind": "unmatched",
       "detail": "built · `portal/31-portal`"
     },
     {
       "frameNode": "R1Qzuj",
-      "spec": "screens/portal/WARDENX_UI_PORTAL_VISIT_SCHEDULE.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_PORTAL_VISIT_SCHEDULE.md",
       "kind": "unmatched",
       "detail": "built · `portal/31-portal`"
     },
     {
       "frameNode": "RCdgT",
-      "spec": "screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_PRIOR_AUTHORIZATION.md",
       "kind": "deferred",
       "detail": "No prior-authorization screen; no M23/M24 route models an authorization."
     },
     {
       "frameNode": "RSFHC",
-      "spec": "screens/revenue/WARDENX_UI_CLAIMS_BILLING.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_CLAIMS_BILLING.md",
       "kind": "unmatched",
       "detail": "built · `web/23-billing-medicare` `web/24-billing-medicaid`"
     },
     {
       "frameNode": "SCV56",
-      "spec": "screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_DOCLENS_EXTRACTION_REVIEW.md",
       "kind": "unmatched",
       "detail": "built · `web/22-documents`"
     },
     {
       "frameNode": "SHZre",
-      "spec": "screens/compliance/WARDENX_UI_ACCREDITATION_SURVEY.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_ACCREDITATION_SURVEY.md",
       "kind": "deferred",
       "detail": "No accreditation / survey-readiness screen; surveyor read-only billing views exist but are a different surface."
     },
@@ -377,25 +377,25 @@
     },
     {
       "frameNode": "T6KHo",
-      "spec": "screens/clinical/WARDENX_UI_WOUND_CARE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_WOUND_CARE.md",
       "kind": "deferred",
       "detail": "No wound-care screen; wound detail is a line item in the assessments suite. Spec promotes it to a longitudinal surface (M09/M08/M22 composed)."
     },
     {
       "frameNode": "TFdIR",
-      "spec": "screens/clinical/WARDENX_UI_ALLERGY_MANAGEMENT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ALLERGY_MANAGEMENT.md",
       "kind": "deferred",
       "detail": "No allergy screen; allergies are shown on the patient chart only."
     },
     {
       "frameNode": "U01CF",
-      "spec": "screens/admin/WARDENX_UI_ONBOARDING_WIZARD.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md",
       "kind": "unmatched",
       "detail": "built · `web/34-saas` `admin/34-saas-platform`"
     },
     {
       "frameNode": "URHlL",
-      "spec": "screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_CERTIFICATION_RECERT_LIFECYCLE.md",
       "kind": "unmatched",
       "detail": "built · `web/06-admission`"
     },
@@ -407,55 +407,55 @@
     },
     {
       "frameNode": "V6ZmB",
-      "spec": "screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md",
       "kind": "unmatched",
       "detail": "built · `web/19-oncall`"
     },
     {
       "frameNode": "V8bGq",
-      "spec": "screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_MEDICAID_RB_ARRANGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/24-billing-medicaid`"
     },
     {
       "frameNode": "WGWP7",
-      "spec": "screens/platform/WARDENX_UI_OPS_CONSOLE.md",
+      "spec": "screens/platform/CHARTWARDEN_UI_OPS_CONSOLE.md",
       "kind": "unmatched",
       "detail": "built · `admin/01-ops`"
     },
     {
       "frameNode": "WYFsN",
-      "spec": "screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_SUPPLIES_DME_COMFORT_KIT.md",
       "kind": "unmatched",
       "detail": "built · `web/21-supplies`"
     },
     {
       "frameNode": "XMaBy",
-      "spec": "screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_CONSENT_RECIPIENTS_DPOA.md",
       "kind": "unmatched",
       "detail": "built · `web/39-consent`"
     },
     {
       "frameNode": "Xnsde",
-      "spec": "screens/platform/WARDENX_UI_WORKFLOW_EVENT_OPS.md",
+      "spec": "screens/platform/CHARTWARDEN_UI_WORKFLOW_EVENT_OPS.md",
       "kind": "unmatched",
       "detail": "partial · `admin/01-ops`"
     },
     {
       "frameNode": "XySvp",
-      "spec": "screens/staffing/WARDENX_UI_STAFF_SCHEDULING_CASELOAD.md",
+      "spec": "screens/staffing/CHARTWARDEN_UI_STAFF_SCHEDULING_CASELOAD.md",
       "kind": "unmatched",
       "detail": "built · `web/17-scheduling`"
     },
     {
       "frameNode": "Y1ubGH",
-      "spec": "screens/compliance/WARDENX_UI_BAA_MANAGER.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_BAA_MANAGER.md",
       "kind": "unmatched",
       "detail": "built · `admin/34-saas-platform`"
     },
     {
       "frameNode": "Y4HEp",
-      "spec": "screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_DOSESPOT_TRANSMIT_QUEUE.md",
       "kind": "unmatched",
       "detail": "partial · `web/12-dosespot`"
     },
@@ -467,295 +467,295 @@
     },
     {
       "frameNode": "aIMIx",
-      "spec": "screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_CONSENT_RECORD_MANAGER.md",
       "kind": "unmatched",
       "detail": "built · `web/39-consent`"
     },
     {
       "frameNode": "c0Ibms",
-      "spec": "screens/admin/WARDENX_UI_FHIR_INTEROP_API.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_FHIR_INTEROP_API.md",
       "kind": "deferred",
       "detail": "M28 has no web or admin screen set; the FHIR API is consumed by partners, not browsed."
     },
     {
       "frameNode": "c5WGQ9",
-      "spec": "screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_BREACH_SECURITY_INCIDENTS.md",
       "kind": "deferred",
       "detail": "No breach / security-incident screen; M4 audit holds the evidence and has no incident workflow."
     },
     {
       "frameNode": "c96zD",
-      "spec": "screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_CLINICAL_COPILOT.md",
       "kind": "deferred",
       "detail": "M32 copilot / semantic chart search has no clinician-facing screen (only compliance, opt-in, routing and preferences)."
     },
     {
       "frameNode": "cFG0u",
-      "spec": "screens/platform/WARDENX_UI_SYSTEM_HEALTH_DEGRADED_MODE.md",
+      "spec": "screens/platform/CHARTWARDEN_UI_SYSTEM_HEALTH_DEGRADED_MODE.md",
       "kind": "deferred",
       "detail": "No system-health / degraded-mode screen; the shell shows a maintenance page on 503 only."
     },
     {
       "frameNode": "cFmyk",
-      "spec": "screens/clinical/WARDENX_UI_HQRP_QUALITY.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_HQRP_QUALITY.md",
       "kind": "unmatched",
       "detail": "partial · `web/30-quality`"
     },
     {
       "frameNode": "d9ZJU",
-      "spec": "screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ADMISSIONS_REFERRAL_INTAKE.md",
       "kind": "unmatched",
       "detail": "built · `web/06-admission`"
     },
     {
       "frameNode": "dFRJ9",
-      "spec": "screens/integration/WARDENX_UI_HL7_INTERFACE_LOGS.md",
+      "spec": "screens/integration/CHARTWARDEN_UI_HL7_INTERFACE_LOGS.md",
       "kind": "deferred",
       "detail": "M29 has no screen set; interface logs are read from the database / ops tooling."
     },
     {
       "frameNode": "e7rV0x",
-      "spec": "screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_CAP_SETTLEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/26-cap`"
     },
     {
       "frameNode": "eI32Z",
-      "spec": "screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY_INCIDENTS.md",
       "kind": "unmatched",
       "detail": "built · `web/20-field-safety`"
     },
     {
       "frameNode": "eIAe7",
-      "spec": "screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_MEDICAID_TRADING_PARTNER_CREDS.md",
       "kind": "unmatched",
       "detail": "built · `web/24-billing-medicaid`"
     },
     {
       "frameNode": "eeoJ4",
-      "spec": "screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_REMITTANCE_ERA_POSTING.md",
       "kind": "unmatched",
       "detail": "built · `web/25-remittance`"
     },
     {
       "frameNode": "ejsox",
-      "spec": "screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_AI_GOVERNANCE_CONSOLE.md",
       "kind": "unmatched",
       "detail": "built · `admin/32-ai-platform`"
     },
     {
       "frameNode": "eq20w",
-      "spec": "screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md",
       "kind": "unmatched",
       "detail": "built · `web/23-billing-medicare` `admin/23-billing-medicare`"
     },
     {
       "frameNode": "fGKwq",
-      "spec": "screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md",
+      "spec": "screens/core/CHARTWARDEN_UI_USER_PROFILE_PREFERENCES.md",
       "kind": "unmatched",
       "detail": "partial · `web/32-ai-platform` `web/02-identity`"
     },
     {
       "frameNode": "fRVXt",
-      "spec": "screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_ELIGIBILITY_VERIFICATION.md",
       "kind": "unmatched",
       "detail": "built · `web/23-billing-medicare` `web/24-billing-medicaid`"
     },
     {
       "frameNode": "g7sGoJ",
-      "spec": "screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_STAFF_MANAGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/02-identity`"
     },
     {
       "frameNode": "gOyIA",
-      "spec": "screens/compliance/WARDENX_UI_OIG_COMPLIANCE_PROGRAM.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_OIG_COMPLIANCE_PROGRAM.md",
       "kind": "deferred",
       "detail": "No OIG compliance-program screen (exclusion screening, hotline, training attestations); no module owns the data."
     },
     {
       "frameNode": "hyJ3j",
-      "spec": "screens/clinical/WARDENX_UI_BEREAVEMENT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_BEREAVEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/16-bereavement`"
     },
     {
       "frameNode": "j3z3U",
-      "spec": "screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md",
+      "spec": "screens/platform/CHARTWARDEN_UI_SUPPORT_IMPERSONATION_AUDIT.md",
       "kind": "unmatched",
       "detail": "built · `admin/34-saas-platform`"
     },
     {
       "frameNode": "jFySy",
-      "spec": "screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_CONSENT_EXPIRATION_RENEWAL.md",
       "kind": "unmatched",
       "detail": "built · `web/39-consent`"
     },
     {
       "frameNode": "jbNOR",
-      "spec": "screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_QUALITY_MEASURES_CHART_AUDIT.md",
       "kind": "unmatched",
       "detail": "partial · `web/30-quality`"
     },
     {
       "frameNode": "k7H99",
-      "spec": "screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_QAPI_INCIDENTS.md",
       "kind": "unmatched",
       "detail": "partial · `web/30-quality`"
     },
     {
       "frameNode": "kEXWg",
-      "spec": "screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_DOSESPOT_PRESCRIBER_ROSTER.md",
       "kind": "unmatched",
       "detail": "built · `web/12-dosespot`"
     },
     {
       "frameNode": "l00Umf",
-      "spec": "screens/revenue/WARDENX_UI_DENIALS_MANAGEMENT.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_DENIALS_MANAGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/25-remittance`"
     },
     {
       "frameNode": "lZPbZ",
-      "spec": "screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_ELIGIBILITY_WORKSHEET_CTI.md",
       "kind": "unmatched",
       "detail": "partial · `web/06-admission`"
     },
     {
       "frameNode": "lbY0m",
-      "spec": "screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_FACILITY_SUPPLY_OPERATIONS.md",
       "kind": "unmatched",
       "detail": "partial · `web/21-supplies` `web/37-ipu`"
     },
     {
       "frameNode": "ltVaw",
-      "spec": "screens/portal/WARDENX_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md",
       "kind": "unmatched",
       "detail": "built · `portal/31-portal`"
     },
     {
       "frameNode": "lynRU",
-      "spec": "screens/mobile/WARDENX_UI_MOBILE_FIELD_SUITE.md",
+      "spec": "screens/mobile/CHARTWARDEN_UI_MOBILE_FIELD_SUITE.md",
       "kind": "deferred",
       "detail": "No mobile app; the web SPA is responsive but there is no native/offline field client (M17/M18/M22 mobile surface)."
     },
     {
       "frameNode": "m0wtL7",
-      "spec": "screens/staffing/WARDENX_UI_STAFF_CREDENTIALS_COMPLIANCE.md",
+      "spec": "screens/staffing/CHARTWARDEN_UI_STAFF_CREDENTIALS_COMPLIANCE.md",
       "kind": "unmatched",
       "detail": "built · `web/17-scheduling`"
     },
     {
       "frameNode": "m1prt",
-      "spec": "screens/clinical/WARDENX_UI_IPU_BED_BOARD.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_IPU_BED_BOARD.md",
       "kind": "unmatched",
       "detail": "built · `web/37-ipu`"
     },
     {
       "frameNode": "m23Lw",
-      "spec": "screens/portal/WARDENX_UI_REFERRAL_SOURCE_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_REFERRAL_SOURCE_PORTAL.md",
       "kind": "deferred",
       "detail": "No referral-source portal app."
     },
     {
       "frameNode": "m6Iqp",
-      "spec": "screens/integration/WARDENX_UI_SUBMISSION_RESUBMISSION.md",
+      "spec": "screens/integration/CHARTWARDEN_UI_SUBMISSION_RESUBMISSION.md",
       "kind": "unmatched",
       "detail": "partial · `web/10-hope`"
     },
     {
       "frameNode": "mrj17",
-      "spec": "screens/admin/WARDENX_UI_MASTER_DATA_MDM.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_MASTER_DATA_MDM.md",
       "kind": "unmatched",
       "detail": "built · `web/40-mdm`"
     },
     {
       "frameNode": "nNKhB",
-      "spec": "screens/core/WARDENX_UI_HELP_TRAINING.md",
+      "spec": "screens/core/CHARTWARDEN_UI_HELP_TRAINING.md",
       "kind": "deferred",
       "detail": "No help / training centre; no backend module owns it."
     },
     {
       "frameNode": "nPnkV",
-      "spec": "screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md",
+      "spec": "screens/compliance/CHARTWARDEN_UI_HIPAA_PRIVACY_DISCLOSURE.md",
       "kind": "unmatched",
       "detail": "partial · `web/04-audit` `web/05-patient`"
     },
     {
       "frameNode": "nxzBw",
-      "spec": "screens/admin/WARDENX_UI_CLINICAL_CONTENT_ADMIN.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_CLINICAL_CONTENT_ADMIN.md",
       "kind": "deferred",
       "detail": "No clinical-content (template / scale / order-set) authoring screen; M08/M09/M11 content is seeded and edited by migration. Backend: none beyond M9 licenses/policies (built under the assessments screen set)."
     },
     {
       "frameNode": "o18aS",
-      "spec": "screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_AUDIT_LOG_VIEWER.md",
       "kind": "unmatched",
       "detail": "built · `web/04-audit`"
     },
     {
       "frameNode": "ogmWK",
-      "spec": "screens/revenue/WARDENX_UI_COST_REPORT_WORKSPACE.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_COST_REPORT_WORKSPACE.md",
       "kind": "unmatched",
       "detail": "built · `web/27-cost-report`"
     },
     {
       "frameNode": "p4tXCO",
-      "spec": "screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_VOLUNTEER_MANAGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/15-discipline-care-plans`"
     },
     {
       "frameNode": "plO9v",
-      "spec": "screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_DOCUMENT_MANAGEMENT.md",
       "kind": "unmatched",
       "detail": "built · `web/22-documents`"
     },
     {
       "frameNode": "q5UDi",
-      "spec": "screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_ROLES_PERMISSIONS.md",
       "kind": "unmatched",
       "detail": "built · `web/03-authorization`"
     },
     {
       "frameNode": "qOmAz",
-      "spec": "screens/clinical/WARDENX_UI_FIELD_SAFETY.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY.md",
       "kind": "unmatched",
       "detail": "built · `web/20-field-safety`"
     },
     {
       "frameNode": "r6axh",
-      "spec": "screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_TERMINOLOGY_ADMIN.md",
       "kind": "unmatched",
       "detail": "built · `web/38-terminology`"
     },
     {
       "frameNode": "r7RLV",
-      "spec": "screens/portal/WARDENX_UI_DME_VENDOR_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_DME_VENDOR_PORTAL.md",
       "kind": "deferred",
       "detail": "No DME-vendor portal app."
     },
     {
       "frameNode": "seR8n",
-      "spec": "screens/clinical/WARDENX_UI_EPCS_CONTROLLED_SUBSTANCES.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_EPCS_CONTROLLED_SUBSTANCES.md",
       "kind": "unmatched",
       "detail": "partial · `web/12-dosespot`"
     },
     {
       "frameNode": "tCfQ6",
-      "spec": "screens/portal/WARDENX_UI_PORTAL_DOCUMENTS_CONSENTS.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_PORTAL_DOCUMENTS_CONSENTS.md",
       "kind": "unmatched",
       "detail": "built · `portal/31-portal`"
     },
     {
       "frameNode": "v72Yj",
-      "spec": "screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_CLINICAL_NOTE_LIFECYCLE.md",
       "kind": "unmatched",
       "detail": "built · `web/08-encounters`"
     },
     {
       "frameNode": "vw0AC",
-      "spec": "screens/clinical/WARDENX_UI_EVV.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_EVV.md",
       "kind": "unmatched",
       "detail": "built · `web/18-evv`"
     },
@@ -767,31 +767,31 @@
     },
     {
       "frameNode": "wtqs3",
-      "spec": "screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md",
+      "spec": "screens/revenue/CHARTWARDEN_UI_MEDICAID_ELIGIBILITY_MCO.md",
       "kind": "unmatched",
       "detail": "built · `web/24-billing-medicaid`"
     },
     {
       "frameNode": "x0R4jb",
-      "spec": "screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md",
+      "spec": "screens/admin/CHARTWARDEN_UI_FHIR_GATEWAY_CLIENTS.md",
       "kind": "deferred",
       "detail": "M28 has no web or admin screen set; client registration and monitoring are API/ops-only."
     },
     {
       "frameNode": "xeeXk",
-      "spec": "screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md",
+      "spec": "screens/clinical/CHARTWARDEN_UI_SCHEDULING_VISIT_CALENDAR.md",
       "kind": "unmatched",
       "detail": "built · `web/17-scheduling`"
     },
     {
       "frameNode": "y8N8k",
-      "spec": "screens/portal/WARDENX_UI_PORTAL_CARE_TEAM_MESSAGES.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_PORTAL_CARE_TEAM_MESSAGES.md",
       "kind": "unmatched",
       "detail": "built · `portal/31-portal`"
     },
     {
       "frameNode": "z58Qbh",
-      "spec": "screens/portal/WARDENX_UI_CONSULTING_PHYSICIAN_PORTAL.md",
+      "spec": "screens/portal/CHARTWARDEN_UI_CONSULTING_PHYSICIAN_PORTAL.md",
       "kind": "deferred",
       "detail": "No consulting-physician portal app."
     }

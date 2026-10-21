@@ -1,5 +1,5 @@
 /**
- * WardenX — Fitness Enforcement Audit (point-in-time)
+ * ChartWarden — Fitness Enforcement Audit (point-in-time)
  * ---------------------------------------------------
  * Computes, straight from architecture/module-manifest.ts (the single source of truth
  * the dependency-cruiser rules + check-table-ownership.ts are generated from):
@@ -27,10 +27,10 @@ const mods = (MODULES as unknown as Mod[]).slice().sort((a, b) => a.id - b.id);
 const byId = new Map(mods.map((m) => [m.id, m]));
 const M = (id: number) => `M${String(id).padStart(2, "0")}`;
 
-// ---- spec-file mapping: 7 -> docs/modules/WARDENX_MODULE_07_*.md ----
-const specFiles = readdirSync("docs/modules").filter((f) => /^WARDENX_MODULE_\d\d_/.test(f));
+// ---- spec-file mapping: 7 -> docs/modules/CHARTWARDEN_MODULE_07_*.md ----
+const specFiles = readdirSync("docs/modules").filter((f) => /^CHARTWARDEN_MODULE_\d\d_/.test(f));
 const specFor = (id: number) =>
-  specFiles.find((f) => f.startsWith(`WARDENX_MODULE_${String(id).padStart(2, "0")}_`)) ??
+  specFiles.find((f) => f.startsWith(`CHARTWARDEN_MODULE_${String(id).padStart(2, "0")}_`)) ??
   "(missing)";
 
 // ---- inbound deps (reverse of dependsOn) ----
@@ -79,7 +79,7 @@ for (const m of mods) if (color.get(m.id) === WHITE) dfs(m.id, []);
 // ---- build report ----
 const edges = mods.reduce((n, m) => n + (m.dependsOn?.length ?? 0), 0);
 const L: string[] = [];
-L.push("# WardenX — Fitness Enforcement Audit (manifest-derived)\n");
+L.push("# ChartWarden — Fitness Enforcement Audit (manifest-derived)\n");
 L.push(
   "Source of truth: `architecture/module-manifest.ts` (read by `.dependency-cruiser.cjs` + `check-table-ownership.ts`).",
 );

@@ -14,7 +14,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Dashboard."
 // The operational hub: four counters (Open, Closing 48h, Late, Expired) over the org's open HOPE
 // schedules, each clickable to filter, above the schedule worklist sorted by window-close. Window state
 // (green/amber/red/grey) is derived client-side as a UX cue only — the SERVER is authoritative for status

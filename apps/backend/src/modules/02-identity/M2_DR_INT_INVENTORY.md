@@ -2,8 +2,8 @@
 
 Per-module declaration required by the Phase-1 Definition-of-Done (`docs/IMPLEMENTATION_ROADMAP.md`
 §DoD): "DR tier + INT inventory declared; degraded-mode behavior documented where on a cross-phase
-path." Authoritative sources: `docs/architecture/WARDENX_DR_BCP_v0.1.md` (DR tiers) and
-`docs/architecture/WARDENX_INTEGRATIONS_v0_1.md` (integration catalog).
+path." Authoritative sources: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` (DR tiers) and
+`docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md` (integration catalog).
 
 ## 1. Disaster-Recovery Tier — **Tier 1 (Critical patient care)**
 

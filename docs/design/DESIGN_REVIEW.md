@@ -1,4 +1,4 @@
-# WardenX "Lantern" — Design Review
+# ChartWarden "Lantern" — Design Review
 
 > **STATUS: COMPLETE (2026-06-24).** All 22 `.pen` files reviewed; **120/120 frames promoted to
 > `●`** (reviewed, on-system). Remediation outcome below; the round-1 findings + corrected scope
@@ -29,11 +29,11 @@ signal). Residual minor: a few `muted`-on-white small table-header labels in the
 
 ---
 
-# WardenX "Lantern" — Design Review (round 1 findings, for the record)
+# ChartWarden "Lantern" — Design Review (round 1 findings, for the record)
 
 Review of the generated Pencil corpus (~370 frames across 22 `.pen` files) against the
 [Lantern design system](./DESIGN.md) — the §10 Hard Rules, the §2 color contract, the §3
-type system, and the WardenX systems (Guardrail §7 / Sensitivity §8 / Provenance §9).
+type system, and the ChartWarden systems (Guardrail §7 / Sensitivity §8 / Provenance §9).
 
 **Date:** 2026-06-24 · **Reviewer:** automated self-review against DESIGN.md · **Scope:** P0–P14
 top-level screens + D1–D7 depth/variant frames.

@@ -1,5 +1,5 @@
 // @chartwarden/ui — Tier-1 layout regions (F0-T04, ADR-0030; Lantern-enforced R0.2).
-// The recurring zones from WARDENX_UI_LAYOUT_PATTERNS.md §"Tier 1 — Shared regions": slot-based,
+// The recurring zones from CHARTWARDEN_UI_LAYOUT_PATTERNS.md §"Tier 1 — Shared regions": slot-based,
 // presentational, no business logic. The foundational pattern layouts (patterns.tsx) and the
 // module screens compose these so layout is defined once, here.
 //

@@ -1,4 +1,4 @@
-# WardenX — Open-Blockers Triage Results
+# ChartWarden — Open-Blockers Triage Results
 
 **Compiled:** 2026-06-13
 **Method:** One agent per module read the **current** spec text + the 23 ADRs and dispositioned every

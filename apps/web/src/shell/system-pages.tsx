@@ -1,7 +1,7 @@
 import type { ScreenRegistryModule } from "@chartwarden/types";
 import { CenteredStatusLayout, Glyph, useCorrelationId } from "@chartwarden/ui";
 // apps/web/src/shell — System / Utility Pages (M1 cross-cutting, Track A).
-// Spec: docs/design/screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `dT1Bt`): each state is a System Page —
 // a circular tonal icon badge (Lantern inline-SVG Glyph, NOT emoji — §10.10) + Fraunces headline +
 // muted explanation + a forward action. One pattern (CenteredStatusLayout), several states:

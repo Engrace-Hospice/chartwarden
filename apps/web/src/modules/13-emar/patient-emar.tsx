@@ -14,7 +14,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — patient eMAR (M13 §4.1/§6.1 #1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid".
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid".
 // Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `ANbhv`): a Patient Workspace (banner + module
 // rail) over the Medication Administration Record GRID (one row per medication order, one column per dose
 // time, each cell the dose's §2.2 status) | a right "Administer" rail | a recent-administrations strip. The

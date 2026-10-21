@@ -25,11 +25,11 @@ inchangés. Aucun faux indicateur ne sera introduit : une donnée indisponible a
 Le dépôt dispose déjà d’une base « Lantern » : tokens light/dark dans
 `apps/web/src/index.css`, références de tokens dans `packages/ui/src/web/theme/tokens.ts`,
 composants de régions/layout dans `packages/ui/src/web`, et une taxonomie de layouts dans
-`docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`. La refonte devra consolider cette base, pas créer
+`docs/design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`. La refonte devra consolider cette base, pas créer
 un second design system concurrent.
 
 Les règles ci-dessous reprennent les références visuelles tout en respectant les exigences
-WardenX :
+ChartWarden :
 
 - Bleu indigo comme action primaire et lien actif ; jamais comme seul moyen de communiquer un
   état. Les teintes vert/ambre/rouge/bleu restent réservées aux significations métier.
@@ -125,7 +125,7 @@ représentatifs que trois écrans de listes similaires et donneront des exemples
 
 1. Capturer l’état actuel des trois routes aux formats desktop, tablette, mobile et light/dark.
 2. Établir une matrice « référence → règle → composant → écran pilote » à partir des maquettes,
-   des spécifications d’écrans et de `WARDENX_UI_LAYOUT_PATTERNS.md`.
+   des spécifications d’écrans et de `CHARTWARDEN_UI_LAYOUT_PATTERNS.md`.
 3. Lister les composants locaux/doublons des trois écrans et les écarts API (notamment les
    curseurs, tris et données réellement disponibles). Décider explicitement les éléments
    visualisés par `—` jusqu’à ce qu’une source autoritative existe.

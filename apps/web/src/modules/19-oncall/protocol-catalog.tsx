@@ -1,5 +1,5 @@
 // apps/web/src/modules/19-oncall — S19.7 TRIAGE PROTOCOL CATALOG (`/triage/protocols`, §5.1, Track B /
-// ADR-0030). Spec: WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md — the Protocol Library tab.
+// ADR-0030). Spec: CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md — the Protocol Library tab.
 //
 // THE CATALOG IS TWO-LAYERED AND ONLY ONE LAYER IS WRITABLE. The platform-floor protocols are org-less and
 // system-locked: RLS makes a tenant physically unable to write them, and the write service refuses first

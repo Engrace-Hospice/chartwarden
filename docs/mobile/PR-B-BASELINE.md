@@ -13,13 +13,13 @@ livrables sans réécrire l'audit Lot 0.
 - `docs/adr/ADR-0035-capacitor-mobile-wrap-and-ui-core-split.md` existe, est **Accepted** et interdit
   explicitement une app React Native séparée. `docs/adr/README.md` précise qu'un ADR accepté est
   immuable : une décision ultérieure doit le superséder.
-- `docs/architecture/WARDENX_ARCHITECTURE_v0_11.md`,
-  `WARDENX_SYSTEM_DESIGN_v0.3.md` et `WARDENX_SECURITY_HARDENING_v0_2.md` prescrivent encore le wrap
-  Capacitor. `WARDENX_INTEGRATIONS_v0_1.md`, `docs/design/DESIGN.md` et la spec de la suite mobile
+- `docs/architecture/CHARTWARDEN_ARCHITECTURE_v0_11.md`,
+  `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md` et `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` prescrivent encore le wrap
+  Capacitor. `CHARTWARDEN_INTEGRATIONS_v0_1.md`, `docs/design/DESIGN.md` et la spec de la suite mobile
   contiennent aussi des références ciblées.
 - ADR-0026 impose Better Auth comme surface unique, y compris pour les opérateurs externes. ADR-0005
   fait du manifest l'autorité sur les codePaths. Comme `wardenx-mobile` est un dépôt séparé et qu'aucun
-  code mobile n'entre ici, aucun nouveau codePath n'est nécessaire dans le manifest WardenX.
+  code mobile n'entre ici, aucun nouveau codePath n'est nécessaire dans le manifest ChartWarden.
 - Le manifest autorise les imports Better Auth uniquement dans `packages/auth`. L'intégration Expo
   serveur doit donc rester dans cet adaptateur.
 
@@ -30,7 +30,7 @@ livrables sans réécrire l'audit Lot 0.
   TOTP/backup codes, passkey et magic link. Les secrets TOTP sont chiffrés par le décorateur Drizzle.
 - Les champs de session supplémentaires sont serveur uniquement : organisation active, classe, scope,
   fenêtre d'engagement, verrouillage écran et fraîcheur/facteur de step-up. La durée Better Auth est
-  fixe et le hook WardenX applique les timeouts par classe.
+  fixe et le hook ChartWarden applique les timeouts par classe.
 - Better Auth et `@better-auth/passkey` sont résolus en `1.6.25`. `@better-auth/expo` n'était pas
   installé lors de l'inspection.
 - La source officielle taguée `v1.6.25` expose `expo()` côté serveur et déclare un peer Better Auth de
@@ -58,7 +58,7 @@ livrables sans réécrire l'audit Lot 0.
   valide, une organisation serveur, une session staff active, le membership et la MFA. Les rooms sont
   calculées côté serveur, le client n'émet aucun événement et la session est revérifiée périodiquement.
 
-## Session WardenX et parcours observés
+## Session ChartWarden et parcours observés
 
 - `authenticate.ts` charge la session Better Auth, applique classe/timeout, credential state,
   password-change, MFA et binding d'organisation avant de produire le contexte de requête.
@@ -74,14 +74,14 @@ livrables sans réécrire l'audit Lot 0.
   production, non HttpOnly) sur la première requête. Une mutation `/api/v1/*` qui porte un cookie de
   session doit renvoyer la même valeur dans `X-CSRF-Token`; absence, valeur différente ou cookie émis
   pendant cette même requête échouent en 403.
-- `/api/auth/*` reste exempt du double-submit WardenX parce que Better Auth applique son propre contrôle
+- `/api/auth/*` reste exempt du double-submit ChartWarden parce que Better Auth applique son propre contrôle
   d'origin. Les webhooks signés et probes sont les autres exemptions nommées ; il n'existe pas
   d'exemption native.
 - Les tests existants couvrent le mint, le mismatch, le premier POST refusé, le round-trip exact et les
   cookies de session préfixés `__Secure-`.
 - Dans `@better-auth/expo@1.6.25`, `getCookie()` retourne les cookies que le plugin client a persistés.
   Le filtre par défaut ne retient que les cookies dont le nom commence par `better-auth`. La docs permet
-  plusieurs préfixes, mais cela ne constitue pas un contrat WardenX pour le renouvellement du nonce
+  plusieurs préfixes, mais cela ne constitue pas un contrat ChartWarden pour le renouvellement du nonce
   applicatif. PR B doit donc fournir un bootstrap explicite et authentifié.
 
 ## Hypothèses et dépendances de PR B

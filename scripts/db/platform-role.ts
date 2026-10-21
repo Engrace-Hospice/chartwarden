@@ -5,7 +5,7 @@
  * and no tenant route can create or assign one (422 RESERVED_ROLE). This is the one production path that
  * binds a platform role: it upserts the platform-owned row (organization_id IS NULL) and binds it to the
  * user's existing ACTIVE membership. Writes run in one transaction with the M4 write-audit triggers live,
- * correlated to the `--ticket` reference. Procedure: WARDENX_OPS_RUNBOOK_v0.1.md §16.5.
+ * correlated to the `--ticket` reference. Procedure: CHARTWARDEN_OPS_RUNBOOK_v0.1.md §16.5.
  *
  *   bun run db:platform-role grant  --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-123
  *   bun run db:platform-role revoke --email ops@example.com --org wardenx-platform --role platform_ops --ticket CHG-124

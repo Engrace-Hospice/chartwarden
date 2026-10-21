@@ -1,5 +1,5 @@
 /**
- * WardenX - architecture-corpus freshness gate (AG-01/AG-02)
+ * ChartWarden - architecture-corpus freshness gate (AG-01/AG-02)
  * ----------------------------------------------------------
  * The authority rule makes docs/architecture/ binding over module specs, yet until 2026-08-14 it
  * was the only body of documentation with no gate: it drifted for two months while every other
@@ -15,7 +15,7 @@
  *                    header; if header != filename version, the header must carry the adopted
  *                    convention note ("the FILENAME still reads") — files are gate-locked in place
  *                    and never renamed per revision; the header is authoritative.
- *   3. COMPANIONS  — every `Companion to: WARDENX_X vN.M` citation must match the cited doc's
+ *   3. COMPANIONS  — every `Companion to: CHARTWARDEN_X vN.M` citation must match the cited doc's
  *                    on-disk HEADER version (not its filename version).
  *   4. ADRS        — every four-digit `ADR-NNNN` citation must resolve to a file in docs/adr/.
  *                    (The short-numbered `ADR-00N` register in ARCHITECTURE §21 is a separate,
@@ -55,7 +55,7 @@ const PATH_ALLOWLIST: Record<string, ReadonlyArray<{ token: string; reason: stri
       reason: "cited because it is BANNED (ADR-0005) — must never exist",
     },
   ],
-  "WARDENX_ARCHITECTURE_v0_11.md": [
+  "CHARTWARDEN_ARCHITECTURE_v0_11.md": [
     {
       token: "packages/saas",
       reason:
@@ -123,7 +123,7 @@ const docTexts = new Map<string, string>();
 for (const file of docFiles) {
   const text = readFileSync(join(ROOT, DOCS_DIR, file), "utf8");
   docTexts.set(file, text);
-  const idMatch = file.match(/^WARDENX_([A-Z0-9_]+?)_v\d/);
+  const idMatch = file.match(/^CHARTWARDEN_([A-Z0-9_]+?)_v\d/);
   if (idMatch)
     docIndex.set(group(idMatch, 1, "architecture doc filename id"), {
       file,
@@ -209,7 +209,7 @@ for (const file of docFiles) {
 
     // Rule 3 — companion citations match on-disk header versions.
     if (/\*\*Companion to:\*\*/.test(line)) {
-      for (const m of line.matchAll(/WARDENX_([A-Z0-9_]+)\s+v(\d+\.\d+)/g)) {
+      for (const m of line.matchAll(/CHARTWARDEN_([A-Z0-9_]+)\s+v(\d+\.\d+)/g)) {
         const [id, cited] = groups(m, 2, "companion citation");
         companionsChecked++;
         const target = docIndex.get(id);
@@ -218,14 +218,14 @@ for (const file of docFiles) {
             file,
             lineNo,
             "COMPANIONS",
-            `cites companion WARDENX_${id} v${cited}, but no such doc exists in ${DOCS_DIR}`,
+            `cites companion CHARTWARDEN_${id} v${cited}, but no such doc exists in ${DOCS_DIR}`,
           );
         } else if (target.version !== null && target.version !== cited) {
           fail(
             file,
             lineNo,
             "COMPANIONS",
-            `cites WARDENX_${id} v${cited}, but ${target.file} declares v${target.version} in its header`,
+            `cites CHARTWARDEN_${id} v${cited}, but ${target.file} declares v${target.version} in its header`,
           );
         }
       }

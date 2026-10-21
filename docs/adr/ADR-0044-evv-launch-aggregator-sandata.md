@@ -7,7 +7,7 @@
   — Medicare EVV never `regulatory_required`, Medicaid EVV state-scoped, no HQRP EVV measure,
   aggregators are INT-002 PHI integrations — stand unchanged (and Decision 1 is now enforced in
   `packages/billing/src/rules/evv-coherence.ts` as of the same audit).
-- **Related:** [ADR-0008](ADR-0008-evv-applicability.md), `WARDENX_INTEGRATIONS` §2 row 26.
+- **Related:** [ADR-0008](ADR-0008-evv-applicability.md), `CHARTWARDEN_INTEGRATIONS` §2 row 26.
 
 ## Context
 

@@ -1,5 +1,5 @@
 /**
- * WardenX — dependency-cruiser configuration
+ * ChartWarden — dependency-cruiser configuration
  * ------------------------------------------------------------------
  * Turns the module catalog's dependency graph + the architecture's
  * structural rules into CI-enforced import boundaries.

@@ -7,7 +7,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Discharge / Revocation / Transfer-out workflow (M6 routes 36/37/39).
-// Spec: docs/design/screens/clinical/WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER.md — "Patient Workspace +
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_DISCHARGE_REVOCATION_TRANSFER.md — "Patient Workspace +
 // Stepper": 1 reason → 2 reason-specific data → 3 effective date → 4 review cascades → 5 confirm.
 // Drawn in the 2026-09-25 redesign idiom (the same primitives the HOPE workspace uses, shared with the
 // other end-of-episode workflows through end-of-episode-ui.tsx): patient banner, a step navigator on the

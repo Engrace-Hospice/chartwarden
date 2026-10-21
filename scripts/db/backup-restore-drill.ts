@@ -5,7 +5,7 @@
  * Postgres cluster: seed deterministic rows, take a full backup (repo1, local disk), stop the
  * source, restore into a SEPARATE fresh data directory, start it, and assert the restored row count
  * + checksum match the source exactly. Mirrors the monthly restore-drill procedure in
- * WARDENX_DR_BCP_v0.1.md §8.2, automated and scoped to what a laptop/CI runner can actually exercise.
+ * CHARTWARDEN_DR_BCP_v0.1.md §8.2, automated and scoped to what a laptop/CI runner can actually exercise.
  *
  * SCOPE (see §4.1 for the full spec; ops/pgbackrest/pgbackrest.conf.template for the doc-matching
  * production config): this drill exercises repo1 (local disk) ONLY.

@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** M18-F04, M18-F05; M24 (EVV over-encoding); Medicare-Hospice gaps; Build-Blocking #9
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §11 Module 18, §11.A (no EVV regulatory rule), §20.A Phase-1 row
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §11 Module 18, §11.A (no EVV regulatory rule), §20.A Phase-1 row
 
 ## Context
 

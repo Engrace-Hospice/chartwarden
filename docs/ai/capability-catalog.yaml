@@ -1,5 +1,5 @@
-# WardenX AI capability catalog.
-# Source of truth required by docs/architecture/WARDENX_AI_GOVERNANCE_v0.2.md section 4.1.
+# ChartWarden AI capability catalog.
+# Source of truth required by docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md section 4.1.
 # All entries are disabled until their owning module and governance lifecycle state explicitly advance.
 #
 # `capability_key` is the join into Module 32's registry: `ai_capability.capability_key`, which

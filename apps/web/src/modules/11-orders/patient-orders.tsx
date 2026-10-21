@@ -13,7 +13,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — the patient chart's Orders tab (2026-09-25 redesign, mockup
-// "Orders"). Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace."
+// "Orders"). Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md — "Use Patient Workspace."
 // KPI cards, order-kind tabs, a labeled filter bar, and the orders table (order · type · details ·
 // prescriber · start date · status); under it the orders that need a signature and the M11 queues;
 // the right rail carries Patient Summary, Active Diagnoses and Recent Orders. The list route carries

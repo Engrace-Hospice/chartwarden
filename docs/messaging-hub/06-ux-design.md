@@ -2,7 +2,7 @@
 
 > Part of the [Messaging Hub plan](./README.md). **Match the redesign kit**: shared `wx-*` list chrome (`packages/ui/src/web/styles/list-chrome.css`),
 > flat rail/drawer pattern, the mockup blue palette. No new visual identity and no old-style inline UIs. Layout rules live in
-> `docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`; add any new screen to the UI screen index (`bun run docs:ui` / `arch:ui`).
+> `docs/design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`; add any new screen to the UI screen index (`bun run docs:ui` / `arch:ui`).
 
 ## 1. Layout — three-panel workspace
 

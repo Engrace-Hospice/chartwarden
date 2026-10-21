@@ -1,4 +1,4 @@
-# WardenX — UI Implementation-Parity Report
+# ChartWarden — UI Implementation-Parity Report
 
 > **Generated, advisory report** (`bun run ui:parity`). `docs:ui` proves the screen-spec
 > corpus is consistent; this shows how much of it is BUILT across all three SPAs

@@ -18,7 +18,7 @@
 The M2 (Identity) spec §5 and the M01-M02 slice plan's **M2-T09** call for *core identity* screens —
 sign-in, MFA challenge, organization-select, passkey enrollment, invitation acceptance,
 member-management. The authoritative UI spec places these in the **core** surface
-(`docs/design/screens/core/WARDENX_UI_AUTH.md`), i.e. the staff/clinician app-shell — **not** a patient or
+(`docs/design/screens/core/CHARTWARDEN_UI_AUTH.md`), i.e. the staff/clinician app-shell — **not** a patient or
 tenant surface.
 
 But the manifest leaves these screens homeless:
@@ -104,5 +104,5 @@ native shell) rather than a separate `apps/mobile` — no new app.
 ## References
 
 - M01-M02 slice plan → M2-T09 (`docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md`)
-- Core auth UI spec (`docs/design/screens/core/WARDENX_UI_AUTH.md`)
+- Core auth UI spec (`docs/design/screens/core/CHARTWARDEN_UI_AUTH.md`)
 - Manifest owners: M2 `id: 2`, M31 `id: 31` (`apps/portal`), M34 `id: 34` (`apps/admin`)

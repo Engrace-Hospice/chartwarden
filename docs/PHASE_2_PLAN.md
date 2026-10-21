@@ -1,9 +1,9 @@
-# WardenX — Phase 2 Plan (v1.1): AI Activation + Operational Depth
+# ChartWarden — Phase 2 Plan (v1.1): AI Activation + Operational Depth
 
 **Status:** Plan — sequencing of architecture §20.A Phase 2. Depends on Phase 1 in production.
-**Authority:** `WARDENX_ARCHITECTURE_v0_11.md` §20.A Phase 2.
+**Authority:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20.A Phase 2.
 **Goal:** turn on the differentiating AI features and operational maturity that win against
-FireNote/Axxess/WellSky. This is the "WardenX is competitively differentiated" moment.
+FireNote/Axxess/WellSky. This is the "ChartWarden is competitively differentiated" moment.
 
 > **Count: 10 new modules + 5 upgrades to Phase-1 modules.** ~3–6 months after Phase 1 ships.
 
@@ -25,7 +25,7 @@ surface (tests + UI + audit + RBAC) and flips its flag on.
 
 | M | Module | Activation | Notes |
 |---|---|---|---|
-| 32 | AI Platform | **`ai.full`** — predictions, copilot, semantic search | The full AI Platform. Local models (Ollama default per architecture §10.7); cloud per-capability per-tenant. Gate by AI-governance (`WARDENX_AI_GOVERNANCE`). |
+| 32 | AI Platform | **`ai.full`** — predictions, copilot, semantic search | The full AI Platform. Local models (Ollama default per architecture §10.7); cloud per-capability per-tenant. Gate by AI-governance (`CHARTWARDEN_AI_GOVERNANCE`). |
 | 8 | Encounters | **`hearthnote.layer2`** — LLM note enhancement | Tenant-opt-in; per-encounter opt-out; shares M8's hard-block category list. Depends on M32 full. |
 | 14 | IDG | **full HearthNote IDG aggregation** — packets + LLM polish | The no-prep IDG competitive feature. Depends on M32 full + M8 Layer 2. |
 | 22 | Document Management | **`documents.doclens`** — intake document extraction | DocLens activated; `packages/intake-extraction`. Depends on M32 full. |
@@ -106,5 +106,5 @@ Deps are architecture §20 build-sequence deps; all their dependencies are satis
 
 ## 7. Exit → Phase 3
 
-WardenX has paying tenants beyond Engrace and differentiated AI. Phase 3 scales multi-tenancy and adds
+ChartWarden has paying tenants beyond Engrace and differentiated AI. Phase 3 scales multi-tenancy and adds
 inpatient. See [`PHASE_3_PLAN.md`](./PHASE_3_PLAN.md).

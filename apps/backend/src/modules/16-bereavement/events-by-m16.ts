@@ -254,7 +254,7 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // the only place M30 is named for it, and it is unsupported everywhere that would have to carry
     // it if it were real. M30's OWN §1.1 relationship-inventory text scopes its ENTIRE M16 relationship
     // to "consumes `BereavementComplianceProvider` for the CoP 418.64(d) … measure; M30 emits no
-    // bereavement data and writes nothing to M16" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md
+    // bereavement data and writes nothing to M16" (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md
     // §1.1) — no mention of an incident-drafting relationship. M30's own §4.10 upstream catalog
     // (`packages/quality/src/consumers/subscription-map.ts`'s `M30_OUTBOX_SUBSCRIPTIONS`, its own header
     // calls itself "the SINGLE SOURCE OF TRUTH" for M30's inbound topics) has exactly six keys and none

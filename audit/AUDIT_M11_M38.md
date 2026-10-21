@@ -1,9 +1,9 @@
-# WardenX Module Audit — Module 11 (Orders) & Module 38 (Clinical Terminology Service)
+# ChartWarden Module Audit — Module 11 (Orders) & Module 38 (Clinical Terminology Service)
 
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs read in full:** CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md, module-manifest.ts
-**Specs read in full:** WARDENX_MODULE_11_ORDERS_SPEC_v0_4.md (2,802 lines), WARDENX_MODULE_38_TERMINOLOGY_SPEC_v0_2.md (1,380 lines)
-**BLOCKER verification performed against:** WARDENX_ARCHITECTURE_v0_11.md (§8.6 line 799; §11 Module 11 lines 1676–1681; §11.P Module 38 lines 2083–2099; §20 dep table line 2349), WARDENX_DR_BCP_v0.1.md (lines 106, 1228, 1234), module-manifest.ts (M11/M29/M8 rows)
+**Specs read in full:** CHARTWARDEN_MODULE_11_ORDERS_SPEC_v0_4.md (2,802 lines), CHARTWARDEN_MODULE_38_TERMINOLOGY_SPEC_v0_2.md (1,380 lines)
+**BLOCKER verification performed against:** CHARTWARDEN_ARCHITECTURE_v0_11.md (§8.6 line 799; §11 Module 11 lines 1676–1681; §11.P Module 38 lines 2083–2099; §20 dep table line 2349), CHARTWARDEN_DR_BCP_v0.1.md (lines 106, 1228, 1234), module-manifest.ts (M11/M29/M8 rows)
 **Date:** 2026-06-10
 
 ---

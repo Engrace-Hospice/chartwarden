@@ -25,7 +25,7 @@ health, delivery plumbing, recovery. A tenant compliance screen is therefore **w
 **Style (non-negotiable, [`06`](./06-ux-design.md)).** Shared `wx-*` chrome from `packages/ui/src/web/styles/list-chrome.css` and `app-shell.css`
 (`wx-page-head`, `wx-list-toolbar`, `wx-kpi-strip`/`wx-stat-card`, `wx-work-queue`/`wx-work-split`, `wx-list-drawer`, `wx-list-state`,
 `wx-modal-*`, `wx-segmented`, `wx-sr-only`); the mockup blue palette (`--color-primary` #1a56eb and the `*-pill-fg` text tokens); flat rail/drawer, no
-inline `style={}` UIs, no new visual identity. Layout names come from [`WARDENX_UI_LAYOUT_PATTERNS.md`](../design/WARDENX_UI_LAYOUT_PATTERNS.md):
+inline `style={}` UIs, no new visual identity. Layout names come from [`CHARTWARDEN_UI_LAYOUT_PATTERNS.md`](../design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md):
 **Work Queue + Right Detail Panel** for queues, **Admin Settings Layout** for policy screens, **Conversation View** for thread-embedded UI. New
 module-local CSS is capped at the 800-line ceiling; list-chrome additions go in `packages/ui`, not the module.
 
@@ -70,7 +70,7 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 3. **Live check**: a `test:messaging-hub:<id>:live` suite on a private `pgvector/pgvector:pg18` container (never the shared cluster), connecting as the
    NOBYPASSRLS `wardenx_app` role, asserting the route's tenant isolation and that the audit row lands. Each new live suite needs a `package.json`
    script **and** a `ci.yml` job row (`arch:live-suites`).
-4. **Screen index**: add the screen to `docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md` and `SCREEN_SPEC_STATUS.md` (`bun run docs:ui`); one
+4. **Screen index**: add the screen to `docs/design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md` and `SCREEN_SPEC_STATUS.md` (`bun run docs:ui`); one
    `## Layout Pattern` line per screen spec.
 5. **Manual evidence per phase**: a screen-reader script (VoiceOver + NVDA), recorded with the release gate ([`07`](./07-testing-release-governance.md)).
 

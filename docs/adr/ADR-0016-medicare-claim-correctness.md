@@ -5,7 +5,7 @@
 - **Phase:** 4 (Medicare correctness)
 - **Resolves:** M23-F02/F04/F05/F09/F13/F15 (RHC/SIA already in ADR-0001; cap year in ADR-0002)
 - **Depends on:** [ADR-0001](ADR-0001-rhc-two-tier-rate.md), [ADR-0002](ADR-0002-hospice-cap-year.md)
-- **Changes:** `WARDENX_MODULE_23_BILLING_MEDICARE_SPEC`
+- **Changes:** `CHARTWARDEN_MODULE_23_BILLING_MEDICARE_SPEC`
 
 ## Context
 

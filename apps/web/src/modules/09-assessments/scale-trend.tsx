@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/09-assessments — Per-scale trend view (M9 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md —
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md —
 // "Use Patient Workspace + Documentation Workspace."
 //
 // A patient's scored series for one scale over a default 90-day window:

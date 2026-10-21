@@ -1,5 +1,5 @@
 // apps/web/src/modules/19-oncall — S19.3 ACTIVE TRIAGE QUEUE (`/triage`, §5.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md — "Use Work Queue + Documentation
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ON_CALL_TRIAGE.md — "Use Work Queue + Documentation
 // Workspace." This screen is the Work-Queue half; the Documentation-Workspace half is the triage panel.
 //
 // The board is sorted by unresolved clinical risk, not newest-first: open escalation, red flag, then age.

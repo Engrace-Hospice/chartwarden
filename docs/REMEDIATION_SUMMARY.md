@@ -1,4 +1,4 @@
-# WardenX Architecture Remediation — Summary (Phases 0–6)
+# ChartWarden Architecture Remediation — Summary (Phases 0–6)
 
 **Date:** 2026-06-11
 **Driver:** `audit/AUDIT_CONSOLIDATED_FINAL.md` (38/40 modules FAIL; ~94 BLOCKER + ~312 MAJOR across
@@ -31,7 +31,7 @@ Each phase used the same three tools, applied where each fits best:
 | **2** | Platform invariants | **ADR-0010/0011** + **`check-tenancy.ts` (#10)** + ownership-evasion checks (#11); **M34** fixed as the reference tenancy implementation (3 BLOCKERs); RLS-variable + ownership-evasion fixes on M33/M21/M40/M11/M30/M38/M24. |
 | **3** | Governed subsystems | **ADR-0012/0013/0014**; **M32 AI Platform** (auto kill-switch, eval-gated local model, restored `ai.*` events); §164.528 disclosure-writer assignment; **M39** consent/disclosure separation; **M29** persist-after-redact; **M08** false-BAA struck. |
 | **4** | Medicare/Medicaid correctness | **ADR-0015…0019**; M06 election/cert (6 BLOCKERs); M23 claim math + 837I + late-NOE; M24 Medicaid R&B/cap; M10 **HOPE SFV visit-date anchor** (swept); M14/M07 IDG clock + MD/DO seat; M37 IPU fail-open; M11/M12/M13 **lawful non-EPCS controlled-substance path**. |
-| **5** | Integration governance | **ADR-0020**; 8 uncatalogued surfaces added to `WARDENX_INTEGRATIONS` (→ v0.2) with BAA register + degraded-mode; **INT-014 BAA execution as a hard gate** before PHI flows; banners on M18/M21/M22/M19/M02/M11/M12/M30. |
+| **5** | Integration governance | **ADR-0020**; 8 uncatalogued surfaces added to `CHARTWARDEN_INTEGRATIONS` (→ v0.2) with BAA register + degraded-mode; **INT-014 BAA execution as a hard gate** before PHI flows; banners on M18/M21/M22/M19/M02/M11/M12/M30. |
 | **6** | Per-spec reconciliation + sweeps | **ADR-0021/0022/0023** + **`check-ddl-legality.ts` (#12)**; §20.B template requirements CI-gated; **every X9 incoherent spec the audit flagged (M16/M17/M36/M15/M25/M20) had its DDL/single-truth contradictions reconciled** (DDL-legal; gated by `check-ddl-legality.ts`). **They are not yet formally re-locked** — the 2026-06-13 re-audits still grade several FAIL on non-DDL findings (see `audit/OPEN_BLOCKERS_LEDGER.md`). |
 | **post-6** | Layout reorg + worked reconciliations | Fitness kit moved to `architecture/` + `scripts/` with a root `package.json`; `arch:fitness` runs end-to-end. **All six flagged X9 specs fully reconciled:** **M16 Bereavement** (v0.5 — 16 findings), **M17 Scheduling** (v0.3 — 19; two contradictory 8-state machines unified), **M36 Messaging** (v0.5 — 14; two alert subsystems unified, migration-breaking duplicate enum fixed), **M15 Discipline Care Plans** (v0.3 — 12; CoP volunteer ratio fixed to hours÷hours, illegal partitioning removed), **M25 Remittance** (v0.3 — 18; all 3 BLOCKERs cleared, §2/§3/§4 made the single truth, redetermination clock fixed), and **M20 Field Safety** (v0.3 — 17; the life-safety **SOS terminus + non-suppressible delivery (S13)** added, the feature-forbidding unique index re-keyed, PostGIS-on-frozen-M1 removed). |
 
@@ -145,7 +145,7 @@ the CI checks that gate the remaining sweeps are in place and validated.
   `dependency-cruiser` devDep stays declared in `package.json`, so `bun install` reproduces the tool
   on demand in the implementation repo. The three `bun`-run checks need no installed deps and still
   pass after cleanup.
-- `WARDENX_MODULE_21_…` has a pre-existing odd code-fence count (not introduced by the remediation).
+- `CHARTWARDEN_MODULE_21_…` has a pre-existing odd code-fence count (not introduced by the remediation).
 
 ## Re-lock gate
 

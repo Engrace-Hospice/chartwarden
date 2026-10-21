@@ -1,5 +1,5 @@
 // apps/web/src/modules/02-identity — Auditor access link (M2 Auth, Track A).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Auditor access link" (/auditor/redeem).
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Auditor access link" (/auditor/redeem).
 // The page an emailed auditor link opens: `/auditor/redeem?org=<organizationId>#token=<token>`. The one-time
 // token rides the URL FRAGMENT (never sent to a server, so absent from access logs and `Referer`); this page
 // reads it, scrubs it from the address bar, and only redeems when the auditor presses the button — a mail

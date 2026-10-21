@@ -2,7 +2,7 @@
 
 ## Overall Assessment
 
-WardenX has a real design system (`@chartwarden/ui`), shared tokens, a screen registry, route-level lazy loading in the staff SPA, utility states, permission guards, confirmation ceremonies, and a focus-trapped modal. It does not yet have evidence that 271 screens behave as one complete product. The frame register covers 17 screens, and 14 of those document functional substitutions or missing DTO/write paths.
+ChartWarden has a real design system (`@chartwarden/ui`), shared tokens, a screen registry, route-level lazy loading in the staff SPA, utility states, permission guards, confirmation ceremonies, and a focus-trapped modal. It does not yet have evidence that 271 screens behave as one complete product. The frame register covers 17 screens, and 14 of those document functional substitutions or missing DTO/write paths.
 
 ## UI-001 - Visual and behavioral fidelity is unknown for most screens
 

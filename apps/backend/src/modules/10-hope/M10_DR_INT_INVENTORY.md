@@ -1,7 +1,7 @@
 # Module 10 (HOPE Engine) — DR Tier + Integration Inventory + STRIDE
 
 M10-T07 (spec §4.10, §4.10.1, §5.6, §7.9, §7.10). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`, and the CMS HOPE submission
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`, and the CMS HOPE submission
 spec. M10 is the first Wave-E module with a **real external integration** (iQIES); the split-tier posture
 below is the load-bearing design choice.
 
@@ -69,7 +69,7 @@ submission path; the sync-on-reconnect worker POSTs `synced=0` drafts to
 | consume | M34 (SaaS Platform) | per-ProviderEntity iQIES submitter credentials from M34's secret store (M10 does not own the onboarding UX) | no (credentials never logged) |
 
 Notes:
-- **iQIES is M10's only external integration.** Per WARDENX_INTEGRATIONS §3.2 (INT-009), the adapter
+- **iQIES is M10's only external integration.** Per CHARTWARDEN_INTEGRATIONS §3.2 (INT-009), the adapter
   declares its circuit-breaker config (`IQIES_CIRCUIT_BREAKER_CONFIG`) and exposes the typed five-field
   `DegradedError` — a raw `fetch` rejection never propagates to an M10 caller. Phase 1 ships the typed
   adapter surface + the deny-stub `createUnboundIqiesAdapter()` (throws `retryable: false` → immediate DLQ);

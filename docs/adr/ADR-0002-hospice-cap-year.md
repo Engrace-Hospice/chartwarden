@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** M23-F14, M26 (cap-year), ARCH-178; Build-Blocking #9
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §H Module 26 (CapPeriod entity)
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §H Module 26 (CapPeriod entity)
 
 ## Context
 

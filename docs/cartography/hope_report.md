@@ -1,4 +1,4 @@
-# WardenX HOPE Phase 3 Alerts, Escalations & Workflow Hardening Report
+# ChartWarden HOPE Phase 3 Alerts, Escalations & Workflow Hardening Report
 
 Date: 2026-08-29
 
@@ -205,7 +205,7 @@ Not executed:
 - Full notification-center UX expansion beyond existing M36 rule/fan-out integration.
 - Production execution of live DB/RLS and Playwright suites once the required environment is available.
 
-# WardenX HOPE Phase 2 UI, Navigation & Operational Workflow Report
+# ChartWarden HOPE Phase 2 UI, Navigation & Operational Workflow Report
 
 Date: 2026-08-28
 

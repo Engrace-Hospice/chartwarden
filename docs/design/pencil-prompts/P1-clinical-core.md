@@ -5,9 +5,9 @@
 > Ceremony, Provenance, Sensitivity). Detail-by-field lives in each linked spec.
 
 ## 1.1 Care Plan — M07 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_CARE_PLAN.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_CARE_PLAN.md)
 ```
-Design "Care Plan" for WardenX. Patient Banner over Left (problems/goals/interventions tree) |
+Design "Care Plan" for ChartWarden. Patient Banner over Left (problems/goals/interventions tree) |
 Center (the plan: problems w/ ICD-10 mono, goals baseline→target, discipline interventions w/
 frequency) | Right (IDG review status · version history · AI suggestions). Sticky footer (Save /
 Submit for review / Approve).
@@ -19,9 +19,9 @@ SUD-sealed · dark.
 ```
 
 ## 1.2 Encounter / Visit Documentation — M08 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md)
 ```
-Design "Encounter / Visit Documentation" for WardenX. Patient Banner over Center (structured note:
+Design "Encounter / Visit Documentation" for ChartWarden. Patient Banner over Center (structured note:
 HearthNote sections, vitals, narrative) | Right (trends · risk · AI draft suggestions). Sticky
 footer (Save draft / Sign / Request cosign).
 SYSTEMS: Sign opens a Signature Ceremony; cosignature SLA countdown; late-entry tiers shown as
@@ -30,9 +30,9 @@ VARIANTS: draft · signed (read-only) · cosign-pending · late-entry · AI-draf
 ```
 
 ## 1.3 Clinical Assessments Suite — M09 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md)
 ```
-Design "Clinical Assessments Suite" for WardenX. Patient Banner over Left (assessment list:
+Design "Clinical Assessments Suite" for ChartWarden. Patient Banner over Left (assessment list:
 PPS/FAST/PAINAD/ESAS-r/Karnofsky/RASS/Spiritual/Respiratory) | Center (the active scored
 instrument) | Right (score trend sparkline · prior values · significant-change flag).
 SYSTEMS: scoring auto-computes (tabular-nums); correction→supersede flow; LPN cosign gate
@@ -41,9 +41,9 @@ VARIANTS: instrument entry · scored result · trend · correction/supersede · 
 ```
 
 ## 1.4 Wound Care — M09 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_WOUND_CARE.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_WOUND_CARE.md)
 ```
-Design "Wound Care" for WardenX. Patient Banner over Center (wound: type/stage/body-location
+Design "Wound Care" for ChartWarden. Patient Banner over Center (wound: type/stage/body-location
 diagram, measurements length×width×depth tabular-nums, photo documentation, treatment plan) |
 Right (progression trend · prior measurements · photos timeline).
 SYSTEMS: measurement trend; photo PHI handling; AI-assisted staging = provenance.
@@ -51,9 +51,9 @@ VARIANTS: new wound · progression view · measurement-trend · photo-compare ·
 ```
 
 ## 1.5 Allergy Management — M05 · M11 · `Patient Workspace`
-[spec](../screens/clinical/WARDENX_UI_ALLERGY_MANAGEMENT.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ALLERGY_MANAGEMENT.md)
 ```
-Design "Allergy Management" for WardenX. Patient Banner over a structured allergy list (allergen,
+Design "Allergy Management" for ChartWarden. Patient Banner over a structured allergy list (allergen,
 reaction, severity ALERT-coded, onset, source). Add/edit in a panel.
 SYSTEMS: severe allergies elevate to ALERT chips that also drive the Patient Banner allergy line;
 interaction check feeds Orders/eMAR (cross-module note).
@@ -61,9 +61,9 @@ VARIANTS: list · add/edit · no-known-allergies · severe-allergy ALERT · dark
 ```
 
 ## 1.6 HOPE Assessment — M10 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_HOPE_ASSESSMENT.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_HOPE_ASSESSMENT.md)
 ```
-Design "HOPE Assessment" for WardenX. Patient Banner over Left (timepoints/SFV schedule) | Center
+Design "HOPE Assessment" for ChartWarden. Patient Banner over Left (timepoints/SFV schedule) | Center
 (HOPE instrument with validation findings inline) | Right (submission status · QIES/ASAP
 confirmation · timeliness countdown).
 SYSTEMS: timepoint/SFV deadline countdown chips (timeliness is regulatory); validation findings
@@ -73,9 +73,9 @@ SFV worklist · dark.
 ```
 
 ## 1.7 Orders — M11 · `Patient Workspace`
-[spec](../screens/clinical/WARDENX_UI_ORDERS.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ORDERS.md)
 ```
-Design "Orders" for WardenX. Patient Banner over an orders surface: orders list (type, status
+Design "Orders" for ChartWarden. Patient Banner over an orders surface: orders list (type, status
 pill, ICD-10 justification mono), order detail w/ version history & linked visits/claims, create
 form (with optional AI suggestion).
 SYSTEMS: signing → Signature Ceremony (privileges/eligibility gate; Order Signature blocker if
@@ -86,9 +86,9 @@ cosign-pending · signature-blocked (guard) · dark.
 ```
 
 ## 1.8 Medications — Prescribing & eMAR — M12 · M13 · `MAR Grid`
-[spec](../screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md)
 ```
-Design "Medications — Prescribing & eMAR" for WardenX. Patient Banner over window controls
+Design "Medications — Prescribing & eMAR" for ChartWarden. Patient Banner over window controls
 (shift/day) over a MAR Grid: rows = medications × columns = scheduled times; each CELL is a
 due/given/missed/held dose acted in place | Right (administration entry · PRN reassessment ·
 witness). Plus a prescribing surface (med-order machine, refills, reconciliation).
@@ -99,9 +99,9 @@ controlled-substance · reconciliation · EPCS ceremony · dark.
 ```
 
 ## 1.9 IDG Meeting — M14 · `Work Queue + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_IDG_MEETING.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_IDG_MEETING.md)
 ```
-Design "IDG Meeting" for WardenX. Page Header (meeting context) over a patient review queue |
+Design "IDG Meeting" for ChartWarden. Page Header (meeting context) over a patient review queue |
 Center (per-patient AI packet summary + review notes + POC-update flag) | Right (attendees by
 discipline present/absent/excused · decisions).
 SYSTEMS: AI packet summaries carry provenance + citations; 15-day interval countdown per patient;
@@ -111,9 +111,9 @@ compliance-overdue · dark.
 ```
 
 ## 1.10 Patient Clinical Timeline — M05 · `Patient Workspace + Timeline`
-[spec](../screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_PATIENT_CLINICAL_TIMELINE.md)
 ```
-Design "Patient Clinical Timeline" for WardenX. Patient Banner over a chronological event stream
+Design "Patient Clinical Timeline" for ChartWarden. Patient Banner over a chronological event stream
 with lane filters (encounters, orders, meds, assessments, documents, IDG, billing), date presets,
 and an "as-of" view. The accent-gold "now" marker anchors today.
 SYSTEMS: SUD events sealed in-stream; consent-gated events marked; system-derived (imported)
@@ -122,9 +122,9 @@ VARIANTS: full timeline · single-lane filter · as-of (point-in-time) · SUD-se
 ```
 
 ## 1.11 Clinical Copilot & Chart Search — M32 · `Use Assistant`
-[spec](../screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_CLINICAL_COPILOT.md)
 ```
-Design "Clinical Copilot & Chart Search" for WardenX. Scope bar (this patient/chart) over a
+Design "Clinical Copilot & Chart Search" for ChartWarden. Scope bar (this patient/chart) over a
 conversation thread (prompt → GROUNDED answer with citations to chart sources) over suggested
 follow-ups/actions over a composer (modes: Ask · Summarize · Find).
 SYSTEMS: every answer cites sources; the assistant suggests, the human acts; governance bar

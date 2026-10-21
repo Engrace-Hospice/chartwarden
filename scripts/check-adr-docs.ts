@@ -1,5 +1,5 @@
 /**
- * WardenX - ADR corpus gate (docs/adr)
+ * ChartWarden - ADR corpus gate (docs/adr)
  * ------------------------------------
  * Companion to check-architecture-docs.ts / check-module-docs.ts / the docs:ui citation rules,
  * with the contract the ADR corpus demands: ADRs are IMMUTABLE once Accepted (their own

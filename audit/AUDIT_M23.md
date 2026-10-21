@@ -1,7 +1,7 @@
-# AUDIT — Module 23: Billing — Medicare (WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md, "Locked v0.2")
+# AUDIT — Module 23: Billing — Medicare (CHARTWARDEN_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md, "Locked v0.2")
 
 **Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0. Criteria packs: CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md, module-manifest.ts.
-**Spec read in full** (2,744 lines / ~328 KB). BLOCKER findings verified against WARDENX_ARCHITECTURE_v0_11.md (§11 M23 block, lines 1775–1834; §11 M26 block line 1867), WARDENX_INTEGRATIONS_v0_1.md (§2 rows 3–4, §6.3–6.4), and module-manifest.ts.
+**Spec read in full** (2,744 lines / ~328 KB). BLOCKER findings verified against CHARTWARDEN_ARCHITECTURE_v0_11.md (§11 M23 block, lines 1775–1834; §11 M26 block line 1867), CHARTWARDEN_INTEGRATIONS_v0_1.md (§2 rows 3–4, §6.3–6.4), and module-manifest.ts.
 
 ---
 

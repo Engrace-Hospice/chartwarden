@@ -17,7 +17,7 @@ import type { DataTableColumn } from "@chartwarden/ui";
 
 // apps/web/src/modules/08-encounters — patient encounters / visits (M8 §5.2, Track B / ADR-0030).
 
-// Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTERS.md — "Use Patient Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ENCOUNTERS.md — "Use Patient Workspace."
 
 // The per-patient list reached from the patient chart "Encounters / Visits" tab: a Patient Workspace
 

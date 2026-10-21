@@ -1,6 +1,6 @@
 import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Accept Invitation (M2 Auth, Track A).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Accept invitation" (/invite/:token).
 // TASK-030: the original cut deferred "set password" because there was no way to know the invitee's
 // email before consuming the (one-time) accept token, and no sign-up screen existed to create their
 // Better Auth account. Both are fixed here — a pre-auth GET /api/v1/invitations/:token PEEKS the

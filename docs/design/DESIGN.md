@@ -1,15 +1,15 @@
-# WardenX Design System — "Lantern"
+# ChartWarden Design System — "Lantern"
 
 Version: 1.0
 Status: Design Language (authoritative for the *visual* layer)
-Scope: The token system, component patterns, and hard rules for every WardenX surface
+Scope: The token system, component patterns, and hard rules for every ChartWarden surface
 (staff web, admin, patient/family portal, and the separate React Native/Expo mobile renderer).
 
-> **How this fits the corpus.** WardenX already specifies the *structural* layer — the
-> [layout-pattern glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) (regions, base patterns,
-> compositions) and the [69 screen specs](./WARDENX_UI_COMPLETE_SCREEN_INDEX.md). This
+> **How this fits the corpus.** ChartWarden already specifies the *structural* layer — the
+> [layout-pattern glossary](./CHARTWARDEN_UI_LAYOUT_PATTERNS.md) (regions, base patterns,
+> compositions) and the [69 screen specs](./CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md). This
 > document is the *visual* layer those screens render in: color, type, spacing, elevation,
-> and the component/behavior systems that make WardenX feel like WardenX. A screen spec says
+> and the component/behavior systems that make ChartWarden feel like ChartWarden. A screen spec says
 > *which pattern and which fields*; the glossary says *what that pattern is*; **this document
 > says what it looks like and how it behaves.**
 >
@@ -29,7 +29,7 @@ Scope: The token system, component patterns, and hard rules for every WardenX su
 
 **"Lantern"** — *calm vigilance through the hardest passage.*
 
-WardenX is the **warden**: the system holds the rails — the invariants, the consent gates, the
+ChartWarden is the **warden**: the system holds the rails — the invariants, the consent gates, the
 compliance clocks, the signature ceremonies — so the care team doesn't have to hold them in
 their head. That is the whole emotional thesis. A hospice clinician is doing the most human
 work there is, often at 2am, often grieving alongside a family. The software's job is to be a
@@ -50,14 +50,14 @@ Three commitments fall out of that:
 
 Lantern descends from the Apple-minimal "clinical precision + editorial breathability" school,
 but it is **its own identity**: warm paper instead of cool grey, a humanist serif for the
-human moments, a designed *twilight* dark mode, and — because WardenX literally is the warden —
+human moments, a designed *twilight* dark mode, and — because ChartWarden literally is the warden —
 a formalized **Guardrail, Provenance, and Sensitivity** system that no generic design kit ships.
 
 ---
 
 ## 2. Color Tokens
 
-WardenX color is **warm-neutral canvas + twilight-indigo brand + strictly-semantic accents.**
+ChartWarden color is **warm-neutral canvas + twilight-indigo brand + strictly-semantic accents.**
 Hue carries meaning: indigo = the product/navigation/primary action; green/amber/red = state;
 gold = brand warmth only (never status). Every value ships a light and a dark value.
 
@@ -110,7 +110,7 @@ degraded-mode banner (App Shell / System Health). Do not redefine them per scree
 
 ### 2.5 Surfaces — warm paper hierarchy
 
-WardenX's canvas is **warm paper**, not cool clinical grey. Boundaries come from tonal shifts
+ChartWarden's canvas is **warm paper**, not cool clinical grey. Boundaries come from tonal shifts
 in this ramp (see the No-Line rule, §10), never from default 1px lines.
 
 | Token | Light | Dark | Usage |
@@ -141,7 +141,7 @@ in this ramp (see the No-Line rule, §10), never from default 1px lines.
 
 ## 3. Typography
 
-WardenX speaks in **three voices**: a humanist serif for the *human*, a precision sans for the
+ChartWarden speaks in **three voices**: a humanist serif for the *human*, a precision sans for the
 *work*, and a mono for *identity codes*. This serif/sans/mono split is the most recognizable
 part of the Lantern identity.
 
@@ -256,7 +256,7 @@ humane — a deliberate departure from the legacy-EHR Outlined look).
 ## 6. Core Component Patterns
 
 These are the shared visual primitives. Pattern-specific composition (Work Queue, Dashboard,
-Stepper, etc.) lives in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md); this is how the
+Stepper, etc.) lives in the [layout glossary](./CHARTWARDEN_UI_LAYOUT_PATTERNS.md); this is how the
 pieces inside them look.
 
 ### 6.1 Navigation
@@ -292,7 +292,7 @@ saved filter into the queue/table below it.
 | Ghost | transparent → hover `surface-container` | `on-surface` | `md` |
 | **Guarded** | as its base variant, but **disabled + reason** | `muted` | — |
 
-> The **Guarded** state is core to WardenX — see §7. A primary action whose guard is unmet
+> The **Guarded** state is core to ChartWarden — see §7. A primary action whose guard is unmet
 > renders disabled with a `reason chip` immediately adjacent; it never silently no-ops.
 
 ### 6.5 Inputs
@@ -350,9 +350,9 @@ progress, switch. Never ship an unstyled primitive — always apply Lantern toke
 
 ---
 
-## 7. The Guardrail System *(WardenX-defining)*
+## 7. The Guardrail System *(ChartWarden-defining)*
 
-WardenX **is the warden**. Where a generic EHR scatters validation ad hoc, WardenX gives
+ChartWarden **is the warden**. Where a generic EHR scatters validation ad hoc, ChartWarden gives
 guards, gates, and ceremonies one consistent, legible visual language. This is the system that
 most distinguishes Lantern.
 
@@ -387,14 +387,14 @@ and a single deliberate commit. `shadow-float`, glass scrim, focus-trapped.
 
 ### 7.5 Deadline & clock affordances
 
-WardenX is full of regulatory clocks (recert windows, F2F, 5/15-day care-plan reviews, HIPAA
+ChartWarden is full of regulatory clocks (recert windows, F2F, 5/15-day care-plan reviews, HIPAA
 60-day amendment, breach 60-day, grievance 5/30-day, verbal-order 48h, NOE/NOTR). Render each as
 a **countdown chip**: neutral when ample → `warning` as the threshold nears → `alert`/`error` at
 expiry. Always show the absolute due date on hover, not just "in 3 days."
 
 ---
 
-## 8. Sensitivity & Consent Layer *(WardenX-defining)*
+## 8. Sensitivity & Consent Layer *(ChartWarden-defining)*
 
 Multi-tenant PHI with **42 CFR Part 2 / SUD**, consent gating (M39), envelope-encrypted
 identifiers (M05), and **break-glass** (M34) demand a consistent treatment for "you may not see
@@ -415,9 +415,9 @@ this, or not yet."
 
 ---
 
-## 9. Provenance & AI Governance Layer *(WardenX-defining)*
+## 9. Provenance & AI Governance Layer *(ChartWarden-defining)*
 
-WardenX has heavy AI surfaces (M32 platform, Clinical Copilot, DocLens extraction, AI order
+ChartWarden has heavy AI surfaces (M32 platform, Clinical Copilot, DocLens extraction, AI order
 suggestions, IDG packet) under a real governance regime. Lantern answers the layout glossary's
 open question — *AI presentation is its own system, not ad-hoc per screen.*
 
@@ -478,7 +478,7 @@ Dark mode is **first-class, not inverted** — a designed *twilight*: `#15151B` 
 lifted to `#AEB4F0`, gold to `#E7B35A` so the lantern actually glows. Enabled via the `class`
 strategy (`.dark` on `<html>`).
 
-WardenX is **Tailwind v4 (CSS-first `@theme`)** — tokens are CSS custom properties, not a JS
+ChartWarden is **Tailwind v4 (CSS-first `@theme`)** — tokens are CSS custom properties, not a JS
 config. **HISTORICAL — this adoption step is DONE** (see the header status note): the block below
 was the original hand-off spec, kept as the design-intent record. The live source of truth is
 [`apps/web/src/index.css`](../../apps/web/src/index.css) + `packages/ui/src/core/theme/colors.ts`,
@@ -559,7 +559,7 @@ banner; mirror it here only for reference.
 
 ## 12. Surface coverage
 
-Lantern governs all four WardenX surfaces, with the portal family inheriting the stricter
+Lantern governs all four ChartWarden surfaces, with the portal family inheriting the stricter
 accessibility/compassion constraints:
 
 | Surface | App | Notes |
@@ -573,9 +573,9 @@ accessibility/compassion constraints:
 
 ## 13. How to use this with the screen specs and Pencil
 
-1. A screen spec ([`screens/**`](./WARDENX_UI_COMPLETE_SCREEN_INDEX.md)) declares its **layout
+1. A screen spec ([`screens/**`](./CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md)) declares its **layout
    pattern** and fields.
-2. The [glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) resolves that pattern into **regions**.
+2. The [glossary](./CHARTWARDEN_UI_LAYOUT_PATTERNS.md) resolves that pattern into **regions**.
 3. **This document** supplies the **visual tokens + component/behavior systems** (§2–§9) and the
    **hard rules** (§10) that the regions render under.
 4. The [Pencil prompts](./pencil-prompts/) (§ corpus) fuse all three into per-screen generation

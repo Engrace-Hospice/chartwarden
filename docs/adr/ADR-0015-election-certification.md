@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 4 (Medicare correctness)
 - **Resolves:** M06-F02/F03/F04/F05/F09/F10
-- **Changes:** `WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC`
+- **Changes:** `CHARTWARDEN_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC`
 
 ## Context
 

@@ -1,5 +1,5 @@
 // apps/web/src/modules/02-identity — Auditor enrolment (M2 §7.7, Track A).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Auditor enrolment" (/auditor/enrol).
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "Auditor enrolment" (/auditor/enrol).
 // Where an external auditor lands after redeeming the emailed link: the session can reach nothing else until
 // they (1) read and accept the BAA / engagement terms and (2) prove a second factor — set up an authenticator
 // the first time (and keep ten single-use recovery codes), present the code or a recovery code afterwards.

@@ -257,7 +257,7 @@ Postgres, not Valkey; ~60 roles catalogued vs 13 shipped; `packages/rules-engine
 5 other paths don't exist; `packages/saas` → `packages/saas-tenant-platform`; 26 of 47 real packages
 undocumented.
 
-### AD-12 — Fix `WARDENX_INTEGRATIONS_v0_1.md` · **M**
+### AD-12 — Fix `CHARTWARDEN_INTEGRATIONS_v0_1.md` · **M**
 
 15 of 33 adapter paths wrong (superseded by ADR-0028/0029, which post-date the doc by one day) —
 eight of the cited packages were never created, and `packages/ai-platform/src/backends/anthropic.ts`
@@ -274,7 +274,7 @@ no data path, and bulk `$export` has no route or worker. The most-wired vendor s
 Twilio/Postmark webhooks**; outbound email is a no-op in production. Real network `fetch` exists in
 exactly **6** non-test files.
 
-### AD-13 — Fix `WARDENX_SECURITY_HARDENING_v0_2.md` · **M**
+### AD-13 — Fix `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` · **M**
 
 - **§1.4 must carve out the rate limiter.** It states "fail closed… never default to allow on error"
   with no exception, but the limiter deliberately fails open on store outage. **The code is right** —
@@ -297,14 +297,14 @@ exactly **6** non-test files.
   crypto-erase adapter — but the integrity report inspects only `wardenx_app` and cannot detect drift
   on that role.
 
-### AD-14 — Fix `WARDENX_SYSTEM_DESIGN_v0.3.md` · **S**
+### AD-14 — Fix `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md` · **S**
 
 Same TanStack / Socket.IO / sidecar / Valkey-idempotency drift as AD-11, plus: dev topology cites
 `docker compose -f infra/docker/dev.compose.yaml` with valkey/minio/mailpit/mlflow (real: a bare
 `docker run` of Postgres on port **5440**); ports 4180/4181 (real: 5173 / 3000); lefthook (real:
 `.githooks`); five §12.6 `bun` commands that don't exist; header cites architecture v0.10.
 
-### AD-15 — Fix `WARDENX_AI_GOVERNANCE_v0.2.md` · **M**
+### AD-15 — Fix `CHARTWARDEN_AI_GOVERNANCE_v0.2.md` · **M**
 
 Best-maintained doc in the corpus — inventory (18 capabilities), lifecycle FSM and backend list are
 all **current**. But:
@@ -330,14 +330,14 @@ all **current**. But:
   either — no replication, no WAL archiving. Consider recording the real target.)*
 - **HOPE retention.** `OPS_RUNBOOK:425` says 6 years; ADR-0004 closed OPEN-021 moving it to **7**,
   and `ARCHITECTURE:2874` says 7. The runbook carries the pre-ADR value.
-- **Filename vs. header version**: `WARDENX_ARCHITECTURE_v0_11.md` declares "v0.12";
-  `WARDENX_INTEGRATIONS_v0_1.md` declares "v0.2". Two v0.2 files end with "End of … v0.1."
+- **Filename vs. header version**: `CHARTWARDEN_ARCHITECTURE_v0_11.md` declares "v0.12";
+  `CHARTWARDEN_INTEGRATIONS_v0_1.md` declares "v0.2". Two v0.2 files end with "End of … v0.1."
 - **11 stale `Companion to:` citations** — every one but SECURITY_HARDENING's cites a superseded
   architecture version.
 - **63 dead repo paths** (~78 occurrences). `infra/`, `docs/ops/`, `docs/policies/`, `docs/runbooks/`,
   `docs/dr-drills/`, `docs/feature-flags/`, `docs/architecture/vendor-escalation.md` don't exist.
 - **Module-spec path convention wrong in three docs** — two variants cited, neither matching the real
-  flat `docs/modules/WARDENX_MODULE_NN_*_SPEC_vX_Y.md`.
+  flat `docs/modules/CHARTWARDEN_MODULE_NN_*_SPEC_vX_Y.md`.
 - **"Phase" is overloaded** — audit-remediation phases vs. product-launch phases, undisambiguated.
   Add a one-line glossary note; it is a live reader trap.
 

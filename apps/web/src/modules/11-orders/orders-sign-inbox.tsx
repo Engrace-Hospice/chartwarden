@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — physician signature inbox (M11 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (signature
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (signature
 // inbox half). The global queue of orders awaiting a physician signature, KPI'd by kind, sorted by created.
 // Priority (routine/stat/asap) is surfaced as a UX cue; the server owns the authoritative §2.2 D2 status
 // (ADR-0030 — no frontend authz). Reads GET /api/v1/orders/pending-signature via the typed client, and —

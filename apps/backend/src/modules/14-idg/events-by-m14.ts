@@ -340,7 +340,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       overriddenAt: isoInstant,
     }),
     // F-149 (#248) — m30 MOVED to seamConsumers, along with its `review_clock.escalated` sibling below:
-    // M30's own spec (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:122) names the real
+    // M30's own spec (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:122) names the real
     // mechanism decisively — "M30 consumes `IdgScheduleProvider.getCadenceAdherence` for the
     // IDG-cadence-compliance measure … it does not write to M14" — confirmed ACTIVE, not merely
     // aspirational: `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` calls

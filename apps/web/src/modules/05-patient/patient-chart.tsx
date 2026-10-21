@@ -21,7 +21,7 @@ import type { paths } from "@chartwarden/ui";
 
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
 
-// Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_PATIENT_CHART.md — "Use Patient Workspace."
 
 // The patient-scoped hub: sticky Patient Banner + a module nav rail + a center summary. This builds
 

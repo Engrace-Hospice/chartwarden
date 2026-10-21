@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — refill request detail (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (refill detail). Read-only view
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Detail" (refill detail). Read-only view
 // of a single refill request (§2.7 D9): the source medication-order reference, the request status / age, the
 // resulting medication order (once approved → a NEW med_order is minted, derived_from_refill, the original is
 // never edited). The approve/deny write actions (mint-on-approve, no-mint-on-deny, schedule-aware refill cap)

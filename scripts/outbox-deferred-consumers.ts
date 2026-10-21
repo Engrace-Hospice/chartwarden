@@ -200,7 +200,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   //   1. `m21.comfort_kit.returned` double-emission (`21-supplies/routes/write-service-drizzle.ts`'s
   //      `createReturn`, which published this event at return-REQUEST time with placeholder empty-string
   //      `disposalMethod`/`reconciledByMembershipId`) is DELETED at the source — checked against M21's
-  //      own spec (WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) first, which is
+  //      own spec (CHARTWARDEN_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) first, which is
   //      unambiguous that `.returned` fires only at reconciliation; no `.return_requested` (or any other
   //      spelling) event was invented in its place, because no consumer anywhere needs a "return was
   //      requested" signal (`comfort_kit_deployment.disposal_status` has no state between
@@ -210,7 +210,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   //      (`21-supplies/lifecycle/return.ts`), which fires once a return actually reaches `reconciled`.
   //   2. The nullable-`medicationOrderId` gap (`ComfortKitDispatchedContentPayload.medicationOrderId`,
   //      null for an IPU-stock-kit-on-room line with no per-patient order — a real, documented M21
-  //      business concept, `WARDENX_MODULE_21...md:58`) was investigated fresh rather than re-asserted:
+  //      business concept, `CHARTWARDEN_MODULE_21...md:58`) was investigated fresh rather than re-asserted:
   //      confirmed, by reading every M13 table (`administration_record`, `comfort_kit_drawdown`) and the
   //      whole pure `@chartwarden/emar` comfort-kit core, that NO precedent anywhere represents an order-less
   //      drawdown/administration — inventing one now would be deciding unreviewed DEA-adjacent

@@ -31,13 +31,13 @@ Both documents cite `packages/billing/src/claim-assembly.ts`, which does not exi
 
 - Direct Data Entry is the FISS terminal the MAC gives providers. IDs are individual, non-shareable, and
   require prior EDI enrollment. No sanctioned programmatic access was found.
-- A "DDE work queue" in WardenX is therefore work tracking: what to key, when, by whom, and what came back.
+- A "DDE work queue" in ChartWarden is therefore work tracking: what to key, when, by whom, and what came back.
 - DDE is needed for: hospice claim entry (option 28), NOE/NOTR entry (option 49), Return-to-Provider
   correction (status/location T B9997, held up to 36 months, new receipt date on correction), adjusting
   paid or rejected claims, cancelling paid claims, NOE date corrections, ADR follow-up.
 - NOE timeliness: submitted and accepted within 5 calendar days of the admission date; otherwise the gap
-  days are provider-liable and billed with occurrence span 77 (WardenX already derives span 77).
-- Repo status: no DDE code, table, route, or spec. Only `WARDENX_UI_NOE_NOTR_CLAIM_OPS.md:45` mentions it.
+  days are provider-liable and billed with occurrence span 77 (ChartWarden already derives span 77).
+- Repo status: no DDE code, table, route, or spec. Only `CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md:45` mentions it.
 
 ## 3. Stedi: findings from the OpenAPI specs
 
@@ -51,17 +51,17 @@ Confirmed:
 - Event destinations exist; 277CA and 835 JSON reports are fetched by transaction ID.
 
 Constraints that affect the design:
-1. `claimChargeAmount` must equal the sum of service line charges. WardenX computes
+1. `claimChargeAmount` must equal the sum of service line charges. ChartWarden computes
    `totalChargeCents = hipps.totalCents + siaCents + g0679ChargeCents`, and SIA is not a line, so claims
    with SIA would fail Stedi's edit.
-2. Required but not produced by WardenX: `attending`, `admissionSourceCode`, `admissionTypeCode`.
+2. Required but not produced by ChartWarden: `attending`, `admissionSourceCode`, `admissionTypeCode`.
 3. Type of bill is split into `placeOfServiceCode` (facility type) and `claimFrequencyCode`. The
    documented frequency values are 1, 2, 3, 4, 7, 8, 9; NOE/NOTR use A-E. Use raw X12 for NOE/NOTR.
 4. The synchronous 277CA reflects Stedi's edits only. Map it to a "clearinghouse accepted" state.
-5. 999s are sent only for SFTP. WardenX's claim machine requires submitted, then 999, then 277CA.
+5. 999s are sent only for SFTP. ChartWarden's claim machine requires submitted, then 999, then 277CA.
 6. Idempotency keys last 24 hours; keep a permanent local duplicate guard.
 7. Stedi says Original Medicare institutional claims are resubmitted with the original frequency code,
-   not 7/8, which conflicts with WardenX's TOB 817/818 model. Unconfirmed whether this covers
+   not 7/8, which conflicts with ChartWarden's TOB 817/818 model. Unconfirmed whether this covers
    adjustments of paid claims.
 8. OAuth integrated accounts are required for new apps.
 

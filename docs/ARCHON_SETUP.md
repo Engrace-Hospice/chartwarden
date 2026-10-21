@@ -1,4 +1,4 @@
-# WardenX × Archon — Deterministic Coding Setup
+# ChartWarden × Archon — Deterministic Coding Setup
 
 [Archon](https://github.com/coleam00/Archon) (coleam00) is an open-source **harness builder**:
 it makes AI coding *deterministic and repeatable* by encoding your dev process as a YAML DAG of
@@ -6,7 +6,7 @@ nodes — AI steps (`prompt:`), deterministic gates (`bash:`), loops (`loop:` �
 approval (`interactive: true`). The **workflow structure**, not the agent's improvisation, controls
 the flow.
 
-WardenX is an ideal fit because Phase 0 already gives every task an **objective pass/fail** (the six
+ChartWarden is an ideal fit because Phase 0 already gives every task an **objective pass/fail** (the six
 fitness gates + the per-module Definition of Done) and a **machine-readable spec source** (the
 manifest). Archon's deterministic `bash:` gate becomes our fitness suite; the AI `prompt:` nodes do
 the coding against a precise plan.
@@ -51,11 +51,11 @@ git clone https://github.com/coleam00/Archon
 cd Archon && bun install && claude    # then tell Claude Code: "Set up Archon"
 ```
 
-## 3. "Connect" it to WardenX
+## 3. "Connect" it to ChartWarden
 
 The harness-builder Archon doesn't run as a long-lived MCP server you point a client at — it
 **drives Claude Code from your repo**. So "connecting" = installing the CLI and running it from the
-WardenX root:
+ChartWarden root:
 
 ```bash
 cd /Users/fabrice/Apps/WardenX
@@ -65,7 +65,7 @@ archon                                      # launches Claude Code in this repo 
 archon workflow status                     # monitor active runs (CLI; no web dashboard in v0.3.2)
 ```
 
-> **Always run from the WardenX repo root, not the Archon repo** (per Archon's docs).
+> **Always run from the ChartWarden repo root, not the Archon repo** (per Archon's docs).
 >
 > **Verified here:** Archon **v0.3.2** is installed (`/usr/local/bin/archon`) and configured
 > (`~/.archon/config.yaml`: `defaultAssistant: claude`, model `sonnet`). Loop nodes **require**
@@ -77,7 +77,7 @@ location — repo-local workflows take precedence over Archon's bundled defaults
 
 ## 4. How our pieces map onto Archon
 
-| Archon concept               | WardenX artifact                                                                                                                             |
+| Archon concept               | ChartWarden artifact                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workflow (YAML DAG)          | `.archon/workflows/wardenx-piv.yaml` (plan → implement-loop → **validate gate** → fix → finalize → auto-PR; no interactive approve — [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md)) |
 | AI `prompt:` node input    | `docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md` (the task plan) + the cited `docs/modules/` spec sections                                    |

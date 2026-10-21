@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/outbox-consumers/m11-level-of-care-change-signed.ts — the live
 // `m11.order.level_of_care_change_signed` → §2.3.5 LCP transition binding (F-155/F-159, #248).
 //
-// M11 D9 (WARDENX_MODULE_11_ORDERS_SPEC §11): "Level-of-care-change orders are advisory; M6 owns the
+// M11 D9 (CHARTWARDEN_MODULE_11_ORDERS_SPEC §11): "Level-of-care-change orders are advisory; M6 owns the
 // `level_of_care_period` state machine. M11 emits `m11.order.level_of_care_change_signed`; M6 subscribes
 // and runs its LCP transition. M11 never writes `level_of_care_period`." Nothing ever bound it —
 // `changeLoc` (admission-route-service-db.ts) is the only write path and has always been an HTTP-route

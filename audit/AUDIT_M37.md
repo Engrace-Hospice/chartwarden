@@ -1,9 +1,9 @@
-# WardenX Module Audit — Module 37: Inpatient Unit (IPU) Management
+# ChartWarden Module Audit — Module 37: Inpatient Unit (IPU) Management
 
-**Spec audited:** `WARDENX_MODULE_37_IPU_SPEC_v0_2.md` (Spec status: Locked v0.2, Phase 3)
+**Spec audited:** `CHARTWARDEN_MODULE_37_IPU_SPEC_v0_2.md` (Spec status: Locked v0.2, Phase 3)
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs:** CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS (read in full)
-**Authoritative source verification:** WARDENX_ARCHITECTURE_v0_11.md (§11 M37 / ARCH-188, §11.A, §20), WARDENX_DR_BCP_v0.1.md, WARDENX_INTEGRATIONS_v0_1.md, module-manifest.ts, dependency-cruiser.cjs, check-table-ownership.ts.
+**Authoritative source verification:** CHARTWARDEN_ARCHITECTURE_v0_11.md (§11 M37 / ARCH-188, §11.A, §20), CHARTWARDEN_DR_BCP_v0.1.md, CHARTWARDEN_INTEGRATIONS_v0_1.md, module-manifest.ts, dependency-cruiser.cjs, check-table-ownership.ts.
 **Date:** 2026-06-11
 
 ---

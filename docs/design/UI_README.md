@@ -1,18 +1,18 @@
-# WardenX UI Documentation Complete Package v6
+# ChartWarden UI Documentation Complete Package v6
 
 > **Corpus map note (2026-08-14):** the canonical folder index is [`README.md`](./README.md); the
 > corpus is **113 specs across 10 directories** (the four added post-v5 — `compliance`,
 > `integration`, `mobile`, `staffing` — are listed below).
 
-The WardenX UI screen-specification corpus: every screen across clinical, revenue, admin,
+The ChartWarden UI screen-specification corpus: every screen across clinical, revenue, admin,
 core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossary.
 
 ## Contents
 
-- `WARDENX_UI_LAYOUT_PATTERNS.md` — **the layout-pattern glossary**. Every screen declares a
+- `CHARTWARDEN_UI_LAYOUT_PATTERNS.md` — **the layout-pattern glossary**. Every screen declares a
   named pattern (`Use <name>.`); this document defines them, the shared regions they are
   built from, and the composition rules. Start here.
-- `WARDENX_UI_COMPLETE_SCREEN_INDEX.md` — index of all screens.
+- `CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md` — index of all screens.
 
 ## Structure
 

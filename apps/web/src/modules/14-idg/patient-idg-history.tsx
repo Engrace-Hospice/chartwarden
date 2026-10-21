@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the patient chart's IDG tab (2026-09-25 redesign, mockup "IDG").
-// Spec: docs/modules/WARDENX_MODULE_14_IDG — the per-patient slice of the interdisciplinary group.
+// Spec: docs/modules/CHARTWARDEN_MODULE_14_IDG — the per-patient slice of the interdisciplinary group.
 // KPI cards, the patient's IDG team (M5 care-team assignments), the upcoming meeting, the meetings this
 // patient was reviewed in (M14 idg-history: decision kinds + action items), and the plan-of-care
 // versions (M7) the IDG signs; the rail carries Patient Summary, Goals Progress, recent reviews and

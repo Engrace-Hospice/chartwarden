@@ -1,7 +1,7 @@
-# WardenX — Phase 1 Plan (v1): Engrace Go-Live
+# ChartWarden — Phase 1 Plan (v1): Engrace Go-Live
 
 **Status:** Plan — sequencing of architecture §20.A Phase 1. Depends on Phase 0 scaffold complete.
-**Authority:** `WARDENX_ARCHITECTURE_v0_11.md` §20 (build sequence) + §20.A Phase 1 (the 28-module
+**Authority:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20 (build sequence) + §20.A Phase 1 (the 28-module
 cut). This file schedules the build into dependency-ordered waves; it does not restate module specs.
 **Goal:** the minimum system to operate **Engrace Hospice LLC** as a real Medicare-certified hospice —
 admit patients, document care, submit HOPE, prescribe, bill Medicare, and close the revenue loop.
@@ -13,7 +13,7 @@ admit patients, document care, submit HOPE, prescribe, bill Medicare, and close 
 >
 > **Count reconciliation (resolved):** architecture §20.A previously read "28 of 40" in prose while
 > its enumerated Phase-1 table listed **29** rows. That off-by-one has been corrected in
-> `WARDENX_ARCHITECTURE_v0_11.md` (§20.A count → 29; changelog → "26 → 29 (added 38, 39, 40)"). This
+> `CHARTWARDEN_ARCHITECTURE_v0_11.md` (§20.A count → 29; changelog → "26 → 29 (added 38, 39, 40)"). This
 > plan uses **29**. Phase 2 (10 new) + Phase 3 (1 new, M37) cover the remaining 11 modules, so
 > 29 + 10 + 1 = 40 with each module built exactly once.
 
@@ -124,9 +124,9 @@ These feature flags **default off** in Phase 1 and only flip in their activation
 ## 4. Cross-cutting requirements (every Phase-1 module)
 
 - **§20.B template complete** before the module is "done" (see roadmap DoD).
-- **DR tier declared** per `WARDENX_DR_BCP` — e.g., M10/M19-class capture paths are Tier 1/2; document
+- **DR tier declared** per `CHARTWARDEN_DR_BCP` — e.g., M10/M19-class capture paths are Tier 1/2; document
   the degraded-mode classes.
-- **INT inventory** per `WARDENX_INTEGRATIONS` for every external touchpoint (iQIES, DoseSpot, MAC,
+- **INT inventory** per `CHARTWARDEN_INTEGRATIONS` for every external touchpoint (iQIES, DoseSpot, MAC,
   Xero, Twilio, etc.).
 - **PHI discipline:** RLS + `withOrgContext` on every PHI route; audit denylist for free-text/cipher
   columns; eraser registered.
@@ -163,5 +163,5 @@ These feature flags **default off** in Phase 1 and only flip in their activation
 
 ## 7. Exit → Phase 2
 
-Engrace is operating in production on WardenX. The next phase turns on the differentiating AI features
+Engrace is operating in production on ChartWarden. The next phase turns on the differentiating AI features
 and operational-depth modules. See [`PHASE_2_PLAN.md`](./PHASE_2_PLAN.md).

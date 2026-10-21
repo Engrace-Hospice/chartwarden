@@ -62,7 +62,7 @@
 - Production blocker: Conditional
 - Affected workflow: Frontend routing/build
 - Affected persona: SPA users
-- Evidence: `bun audit` reports GHSA-qwww-vcr4-c8h2 for `react-router` 7.18.2 (`>=7.12.0 <8.3.0`). Advisory concerns unstable React Server Component APIs; WardenX builds client SPAs and no RSC use was found.
+- Evidence: `bun audit` reports GHSA-qwww-vcr4-c8h2 for `react-router` 7.18.2 (`>=7.12.0 <8.3.0`). Advisory concerns unstable React Server Component APIs; ChartWarden builds client SPAs and no RSC use was found.
 - File(s): `bun.lock`; app package manifests
 - Symbol(s): `react-router`, `react-router-dom`
 - Description: The vulnerable range is installed even though the known exploit path appears outside current SPA usage.

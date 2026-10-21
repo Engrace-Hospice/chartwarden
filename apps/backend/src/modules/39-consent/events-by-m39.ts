@@ -41,7 +41,7 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       expiresAt: Type.Optional(Type.String()),
     }),
     // F-149 (#248) — m30 MOVED to seamConsumers: M30's own spec (docs/modules/
-    // WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md's §8.1 Part-2-redisclosure text) and its own blanket
+    // CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md's §8.1 Part-2-redisclosure text) and its own blanket
     // §1.1 principle ("Outbox publication is the only cross-module communication M30 performs at the
     // boundary") both frame the real relationship as `ConsentEvaluator.evaluate`/`.evaluateBulk`,
     // consulted fresh per-actor on every access — confirmed ACTIVE, not aspirational:

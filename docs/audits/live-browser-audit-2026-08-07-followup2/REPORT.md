@@ -1,4 +1,4 @@
-# WardenX Live-Browser Gap Audit — Follow-up Pass 2 (2026-08-07)
+# ChartWarden Live-Browser Gap Audit — Follow-up Pass 2 (2026-08-07)
 
 **Method:** re-drove the running local stack with `claude-in-chrome`, as `admin@wardenx.local`
 (Administrator/org_admin) and `avery@wardenx.local` (Compliance Auditor), to (1) re-verify the

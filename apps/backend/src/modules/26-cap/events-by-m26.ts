@@ -44,7 +44,7 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     // `CapMetricsProvider`/`InpatientCapProvider` seam to M30, but M30's own §1.1 relationship inventory
     // is a flat, explicit denial: "Cap management. Module 26. No direct M30 consumption — cap status is
     // M26's domain and feeds M27 cost reports, not quality measures."
-    // (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:134) — checked across the whole spec
+    // (docs/modules/CHARTWARDEN_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:134) — checked across the whole spec
     // doc, this is the only substantive "cap" mention outside M30's own unrelated Corrective Action Plan
     // (incident-investigation) vocabulary. The consuming module's own decisive statement wins (F-101).
     declaredConsumers: [],

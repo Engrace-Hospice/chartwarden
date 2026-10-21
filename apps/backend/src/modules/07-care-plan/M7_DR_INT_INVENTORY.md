@@ -1,7 +1,7 @@
 # Module 7 (Care Plan / IPOC) — DR Tier + Integration Inventory + STRIDE
 
 M7-T09 (spec §4.7, §4.8, §5, §8). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md` and `WARDENX_INTEGRATIONS_v0_1.md`.
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` and `CHARTWARDEN_INTEGRATIONS_v0_1.md`.
 
 ## DR posture — **Tier 2** (critical clinical data; documentation-path module)
 

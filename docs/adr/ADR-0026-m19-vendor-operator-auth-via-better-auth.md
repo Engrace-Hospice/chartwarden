@@ -5,7 +5,7 @@
 - **Phase:** dispute/blocker resolution (post June-13 re-audit)
 - **Resolves:** M19-F03 (BLOCKER); `audit/RE_AUDIT_BLOCKERS_2026-06-13.md`
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md); relates to [ADR-0020](ADR-0020-integration-governance.md) (vendor BAA gate)
-- **Changes (on acceptance):** `WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md` (new session class + invite/issue surface), `WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md` (§7.5/§8.2/§9.8, task #36 — remove the module-local SSO). No `module-manifest.ts` change (M19 already consumes M2 as foundation).
+- **Changes (on acceptance):** `CHARTWARDEN_MODULE_02_IDENTITY_SPEC_v0_4.md` (new session class + invite/issue surface), `CHARTWARDEN_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md` (§7.5/§8.2/§9.8, task #36 — remove the module-local SSO). No `module-manifest.ts` change (M19 already consumes M2 as foundation).
 
 ## Context
 

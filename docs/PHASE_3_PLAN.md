@@ -1,10 +1,10 @@
-# WardenX — Phase 3 Plan (v1.2): Multi-Tenant Scale + Inpatient
+# ChartWarden — Phase 3 Plan (v1.2): Multi-Tenant Scale + Inpatient
 
 **Status:** Plan — sequencing of architecture §20.A Phase 3. Depends on Phase 2 shipped.
-**Authority:** `WARDENX_ARCHITECTURE_v0_11.md` §20.A Phase 3.
+**Authority:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20.A Phase 3.
 **Goal:** the capabilities that only matter at scale — full multi-tenancy, inpatient units, full
 quality reporting, and the controlled/bidirectional integrations gated behind certification paths.
-This is the "WardenX is a real SaaS business with multiple agencies" moment.
+This is the "ChartWarden is a real SaaS business with multiple agencies" moment.
 
 > **Count: 2 new modules (1 of them, M37, is genuinely new build) + 4 upgrades.** ~6–12 months after
 > Phase 2.

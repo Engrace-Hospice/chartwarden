@@ -1,6 +1,6 @@
 /**
  * M14 §"Permissions" default roles for the two IDG keys the category sweep would otherwise hand to every
- * clinical role (docs/modules/WARDENX_MODULE_14_IDG_SPEC_v0_4.md, `idg.coordinate` / `idg.schedule`).
+ * clinical role (docs/modules/CHARTWARDEN_MODULE_14_IDG_SPEC_v0_4.md, `idg.coordinate` / `idg.schedule`).
  * `idg.coordinate` builds packets and runs the meeting lifecycle; `idg.schedule` manages policies and
  * cancels/reschedules — neither belongs to an aide, a volunteer or a bedside nurse. Roles seeded with the
  * whole catalog (`administrator`, `org_admin` — the spec's Tenant Admin) are not filtered through this.

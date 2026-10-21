@@ -5,7 +5,7 @@
 - **Phase:** dispute resolution (post June-13 re-audit)
 - **Resolves:** M14-F04 (DISPUTED); `audit/TRIAGE_RESULTS.md` §Batch-3
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md)
-- **Changes (on acceptance):** `WARDENX_MODULE_14_IDG_SPEC_v0_4.md` (D14/D15/D16, §1.1, §3.5, §4.11, owned-table count), `WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md` (recipient resolvers + payload catalog), `WARDENX_MODULE_06/11/22` consumer declarations. No `module-manifest.ts` change.
+- **Changes (on acceptance):** `CHARTWARDEN_MODULE_14_IDG_SPEC_v0_4.md` (D14/D15/D16, §1.1, §3.5, §4.11, owned-table count), `CHARTWARDEN_MODULE_36_MESSAGING_SPEC_v0_4.md` (recipient resolvers + payload catalog), `CHARTWARDEN_MODULE_06/11/22` consumer declarations. No `module-manifest.ts` change.
 
 ## Context
 

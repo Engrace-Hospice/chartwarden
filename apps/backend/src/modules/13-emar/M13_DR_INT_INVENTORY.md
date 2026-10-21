@@ -1,8 +1,8 @@
 # Module 13 (eMAR & Med Administration) — DR Tier + Integration Inventory + STRIDE
 
 M13-T10 (spec §1.2/§1.3, §2.2 D6, §2.5 D8, §2.7 D5, §2.9 D10, §7.7, §8). Companion to the module code;
-cross-references `docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
-`WARDENX_SECURITY_HARDENING_v0_2.md`, and the M13 spec. Medication administration sits on the bedside-care
+cross-references `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
+`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and the M13 spec. Medication administration sits on the bedside-care
 path (a medication a patient *receives* is a clinical fact the instant it happens, and the controlled-substance
 double-witness + missed-dose detection are survey-grade safety controls); the downstream projections (M22 PDF,
 M28 FHIR, M30 measures, M21 comfort-kit replenishment) are deliberately decoupled.

@@ -72,7 +72,7 @@ export type {
   WorkflowStepState,
 } from "./components/workflow-stepper";
 
-// Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
+// Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, CHARTWARDEN_UI_LAYOUT_PATTERNS.md)
 export * from "./layouts";
 
 // WardenX system primitives (R0.3, DESIGN.md §7–§9) — the Guardrail / Sensitivity / Provenance

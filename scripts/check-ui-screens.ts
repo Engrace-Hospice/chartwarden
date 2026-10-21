@@ -1,17 +1,17 @@
 /**
- * WardenX — UI Screen-Spec Corpus Consistency Check
+ * ChartWarden — UI Screen-Spec Corpus Consistency Check
  * -------------------------------------------------
  * Keeps the docs/design/ corpus internally coherent. Catches the drift that is easy
  * to introduce when adding screens by hand:
  *
  *   1. INDEX PARITY — every screen file under docs/design/screens/ is listed in
- *      WARDENX_UI_COMPLETE_SCREEN_INDEX.md, and every index entry points to a file
+ *      CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md, and every index entry points to a file
  *      that exists (no orphans, no stragglers, no duplicates).
  *   2. LAYOUT-HEADING HYGIENE — every screen declares its layout via
  *      `## Layout Pattern` + a single `Use <name>.` line (no bare `## Layout`,
  *      no missing declaration).
  *   3. PATTERN RESOLUTION — every pattern token in a `Use A + B.` declaration
- *      resolves to a pattern defined in WARDENX_UI_LAYOUT_PATTERNS.md (a `### Name`
+ *      resolves to a pattern defined in CHARTWARDEN_UI_LAYOUT_PATTERNS.md (a `### Name`
  *      base/foundational heading, or a Tier-3 modifier table row).
  *   6. STATUS PARITY (GAP-186) — SCREEN_SPEC_STATUS.md has exactly one row per indexed spec,
  *      a status of built|partial|deferred, a registered screen set (as listed in
@@ -32,8 +32,8 @@ import { join, relative } from "node:path";
 const REPO_ROOT = process.cwd();
 const UI_DIR = "docs/design";
 const SCREENS_DIR = join(UI_DIR, "screens");
-const INDEX_FILE = join(UI_DIR, "WARDENX_UI_COMPLETE_SCREEN_INDEX.md");
-const GLOSSARY_FILE = join(UI_DIR, "WARDENX_UI_LAYOUT_PATTERNS.md");
+const INDEX_FILE = join(UI_DIR, "CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md");
+const GLOSSARY_FILE = join(UI_DIR, "CHARTWARDEN_UI_LAYOUT_PATTERNS.md");
 
 type Violation = { check: string; detail: string };
 const violations: Violation[] = [];
@@ -47,7 +47,7 @@ function listScreens(dir: string, acc: string[] = []): string[] {
   for (const e of readdirSync(join(REPO_ROOT, dir))) {
     const rel = join(dir, e);
     if (statSync(join(REPO_ROOT, rel)).isDirectory()) listScreens(rel, acc);
-    else if (/^WARDENX_UI_.+\.md$/.test(e)) acc.push(rel);
+    else if (/^CHARTWARDEN_UI_.+\.md$/.test(e)) acc.push(rel);
   }
   return acc;
 }

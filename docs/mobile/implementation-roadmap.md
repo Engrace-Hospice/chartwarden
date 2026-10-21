@@ -206,7 +206,7 @@ simuler une disponibilité.
 
 ## Prompt historique du Lot 0.5
 
-> Réaliser le Lot 0.5 WardenX Mobile : proposer un ADR de supersession d’ADR-0035 pour remplacer le
+> Réaliser le Lot 0.5 ChartWarden Mobile : proposer un ADR de supersession d’ADR-0035 pour remplacer le
 > Capacitor wrap par React Native + Expo, sans initialiser `apps/mobile`. Mettre à jour de façon cohérente
 > les documents d’architecture, System Design, Security Hardening, Integrations, DR/BCP, design mobile et
 > manifest/codePaths concernés. Démontrer l’équivalent Expo/RN de chaque contrôle mobile actuel et

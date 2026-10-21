@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture / manifest correction)
 - **Resolves:** X1, X2, X12; M01-F01, M02-F03, M03-F02/F07, M04-F05, M09-F01, M10-F01; Build-Blocking #1/#3/#4
-- **Changes:** `module-manifest.ts`, `module-manifest.cjs`, `ARCHITECTURE_25_15_FITNESS.md`, `WARDENX_ARCHITECTURE_v0_11.md` §25.15
+- **Changes:** `module-manifest.ts`, `module-manifest.cjs`, `ARCHITECTURE_25_15_FITNESS.md`, `CHARTWARDEN_ARCHITECTURE_v0_11.md` §25.15
 
 ## Context
 

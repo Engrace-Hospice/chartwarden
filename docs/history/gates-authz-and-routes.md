@@ -415,10 +415,10 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
 
 - **`check-error-envelope` (`arch:error-envelope`, GAP-175).** M1 §4.3 defines one error envelope
   (`{ error: { code, message, details?, correlationId } }`) that the M1 error handler renders for every
-  thrown `WardenXError`. 38 route responses in M02/M12/M29/M33/M37 (and three more the audit did not
+  thrown `ChartWardenError`. 38 route responses in M02/M12/M29/M33/M37 (and three more the audit did not
   count in M28/M29/M33) answered failures with `reply.code(4xx).send({ error: "snake_case" })` or a bare
   `{ code, message }`, so the client got no `correlationId` and a second error shape — the session
-  step-up and device-attestation routes among them. They now `throw` a typed `WardenXError`/
+  step-up and device-attestation routes among them. They now `throw` a typed `ChartWardenError`/
   `NotFoundError`/`ConflictError` (codes are the former strings, upper-cased: `STEP_UP_FAILED`-style
   names are the envelope `code`; the web client keys on status only). The gate fails any non-test
   `apps/backend/src` file that passes `{ error: "<string>" … }` or `{ code: … }` as the body of a

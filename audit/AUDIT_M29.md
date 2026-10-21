@@ -1,6 +1,6 @@
-# WardenX Module Audit — Module 29: External Interfaces (HL7v2 / ADT / Labs / NPPES / Outbound)
+# ChartWarden Module Audit — Module 29: External Interfaces (HL7v2 / ADT / Labs / NPPES / Outbound)
 
-**Spec audited:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` (Locked v0.4 Consolidated)
+**Spec audited:** `CHARTWARDEN_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` (Locked v0.4 Consolidated)
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Authoritative sources verified by Grep:** ARCHITECTURE v0.11, SECURITY_HARDENING v0.2, INTEGRATIONS v0.1, SYSTEM_DESIGN v0.3 (criteria packs ARCH-/SD-/SEC-/AI-/DR-/OPS-/INT-).
 **Manifest (authoritative):** M29 `dependsOn: [5, 11, 40]`, `codePaths: ["apps/backend/src/modules/29-external-interfaces"]`, `ownedTables: []` (to be filled by spec).
@@ -52,7 +52,7 @@ ARCHITECTURE WINS. The spec is unusually thorough in prose and clearly understan
 
 **G. Operations.** Queue catalog with retry/backoff/DLQ present (§4.9, ARCH-262) — good. Partitioning by month on hl7_message_inbound/outbound declared (must be added to `partition.rotate`, OPS-021 — not stated). Secret inventory/rotation for per-feed certs not wired (F18, OPS-036). Migrations forward-only with phased plan (0029→0031) — acceptable.
 
-**H. Integrations.** ADT (INT-036) and Lab (INT-037) contracts largely matched: MLLP, A01/A03/A04/A08/A11, per-tenant/per-feed, allowlist, BAA, propose-then-review for ADT, auto-attach for labs, idempotent on control ID. Deviations: lab dedup on wrong key (F06); NPPES ownership (F02). No inbound CMS webhook receivers invented (good, INT-044). No WardenX-held Surescripts/PECOS/EVV-aggregator inventions. Xero/Gusto correctly consumed from M27 (F17 is a modeling nit, not an invention).
+**H. Integrations.** ADT (INT-036) and Lab (INT-037) contracts largely matched: MLLP, A01/A03/A04/A08/A11, per-tenant/per-feed, allowlist, BAA, propose-then-review for ADT, auto-attach for labs, idempotent on control ID. Deviations: lab dedup on wrong key (F06); NPPES ownership (F02). No inbound CMS webhook receivers invented (good, INT-044). No ChartWarden-held Surescripts/PECOS/EVV-aggregator inventions. Xero/Gusto correctly consumed from M27 (F17 is a modeling nit, not an invention).
 
 **I. Medicare hospice regulatory correctness.** M29 encodes little hospice regulation directly; it cites CoP 418.104(a) (physician-order documentation via lab-to-order back-link) and HIPAA/Part-2. No election/cert/F2F/NOE/cap encodings to mis-state. The lab→order fulfillment link is plausible but depends on M11's order model (cross-module, forward-stub). No Medicare-correctness BLOCKER.
 

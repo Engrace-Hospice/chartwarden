@@ -6,7 +6,7 @@
 - **Date:** 2026-08-14
 - **Phase:** post-build decision record (M31 Portal/Telehealth is merged).
 - **Related:** M31 spec D1 (the shipped decision this ADR ratifies);
-  `WARDENX_INTEGRATIONS` §6.21 (contract section); ADR-0028 (adapter-package layout).
+  `CHARTWARDEN_INTEGRATIONS` §6.21 (contract section); ADR-0028 (adapter-package layout).
 
 ## Context
 

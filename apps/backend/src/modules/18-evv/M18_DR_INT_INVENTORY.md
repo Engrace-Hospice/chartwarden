@@ -1,8 +1,8 @@
 # Module 18 (Electronic Visit Verification) — DR Tier + Integration Inventory + STRIDE
 
 M18-T07 (spec §8.3, §8.4, §8.8). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`,
-`WARDENX_SECURITY_HARDENING_v0_2.md`, and the M18 spec. EVV is the **electronic substantiation of physical
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`,
+`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`, and the M18 spec. EVV is the **electronic substantiation of physical
 service delivery** — the Cures Act §12006 six-element record that turns a Medicaid-billable hospice claim from
 "pending review" into "payable", and the authoritative driver of the M17 visit lifecycle (`check_in` advances
 `published → en_route → in_visit`, `check_out` completes it). Because a check-in is the field clinician's first

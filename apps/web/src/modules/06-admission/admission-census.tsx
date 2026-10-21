@@ -1,5 +1,5 @@
 // apps/web/src/modules/06-admission — Admissions (M6 §5.2.12 entry, Track B / ADR-0030; 2026-09-25
-// redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md.
+// redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ADMISSIONS_REFERRAL_INTAKE.md.
 // KPI cards, a labeled filter bar, the admissions table (patient · MRN · admission date · status ·
 // source · hospice physician) and a right drawer for the selected admission: its intake workflow and
 // task checklist from the M6 readiness read, and its key facts. The list route carries only

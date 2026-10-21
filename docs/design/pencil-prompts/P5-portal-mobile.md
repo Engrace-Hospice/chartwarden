@@ -9,9 +9,9 @@
 > after-hours / urgent-care safety affordance** on every screen. Module M31.
 
 ## 5.1 Patient / Family Portal Dashboard — M31 · `Use Portal Dashboard`
-[spec](../screens/portal/WARDENX_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md)
+[spec](../screens/portal/CHARTWARDEN_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md)
 ```
-Design "Patient / Family Portal Dashboard" for WardenX. Portal Dashboard — Portal Header (warm,
+Design "Patient / Family Portal Dashboard" for ChartWarden. Portal Dashboard — Portal Header (warm,
 Fraunces greeting) over Patient Summary over a single-column card stack: Care Team, Next Visit,
 Messages, Documents & Consents, Bereavement Resources (when applicable), Help. Persistent
 after-hours safety button. Large type, single column, AAA contrast.
@@ -20,18 +20,18 @@ empty/first-login · dark.
 ```
 
 ## 5.2 Portal Care Team Messages — M31 · M36 · `Use Conversation View`
-[spec](../screens/portal/WARDENX_UI_PORTAL_CARE_TEAM_MESSAGES.md)
+[spec](../screens/portal/CHARTWARDEN_UI_PORTAL_CARE_TEAM_MESSAGES.md)
 ```
-Design "Portal Care Team Messages" for WardenX. Conversation View (portal) — Conversation List |
+Design "Portal Care Team Messages" for ChartWarden. Conversation View (portal) — Conversation List |
 Message Thread | Right (care team · what-to-expect / response-time expectations). Plain language,
 large bubbles, safety banner persistent. SYSTEMS: async; urgent → redirect to safety affordance,
 not chat. VARIANTS: inbox · thread · compose · empty · dark.
 ```
 
 ## 5.3 Portal Documents / Consents — M31 · M22 · M39 · `Use Document Viewer`
-[spec](../screens/portal/WARDENX_UI_PORTAL_DOCUMENTS_CONSENTS.md)
+[spec](../screens/portal/CHARTWARDEN_UI_PORTAL_DOCUMENTS_CONSENTS.md)
 ```
-Design "Portal Documents / Consents" for WardenX. Document Viewer (portal) — Document List |
+Design "Portal Documents / Consents" for ChartWarden. Document Viewer (portal) — Document List |
 Document Viewer | Action Panel (View / Sign / Acknowledge). SYSTEMS: consent signing = a calm,
 plain-language ceremony (M39); signed/acknowledged status pills; SUD documents respect Part-2
 consent. Large type, AAA. VARIANTS: document list · viewer · sign-consent (ceremony) · signed ·
@@ -39,17 +39,17 @@ dark.
 ```
 
 ## 5.4 Portal Visit Schedule — M31 · M17 · `Use Portal List`
-[spec](../screens/portal/WARDENX_UI_PORTAL_VISIT_SCHEDULE.md)
+[spec](../screens/portal/CHARTWARDEN_UI_PORTAL_VISIT_SCHEDULE.md)
 ```
-Design "Portal Visit Schedule" for WardenX. Portal List — grouped chronological list (Upcoming /
+Design "Portal Visit Schedule" for ChartWarden. Portal List — grouped chronological list (Upcoming /
 Past) + item detail (visit type, clinician, date/time). Plain language, single column, large
 touch targets. VARIANTS: upcoming · past · visit detail · empty · dark.
 ```
 
 ## 5.5 Telehealth Visit Room — M31 · `Use Media Room`
-[spec](../screens/portal/WARDENX_UI_TELEHEALTH_VISIT_ROOM.md)
+[spec](../screens/portal/CHARTWARDEN_UI_TELEHEALTH_VISIT_ROOM.md)
 ```
-Design "Telehealth Visit Room" for WardenX. Media Room — Video Area (+ participant panel) | Visit
+Design "Telehealth Visit Room" for ChartWarden. Media Room — Video Area (+ participant panel) | Visit
 Context | Chat / Notes; controls (join/leave/mute/camera/share). Clinician and patient variants.
 SYSTEMS: session-recording explicit consent (ceremony) before capture; connection-quality
 indicator; state licensing note. Patient variant = portal constraints (large, plain, accessible).
@@ -66,7 +66,7 @@ screen). Generate these as a distinct mobile frame set. 44px targets are doubly 
 offline-capable; queued outbox with sync indicator.
 
 ```
-Design the WardenX "Mobile Field" frame set. One action per screen, large targets, offline-first.
+Design the ChartWarden "Mobile Field" frame set. One action per screen, large targets, offline-first.
 FRAMES: mobile patient list & day schedule · mobile visit documentation (offline, queued) · EVV
 check-in (geofence advisory) · EVV check-out · field-safety check-in · field-safety panic/escalate
 (ALERT) · offline-queue / sync-status indicator · mobile message threads · mobile task list.

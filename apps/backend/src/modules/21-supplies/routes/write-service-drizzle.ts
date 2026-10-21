@@ -1514,7 +1514,7 @@ export function buildDrizzleM21WriteService(
         // F-166 (#248) — this used to ALSO publish `m21.comfort_kit.returned` here, at the moment the
         // return is merely REQUESTED (state stays "requested"), with `disposalMethod`/
         // `reconciledByMembershipId` as placeholder empty strings — nothing has happened yet. M21's own
-        // spec (WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) is unambiguous that
+        // spec (CHARTWARDEN_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) is unambiguous that
         // `.returned` fires only once reconciliation "captures per-medication quantity_returned +
         // quantity_disposed_at_home + disposal_method + disposal_witness_membership_id, and emits
         // `m21.comfort_kit.returned` + `m21.comfort_kit.return_reconciliation`" — i.e. from

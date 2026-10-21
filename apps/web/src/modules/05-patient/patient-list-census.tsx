@@ -16,7 +16,7 @@ import {
 } from "@chartwarden/ui";
 import type { DataTableColumn } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
-// Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
 // Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.
 // Reconciled to Lantern (R1): status taxonomy pills (§6.6), mono MRN identifiers (§3.1), and a
 // Right Quick Summary panel that lazily fetches MBI last-4 + consent-gated privacy flags (§8) on

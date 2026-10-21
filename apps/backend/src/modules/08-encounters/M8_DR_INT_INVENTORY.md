@@ -1,7 +1,7 @@
 # Module 8 (Encounters & Visit Notes) — DR Tier + Integration Inventory + STRIDE
 
 M8-T12 (spec §3.6, §4.4, §4.7, §5, §8). Companion to the module code; cross-references
-`docs/architecture/WARDENX_DR_BCP_v0.1.md` and `WARDENX_INTEGRATIONS_v0_1.md`.
+`docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md` and `CHARTWARDEN_INTEGRATIONS_v0_1.md`.
 
 ## DR posture — **Tier 1** (the clinical-record signature surface; documentation-path module)
 

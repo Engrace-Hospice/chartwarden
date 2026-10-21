@@ -11,7 +11,7 @@ import {
   safeReturnTo,
 } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Passkey enrollment & management (M2 Auth, ADR-0034 follow-up).
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "passkey enrollment". An authenticated user registers a
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "passkey enrollment". An authenticated user registers a
 // WebAuthn passkey (authClient.passkey.addPasskey) and lists/removes them. The WebAuthn ceremony is
 // browser-only (a real authenticator) — not CI-testable — so this is build-/e2e-verified.
 import { useCallback, useEffect, useMemo, useState } from "react";

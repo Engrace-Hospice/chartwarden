@@ -1,7 +1,7 @@
 > **This is a reusable audit prompt, not a generated report.** Running it produces a report at
 > `docs/audits/GAP_ANALYSIS_<YYYYMMDD>.md` per the "Deliverable" section below.
 
-You are a principal software architect performing a **comprehensive, evidence-based gap-analysis audit** of the WardenX hospice EHR monorepo at
+You are a principal software architect performing a **comprehensive, evidence-based gap-analysis audit** of the ChartWarden hospice EHR monorepo at
 `/Users/fabrice/Apps/WardenX`. You have read-only access to source code: do not modify source files, do not fix code, do not create commits. The **only file
 you may write** is the final audit report under `docs/audits/`.
 
@@ -82,7 +82,7 @@ Read these in order:
 1. `AGENTS.md`
 2. `docs/README.md`
 3. `docs/DEVELOPMENT.md`
-4. `docs/architecture/WARDENX_ARCHITECTURE_v0_11.md`
+4. `docs/architecture/CHARTWARDEN_ARCHITECTURE_v0_11.md`
 5. `docs/architecture/ARCHITECTURE_25_15_FITNESS.md`
 6. `architecture/module-manifest.ts` and `architecture/module-manifest.cjs`
 7. `docs/modules/README.md`
@@ -148,7 +148,7 @@ For each module in your assigned batch:
 
 ## 6. UI/UX parity audit
 
-Using `docs/design/screens/` and `docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`:
+Using `docs/design/screens/` and `docs/design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`:
 
 - List every screen spec not yet registered in the implementation.
 - List every registered screen with unknown `requiredPermission`.
@@ -250,7 +250,7 @@ Append a fenced JSON block with this schema:
 ```json
 {
   "generated_at": "<ISO timestamp>",
-  "repo": "WardenX",
+  "repo": "ChartWarden",
   "summary": { "p0": 0, "p1": 0, "p2": 0, "p3": 0 },
   "gaps": [
     {

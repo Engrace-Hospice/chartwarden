@@ -1,4 +1,4 @@
-# WardenX
+# ChartWarden
 
 **Multi-tenant hospice EHR SaaS** — a specification corpus, architecture-fitness kit, and
 staged-implementation monorepo. All **40 modules** are implemented on `main`

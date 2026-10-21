@@ -1,6 +1,6 @@
 # ops/pgbackrest/pgbackrest.conf.template — production pgBackRest config (TASK-040G, OPS-014).
 #
-# Implements WARDENX_DR_BCP_v0.1.md §4.1.1's 3-repo spec verbatim (this file mirrors that section
+# Implements CHARTWARDEN_DR_BCP_v0.1.md §4.1.1's 3-repo spec verbatim (this file mirrors that section
 # almost exactly — see the doc for the retention/schedule table in §4.1.2 and the WAL-archiving
 # config in §4.1.3). NOT wired to any real host/credentials — every value below is a placeholder to
 # fill in at deploy time (repo1-cipher-pass etc. sealed in SOPS, per the doc's own convention).

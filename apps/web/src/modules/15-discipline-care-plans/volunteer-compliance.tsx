@@ -10,7 +10,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER COMPLIANCE GATES MANAGER (§5.1 #11).
-// Spec: docs/design/screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_VOLUNTEER_MANAGEMENT.md — "Use Work Queue."
 //
 // The coordinator's 42 CFR §418.78(b)/(d) grid: every recorded gate with the status the validity window
 // ACTUALLY implies as of now, plus create / correct / revoke.

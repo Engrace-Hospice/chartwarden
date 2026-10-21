@@ -1,6 +1,6 @@
 # P11 — Core & Clinical Cleanup (the 7 deferred screens)
 
-These 7 screens exist in the [screen index](../WARDENX_UI_COMPLETE_SCREEN_INDEX.md) but were
+These 7 screens exist in the [screen index](../CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md) but were
 never authored into a P0–P5 prompt block, so they were never generated. Each one's layout
 pattern is already proven by a sibling screen — they are not new patterns, just the index
 entries that the original phase prompts skipped. This phase closes the corpus to 97/97.
@@ -15,7 +15,7 @@ File: `wardenx-P11-core-clinical-cleanup.pen`
 ---
 
 ### 11.1 Help & Training Center — M01 (cross-cutting) · `Work Queue`
-[spec](../screens/core/WARDENX_UI_HELP_TRAINING.md)
+[spec](../screens/core/CHARTWARDEN_UI_HELP_TRAINING.md)
 ```
 Work Queue (category sidebar | article list | article reader). Searchable help; role-based how-
 tos (clinician/biller/admin/scheduler); clinical-workflow help (documentation, eMAR, IDG, HOPE);
@@ -24,7 +24,7 @@ completion chips. SYSTEMS: content is role-aware (show "for your role" filter); 
 ```
 
 ### 11.2 User Profile & Preferences — M02·M36·M17 · `Admin Settings Layout`
-[spec](../screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md)
+[spec](../screens/core/CHARTWARDEN_UI_USER_PROFILE_PREFERENCES.md)
 ```
 Admin Settings (settings sidebar | content | right help/impact notes). Self-only — no admin
 override. Categories: Profile (display name, discipline, signature setup, language) · Security
@@ -34,7 +34,7 @@ Notifications (per-channel toggles) · Availability (scheduler hours) · Session
 ```
 
 ### 11.3 Admissions / Referral Intake — M06 · `Stepper Workflow + Review Workspace`
-[spec](../screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ADMISSIONS_REFERRAL_INTAKE.md)
 ```
 Stepper + Review (top nav · referral header · left admission steps · center referral/intake form ·
 right documents/eligibility/risk · sticky footer). Steps: referral received → demographics/payer →
@@ -44,7 +44,7 @@ shown as AI-extracted (provenance). VARIANTS: new referral · in review · eligi
 ```
 
 ### 11.4 Election & Certification — M06 · `Patient Workspace + Stepper Workflow`
-[spec](../screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ELECTION_CERTIFICATION.md)
 ```
 Patient Workspace + Stepper (patient banner · election/cert header · benefit-period timeline ·
 certification detail · right compliance/deadlines/signatures). Hospice election statement,
@@ -54,7 +54,7 @@ Recert pattern); timely-filing & cert-window deadline chips; benefit-period time
 ```
 
 ### 11.5 Eligibility Worksheet / CTI — M06·M09·M38 · `Patient Workspace + Documentation Workspace`
-[spec](../screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_ELIGIBILITY_WORKSHEET_CTI.md)
 ```
 Patient Workspace + Documentation (patient banner · CTI header w/ benefit period + deadlines ·
 left diagnosis/decline-evidence/narrative/F2F/signatures · center worksheet · right deadlines/
@@ -65,7 +65,7 @@ narrative AI-suggested halo; decline-evidence value-sets (M38); CTI signature ce
 ```
 
 ### 11.6 Document Management — M22 · `Work Queue + Review Workspace`
-[spec](../screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_DOCUMENT_MANAGEMENT.md)
 ```
 Work Queue + Review (document header · KPI strip · document queue · right detail/preview/actions).
 Upload, classify, store, review, patient-link, DocLens-process, sign, retain. KPIs: pending
@@ -75,7 +75,7 @@ docs; AI-classified type shown with provenance. VARIANTS: queued · classified �
 ```
 
 ### 11.7 DocLens Extraction Review — M22·M32 · `Work Queue + Review Workspace`
-[spec](../screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md)
+[spec](../screens/clinical/CHARTWARDEN_UI_DOCLENS_EXTRACTION_REVIEW.md)
 ```
 Work Queue + Review (page header · KPI strip · extraction queue | source image w/ bounding boxes |
 fields + confidence). Human-in-the-loop boundary: classify document, check each AI-extracted field

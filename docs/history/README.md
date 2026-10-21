@@ -1,4 +1,4 @@
-# WardenX history & findings log
+# ChartWarden history & findings log
 
 Moved out of the repo-root `CLAUDE.md` (which had reached ~436k chars). Not instructions to agents — the historical record of audit findings (F-0xx), #248 outbox rounds and per-gate incident history. Search by module or `F-NNN`.
 

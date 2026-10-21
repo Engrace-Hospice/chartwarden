@@ -1,4 +1,4 @@
-# WardenX Live-Browser Gap Audit — 2026-08-07
+# ChartWarden Live-Browser Gap Audit — 2026-08-07
 
 **Method:** started the full local stack (Postgres, Valkey, backend `:3000`, and all three
 Vite SPAs — web `:5173`, portal `:5174`, admin console `:5175`), then drove the running app

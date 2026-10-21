@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** phase-cut findings across M15/M17/M18/M19/M20/M21/M26/M27/M28/M30/M33/M37; Build-Blocking #8
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §20.A (Phase Cut Rationale)
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20.A (Phase Cut Rationale)
 
 ## Context
 
@@ -12,7 +12,7 @@ Twelve specs ship Phase-2 or Phase-3 capabilities inside Phase 1 with no ADR, an
 other later-phase modules onto the Phase-1 critical path (e.g., M20 Field Safety → M19 On-Call
 for after-hours SOS, when both are §20.A Phase 2). A module spec also "ratified" another module's
 phase move by citing that module's changelog. Separately, DR tier and INT tier assignments
-(normative in `WARDENX_DR_BCP` and `WARDENX_INTEGRATIONS`) are frequently undeclared per module.
+(normative in `CHARTWARDEN_DR_BCP` and `CHARTWARDEN_INTEGRATIONS`) are frequently undeclared per module.
 
 ## Decision
 
@@ -29,8 +29,8 @@ phase move by citing that module's changelog. Separately, DR tier and INT tier a
    built). "Required from day one" pulls the *whole* dependency forward only via (a).
 
 3. **Every module spec declares its DR tier and its external surfaces.** The DR/BCP RTO/RPO tier
-   (Tier 1–5) and degraded-mode behavior are declared per module per `WARDENX_DR_BCP`; every
-   external touchpoint appears in the `WARDENX_INTEGRATIONS` inventory with matching
+   (Tier 1–5) and degraded-mode behavior are declared per module per `CHARTWARDEN_DR_BCP`; every
+   external touchpoint appears in the `CHARTWARDEN_INTEGRATIONS` inventory with matching
    protocol/auth/direction/PHI-flag/BAA status per INT-002. These are CI-gated template
    requirements (X11), not optional prose.
 

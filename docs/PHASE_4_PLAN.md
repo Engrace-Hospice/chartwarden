@@ -1,9 +1,9 @@
-# WardenX — Phase 4 Plan (v2): State Expansion, Enterprise & Certifications
+# ChartWarden — Phase 4 Plan (v2): State Expansion, Enterprise & Certifications
 
 **Status:** Forward-looking — out of the v1 horizon. Architecture §20.A names this phase but does not
-enumerate a fixed module cut; scope is **demand-driven** by WardenX customers.
-**Authority:** `WARDENX_ARCHITECTURE_v0_11.md` §20.A Phase 4 / v2.
-**Goal:** grow WardenX from a multi-agency SaaS into a multi-state, enterprise-grade, independently
+enumerate a fixed module cut; scope is **demand-driven** by ChartWarden customers.
+**Authority:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §20.A Phase 4 / v2.
+**Goal:** grow ChartWarden from a multi-agency SaaS into a multi-state, enterprise-grade, independently
 certified platform. Unlike Phases 1–3, this is a **backlog of tracks**, not a single dependency chain —
 each track is pulled forward by a specific customer or compliance need with its own ADR.
 
@@ -25,13 +25,13 @@ each track is pulled forward by a specific customer or compliance need with its 
 
 | Track | Touches | Trigger | Notes |
 |---|---|---|---|
-| **Additional state Medicaid adapters** | 24 (`packages/medicaid-adapters`) | A WardenX customer operating in a new state | One adapter per state behind the existing `MedicaidAdapter` interface — additive PRs, no core change. |
+| **Additional state Medicaid adapters** | 24 (`packages/medicaid-adapters`) | A ChartWarden customer operating in a new state | One adapter per state behind the existing `MedicaidAdapter` interface — additive PRs, no core change. |
 | **Advanced analytics / data warehouse** | 33, + a new analytics surface | Enterprise reporting demand | Read-only, seam/outbox-fed; must not introduce direct schema reads. Consider a separate read-model store. |
 | **Multi-CCN agencies** | 2, 5, 6, 23, 34 | A customer operating multiple CCNs under one org | Provider-entity/CCN modeling depth; billing routing per CCN. |
 | **Additional integrations** | 29 (+ targets) | Per-customer system (e.g., payroll, GL, labs, HIE) | Each via the external-interfaces seam pattern + INT inventory entry. |
 | **HITRUST certification** | platform-wide | Enterprise sales requirement | Control mapping, evidence automation; leans on M4 audit + M30 SRA. |
 | **SOC 2 (Type II)** | platform-wide | Enterprise sales requirement | Continuous-controls evidence; ops-runbook + audit-log driven. |
-| **CHAP-verified-for-WardenX** | platform-wide | Market credibility | Distinct from tenant CoP compliance (M30) — this certifies the platform vendor. |
+| **CHAP-verified-for-ChartWarden** | platform-wide | Market credibility | Distinct from tenant CoP compliance (M30) — this certifies the platform vendor. |
 | **Mobile native shell** | `apps/mobile/` (Capacitor) | Field-staff native delivery | Architecture §10 notes Capacitor wrapping the mobile-optimized frontend; offline store already exists (`@chartwarden/mobile-offline`). |
 | **Local-LLM at scale** | 32 (`ml-worker`/`llm-worker`) | Sustained AI throughput demand | vLLM replaces Ollama default per architecture §10.7.6.2; split `llm-worker` VM when scale demands. |
 
@@ -65,5 +65,5 @@ Phase 4 has no single "done." Each track closes when:
 ## 5. Relationship to the rest of the roadmap
 
 Phase 4 is open-ended by design. The fixed, dependency-ordered build is **Phases 0–3**; Phase 4 is the
-standing backlog WardenX draws from as customers and compliance needs arrive. See
+standing backlog ChartWarden draws from as customers and compliance needs arrive. See
 [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) for the full picture.

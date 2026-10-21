@@ -52,7 +52,7 @@ M26's domain, not a Form CMS-1984-14 worksheet).
   SIX (6) decimal places** (B-1 line 102); allocated cost = multiplier × each receiving center's statistic.
 - **Close order**: centers rendering the most / receiving the least services close first (Pub 15-1 ch.23
   §2306.1); a hospice may change order/statistics only with approval (§2313).
-- **Tie-out**: col. 18 line 101 (fully allocated) must equal col. 0 line 101 (input). ✅ matches WardenX's
+- **Tie-out**: col. 18 line 101 (fully allocated) must equal col. 0 line 101 (input). ✅ matches ChartWarden's
   conservation invariant.
 - **Transfer to C**: B col. 18 → C col. 3: line 50→C1 (CHC), 51→C6 (RHC), 52→C11 (IRC), 53→C16 (GIP).
 
@@ -61,9 +61,9 @@ M26's domain, not a Form CMS-1984-14 worksheet).
   (col 3, from **Worksheet S-1 col 4** — *unduplicated days*) = **average cost per diem** (col 3); then
   program cost = per diem × program days (col 1/2, from S-1 col 1/2). Total Hospice Care rollup L21–23.
 
-## Findings — WardenX M27 vs. Form CMS-1984-14
+## Findings — ChartWarden M27 vs. Form CMS-1984-14
 
-| WardenX M27 | Real Form CMS-1984-14 | Verdict |
+| ChartWarden M27 | Real Form CMS-1984-14 | Verdict |
 |---|---|---|
 | `A` Trial Balance | `A` Reclass & Adjust Trial Balance (§4310) | ✅ aligned in concept |
 | `B` Cost Allocation step-down | `B` Cost Allocation (§4320) | ✅ aligned; mechanics correct |

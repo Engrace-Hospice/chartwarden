@@ -2,7 +2,7 @@
 // (apps/web /step-up, M2 Auth polish) and the platform-ops console (apps/admin /step-up). Moved here from
 // apps/web/src/modules/02-identity/step-up.tsx so both apps run ONE implementation; each app's route is a
 // thin wrapper that supplies its own brand lockup and footer.
-// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "step-up" (/step-up). A sensitive action requires a
+// Spec: docs/design/screens/core/CHARTWARDEN_UI_AUTH.md "step-up" (/step-up). A sensitive action requires a
 // fresh second-factor proof; this re-verifies the CURRENT session (no new sign-in) and the server
 // paired-writes lastStepUpAt/lastStepUpFactor (§4.4, D8), which M3's `step_up_recent` predicate gates on.
 //

@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 0 (architecture correction)
 - **Resolves:** OPEN-020, OPEN-021, OPEN-022; M01-F03, M02-F11/F12, M03-F11; cross-cutting X5
-- **Changes:** `WARDENX_ARCHITECTURE_v0_11.md` §24.1 (Sessions row; Clinical record + HOPE rows; §14 retention headline; §25.9)
+- **Changes:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` §24.1 (Sessions row; Clinical record + HOPE rows; §14 retention headline; §25.9)
 
 The audit surfaced three architecture-internal conflicts the corpus left open. This ADR closes
 all three. The general rule: **§7/§14 and the v0.11 audit-retention reconciliation govern; the

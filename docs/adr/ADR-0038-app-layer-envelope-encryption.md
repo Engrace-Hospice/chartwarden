@@ -5,8 +5,8 @@
   of the divergence set — auditors and BAAs cite the encryption mechanism.
 - **Date:** 2026-08-14
 - **Phase:** post-build divergence record.
-- **Supersedes (wording):** `WARDENX_ARCHITECTURE_v0_11.md`'s pgcrypto envelope-encryption
-  sections and `WARDENX_SECURITY_HARDENING_v0_2.md` §4.2 where it names pgcrypto as the
+- **Supersedes (wording):** `CHARTWARDEN_ARCHITECTURE_v0_11.md`'s pgcrypto envelope-encryption
+  sections and `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` §4.2 where it names pgcrypto as the
   field-encryption mechanism.
 - **Related:** [ADR-0034](ADR-0034-2fa-secret-at-rest-encryption.md) (the first shipped instance
   of the pattern: pure AES-256-GCM seal/open over M1's encrypted columns).

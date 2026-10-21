@@ -55,7 +55,7 @@ Deploys run from `deploy.yml`'s `deploy` job, on a self-hosted runner. It SSHes 
 **The decision to move.** System Design §2.4 rejected Kubernetes as "overhead unjustified for … a
 handful of production VMs". That premise has changed:
 
-- WardenX is multi-tenant, with per-tenant subdomains (ADR-0049).
+- ChartWarden is multi-tenant, with per-tenant subdomains (ADR-0049).
 - The DR targets require replicas and continuous archiving.
 - Workloads are multiplying: the docling sidecar, local-model inference, X12 workers.
 
@@ -152,7 +152,7 @@ OS with no SSH and no shell.
 - **Structure:** app-of-apps. One root `Application` per environment owns child `Application`s:
   - platform: Cilium config, the CloudNativePG operator, External Secrets, OpenBao, Garage, the policy
     controller, observability
-  - WardenX itself
+  - ChartWarden itself
 
   Sync waves order them: CRDs and operators, then data services, then the app.
 - **Migration ordering:** `migrate` and `provision` are Argo CD **`PreSync` hook** Jobs

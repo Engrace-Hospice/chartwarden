@@ -1,4 +1,4 @@
-# WardenX Documentation — Master Index
+# ChartWarden Documentation — Master Index
 
 Single entry point for **every document under `docs/`**. Each entry links to its
 canonical location; nothing here duplicates content — the sub-indexes and specs
@@ -49,7 +49,7 @@ wins until the spec is re-locked.
 | [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the 40 modules — state machines, validation, calculations, cross-module flows. |
 | [`PLATFORM_TOOLS_MANUAL.md`](./PLATFORM_TOOLS_MANUAL.md) | Private-cloud platform operating manual — Talos, Kubernetes, Cilium, Envoy Gateway, CloudNativePG, Garage, Valkey, OpenBao, Argo CD, Kyverno and the rest: role, deployment baseline, day-2 operations, HIPAA notes and failure modes per tool. Hosting phases: Hostinger test → OVHcloud production → Hostinger playground (ADR-0050). |
 | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
-| [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | WardenX × Archon deterministic-coding setup. |
+| [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | ChartWarden × Archon deterministic-coding setup. |
 | [`wardenx-hospice-ehr.prd.md`](./wardenx-hospice-ehr.prd.md) | Product Requirements Document (retrospective intent) — problem, thesis, hypothesis, pilot MVP, success metrics. |
 
 ---
@@ -60,13 +60,13 @@ These **win over module and screen specs** in any conflict. All in [`architectur
 
 | Document | Scope |
 |---|---|
-| [`WARDENX_ARCHITECTURE_v0_11.md`](./architecture/WARDENX_ARCHITECTURE_v0_11.md) | System architecture (top authority). |
-| [`WARDENX_SYSTEM_DESIGN_v0.3.md`](./architecture/WARDENX_SYSTEM_DESIGN_v0.3.md) | System design document. |
-| [`WARDENX_SECURITY_HARDENING_v0_2.md`](./architecture/WARDENX_SECURITY_HARDENING_v0_2.md) | Security hardening guide. |
-| [`WARDENX_AI_GOVERNANCE_v0.2.md`](./architecture/WARDENX_AI_GOVERNANCE_v0.2.md) | AI governance (see also the [capability catalog](#ai-capability-catalog)). |
-| [`WARDENX_DR_BCP_v0.1.md`](./architecture/WARDENX_DR_BCP_v0.1.md) | Disaster recovery & business continuity. |
-| [`WARDENX_OPS_RUNBOOK_v0.1.md`](./architecture/WARDENX_OPS_RUNBOOK_v0.1.md) | Operations runbook. |
-| [`WARDENX_INTEGRATIONS_v0_1.md`](./architecture/WARDENX_INTEGRATIONS_v0_1.md) | Integration catalog. |
+| [`CHARTWARDEN_ARCHITECTURE_v0_11.md`](./architecture/CHARTWARDEN_ARCHITECTURE_v0_11.md) | System architecture (top authority). |
+| [`CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`](./architecture/CHARTWARDEN_SYSTEM_DESIGN_v0.3.md) | System design document. |
+| [`CHARTWARDEN_SECURITY_HARDENING_v0_2.md`](./architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md) | Security hardening guide. |
+| [`CHARTWARDEN_AI_GOVERNANCE_v0.2.md`](./architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md) | AI governance (see also the [capability catalog](#ai-capability-catalog)). |
+| [`CHARTWARDEN_DR_BCP_v0.1.md`](./architecture/CHARTWARDEN_DR_BCP_v0.1.md) | Disaster recovery & business continuity. |
+| [`CHARTWARDEN_OPS_RUNBOOK_v0.1.md`](./architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md) | Operations runbook. |
+| [`CHARTWARDEN_INTEGRATIONS_v0_1.md`](./architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md) | Integration catalog. |
 | [`ARCHITECTURE_25_15_FITNESS.md`](./architecture/ARCHITECTURE_25_15_FITNESS.md) | Architecture-fitness & boundary-enforcement rules (the gates). |
 
 ---
@@ -87,8 +87,8 @@ The design language, 113 screen specs, layout glossary, and Pencil prompts live 
 | Document | Answers |
 |---|---|
 | [`design/DESIGN.md`](./design/DESIGN.md) | The "Lantern" visual system — tokens, components, Guardrail/Sensitivity/Provenance rules. |
-| [`design/WARDENX_UI_LAYOUT_PATTERNS.md`](./design/WARDENX_UI_LAYOUT_PATTERNS.md) | Layout-pattern glossary (source of truth for the `docs:ui` gate). |
-| [`design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md) | Canonical screen list (drives the `docs:ui` parity gate). |
+| [`design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md`](./design/CHARTWARDEN_UI_LAYOUT_PATTERNS.md) | Layout-pattern glossary (source of truth for the `docs:ui` gate). |
+| [`design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md`](./design/CHARTWARDEN_UI_COMPLETE_SCREEN_INDEX.md) | Canonical screen list (drives the `docs:ui` parity gate). |
 | [`design/screens/`](./design/screens/) | 113 screen specs — admin · clinical · compliance · core · integration · mobile · platform · portal · revenue · staffing. |
 | [`design/SCREENS.md`](./design/SCREENS.md) | Module ↔ Pencil ledger (owner + design status per screen). |
 | [`design/pencil-prompts/`](./design/pencil-prompts/) | Phase-batched Pencil generation prompts + MCP workflow ([`pencil-prompts/README.md`](./design/pencil-prompts/README.md)). |
@@ -109,7 +109,7 @@ Every ADR lives in [`adr/`](./adr/); the full list (titles, resolved findings, s
 ## AI capability catalog
 
 The 18 governed AI capabilities registered against M32 (per
-[`architecture/WARDENX_AI_GOVERNANCE_v0.2.md`](./architecture/WARDENX_AI_GOVERNANCE_v0.2.md)),
+[`architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md`](./architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md)),
 in [`ai/capabilities/`](./ai/capabilities/):
 
 | Capability | File |

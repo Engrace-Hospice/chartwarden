@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT RECIPIENTS & DPOA (§5.1, Track B / ADR-0030).
-// Spec: docs/design/screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md.
+// Spec: docs/design/screens/compliance/CHARTWARDEN_UI_CONSENT_RECIPIENTS_DPOA.md.
 //
 // Scoped to ONE consent record: who this consent authorises disclosure TO (D6 named recipients) and who may
 // decide UNDER it (D5 named DPOA agents). Reads GET /api/v1/consents/:consentId/recipients and

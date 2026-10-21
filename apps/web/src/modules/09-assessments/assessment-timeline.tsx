@@ -15,7 +15,7 @@ import {
 
 // apps/web/src/modules/09-assessments — Clinical Assessments Suite (M9 §5.1/§5.2, Track B / ADR-0030).
 
-// Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 
 // Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `aSIwN`): a Patient Workspace (banner) over a
 

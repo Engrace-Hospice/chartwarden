@@ -4,7 +4,7 @@
 - **Date:** 2026-06-11
 - **Phase:** 3 (governed subsystems)
 - **Resolves:** H1; M39-F03; M04 (sink ownership), M32-F08, M28/M22/M29/M05 egress accounting
-- **Changes:** `WARDENX_MODULE_39_CONSENT`, `WARDENX_MODULE_04_AUDIT`, and the disclosing modules (M22/M28/M29/M05/M32)
+- **Changes:** `CHARTWARDEN_MODULE_39_CONSENT`, `CHARTWARDEN_MODULE_04_AUDIT`, and the disclosing modules (M22/M28/M29/M05/M32)
 
 ## Context
 

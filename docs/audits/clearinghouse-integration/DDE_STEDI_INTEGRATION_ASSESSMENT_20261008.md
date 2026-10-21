@@ -1,4 +1,4 @@
-# WardenX DDE Work Queue and Stedi Integration Assessment
+# ChartWarden DDE Work Queue and Stedi Integration Assessment
 
 **Date:** 2026-10-08  
 **Scope:** Medicare hospice DDE work queue, eligibility, institutional claims, NOE/NOTR submission, acknowledgments, and 835 remittance through Stedi.
@@ -9,11 +9,11 @@ The reviewed assessment is directionally accurate, but it is not current enough 
 
 The main conclusion is correct:
 
-> WardenX cannot currently submit a production claim, NOE, or NOTR through Stedi, and the existing claim payload does not contain enough information to produce a compliant 837I.
+> ChartWarden cannot currently submit a production claim, NOE, or NOTR through Stedi, and the existing claim payload does not contain enough information to produce a compliant 837I.
 
 However, several statements are outdated or incomplete:
 
-- WardenX can now unlock the patient's MBI for eligibility checks.
+- ChartWarden can now unlock the patient's MBI for eligibility checks.
 - A configurable HTTP transmission gateway exists, although no production Stedi or MAC adapter is configured.
 - The validation registry contains 22 rules, not 21.
 - Some previously missing claim fields now exist in the database.
@@ -25,7 +25,7 @@ However, several statements are outdated or incomplete:
 
 | Original finding | Verdict | Updated assessment |
 |---|---|---|
-| WardenX cannot currently send a production claim, NOE, or eligibility request | Mostly accurate | Claims, NOEs, and NOTRs cannot be sent through a configured production connection. Eligibility code exists, but it remains unavailable without a configured transport. |
+| ChartWarden cannot currently send a production claim, NOE, or eligibility request | Mostly accurate | Claims, NOEs, and NOTRs cannot be sent through a configured production connection. Eligibility code exists, but it remains unavailable without a configured transport. |
 | No transmission layer exists | Partly inaccurate | A generic HTTP gateway transport exists. The missing component is the external gateway or Stedi implementation and its configuration. |
 | Billing cannot read the MBI | Inaccurate | The real MBI unlock reader is registered, and eligibility processing uses it. |
 | Claims contain no visit lines | Accurate | Claim assembly does not generate the nursing, aide, social-work, or therapy visit lines required for hospice reporting. |
@@ -34,7 +34,7 @@ However, several statements are outdated or incomplete:
 | Condition, occurrence, and discharge fields do not exist | Partly outdated | These fields now exist in the claim schema, but the overall claim model and outbound document are still incomplete. |
 | The hospice HIPPS code is fabricated | Accurate with qualification | The generated `R1000`-style value is internal and is not currently transmitted. It must never be mapped into Stedi's HIPPS field. |
 | Stedi can plug directly into the existing interfaces | Overstated | The interfaces are useful, but the claim acknowledgment state machine and asynchronous report workflow must also change. |
-| Stedi webhooks can replace polling | Incomplete | Stedi event destinations send thin events. WardenX must verify the event, fetch the complete report, deduplicate it, and retain reconciliation polling. |
+| Stedi webhooks can replace polling | Incomplete | Stedi event destinations send thin events. ChartWarden must verify the event, fetch the complete report, deduplicate it, and retain reconciliation polling. |
 | One platform-level Stedi API key should be used | Questionable | Stedi recommends OAuth integrated accounts for new multi-tenant SaaS applications. |
 | One NGS J6 enrollment per tenant is sufficient | Inaccurate or unproven | Enrollment is transaction-specific, and current Stedi payer information does not confirm support for these hospice transactions. |
 
@@ -42,7 +42,7 @@ However, several statements are outdated or incomplete:
 
 ### Workflow and Safety Controls
 
-WardenX already has substantial billing workflow infrastructure:
+ChartWarden already has substantial billing workflow infrastructure:
 
 - Claim, NOE, and NOTR state machines
 - Submission queues
@@ -162,7 +162,7 @@ These values are not currently sent to the gateway, so this is not an immediate 
 
 The original assessment does not identify the absence of a complete DDE work queue.
 
-The UI specification mentions manual DDE submission and receipt recording in [`WARDENX_UI_NOE_NOTR_CLAIM_OPS.md`](../../design/screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md), but no complete persistence model, API, or operational workflow exists.
+The UI specification mentions manual DDE submission and receipt recording in [`CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md`](../../design/screens/revenue/CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md), but no complete persistence model, API, or operational workflow exists.
 
 A production DDE queue should support the following capabilities.
 
@@ -226,11 +226,11 @@ A production DDE queue should support the following capabilities.
 
 Stedi provides an [institutional claims API](https://www.stedi.com/docs/healthcare/submit-institutional-claims) that accepts JSON representations of 837I transactions.
 
-The recommended implementation is to create a canonical WardenX institutional claim document first, then map that document to Stedi's JSON schema. Claim assembly should not directly construct Stedi-specific JSON.
+The recommended implementation is to create a canonical ChartWarden institutional claim document first, then map that document to Stedi's JSON schema. Claim assembly should not directly construct Stedi-specific JSON.
 
 ### Acknowledgment Processing
 
-The current WardenX claim workflow assumes:
+The current ChartWarden claim workflow assumes:
 
 1. Claim submission
 2. A 999 acknowledgment
@@ -240,7 +240,7 @@ That assumption does not match Stedi's normal API workflow.
 
 Stedi generally returns an initial 277CA from an API submission and makes later responses available asynchronously. See [Receiving claim responses](https://www.stedi.com/docs/healthcare/receive-claim-responses).
 
-WardenX therefore needs to support:
+ChartWarden therefore needs to support:
 
 - Direct processing of an initial 277CA
 - Acceptance or rejection without first requiring a 999
@@ -260,7 +260,7 @@ The integration should:
 3. Record an idempotency key.
 4. Identify the Stedi report or transaction.
 5. Fetch the complete 277CA or 835 report.
-6. Map the report into the WardenX acknowledgment model.
+6. Map the report into the ChartWarden acknowledgment model.
 7. Apply the corresponding state-machine transition.
 8. Mark the event as processed.
 9. Run periodic reconciliation for missed events.
@@ -271,7 +271,7 @@ A single shared platform API key is not necessarily appropriate for a new multi-
 
 Stedi documents an [integrated-account OAuth model](https://www.stedi.com/docs/healthcare/integrated-account-overview) intended for software platforms that connect multiple healthcare providers.
 
-WardenX should confirm with Stedi whether it should use:
+ChartWarden should confirm with Stedi whether it should use:
 
 - One integrated account per tenant
 - One integrated account per provider entity
@@ -280,7 +280,7 @@ WardenX should confirm with Stedi whether it should use:
 
 ### Eligibility
 
-Stedi can be used as a CMS eligibility transport. The existing WardenX eligibility workflow can remain separate from the claim-submission adapter.
+Stedi can be used as a CMS eligibility transport. The existing ChartWarden eligibility workflow can remain separate from the claim-submission adapter.
 
 The adapter will need to follow Stedi's [eligibility requirements](https://www.stedi.com/docs/healthcare/send-eligibility-checks), including:
 
@@ -298,7 +298,7 @@ CMS uses:
 - `8xA` for NOE
 - `8xB` for NOTR
 
-WardenX should not assume that Stedi supports these transactions merely because they are represented as institutional transactions.
+ChartWarden should not assume that Stedi supports these transactions merely because they are represented as institutional transactions.
 
 Before implementation, obtain written confirmation that Stedi supports:
 
@@ -407,7 +407,7 @@ Implement:
 - Structured error mapping
 - Submission attempt persistence
 
-The idempotency key should be derived from stable WardenX identifiers such as:
+The idempotency key should be derived from stable ChartWarden identifiers such as:
 
 ```text
 tenant + provider entity + claim control number + submission attempt

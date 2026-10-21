@@ -1,6 +1,6 @@
-# WardenX Module Audit — Module 08 (Encounters & Visit Notes) and Module 17 (Scheduling & Route Optimization)
+# ChartWarden Module Audit — Module 08 (Encounters & Visit Notes) and Module 17 (Scheduling & Route Optimization)
 
-**Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0 — criteria packs CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS, plus module-manifest.ts read in full prior to audit. Both specs read in full (M08: 1,952 lines; M17: 1,531 lines). All BLOCKER findings verified directly against the authoritative source documents (WARDENX_AI_GOVERNANCE_v0.2.md §9.1/§9.2/§15.1.1; WARDENX_ARCHITECTURE_v0_11.md §3 lines 208/224; ARCHITECTURE_25_15_FITNESS.md check #1; WARDENX_SYSTEM_DESIGN_v0.3.md §4.1 partitioning table; WARDENX_DR_BCP_v0.1.md §11.3).
+**Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0 — criteria packs CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS, plus module-manifest.ts read in full prior to audit. Both specs read in full (M08: 1,952 lines; M17: 1,531 lines). All BLOCKER findings verified directly against the authoritative source documents (CHARTWARDEN_AI_GOVERNANCE_v0.2.md §9.1/§9.2/§15.1.1; CHARTWARDEN_ARCHITECTURE_v0_11.md §3 lines 208/224; ARCHITECTURE_25_15_FITNESS.md check #1; CHARTWARDEN_SYSTEM_DESIGN_v0.3.md §4.1 partitioning table; CHARTWARDEN_DR_BCP_v0.1.md §11.3).
 
 **Audit date:** 2026-06-10
 

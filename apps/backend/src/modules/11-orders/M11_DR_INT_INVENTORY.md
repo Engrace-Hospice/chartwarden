@@ -1,7 +1,7 @@
 # Module 11 (Orders) — DR Tier + Integration Inventory + STRIDE
 
 M11-T08 (spec §1.2/§1.3, §2.3 D3, §2.8 D14, §7.5, §7.7, §8.2). Companion to the module code;
-cross-references `docs/architecture/WARDENX_DR_BCP_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`, and the M11
+cross-references `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`, `CHARTWARDEN_INTEGRATIONS_v0_1.md`, and the M11
 spec. Orders sit on the bedside-care path (verbal orders are clinically active the instant they are
 recorded, 42 CFR 418.104(b)); the lab transmission/results track is M29-owned and deliberately decoupled.
 

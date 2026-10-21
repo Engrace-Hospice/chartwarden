@@ -1,8 +1,8 @@
-# WardenX Module 25 — Remittance & Denials — Compliance Audit
+# ChartWarden Module 25 — Remittance & Denials — Compliance Audit
 
 **Auditor role:** Principal Architect / Medicare Hospice Compliance / HIPAA Security / Staff Engineer / QA Director
-**Spec under audit:** `WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md` (Locked v0.2, 2087 lines)
-**Authoritative sources verified:** `WARDENX_ARCHITECTURE_v0_11.md` (§11 M25, §20 dep table line 2363), `module-manifest.ts` (M25 = `dependsOn:[23,36]`, `ownedTables:[]`), `WARDENX_INTEGRATIONS_v0_1.md` (INT-005), `WARDENX_DR_BCP_v0.1.md` (Tier 3), cross-checked against locked specs M18/M22/M23/M24/M38.
+**Spec under audit:** `CHARTWARDEN_MODULE_25_REMITTANCE_SPEC_v0_2.md` (Locked v0.2, 2087 lines)
+**Authoritative sources verified:** `CHARTWARDEN_ARCHITECTURE_v0_11.md` (§11 M25, §20 dep table line 2363), `module-manifest.ts` (M25 = `dependsOn:[23,36]`, `ownedTables:[]`), `CHARTWARDEN_INTEGRATIONS_v0_1.md` (INT-005), `CHARTWARDEN_DR_BCP_v0.1.md` (Tier 3), cross-checked against locked specs M18/M22/M23/M24/M38.
 **Date:** 2026-06-11
 
 ---
@@ -75,7 +75,7 @@ Rationale: The spec is unusually thorough and gets the *domain* (X12 835 hierarc
 
 ## DOC-CONFLICTs Encountered
 
-- **DOC-CONFLICT (phantom citation "architecture §11.E"):** M25, M24, and M18 all cite "architecture §11.E" as authoritative for "remittance posting is M25's domain" / the per-state adapter pattern. **§11.E does not exist in `WARDENX_ARCHITECTURE_v0_11.md`** (the architecture has §11 module catalog, §11.A claim-validation framework, §11.B cost-report framework; no §11.E). The substantive claim (M25 owns remittance posting; Medicaid adapters are pluggable) IS supported by §11 M25 (arch line 1858–1863) and §13 (medicaid adapter interface, arch line 2205). This is a citation-drift propagated across three locked specs, not an M25-unique defect — route to audit lead. Not counted as an M25 finding.
+- **DOC-CONFLICT (phantom citation "architecture §11.E"):** M25, M24, and M18 all cite "architecture §11.E" as authoritative for "remittance posting is M25's domain" / the per-state adapter pattern. **§11.E does not exist in `CHARTWARDEN_ARCHITECTURE_v0_11.md`** (the architecture has §11 module catalog, §11.A claim-validation framework, §11.B cost-report framework; no §11.E). The substantive claim (M25 owns remittance posting; Medicaid adapters are pluggable) IS supported by §11 M25 (arch line 1858–1863) and §13 (medicaid adapter interface, arch line 2205). This is a citation-drift propagated across three locked specs, not an M25-unique defect — route to audit lead. Not counted as an M25 finding.
 - **DOC-CONFLICT (manifest §20 vs lock-time dependsOn pattern):** The §20 table (and manifest) encode M25 as `[23,36]`, but M18/M23/M24 (locked) all expanded their dependsOn at lock via reviewed manifest patches to reflect the real seam surface. This is the ARCH-235 mechanism functioning as designed; the conflict is that the §20 table was never re-synced. M25 following the same expansion pattern is legitimate *as a reviewed edit* — the finding (F01) is specifically the **false "brevity" justification**, not the act of proposing the edit. Route the §20-table-resync to the audit lead.
 - **OPEN-006 (EPCS):** §6/§8.2 reference a conditional "(if EPCS) YubiKey touch." EPCS is deferred (OPEN-006); conditional reference is acceptable, flagged minor (F13) only to ensure no Phase-1 EPCS dependency is implied.
 - **D-10 (EVV external surface):** M25's EVV back-link consumes M18 in-perimeter; the open D-10 question (no external EVV aggregator surface in INT inventory) is M18's to resolve, not M25's (F17).

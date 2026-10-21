@@ -5,8 +5,8 @@
 - **Date:** 2026-08-14
 - **Phase:** post-build divergence record (set at M1-T10, held through the full build).
 - **Supersedes (wording):** every `@fastify/helmet` / `@fastify/cors` / `@fastify/rate-limit` /
-  `@fastify/swagger` reference in `WARDENX_ARCHITECTURE_v0_11.md` and
-  `WARDENX_SYSTEM_DESIGN_v0.3.md`.
+  `@fastify/swagger` reference in `CHARTWARDEN_ARCHITECTURE_v0_11.md` and
+  `CHARTWARDEN_SYSTEM_DESIGN_v0.3.md`.
 - **Related:** [ADR-0032](ADR-0032-frontend-api-transport-and-client.md) (OpenAPI is emitted
   offline from TypeBox schemas — the reason no runtime swagger plugin exists).
 
@@ -48,6 +48,6 @@ actually built:
   (header values, tier numbers, CSRF scope).
 - The team owns patch responsibility for the hand-rolled surface; the trade was accepted at
   M1-T10 to keep the dependency budget near zero and the behavior fully specified by repo code.
-- `WARDENX_SECURITY_HARDENING_v0_2.md` is the behavioral contract for this chain; when it and
+- `CHARTWARDEN_SECURITY_HARDENING_v0_2.md` is the behavioral contract for this chain; when it and
   the code disagree, fix whichever is wrong *explicitly* (see the 2026-08-14 corrections) rather
   than assuming the plugin ecosystem's defaults.

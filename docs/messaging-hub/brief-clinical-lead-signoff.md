@@ -109,10 +109,10 @@ Nothing here reaches a phone until a tenant's flags are on AND a push or SMS tra
 
 What a phone shows on the lock screen, in a text message or in an email. Nothing here includes a patient, a name, a record number, a diagnosis, the message text, the sender's words or a channel name; the same text goes to everyone.
 
-- **Urgent request:** "You have a new urgent request in WardenX. Sign in to view." Message: "You have a new message in WardenX. Sign in to view." Field safety: "WardenX safety alert. Sign in to view." Everything else: "You have a new notification in WardenX. Sign in to view." Email subject is always "WardenX notification"; the push title is always "WardenX".
+- **Urgent request:** "You have a new urgent request in ChartWarden. Sign in to view." Message: "You have a new message in ChartWarden. Sign in to view." Field safety: "ChartWarden safety alert. Sign in to view." Everything else: "You have a new notification in ChartWarden. Sign in to view." Email subject is always "ChartWarden notification"; the push title is always "ChartWarden".
 - **Does the text say "urgent"?** It does for an urgent request, because a recipient who ignores a plain "notification" is a patient-safety risk. It reveals no one's identity. Say if you would rather it never name the level. Should it also say who is asking (a role such as "a nurse")? Provisional answer: no, because any role or sender detail can identify a person or a patient.
-- **The link** opens WardenX and only works after sign-in. It contains one opaque code; no patient, message or channel reference. A text message is limited to one segment: if the link does not fit, the words are kept and the link is dropped.
-- **If the system cannot be sure the text is safe**, it sends the plain "You have a new notification in WardenX. Sign in to view." instead of anything richer, and never skips the alert.
+- **The link** opens ChartWarden and only works after sign-in. It contains one opaque code; no patient, message or channel reference. A text message is limited to one segment: if the link does not fit, the words are kept and the link is dropped.
+- **If the system cannot be sure the text is safe**, it sends the plain "You have a new notification in ChartWarden. Sign in to view." instead of anything richer, and never skips the alert.
 - **The link's landing page** is described in section 10 (WP 4.8).
 
 ## 10. Opening an alert link (WP 4.8, ADR-0075) - provisional wording to approve
@@ -120,8 +120,8 @@ What a phone shows on the lock screen, in a text message or in an email. Nothing
 What happens when someone taps the link in a push, text or email.
 
 - **Signed out:** the person is taken to sign-in and, after signing in and choosing an organisation, to the conversation. Nothing about the alert is shown before sign-in.
-- **Signed in as the person it was meant for, and still allowed to see the conversation:** WardenX opens that conversation at the message. If the message has an acknowledgment request, the request's card is focused so a screen reader and the keyboard land on it. **Opening the link never acknowledges anything**; the clinician still presses the button.
-- **Anyone else, or an alert that no longer applies** (removed message, lost access, wrong person, forwarded link): one plain page, the same for every case: "This notification is no longer available. It may have been removed, or you may no longer have access. Your messages are still in WardenX." with a link to the messages. It deliberately does not say which case it was.
+- **Signed in as the person it was meant for, and still allowed to see the conversation:** ChartWarden opens that conversation at the message. If the message has an acknowledgment request, the request's card is focused so a screen reader and the keyboard land on it. **Opening the link never acknowledges anything**; the clinician still presses the button.
+- **Anyone else, or an alert that no longer applies** (removed message, lost access, wrong person, forwarded link): one plain page, the same for every case: "This notification is no longer available. It may have been removed, or you may no longer have access. Your messages are still in ChartWarden." with a link to the messages. It deliberately does not say which case it was.
 - **Please approve or edit** that wording, and confirm that a clinician who lost access to a conversation should get this plain page rather than an "access removed" explanation (provisional answer: the plain page, because telling them more would confirm the conversation exists).
 
 ## 11. The supervisor's unacknowledged queue (WP 4.9, ADR-0076) - provisional readings to approve

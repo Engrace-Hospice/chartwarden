@@ -1,6 +1,6 @@
 // @chartwarden/telehealth-client — the typed adapter-failure contract (M31-T05, spec §4.5 D1 / §7.3 D14).
 //
-// Per WARDENX_INTEGRATIONS + the architecture §25.14 adapter mandate a raw `fetch` rejection must NEVER
+// Per CHARTWARDEN_INTEGRATIONS + the architecture §25.14 adapter mandate a raw `fetch` rejection must NEVER
 // propagate to an M31 caller: every telehealth-vendor transport failure is normalised to this five-field
 // `TelehealthDegradedError` envelope so the route layer (M31-T07) decides the §7.3 Tier-3 degraded path
 // (offer audio-only, then reschedule-in-person via M17) from `retryable` alone, and so an out-of-band alert

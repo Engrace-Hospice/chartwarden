@@ -1,4 +1,4 @@
-<!-- Audit PRs: see docs/reviews/PROMPT_5_WARDENX_PRODUCTION_READINESS_AUDIT.md §8b.
+<!-- Audit PRs: see docs/reviews/PROMPT_5_CHARTWARDEN_PRODUCTION_READINESS_AUDIT.md §8b.
      Open as a DRAFT while you work. Mark ready-for-review when it is complete. -->
 
 Closes #

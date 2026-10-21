@@ -1,5 +1,5 @@
 // @chartwarden/iqies-client — the typed `DegradedError` every external adapter must expose (M10-T07,
-// spec §4.10.1 / M10-F17 / INT-009). Per WARDENX_INTEGRATIONS §3.2 (INT-009), a raw `fetch` rejection
+// spec §4.10.1 / M10-F17 / INT-009). Per CHARTWARDEN_INTEGRATIONS §3.2 (INT-009), a raw `fetch` rejection
 // must NEVER propagate to an M10 caller: every iQIES transport failure is normalised to this five-field
 // shape so the `iqies-submit-worker` can decide retry-vs-DLQ from `retryable` alone and so out-of-band
 // alerts (M36 `system.integration_failure`, §4.10.1) carry only the integration / operation / correlation

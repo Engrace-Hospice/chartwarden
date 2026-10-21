@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — medication-order detail (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (medication detail / the
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Detail" (medication detail / the
 // prescribe modal in sign-only mode). View of a single medication order: drug + sig facts, the §2.2
 // D2 lifecycle status, the controlled-substance / EPCS posture, the prescriber + pharmacy, the signature
 // posture, refills remaining, and the correction lineage (replaces / derived-from-refill). For a transmitted

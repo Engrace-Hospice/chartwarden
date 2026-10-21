@@ -1,5 +1,5 @@
 /**
- * WardenX - module-spec corpus gate (docs/modules)
+ * ChartWarden - module-spec corpus gate (docs/modules)
  * ------------------------------------------------
  * Companion to check-architecture-docs.ts, with a deliberately DIFFERENT contract: module specs
  * are IMPLEMENTATION PROPOSALS (repo authority rule), so "describes something never built" is a
@@ -61,7 +61,7 @@ function headerVersion(text: string): string | null {
 }
 
 const specFiles = readdirSync(join(ROOT, DIR))
-  .filter((f) => /^WARDENX_MODULE_\d{2}_.+\.md$/.test(f))
+  .filter((f) => /^CHARTWARDEN_MODULE_\d{2}_.+\.md$/.test(f))
   .sort();
 const adrNumbers = new Set(
   readdirSync(join(ROOT, ADR_DIR))
@@ -92,7 +92,7 @@ readme.split("\n").forEach((line, i) => {
 
 const versionByFile = new Map<string, string | null>();
 for (const file of specFiles) {
-  const num = file.slice(15, 17);
+  const num = file.slice(19, 21);
   const text = readFileSync(join(ROOT, DIR, file), "utf8");
   const hv = headerVersion(text);
   versionByFile.set(file, hv);
@@ -125,7 +125,7 @@ for (const file of specFiles) {
   }
 }
 for (const [num, row] of rows) {
-  if (!specFiles.some((f) => f.slice(15, 17) === num)) {
+  if (!specFiles.some((f) => f.slice(19, 21) === num)) {
     fail("README.md", row.line, "INDEX", `row M${num} has no matching spec file on disk`);
   }
 }
@@ -149,7 +149,7 @@ for (const { rel, abs } of allDocs) {
   const text = readFileSync(abs, "utf8");
   const lines = text.split("\n");
 
-  if (/^WARDENX_MODULE_/.test(rel)) {
+  if (/^CHARTWARDEN_MODULE_/.test(rel)) {
     const head = lines.slice(0, 40).join("\n");
     if (!/implementation proposal/i.test(head)) {
       fail(

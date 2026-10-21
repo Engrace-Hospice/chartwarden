@@ -13,7 +13,7 @@ import {
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/30-quality — M30 QUALITY HUB (§5.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_HQRP_QUALITY.md — Quality Hub (KPI strip + CoP strip).
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HQRP_QUALITY.md — Quality Hub (KPI strip + CoP strip).
 //
 // The agency's quality posture at a glance: the computed measures with their band, and the CoP compliance
 // strip beside them. Reads GET /api/v1/quality/measures and /quality/cop/citations through the typed

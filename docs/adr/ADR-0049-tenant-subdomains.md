@@ -14,7 +14,7 @@
 
 ## Context
 
-We want each hospice to reach WardenX at its own host, for example `sunrise.wardenx.com` and
+We want each hospice to reach ChartWarden at its own host, for example `sunrise.wardenx.com` and
 `tenderly.wardenx.com`. The architecture already assumes this: §19 names the
 `<tenant-slug>.wardenx.app` pattern, and System Design §6.1 says the subdomain carries the tenant but
 the backend "never trusts URL or body for tenant identity". **None of it is built.** As of `main`
@@ -131,7 +131,7 @@ On those paths it applies D3's validation to the host and does nothing more.
   `organization`, unique across both). Requests to an alias host get a 308 redirect to the current
   slug, **indefinitely**.
 - **Departed tenants:** a closed organization keeps its slug and aliases reserved. Its hosts serve a
-  static "this organization is no longer on WardenX" page and accept no sign-in.
+  static "this organization is no longer on ChartWarden" page and accept no sign-in.
 
 ### D4 — Cookies are host-only; one session per tenant host
 
@@ -235,7 +235,7 @@ cache window.
   - Signed in on `sunrise.`, a request with `Host: tenderly.` → 403 `TENANT_HOST_MISMATCH`.
   - An alias host → 308 to the current slug.
   - A suspended org's host → refused.
-  - A closed org's host → the "no longer on WardenX" page, and sign-in is refused.
+  - A closed org's host → the "no longer on ChartWarden" page, and sign-in is refused.
   - Creating or renaming an org to any slug or alias ever used → refused, even after the holder closed.
   - A staff session cookie on a `/portal/` route, or a portal cookie on a staff route → 401.
 - A browser-level E2E confirms a `sunrise.` session cookie is not sent to `tenderly.`.

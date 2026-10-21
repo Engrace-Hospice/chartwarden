@@ -38,108 +38,108 @@
 
 | Disposition | Frame | Spec | Detail |
 |:--|---|---|---|
-| ◻ unmatched | `node:B1Wukv` | `screens/revenue/WARDENX_UI_CAP_MANAGEMENT.md` | built · `web/26-cap` |
-| ◻ unmatched | `node:C0ljC` | `screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md` | built · `admin/35-subscription-billing` `web/35-subscription` |
+| ◻ unmatched | `node:B1Wukv` | `screens/revenue/CHARTWARDEN_UI_CAP_MANAGEMENT.md` | built · `web/26-cap` |
+| ◻ unmatched | `node:C0ljC` | `screens/platform/CHARTWARDEN_UI_SUBSCRIPTION_BILLING.md` | built · `admin/35-subscription-billing` `web/35-subscription` |
 | 📚 library | `node:CUzYC` | `(design library)` | wardenx-D3-states.pen — Universal empty / loading / error / no-perm / degraded |
-| ⏸ deferred | `node:CsLJv` | `screens/admin/WARDENX_UI_INTEGRATION_MONITORING.md` | M29 has no screen set; interface health is read from the ops outbox console and logs. |
-| ⏸ deferred | `node:CzFUq` | `screens/portal/WARDENX_UI_FACILITY_NURSE_PORTAL.md` | No facility-nurse portal app. |
+| ⏸ deferred | `node:CsLJv` | `screens/admin/CHARTWARDEN_UI_INTEGRATION_MONITORING.md` | M29 has no screen set; interface health is read from the ops outbox console and logs. |
+| ⏸ deferred | `node:CzFUq` | `screens/portal/CHARTWARDEN_UI_FACILITY_NURSE_PORTAL.md` | No facility-nurse portal app. |
 | 📚 library | `node:E0REv` | `(design library)` | wardenx-D6-subviews.pen — Heavyweight screens' secondary tabs / panels |
-| ⏸ deferred | `node:ERZ5p` | `screens/staffing/WARDENX_UI_TIMESHEETS_PAYROLL.md` | No timesheet / payroll screen; payroll export is out of scope of every shipped module. |
-| ◻ unmatched | `node:FkRoZ` | `screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md` | built · `web/21-supplies` |
-| ⏸ deferred | `node:GQMdF` | `screens/compliance/WARDENX_UI_PATIENT_RIGHTS_GRIEVANCES.md` | No grievance screen; M30 models QAPI incidents and mortality, not patient-rights grievances. |
+| ⏸ deferred | `node:ERZ5p` | `screens/staffing/CHARTWARDEN_UI_TIMESHEETS_PAYROLL.md` | No timesheet / payroll screen; payroll export is out of scope of every shipped module. |
+| ◻ unmatched | `node:FkRoZ` | `screens/clinical/CHARTWARDEN_UI_SUPPLY_DME_INVENTORY.md` | built · `web/21-supplies` |
+| ⏸ deferred | `node:GQMdF` | `screens/compliance/CHARTWARDEN_UI_PATIENT_RIGHTS_GRIEVANCES.md` | No grievance screen; M30 models QAPI incidents and mortality, not patient-rights grievances. |
 | 📚 library | `node:GyRUU` | `(design library)` | wardenx-D1-ceremonies.pen — Guardrail & signing-ceremony library |
-| ◻ unmatched | `node:H3JUcW` | `screens/core/WARDENX_UI_REPORTING_ANALYTICS.md` | built · `web/33-reporting` |
-| ◻ unmatched | `node:H6PP83` | `screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md` | built · `web/19-oncall` |
-| ◻ unmatched | `node:HFIqN` | `screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md` | built · `web/24-billing-medicaid` |
-| ⏸ deferred | `node:HIRCS` | `screens/portal/WARDENX_UI_EXTERNAL_PHYSICIAN_PORTAL.md` | No external-physician portal app; apps/portal serves patient/family only. |
-| ◻ unmatched | `node:I9nE3S` | `screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md` | partial · `web/40-mdm` |
-| ⏸ deferred | `node:JvkW0` | `screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md` | No patient-statement / financial-assistance screen; no route models patient responsibility statements. |
-| ◻ unmatched | `node:KfY70` | `screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md` | built · `web/09-assessments` `web/10-hope` |
-| ◻ unmatched | `node:KpBpz` | `screens/core/WARDENX_UI_ROLE_DASHBOARDS.md` | built · `web/33-reporting` |
-| ⏸ deferred | `node:L9t1M` | `screens/admin/WARDENX_UI_REFERRAL_SOURCE_CRM.md` | No CRM / community-liaison screen; M6 referrals carry the source channel only. |
-| ◻ unmatched | `node:L9tUSV` | `screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md` | built · `web/12-dosespot` |
-| ⏸ deferred | `node:LISN8` | `screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md` | No surveyor portal app; M23/M24 expose surveyor read-only views inside the staff app. |
-| ◻ unmatched | `node:LRfYv` | `screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md` | partial · `web/33-reporting` |
-| ◻ unmatched | `node:LXxxD` | `screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md` | built · `web/06-admission` |
-| ◻ unmatched | `node:LcUWy` | `screens/admin/WARDENX_UI_TENANT_SETTINGS.md` | partial · `web/34-saas` |
-| ◻ unmatched | `node:MZZY2` | `screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md` | partial · `web/34-saas` `web/40-mdm` |
-| ◻ unmatched | `node:NRM8F` | `screens/portal/WARDENX_UI_TELEHEALTH_VISIT_ROOM.md` | built · `portal/31-portal` |
-| ◻ unmatched | `node:R1Qzuj` | `screens/portal/WARDENX_UI_PORTAL_VISIT_SCHEDULE.md` | built · `portal/31-portal` |
-| ⏸ deferred | `node:RCdgT` | `screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md` | No prior-authorization screen; no M23/M24 route models an authorization. |
-| ◻ unmatched | `node:RSFHC` | `screens/revenue/WARDENX_UI_CLAIMS_BILLING.md` | built · `web/23-billing-medicare` `web/24-billing-medicaid` |
-| ◻ unmatched | `node:SCV56` | `screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md` | built · `web/22-documents` |
-| ⏸ deferred | `node:SHZre` | `screens/compliance/WARDENX_UI_ACCREDITATION_SURVEY.md` | No accreditation / survey-readiness screen; surveyor read-only billing views exist but are a different surface. |
+| ◻ unmatched | `node:H3JUcW` | `screens/core/CHARTWARDEN_UI_REPORTING_ANALYTICS.md` | built · `web/33-reporting` |
+| ◻ unmatched | `node:H6PP83` | `screens/clinical/CHARTWARDEN_UI_ON_CALL_TRIAGE.md` | built · `web/19-oncall` |
+| ◻ unmatched | `node:HFIqN` | `screens/revenue/CHARTWARDEN_UI_MEDICAID_VALIDATION_OVERRIDE.md` | built · `web/24-billing-medicaid` |
+| ⏸ deferred | `node:HIRCS` | `screens/portal/CHARTWARDEN_UI_EXTERNAL_PHYSICIAN_PORTAL.md` | No external-physician portal app; apps/portal serves patient/family only. |
+| ◻ unmatched | `node:I9nE3S` | `screens/admin/CHARTWARDEN_UI_MDM_HEALTH_SYNC.md` | partial · `web/40-mdm` |
+| ⏸ deferred | `node:JvkW0` | `screens/revenue/CHARTWARDEN_UI_PATIENT_STATEMENTS_ASSISTANCE.md` | No patient-statement / financial-assistance screen; no route models patient responsibility statements. |
+| ◻ unmatched | `node:KfY70` | `screens/clinical/CHARTWARDEN_UI_PATIENT_CLINICAL_TIMELINE.md` | built · `web/09-assessments` `web/10-hope` |
+| ◻ unmatched | `node:KpBpz` | `screens/core/CHARTWARDEN_UI_ROLE_DASHBOARDS.md` | built · `web/33-reporting` |
+| ⏸ deferred | `node:L9t1M` | `screens/admin/CHARTWARDEN_UI_REFERRAL_SOURCE_CRM.md` | No CRM / community-liaison screen; M6 referrals carry the source channel only. |
+| ◻ unmatched | `node:L9tUSV` | `screens/clinical/CHARTWARDEN_UI_MEDICATION_REFILL_INBOX.md` | built · `web/12-dosespot` |
+| ⏸ deferred | `node:LISN8` | `screens/portal/CHARTWARDEN_UI_SURVEYOR_ACCESS_PORTAL.md` | No surveyor portal app; M23/M24 expose surveyor read-only views inside the staff app. |
+| ◻ unmatched | `node:LRfYv` | `screens/core/CHARTWARDEN_UI_AGENCY_COMMAND_CENTER.md` | partial · `web/33-reporting` |
+| ◻ unmatched | `node:LXxxD` | `screens/clinical/CHARTWARDEN_UI_ELECTION_CERTIFICATION.md` | built · `web/06-admission` |
+| ◻ unmatched | `node:LcUWy` | `screens/admin/CHARTWARDEN_UI_TENANT_SETTINGS.md` | partial · `web/34-saas` |
+| ◻ unmatched | `node:MZZY2` | `screens/admin/CHARTWARDEN_UI_ORG_PROVIDER_LOCATION_SETUP.md` | partial · `web/34-saas` `web/40-mdm` |
+| ◻ unmatched | `node:NRM8F` | `screens/portal/CHARTWARDEN_UI_TELEHEALTH_VISIT_ROOM.md` | built · `portal/31-portal` |
+| ◻ unmatched | `node:R1Qzuj` | `screens/portal/CHARTWARDEN_UI_PORTAL_VISIT_SCHEDULE.md` | built · `portal/31-portal` |
+| ⏸ deferred | `node:RCdgT` | `screens/revenue/CHARTWARDEN_UI_PRIOR_AUTHORIZATION.md` | No prior-authorization screen; no M23/M24 route models an authorization. |
+| ◻ unmatched | `node:RSFHC` | `screens/revenue/CHARTWARDEN_UI_CLAIMS_BILLING.md` | built · `web/23-billing-medicare` `web/24-billing-medicaid` |
+| ◻ unmatched | `node:SCV56` | `screens/clinical/CHARTWARDEN_UI_DOCLENS_EXTRACTION_REVIEW.md` | built · `web/22-documents` |
+| ⏸ deferred | `node:SHZre` | `screens/compliance/CHARTWARDEN_UI_ACCREDITATION_SURVEY.md` | No accreditation / survey-readiness screen; surveyor read-only billing views exist but are a different surface. |
 | 📚 library | `node:T2caK` | `(design library)` | wardenx-D5-variants.pen — Role dashboards · discipline care plans · assessments |
-| ⏸ deferred | `node:T6KHo` | `screens/clinical/WARDENX_UI_WOUND_CARE.md` | No wound-care screen; wound detail is a line item in the assessments suite. Spec promotes it to a longitudinal surface (M09/M08/M22 composed). |
-| ⏸ deferred | `node:TFdIR` | `screens/clinical/WARDENX_UI_ALLERGY_MANAGEMENT.md` | No allergy screen; allergies are shown on the patient chart only. |
-| ◻ unmatched | `node:U01CF` | `screens/admin/WARDENX_UI_ONBOARDING_WIZARD.md` | built · `web/34-saas` `admin/34-saas-platform` |
-| ◻ unmatched | `node:URHlL` | `screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md` | built · `web/06-admission` |
+| ⏸ deferred | `node:T6KHo` | `screens/clinical/CHARTWARDEN_UI_WOUND_CARE.md` | No wound-care screen; wound detail is a line item in the assessments suite. Spec promotes it to a longitudinal surface (M09/M08/M22 composed). |
+| ⏸ deferred | `node:TFdIR` | `screens/clinical/CHARTWARDEN_UI_ALLERGY_MANAGEMENT.md` | No allergy screen; allergies are shown on the patient chart only. |
+| ◻ unmatched | `node:U01CF` | `screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md` | built · `web/34-saas` `admin/34-saas-platform` |
+| ◻ unmatched | `node:URHlL` | `screens/clinical/CHARTWARDEN_UI_CERTIFICATION_RECERT_LIFECYCLE.md` | built · `web/06-admission` |
 | 📚 library | `node:UyQt9` | `(design library)` | wardenx-D7-breadth-depth.pen — Depth for the **breadth** screens (P12–P14) — the variant surface their specs declare |
-| ◻ unmatched | `node:V6ZmB` | `screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md` | built · `web/19-oncall` |
-| ◻ unmatched | `node:V8bGq` | `screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md` | built · `web/24-billing-medicaid` |
-| ◻ unmatched | `node:WGWP7` | `screens/platform/WARDENX_UI_OPS_CONSOLE.md` | built · `admin/01-ops` |
-| ◻ unmatched | `node:WYFsN` | `screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md` | built · `web/21-supplies` |
-| ◻ unmatched | `node:XMaBy` | `screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md` | built · `web/39-consent` |
-| ◻ unmatched | `node:Xnsde` | `screens/platform/WARDENX_UI_WORKFLOW_EVENT_OPS.md` | partial · `admin/01-ops` |
-| ◻ unmatched | `node:XySvp` | `screens/staffing/WARDENX_UI_STAFF_SCHEDULING_CASELOAD.md` | built · `web/17-scheduling` |
-| ◻ unmatched | `node:Y1ubGH` | `screens/compliance/WARDENX_UI_BAA_MANAGER.md` | built · `admin/34-saas-platform` |
-| ◻ unmatched | `node:Y4HEp` | `screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md` | partial · `web/12-dosespot` |
+| ◻ unmatched | `node:V6ZmB` | `screens/clinical/CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md` | built · `web/19-oncall` |
+| ◻ unmatched | `node:V8bGq` | `screens/revenue/CHARTWARDEN_UI_MEDICAID_RB_ARRANGEMENT.md` | built · `web/24-billing-medicaid` |
+| ◻ unmatched | `node:WGWP7` | `screens/platform/CHARTWARDEN_UI_OPS_CONSOLE.md` | built · `admin/01-ops` |
+| ◻ unmatched | `node:WYFsN` | `screens/clinical/CHARTWARDEN_UI_SUPPLIES_DME_COMFORT_KIT.md` | built · `web/21-supplies` |
+| ◻ unmatched | `node:XMaBy` | `screens/compliance/CHARTWARDEN_UI_CONSENT_RECIPIENTS_DPOA.md` | built · `web/39-consent` |
+| ◻ unmatched | `node:Xnsde` | `screens/platform/CHARTWARDEN_UI_WORKFLOW_EVENT_OPS.md` | partial · `admin/01-ops` |
+| ◻ unmatched | `node:XySvp` | `screens/staffing/CHARTWARDEN_UI_STAFF_SCHEDULING_CASELOAD.md` | built · `web/17-scheduling` |
+| ◻ unmatched | `node:Y1ubGH` | `screens/compliance/CHARTWARDEN_UI_BAA_MANAGER.md` | built · `admin/34-saas-platform` |
+| ◻ unmatched | `node:Y4HEp` | `screens/clinical/CHARTWARDEN_UI_DOSESPOT_TRANSMIT_QUEUE.md` | partial · `web/12-dosespot` |
 | 📚 library | `node:ZgXYC` | `(design library)` | wardenx-D4-steppers.pen — Multi-step workflows — all steps |
-| ◻ unmatched | `node:aIMIx` | `screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md` | built · `web/39-consent` |
-| ⏸ deferred | `node:c0Ibms` | `screens/admin/WARDENX_UI_FHIR_INTEROP_API.md` | M28 has no web or admin screen set; the FHIR API is consumed by partners, not browsed. |
-| ⏸ deferred | `node:c5WGQ9` | `screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md` | No breach / security-incident screen; M4 audit holds the evidence and has no incident workflow. |
-| ⏸ deferred | `node:c96zD` | `screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md` | M32 copilot / semantic chart search has no clinician-facing screen (only compliance, opt-in, routing and preferences). |
-| ⏸ deferred | `node:cFG0u` | `screens/platform/WARDENX_UI_SYSTEM_HEALTH_DEGRADED_MODE.md` | No system-health / degraded-mode screen; the shell shows a maintenance page on 503 only. |
-| ◻ unmatched | `node:cFmyk` | `screens/clinical/WARDENX_UI_HQRP_QUALITY.md` | partial · `web/30-quality` |
-| ◻ unmatched | `node:d9ZJU` | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md` | built · `web/06-admission` |
-| ⏸ deferred | `node:dFRJ9` | `screens/integration/WARDENX_UI_HL7_INTERFACE_LOGS.md` | M29 has no screen set; interface logs are read from the database / ops tooling. |
-| ◻ unmatched | `node:e7rV0x` | `screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md` | built · `web/26-cap` |
-| ◻ unmatched | `node:eI32Z` | `screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md` | built · `web/20-field-safety` |
-| ◻ unmatched | `node:eIAe7` | `screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md` | built · `web/24-billing-medicaid` |
-| ◻ unmatched | `node:eeoJ4` | `screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md` | built · `web/25-remittance` |
-| ◻ unmatched | `node:ejsox` | `screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md` | built · `admin/32-ai-platform` |
-| ◻ unmatched | `node:eq20w` | `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md` | built · `web/23-billing-medicare` `admin/23-billing-medicare` |
-| ◻ unmatched | `node:fGKwq` | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | partial · `web/32-ai-platform` `web/02-identity` |
-| ◻ unmatched | `node:fRVXt` | `screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md` | built · `web/23-billing-medicare` `web/24-billing-medicaid` |
-| ◻ unmatched | `node:g7sGoJ` | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | built · `web/02-identity` |
-| ⏸ deferred | `node:gOyIA` | `screens/compliance/WARDENX_UI_OIG_COMPLIANCE_PROGRAM.md` | No OIG compliance-program screen (exclusion screening, hotline, training attestations); no module owns the data. |
-| ◻ unmatched | `node:hyJ3j` | `screens/clinical/WARDENX_UI_BEREAVEMENT.md` | built · `web/16-bereavement` |
-| ◻ unmatched | `node:j3z3U` | `screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md` | built · `admin/34-saas-platform` |
-| ◻ unmatched | `node:jFySy` | `screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md` | built · `web/39-consent` |
-| ◻ unmatched | `node:jbNOR` | `screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md` | partial · `web/30-quality` |
-| ◻ unmatched | `node:k7H99` | `screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md` | partial · `web/30-quality` |
-| ◻ unmatched | `node:kEXWg` | `screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md` | built · `web/12-dosespot` |
-| ◻ unmatched | `node:l00Umf` | `screens/revenue/WARDENX_UI_DENIALS_MANAGEMENT.md` | built · `web/25-remittance` |
-| ◻ unmatched | `node:lZPbZ` | `screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md` | partial · `web/06-admission` |
-| ◻ unmatched | `node:lbY0m` | `screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md` | partial · `web/21-supplies` `web/37-ipu` |
-| ◻ unmatched | `node:ltVaw` | `screens/portal/WARDENX_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md` | built · `portal/31-portal` |
-| ⏸ deferred | `node:lynRU` | `screens/mobile/WARDENX_UI_MOBILE_FIELD_SUITE.md` | No mobile app; the web SPA is responsive but there is no native/offline field client (M17/M18/M22 mobile surface). |
-| ◻ unmatched | `node:m0wtL7` | `screens/staffing/WARDENX_UI_STAFF_CREDENTIALS_COMPLIANCE.md` | built · `web/17-scheduling` |
-| ◻ unmatched | `node:m1prt` | `screens/clinical/WARDENX_UI_IPU_BED_BOARD.md` | built · `web/37-ipu` |
-| ⏸ deferred | `node:m23Lw` | `screens/portal/WARDENX_UI_REFERRAL_SOURCE_PORTAL.md` | No referral-source portal app. |
-| ◻ unmatched | `node:m6Iqp` | `screens/integration/WARDENX_UI_SUBMISSION_RESUBMISSION.md` | partial · `web/10-hope` |
-| ◻ unmatched | `node:mrj17` | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | built · `web/40-mdm` |
-| ⏸ deferred | `node:nNKhB` | `screens/core/WARDENX_UI_HELP_TRAINING.md` | No help / training centre; no backend module owns it. |
-| ◻ unmatched | `node:nPnkV` | `screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md` | partial · `web/04-audit` `web/05-patient` |
-| ⏸ deferred | `node:nxzBw` | `screens/admin/WARDENX_UI_CLINICAL_CONTENT_ADMIN.md` | No clinical-content (template / scale / order-set) authoring screen; M08/M09/M11 content is seeded and edited by migration. Backend: none beyond M9 licenses/policies (built under the assessments screen set). |
-| ◻ unmatched | `node:o18aS` | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | built · `web/04-audit` |
-| ◻ unmatched | `node:ogmWK` | `screens/revenue/WARDENX_UI_COST_REPORT_WORKSPACE.md` | built · `web/27-cost-report` |
-| ◻ unmatched | `node:p4tXCO` | `screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md` | built · `web/15-discipline-care-plans` |
-| ◻ unmatched | `node:plO9v` | `screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md` | built · `web/22-documents` |
-| ◻ unmatched | `node:q5UDi` | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | built · `web/03-authorization` |
-| ◻ unmatched | `node:qOmAz` | `screens/clinical/WARDENX_UI_FIELD_SAFETY.md` | built · `web/20-field-safety` |
-| ◻ unmatched | `node:r6axh` | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | built · `web/38-terminology` |
-| ⏸ deferred | `node:r7RLV` | `screens/portal/WARDENX_UI_DME_VENDOR_PORTAL.md` | No DME-vendor portal app. |
-| ◻ unmatched | `node:seR8n` | `screens/clinical/WARDENX_UI_EPCS_CONTROLLED_SUBSTANCES.md` | partial · `web/12-dosespot` |
-| ◻ unmatched | `node:tCfQ6` | `screens/portal/WARDENX_UI_PORTAL_DOCUMENTS_CONSENTS.md` | built · `portal/31-portal` |
-| ◻ unmatched | `node:v72Yj` | `screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md` | built · `web/08-encounters` |
-| ◻ unmatched | `node:vw0AC` | `screens/clinical/WARDENX_UI_EVV.md` | built · `web/18-evv` |
+| ◻ unmatched | `node:aIMIx` | `screens/compliance/CHARTWARDEN_UI_CONSENT_RECORD_MANAGER.md` | built · `web/39-consent` |
+| ⏸ deferred | `node:c0Ibms` | `screens/admin/CHARTWARDEN_UI_FHIR_INTEROP_API.md` | M28 has no web or admin screen set; the FHIR API is consumed by partners, not browsed. |
+| ⏸ deferred | `node:c5WGQ9` | `screens/compliance/CHARTWARDEN_UI_BREACH_SECURITY_INCIDENTS.md` | No breach / security-incident screen; M4 audit holds the evidence and has no incident workflow. |
+| ⏸ deferred | `node:c96zD` | `screens/clinical/CHARTWARDEN_UI_CLINICAL_COPILOT.md` | M32 copilot / semantic chart search has no clinician-facing screen (only compliance, opt-in, routing and preferences). |
+| ⏸ deferred | `node:cFG0u` | `screens/platform/CHARTWARDEN_UI_SYSTEM_HEALTH_DEGRADED_MODE.md` | No system-health / degraded-mode screen; the shell shows a maintenance page on 503 only. |
+| ◻ unmatched | `node:cFmyk` | `screens/clinical/CHARTWARDEN_UI_HQRP_QUALITY.md` | partial · `web/30-quality` |
+| ◻ unmatched | `node:d9ZJU` | `screens/clinical/CHARTWARDEN_UI_ADMISSIONS_REFERRAL_INTAKE.md` | built · `web/06-admission` |
+| ⏸ deferred | `node:dFRJ9` | `screens/integration/CHARTWARDEN_UI_HL7_INTERFACE_LOGS.md` | M29 has no screen set; interface logs are read from the database / ops tooling. |
+| ◻ unmatched | `node:e7rV0x` | `screens/revenue/CHARTWARDEN_UI_CAP_SETTLEMENT.md` | built · `web/26-cap` |
+| ◻ unmatched | `node:eI32Z` | `screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY_INCIDENTS.md` | built · `web/20-field-safety` |
+| ◻ unmatched | `node:eIAe7` | `screens/revenue/CHARTWARDEN_UI_MEDICAID_TRADING_PARTNER_CREDS.md` | built · `web/24-billing-medicaid` |
+| ◻ unmatched | `node:eeoJ4` | `screens/revenue/CHARTWARDEN_UI_REMITTANCE_ERA_POSTING.md` | built · `web/25-remittance` |
+| ◻ unmatched | `node:ejsox` | `screens/admin/CHARTWARDEN_UI_AI_GOVERNANCE_CONSOLE.md` | built · `admin/32-ai-platform` |
+| ◻ unmatched | `node:eq20w` | `screens/revenue/CHARTWARDEN_UI_NOE_NOTR_CLAIM_OPS.md` | built · `web/23-billing-medicare` `admin/23-billing-medicare` |
+| ◻ unmatched | `node:fGKwq` | `screens/core/CHARTWARDEN_UI_USER_PROFILE_PREFERENCES.md` | partial · `web/32-ai-platform` `web/02-identity` |
+| ◻ unmatched | `node:fRVXt` | `screens/revenue/CHARTWARDEN_UI_ELIGIBILITY_VERIFICATION.md` | built · `web/23-billing-medicare` `web/24-billing-medicaid` |
+| ◻ unmatched | `node:g7sGoJ` | `screens/admin/CHARTWARDEN_UI_STAFF_MANAGEMENT.md` | built · `web/02-identity` |
+| ⏸ deferred | `node:gOyIA` | `screens/compliance/CHARTWARDEN_UI_OIG_COMPLIANCE_PROGRAM.md` | No OIG compliance-program screen (exclusion screening, hotline, training attestations); no module owns the data. |
+| ◻ unmatched | `node:hyJ3j` | `screens/clinical/CHARTWARDEN_UI_BEREAVEMENT.md` | built · `web/16-bereavement` |
+| ◻ unmatched | `node:j3z3U` | `screens/platform/CHARTWARDEN_UI_SUPPORT_IMPERSONATION_AUDIT.md` | built · `admin/34-saas-platform` |
+| ◻ unmatched | `node:jFySy` | `screens/compliance/CHARTWARDEN_UI_CONSENT_EXPIRATION_RENEWAL.md` | built · `web/39-consent` |
+| ◻ unmatched | `node:jbNOR` | `screens/compliance/CHARTWARDEN_UI_QUALITY_MEASURES_CHART_AUDIT.md` | partial · `web/30-quality` |
+| ◻ unmatched | `node:k7H99` | `screens/compliance/CHARTWARDEN_UI_QAPI_INCIDENTS.md` | partial · `web/30-quality` |
+| ◻ unmatched | `node:kEXWg` | `screens/clinical/CHARTWARDEN_UI_DOSESPOT_PRESCRIBER_ROSTER.md` | built · `web/12-dosespot` |
+| ◻ unmatched | `node:l00Umf` | `screens/revenue/CHARTWARDEN_UI_DENIALS_MANAGEMENT.md` | built · `web/25-remittance` |
+| ◻ unmatched | `node:lZPbZ` | `screens/clinical/CHARTWARDEN_UI_ELIGIBILITY_WORKSHEET_CTI.md` | partial · `web/06-admission` |
+| ◻ unmatched | `node:lbY0m` | `screens/clinical/CHARTWARDEN_UI_FACILITY_SUPPLY_OPERATIONS.md` | partial · `web/21-supplies` `web/37-ipu` |
+| ◻ unmatched | `node:ltVaw` | `screens/portal/CHARTWARDEN_UI_PATIENT_FAMILY_PORTAL_DASHBOARD.md` | built · `portal/31-portal` |
+| ⏸ deferred | `node:lynRU` | `screens/mobile/CHARTWARDEN_UI_MOBILE_FIELD_SUITE.md` | No mobile app; the web SPA is responsive but there is no native/offline field client (M17/M18/M22 mobile surface). |
+| ◻ unmatched | `node:m0wtL7` | `screens/staffing/CHARTWARDEN_UI_STAFF_CREDENTIALS_COMPLIANCE.md` | built · `web/17-scheduling` |
+| ◻ unmatched | `node:m1prt` | `screens/clinical/CHARTWARDEN_UI_IPU_BED_BOARD.md` | built · `web/37-ipu` |
+| ⏸ deferred | `node:m23Lw` | `screens/portal/CHARTWARDEN_UI_REFERRAL_SOURCE_PORTAL.md` | No referral-source portal app. |
+| ◻ unmatched | `node:m6Iqp` | `screens/integration/CHARTWARDEN_UI_SUBMISSION_RESUBMISSION.md` | partial · `web/10-hope` |
+| ◻ unmatched | `node:mrj17` | `screens/admin/CHARTWARDEN_UI_MASTER_DATA_MDM.md` | built · `web/40-mdm` |
+| ⏸ deferred | `node:nNKhB` | `screens/core/CHARTWARDEN_UI_HELP_TRAINING.md` | No help / training centre; no backend module owns it. |
+| ◻ unmatched | `node:nPnkV` | `screens/compliance/CHARTWARDEN_UI_HIPAA_PRIVACY_DISCLOSURE.md` | partial · `web/04-audit` `web/05-patient` |
+| ⏸ deferred | `node:nxzBw` | `screens/admin/CHARTWARDEN_UI_CLINICAL_CONTENT_ADMIN.md` | No clinical-content (template / scale / order-set) authoring screen; M08/M09/M11 content is seeded and edited by migration. Backend: none beyond M9 licenses/policies (built under the assessments screen set). |
+| ◻ unmatched | `node:o18aS` | `screens/admin/CHARTWARDEN_UI_AUDIT_LOG_VIEWER.md` | built · `web/04-audit` |
+| ◻ unmatched | `node:ogmWK` | `screens/revenue/CHARTWARDEN_UI_COST_REPORT_WORKSPACE.md` | built · `web/27-cost-report` |
+| ◻ unmatched | `node:p4tXCO` | `screens/clinical/CHARTWARDEN_UI_VOLUNTEER_MANAGEMENT.md` | built · `web/15-discipline-care-plans` |
+| ◻ unmatched | `node:plO9v` | `screens/clinical/CHARTWARDEN_UI_DOCUMENT_MANAGEMENT.md` | built · `web/22-documents` |
+| ◻ unmatched | `node:q5UDi` | `screens/admin/CHARTWARDEN_UI_ROLES_PERMISSIONS.md` | built · `web/03-authorization` |
+| ◻ unmatched | `node:qOmAz` | `screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY.md` | built · `web/20-field-safety` |
+| ◻ unmatched | `node:r6axh` | `screens/admin/CHARTWARDEN_UI_TERMINOLOGY_ADMIN.md` | built · `web/38-terminology` |
+| ⏸ deferred | `node:r7RLV` | `screens/portal/CHARTWARDEN_UI_DME_VENDOR_PORTAL.md` | No DME-vendor portal app. |
+| ◻ unmatched | `node:seR8n` | `screens/clinical/CHARTWARDEN_UI_EPCS_CONTROLLED_SUBSTANCES.md` | partial · `web/12-dosespot` |
+| ◻ unmatched | `node:tCfQ6` | `screens/portal/CHARTWARDEN_UI_PORTAL_DOCUMENTS_CONSENTS.md` | built · `portal/31-portal` |
+| ◻ unmatched | `node:v72Yj` | `screens/clinical/CHARTWARDEN_UI_CLINICAL_NOTE_LIFECYCLE.md` | built · `web/08-encounters` |
+| ◻ unmatched | `node:vw0AC` | `screens/clinical/CHARTWARDEN_UI_EVV.md` | built · `web/18-evv` |
 | 📚 library | `node:wMcvc` | `(design library)` | wardenx-D2-sensitivity.pen — PHI masking / SUD-Part2 / consent / break-glass |
-| ◻ unmatched | `node:wtqs3` | `screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md` | built · `web/24-billing-medicaid` |
-| ⏸ deferred | `node:x0R4jb` | `screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md` | M28 has no web or admin screen set; client registration and monitoring are API/ops-only. |
-| ◻ unmatched | `node:xeeXk` | `screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md` | built · `web/17-scheduling` |
-| ◻ unmatched | `node:y8N8k` | `screens/portal/WARDENX_UI_PORTAL_CARE_TEAM_MESSAGES.md` | built · `portal/31-portal` |
-| ⏸ deferred | `node:z58Qbh` | `screens/portal/WARDENX_UI_CONSULTING_PHYSICIAN_PORTAL.md` | No consulting-physician portal app. |
+| ◻ unmatched | `node:wtqs3` | `screens/revenue/CHARTWARDEN_UI_MEDICAID_ELIGIBILITY_MCO.md` | built · `web/24-billing-medicaid` |
+| ⏸ deferred | `node:x0R4jb` | `screens/admin/CHARTWARDEN_UI_FHIR_GATEWAY_CLIENTS.md` | M28 has no web or admin screen set; client registration and monitoring are API/ops-only. |
+| ◻ unmatched | `node:xeeXk` | `screens/clinical/CHARTWARDEN_UI_SCHEDULING_VISIT_CALENDAR.md` | built · `web/17-scheduling` |
+| ◻ unmatched | `node:y8N8k` | `screens/portal/CHARTWARDEN_UI_PORTAL_CARE_TEAM_MESSAGES.md` | built · `portal/31-portal` |
+| ⏸ deferred | `node:z58Qbh` | `screens/portal/CHARTWARDEN_UI_CONSULTING_PHYSICIAN_PORTAL.md` | No consulting-physician portal app. |
 
 ## Hard-fail consistency checks
 

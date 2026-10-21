@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the 5% VOLUNTEER TIME-COST RATIO (§5.1 #12, Track B).
-// Spec: docs/design/screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md — Hours & 5% Ratio.
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_VOLUNTEER_MANAGEMENT.md — Hours & 5% Ratio.
 //
 // 42 CFR §418.78(e): volunteer hours must be at least 5% of total patient-care hours, per provider entity
 // per fiscal year. Green ≥5%, yellow 3–5% (corrective prompt), red <3% (escalates to DON + Compliance).

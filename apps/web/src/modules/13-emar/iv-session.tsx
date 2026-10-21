@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — IV continuous session (M13 §4.1/§6.1 #5, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
+// Spec: docs/design/screens/clinical/CHARTWARDEN_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
 // (limited Phase-1 utility; primary value lands at M37). The session's ordered segment sequence
 // (start → rate_change → pause/resume → stop) with the Titrate / Pause / Resume / Stop write CTAs.
 //
