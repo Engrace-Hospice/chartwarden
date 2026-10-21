@@ -74,7 +74,8 @@ export function SignIn(): JSX.Element {
       <div style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
         <BrandLockup />
         <div style={{ textAlign: "center" }}>
-          <h1 style={titleStyle}>Sign in</h1>
+          {/* The page heading stays for screen readers; sighted users already see the lockup and the button. */}
+          <h1 className="wx-sr-only">Sign in</h1>
           <p style={subStyle}>Welcome back. Sign in to continue.</p>
         </div>
 
@@ -139,13 +140,6 @@ export function SignIn(): JSX.Element {
   );
 }
 
-const titleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontWeight: 500,
-  fontSize: "1.25rem",
-  color: t.onSurface,
-};
 const subStyle: CSSProperties = {
   margin: "0.25rem 0 0",
   color: t.onSurfaceVariant,
