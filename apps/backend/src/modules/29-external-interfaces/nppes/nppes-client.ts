@@ -33,7 +33,7 @@ export interface NppesClientConfig {
   readonly fetch: HttpFetch;
   readonly baseUrl?: string; // default 'https://npiregistry.cms.hhs.gov/api/'
   readonly apiVersion?: string; // default '2.1'
-  readonly userAgent?: string; // default 'WardenX/Phase1 (+https://wardenx.com/contact)'
+  readonly userAgent?: string; // default 'ChartWarden/Phase1 (+https://quillwardhealth.com/contact)'
   readonly requestsPerSecond?: number; // default 4
   readonly maxRetries?: number; // default 3 for 429 / 5xx
   readonly sleep?: (ms: number) => Promise<void>;
@@ -54,7 +54,7 @@ export class RetryableHttpError extends Error {
 }
 
 const DEFAULT_BASE_URL = "https://npiregistry.cms.hhs.gov/api/";
-const DEFAULT_USER_AGENT = "WardenX/Phase1 (+https://wardenx.com/contact)";
+const DEFAULT_USER_AGENT = "ChartWarden/Phase1 (+https://quillwardhealth.com/contact)";
 
 export class NppesClient {
   private readonly fetch: HttpFetch;
