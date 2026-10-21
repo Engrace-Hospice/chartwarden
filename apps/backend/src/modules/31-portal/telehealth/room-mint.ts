@@ -17,7 +17,7 @@
 // IDEMPOTENT: an existing row for the M17 visit (unique on `m17_visit_id`) is returned untouched; a concurrent
 // double-mint loses the INSERT race on that unique index and re-reads the winner (the loser's vendor room is an
 // orphan the vendor reaps on its TTL — `mintRoom` is idempotent on the telehealth id it is given).
-import type { TelehealthVisitDigest } from "@wardenx/types";
+import type { TelehealthVisitDigest } from "@chartwarden/types";
 import type { PortalRoomCipher } from "../portal-crypto";
 import { TelehealthStateError } from "./errors";
 

@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.4 D1 / §2.7 / W-PKT-02 packet freeze + since-cursor resolution (M14-T04). Pure.
+// @chartwarden/idg — §2.4 D1 / §2.7 / W-PKT-02 packet freeze + since-cursor resolution (M14-T04). Pure.
 //
 // Two build-time invariants the M14-T05 service composes over the upsert:
 //   • the §1.1 "since last IDG" cursor — the prior meeting's `adjourned_at` for THIS patient, falling back
@@ -7,7 +7,7 @@
 //     survey-reconstruction artifact) refuses every rebuild with `PACKET_FROZEN`. The §3.4 trigger repeats
 //     this at the schema layer (M14-T02); this is the application-layer first line + the unit-testable
 //     decider the route handler for `POST /meetings/:id/packets/build` calls before re-running the builder.
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { require_ } from "../lifecycle/errors";
 
 /** The resolved §1.1 cursor + the context discriminator stamped into `PacketSnapshot.meta`. */

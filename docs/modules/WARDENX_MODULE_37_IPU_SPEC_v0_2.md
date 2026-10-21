@@ -1733,7 +1733,7 @@ M37 publishes 11 typed reader / overlay-publisher seams via `packages/inpatient/
 
 ```ts
 // packages/inpatient/src/seams.ts
-import type { OrganizationId, ProviderEntityId, PatientId, IpuAdmissionId, IpuBedId, OrderId } from '@wardenx/types';
+import type { OrganizationId, ProviderEntityId, PatientId, IpuAdmissionId, IpuBedId, OrderId } from '@chartwarden/types';
 
 /** Consumed by M23, M26, M27, M28, M30, M34. */
 export interface IpuAdmissionReader {

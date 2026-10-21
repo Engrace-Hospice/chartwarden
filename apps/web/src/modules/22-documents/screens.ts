@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/22-documents — M22 Document Management screen registration (Track B, ADR-0030, M22-T10).
 // The §5.1 read surfaces that have a backing M22 read route on the generated client: DOC.Explorer (tenant-wide
 // document browse + filter), DOC.VersionHistory (the per-document version chain), INTAKE.BatchDetail (the

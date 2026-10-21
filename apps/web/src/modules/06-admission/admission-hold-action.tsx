@@ -1,7 +1,7 @@
 // apps/web/src/modules/06-admission — hold / resume an admission (POST /api/v1/admissions/:id/hold and
 // /resume; GAP-021). The reason is required on hold (server: 10-500 chars); both writes carry the
 // optimistic-lock `ifVersion`. The server enforces `admission.hold` + scope — this only shapes the request.
-import { Button, InlineAlert, TextAreaField, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, TextAreaField, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 

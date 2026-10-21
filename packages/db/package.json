@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/db",
+  "name": "@chartwarden/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/shared": "workspace:*",
+    "@chartwarden/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.13.1"
   },

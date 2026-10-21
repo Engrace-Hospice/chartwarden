@@ -6,7 +6,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@wardenx/types";
+import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@chartwarden/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,

@@ -1,4 +1,4 @@
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { searchTimeoutToError } from "../src/modules/36-messaging/message-search-service-db";
 
@@ -7,7 +7,7 @@ describe("searchTimeoutToError", () => {
   it("maps SQLSTATE 57014, also when wrapped as a cause, to a 503 SEARCH_TIMEOUT", () => {
     for (const raw of [{ code: "57014" }, new Error("wrapped", { cause: { code: "57014" } })]) {
       const mapped = searchTimeoutToError(raw);
-      expect(mapped).toBeInstanceOf(WardenXError);
+      expect(mapped).toBeInstanceOf(ChartWardenError);
       expect(mapped).toMatchObject({ code: "SEARCH_TIMEOUT", statusCode: 503 });
     }
   });

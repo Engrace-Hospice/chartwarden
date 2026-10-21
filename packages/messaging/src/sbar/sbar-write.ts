@@ -1,16 +1,16 @@
-// @wardenx/messaging - the pure write-time SBAR gate (M36 WP 3.3), shared by the Drizzle service (policy read inside its
+// @chartwarden/messaging - the pure write-time SBAR gate (M36 WP 3.3), shared by the Drizzle service (policy read inside its
 // transaction) and the in-memory twin. A body without an sbar block passes untouched. Never echoes message text.
 import {
   type EffectiveSbarPolicy,
   type RichBody,
-  WardenXError,
+  ChartWardenError,
   richBodySbar,
   validateSbar,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { SBAR_DENIED_CHANNEL_KINDS } from "./sbar-policy";
 
-export const sbarNotAllowedInChannel = (): WardenXError =>
-  new WardenXError(
+export const sbarNotAllowedInChannel = (): ChartWardenError =>
+  new ChartWardenError(
     "SBAR_NOT_ALLOWED_IN_CHANNEL",
     "SBAR messages cannot be sent in this conversation.",
     422,
@@ -30,7 +30,7 @@ export function assertSbarWrite(
   if (policy.requirePatientChannel && channelKind !== "care_team") throw sbarNotAllowedInChannel();
   const issues = validateSbar(richBody, policy);
   if (issues.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SBAR_INVALID",
       "The SBAR message does not meet the length requirements.",
       422,

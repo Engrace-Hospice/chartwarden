@@ -1,4 +1,4 @@
-// @wardenx/cost-report — Worksheet C (Calculation of Per Diem Cost) TypeBox schema (Form CMS-1984-14,
+// @chartwarden/cost-report — Worksheet C (Calculation of Per Diem Cost) TypeBox schema (Form CMS-1984-14,
 // Pub 15-2 §4330). C is the hospice cost report's terminal computed worksheet: for each level of care
 // (CHC / RHC / IRC / GIP) it takes the fully-allocated cost from Worksheet B (col. 18, lines 50–53),
 // divides by the total *unduplicated* days from Worksheet S-1 (col. 4) to get the average cost per diem
@@ -8,7 +8,7 @@
 // decimal string; no PHI — aggregate cost/day only (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4330 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** One level of care's per-diem block (§4330 lines per LOC: total cost / total days / per diem / program cost). */

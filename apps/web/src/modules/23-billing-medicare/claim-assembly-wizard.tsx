@@ -6,8 +6,8 @@ import {
   StepperWorkflowLayout,
   StickyFooterActions,
   useApiClient,
-} from "@wardenx/ui";
-import type { GateItem, GateStatus } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GateItem, GateStatus } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM ASSEMBLY WIZARD (R2, §5.1 #4).
 // The §10 PR-J stepper: pick PE + patient + service-date range → choose / derive the Type-of-Bill → review
 // what will be assembled → confirm. The single server action is the existing route #1 POST

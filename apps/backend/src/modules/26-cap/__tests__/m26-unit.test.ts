@@ -1,6 +1,6 @@
 // M26 backend unit tests — the §4.7 ABAC predicate resolvers (over an injected resolver, no DB), the §4.10
 // outbox-event catalog conformance (naming / owner / declared consumers), and the §4.6 permission surface.
-import { type AbacContext, type AbacTarget, isReservedPlatformRoleKey } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, isReservedPlatformRoleKey } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   M26_PLATFORM_ADMIN_ROLE_KEYS,

@@ -1,4 +1,4 @@
-// @wardenx/db — `break_glass_event` (M3 Authorization §3.5). Emergency-access record:
+// @chartwarden/db — `break_glass_event` (M3 Authorization §3.5). Emergency-access record:
 // an actor opens "glass" to reach PHI outside their normal ABAC scope (§7.4). Org-scoped
 // on organization_id; `target_organization_id` marks the rare cross-tenant (WardenX
 // platform) invocation, readable only in platform context + the target tenant's Compliance

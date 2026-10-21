@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: bereavement risk-screening completeness rate. Pure. No IO.
+// @chartwarden/quality — operational measure: bereavement risk-screening completeness rate. Pure. No IO.
 // Rate of bereaved contacts owed a risk screen whose latest risk-score assessment carries USABLE
 // evidence — not `minimal` data completeness (higher is better). Source: M16
 // `BereavementComplianceProvider.riskScreeningCompletenessCounts` (D17, F-184, #248).

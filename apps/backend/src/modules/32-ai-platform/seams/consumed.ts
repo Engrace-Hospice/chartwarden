@@ -6,10 +6,10 @@
 //
 // Resolving through `getSeam` is why M32's manifest `dependsOn` carries M1 (the registry lives in
 // `apps/backend/src/bootstrap`, which is M1 code) — which it already does. M2/M3/M4 are already edges.
-// M9 / M10 / M16 / M20 need NO new edge: their contracts are leaf `@wardenx/types` types (ADR-0005
+// M9 / M10 / M16 / M20 need NO new edge: their contracts are leaf `@chartwarden/types` types (ADR-0005
 // D1/D2) and the binding is runtime. M36 / M38 need no edge either, for a different reason — their
 // seams are OPAQUE (`SeamContracts[...] = unknown`), so M32 resolves each to its OWN minimal consumer
-// view declared below rather than importing `@wardenx/messaging` / `@wardenx/terminology`. That is the
+// view declared below rather than importing `@chartwarden/messaging` / `@chartwarden/terminology`. That is the
 // M27/M30 precedent, and it is what keeps §13's proposed `dependsOn = [1,2,3,4,36,38]` patch
 // unnecessary: the edges that patch wanted to "surface" are runtime seam resolutions, not imports.
 //
@@ -41,7 +41,7 @@ import type {
   SafetyIncidentReader,
   ScaleSeriesProvider,
   SessionContextResolver,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**
@@ -97,7 +97,7 @@ export function getSafetyIncidentReader(): SafetyIncidentReader | null {
 
 /**
  * §4.3's `MessagingAlertBus`, as M32 needs it. M36 publishes `AlertEmitter` as an OPAQUE seam (its rich
- * interface lives in `@wardenx/messaging`, which M32 may not import), so this is the narrow view M32
+ * interface lives in `@chartwarden/messaging`, which M32 may not import), so this is the narrow view M32
  * casts to — the M27/M30 consumer-view precedent.
  *
  * §4.9's typed alert payloads are M32-T07's; this is the port they will publish through.
@@ -118,7 +118,7 @@ export function getAiAlertBus(): AiAlertBusView | null {
 
 /**
  * §4.3's `TerminologyProvider`, as M32 needs it: "validate ICD-10 / SNOMED tokens in capability inputs
- * where applicable". M38's rich interface lives in `@wardenx/terminology`; this is M32's minimal view.
+ * where applicable". M38's rich interface lives in `@chartwarden/terminology`; this is M32's minimal view.
  */
 export interface AiTerminologyView {
   validateCode(input: {

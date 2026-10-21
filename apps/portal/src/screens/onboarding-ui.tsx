@@ -1,4 +1,4 @@
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 /** Shared identity and accessible layout for pre-session onboarding. No patient information is shown here. */
@@ -6,7 +6,7 @@ export function PortalOnboardingBrand(): JSX.Element {
   return (
     <div className="wx-portal-auth-brand">
       <span className="wx-portal-auth-brand__mark" aria-hidden="true">W</span>
-      <div><strong>WardenX</strong><span>Patient & Family Portal</span></div>
+      <div><strong>ChartWarden</strong><span>Patient & Family Portal</span></div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/39-consent/consumed-seams.ts — M39-T06 (spec §4.4).
 //
 // The seams M39 CONSUMES, resolved through the M1 registry (ADR-0005 D1 — no manifest import edge to
-// the producer package; the INTERFACE comes from the leaf @wardenx/types, the IMPL from getSeam()):
+// the producer package; the INTERFACE comes from the leaf @chartwarden/types, the IMPL from getSeam()):
 //
 //   • PatientReader (M5, §4.8) — REAL. M5 registered it at boot (M5-T08). M39 uses it for
 //     grantor/subject IDENTITY resolution (resolve the patient a consent is about, merge-redirect
@@ -16,9 +16,9 @@
 //     reverse). getSeam("DocumentRenderer") resolves to M22's real publisher, so the signed-PDF render
 //     path (emit m39.consent.signed → render the `consent_record` template) materializes the artifact
 //     (the deny-stub stays the fail-closed default the registry applies if M22 is ever absent). No import
-//     of any @wardenx/documents package here — the type is the leaf one, the impl is resolved at call
+//     of any @chartwarden/documents package here — the type is the leaf one, the impl is resolved at call
 //     time — so arch:boundaries stays edge-free (no 22→39).
-import type { DocumentRenderer, OrgScope, PatientIdentity, PatientReader } from "@wardenx/types";
+import type { DocumentRenderer, OrgScope, PatientIdentity, PatientReader } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** Typed resolver for M5's real `PatientReader` (registered at boot; validateSeams guarantees it). */

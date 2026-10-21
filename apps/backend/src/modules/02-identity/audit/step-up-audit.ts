@@ -2,13 +2,13 @@
 // events (M2 spec §4.4, §8.1; §statechart "Step-up challenge …" rows).
 //
 // Every step-up state change is auditable at `compliance` retention (HIPAA floor; ADR-0004).
-// These helpers go through the mandated @wardenx/audit `audit()` surface — never a direct
+// These helpers go through the mandated @chartwarden/audit `audit()` surface — never a direct
 // `audit_event` insert — so each snapshot is run through the PHI field denylist and filed
 // under the right retention class. The `tx` (AuditExecutor) is injected: production passes the
 // Drizzle transaction so the audit row commits atomically with the session write (§7.3); the
 // slice passes an in-memory executor (see step-up-ports.ts).
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
-import type { StepUpFactor } from "@wardenx/types";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
+import type { StepUpFactor } from "@chartwarden/types";
 
 /** The three step-up audit event types (dotted `m2.session.step_up.*`). */
 export const STEP_UP_AUDIT_EVENTS = {

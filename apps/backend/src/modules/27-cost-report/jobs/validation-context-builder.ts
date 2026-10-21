@@ -1,5 +1,5 @@
 // apps/backend/src/modules/27-cost-report/jobs/validation-context-builder.ts — the LIVE M27
-// ValidationContextBuilder (§11.B). Reads M27's materialized state through the @wardenx/cost-report repos
+// ValidationContextBuilder (§11.B). Reads M27's materialized state through the @chartwarden/cost-report repos
 // on the worker's org-scoped `tx` (the worker wraps the run in withOrgContext), resolves the live
 // cross-module facts — M26 cap (via resolveCapContext) + M40 MAC jurisdiction (via the injected provider-
 // entity resolver) — and hands the raw facts to the PURE `assembleValidationContext`. The M23 seams stay
@@ -18,9 +18,9 @@ import {
   type RawValidationInputs,
   StatisticDataRepository,
   assembleValidationContext,
-} from "@wardenx/cost-report";
-import type { DbClient } from "@wardenx/db";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/cost-report";
+import type { DbClient } from "@chartwarden/db";
+import { NotFoundError } from "@chartwarden/types";
 import type { CapSeamResolver } from "../routes/cap-context";
 import { resolveCapContext } from "../routes/cap-context";
 import type { ValidationContextBuilder } from "./m27-jobs";

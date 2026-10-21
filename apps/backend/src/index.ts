@@ -4,8 +4,8 @@ import {
   auditPlatformEvent,
   createDbAuditChainReader,
   createDbAuditQuery,
-} from "@wardenx/audit";
-// @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
+} from "@chartwarden/audit";
+// @chartwarden/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
@@ -30,9 +30,9 @@ import {
   resolveActorPermissions,
   resolveMfaEnforcement,
   resolveWebTrustedOrigins,
-} from "@wardenx/auth";
-import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
+} from "@chartwarden/auth";
+import type { RbacEngineHandle, SessionContextStore } from "@chartwarden/auth";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 // F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
 // M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
 // the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
@@ -40,9 +40,9 @@ import {
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   unverifiedEndpoints,
-} from "@wardenx/dosespot";
-import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
-import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
+} from "@chartwarden/dosespot";
+import { createUnboundIqiesAdapter } from "@chartwarden/iqies-client";
+import type { AlertEmitter, MessagingProvider } from "@chartwarden/messaging";
 import {
   MESSAGING_QUEUES,
   REALTIME_HINT_EVENT,
@@ -51,26 +51,26 @@ import {
   createAlertPayloadRegistry,
   setOutOfBandFallbackObserver,
   userRoom,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   type PseudonymKeyProvider,
   createStripePaymentMethodVerifier,
   loadPseudonymKekRing,
-} from "@wardenx/subscription-billing";
-import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import type { PlatformBypassAuditor } from "@chartwarden/tenancy";
 import {
   getRequestContext,
   registerPlatformJob,
   runWithRequestContext,
   withOrgContext,
   withPlatformContext,
-} from "@wardenx/tenancy";
+} from "@chartwarden/tenancy";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
   DegradedError,
   type Npi,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type {
   AdmissionStatusReader,
   ChartPromotionSourceReader,
@@ -78,8 +78,8 @@ import type {
   PatientAddressReader,
   PatientId,
   ScaleType,
-} from "@wardenx/types";
-import { createX12835Client } from "@wardenx/x12-835-client";
+} from "@chartwarden/types";
+import { createX12835Client } from "@chartwarden/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
@@ -224,7 +224,7 @@ import {
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
 
-/** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
+/** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 /** The platform-job id M34's tenant-shred identity-subject read runs under (same M36 D9 rule, own audit trail). */
 const M34_SHRED_SOLE_TENANT_JOB_ID = "m34-shred-sole-tenant-resolver";
@@ -260,25 +260,25 @@ const READINESS_PROBE_KEY = ".probe";
 /** AC-05 — SECURITY_HARDENING §22.1: 5 signup intents per IP per hour on the public surface. */
 const PUBLIC_SIGNUP_HOURLY_LIMIT = 5;
 // M24 (WX-PR-011) — the per-state adapter registry + the Oregon launch-gateway (real+fake transport). Lives
-// in @wardenx/medicaid-adapters (M24's `dependsOn` PURE-domain leaf), not the backend module barrel — mirrors
+// in @chartwarden/medicaid-adapters (M24's `dependsOn` PURE-domain leaf), not the backend module barrel — mirrors
 // how the M23 X12/MAC gateway lives inside the backend module instead (the one placement difference is that
-// dependency-cruiser §25.14 requires Oregon's wire format/URL to stay INSIDE @wardenx/medicaid-adapters).
+// dependency-cruiser §25.14 requires Oregon's wire format/URL to stay INSIDE @chartwarden/medicaid-adapters).
 import {
   MedicaidAdapterRegistry,
   type PlaceOfServiceFacilityKind,
   type PlaceOfServiceResidenceKind,
   createM24OregonGateway,
   m24LaunchGatewayConfigFromEnv,
-} from "@wardenx/medicaid-adapters";
+} from "@chartwarden/medicaid-adapters";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
-import type { QualityHopeConsumer } from "@wardenx/quality";
-import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
+import type { QualityHopeConsumer } from "@chartwarden/quality";
+import type { DsarDocumentUploadRequest } from "@chartwarden/saas-tenant-platform";
 import {
   PUBLIC_SOURCE_ADAPTERS,
   embedderUnavailable,
   licensedSourceDenyStub,
-} from "@wardenx/terminology-loader";
+} from "@chartwarden/terminology-loader";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -1707,7 +1707,7 @@ export function wireModuleSeams(
     caseloadShiftCacheRedis?: Redis | null;
     /** WP 3.7 - the ONE message-body cipher the messaging provider and the chart-promotion snapshot reader share. */
     messageBodyCipher?: ReturnType<typeof createMessageBodyCipher>;
-    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootWardenX` can stay quiet about the deny-stub. */
+    /** Told how many orgs the real M19 EscalationRouter was bound for (0 when none), so the boot probe in `bootChartWarden` can stay quiet about the deny-stub. */
     onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
@@ -2357,11 +2357,11 @@ export function wireModuleSeams(
   // M40 — the platform-only ABAC conjunct (`mdm_admin_platform_ops`) on `/api/v1/admin/mdm/*` (GAP-172):
   // role-only, no DB handle; M40's OWN name because the registry is single-owner per name.
   registerMdmAbacPredicates();
-  // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
+  // M33 — register the platform job id on the @chartwarden/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
   wireM33Tenancy();
-  // M30 — register M30's platform job id on the @wardenx/tenancy allowlist so the §4.8 cron fan-outs
+  // M30 — register M30's platform job id on the @chartwarden/tenancy allowlist so the §4.8 cron fan-outs
   // (nightly recompute / monthly CAHPS sample / daily risk-register refresh / SRA reminders) may enter
   // withPlatformContext to enumerate active orgs (the allowlist starts empty → fail-closed). Prerequisite
   // for the cron fan-out; inert until the M2 active-org enumerator binds (issue #107, item 5). The
@@ -2429,7 +2429,7 @@ export function wireModuleSeams(
           })
         : SLICE_M34_ABAC_RESOLVER,
   });
-  // M34 (Phase 2D) — register M34's platform job id on the @wardenx/tenancy allowlist (the allowlist starts
+  // M34 (Phase 2D) — register M34's platform job id on the @chartwarden/tenancy allowlist (the allowlist starts
   // empty; without this the platform-ops seam reads + the platform-scoped workers are REFUSED entry to
   // withPlatformContext — fail-closed). Must run before any registerLiveM34Seams read or worker run.
   wireM34Tenancy();
@@ -2574,7 +2574,7 @@ export function wireModuleSeams(
       : denyStubM29AbacResolver,
   });
   // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
-  // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
+  // export-shard publishes). These live in `@chartwarden/saas-tenant-platform`'s own registry (M1 imports the
   // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry).
   // `validateModule34Seams()` HARD-FAILS boot if the mandatory `TenantKeyProvider` is absent (D5) — so the
   // platform never serves a request whose PHI ciphertext it cannot key. Phase 2D: when a DB client is
@@ -2644,7 +2644,7 @@ export function wireModuleSeams(
 }
 
 /**
- * M34 `platform.bypass_invoked` auditor (audit #9). M1's @wardenx/tenancy requires a `PlatformBypassAuditor`
+ * M34 `platform.bypass_invoked` auditor (audit #9). M1's @chartwarden/tenancy requires a `PlatformBypassAuditor`
  * for EVERY `withPlatformContext` entry, so "every cross-tenant read is audited" is a type-level guarantee.
  * This binds M4's PLATFORM-SCOPED audit helper over the platform tx the bypass runs on: it writes one
  * `platform.bypass_invoked` row (organizationId null — a cross-tenant action has no single org; actorKind
@@ -2965,7 +2965,7 @@ function buildFirstAdminAcceptanceService(deps: {
   auditBypass: PlatformBypassAuditor<DbClient>;
 }): SignupIntentRouteService {
   const disabled = (): never => {
-    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+    throw new ChartWardenError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   };
   return {
     async createIntent() {
@@ -2992,10 +2992,10 @@ function buildFirstAdminAcceptanceService(deps: {
             .limit(1)
             .for("update");
           if (!invitation) {
-            throw new WardenXError("INVITATION_INVALID", "invitation is invalid", 404);
+            throw new ChartWardenError("INVITATION_INVALID", "invitation is invalid", 404);
           }
           if (invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
               409,
@@ -3012,7 +3012,7 @@ function buildFirstAdminAcceptanceService(deps: {
             // so a tenant suspended between this check and the membership insert cannot slip an admin in.
             .for("share");
           if (!tenant || !canInviteFirstAdmin(tenant.status)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
               409,
@@ -3124,7 +3124,7 @@ function buildFirstAdminAcceptanceService(deps: {
             )
             .returning({ id: schema.tenantInvitation.id });
           if (consumed.length !== 1) {
-            throw new WardenXError("INVITATION_INVALID", "invitation was already used", 409);
+            throw new ChartWardenError("INVITATION_INVALID", "invitation was already used", 409);
           }
           return invitation.inviteeEmail.trim().toLowerCase();
         },
@@ -3267,7 +3267,7 @@ function buildM23AssemblyPorts(db: DbClient): {
   return { providerCcn, assemblyPorts };
 }
 
-export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<void> {
+export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promise<void> {
   // GAP-086 — `listener` is the M29 MLLP listener process (§4.11: a SIBLING process to the API for crash isolation). It
   // boots the same composition root (seams, tenancy, key ring) but, like `api`, constructs NO BullMQ workers / crons / outbox
   // dispatcher — it only binds the feed listeners and serves /health on `LISTENER_HEALTH_PORT`.
@@ -5304,7 +5304,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
           // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
-          // drives the pure @wardenx/inpatient §2 machines, and emits its §4.4 m37.* event through the
+          // drives the pure @chartwarden/inpatient §2 machines, and emits its §4.4 m37.* event through the
           // catalog-validating tx publisher (callerModule `m37`) in the same unit of work (D17 outbox-only).
           mountM37Routes(app, {
             service: buildDrizzleIpuRouteService(dbHandle.db, {
@@ -5332,7 +5332,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every
-          // statement to app.org_id), runs the pure @wardenx/billing lifecycle reducer, and emits its §4.10
+          // statement to app.org_id), runs the pure @chartwarden/billing lifecycle reducer, and emits its §4.10
           // m23.* event through the catalog-validating tx publisher (callerModule `m23`) in the same unit of
           // work (D2 outbox-only). The assembly service binds ten of its eleven cross-module reader seams for
           // real (M5 payer, the five M6 range seams, M8 billable/signed encounters, M18 EVV, M38 terminology,
@@ -5876,7 +5876,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   contactsOptedOut += 1;
                 }
                 if (contactsOptedOut === 0 && alreadyOptedOut === 0) {
-                  throw new WardenXError(
+                  throw new ChartWardenError(
                     "BEREAVEMENT_OPT_OUT_NOT_AVAILABLE",
                     "there is no bereavement contact on this account that can opt out right now",
                     409,
@@ -6398,7 +6398,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               if (relativePath !== "/two-factor/disable" || !actor) return;
               const verdict = await mfaGate.forUserWithoutTotp(actor.userId);
               if (!verdict.satisfied)
-                throw new WardenXError(
+                throw new ChartWardenError(
                   "MFA_REQUIRED_FOR_ROLE",
                   "your role requires a second factor; it cannot be disabled",
                   403,
@@ -9260,7 +9260,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
 
     // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly
     // `messaging.retention_scan` (plan only, hold-aware). Active-org fan-out needs the platform pool; each org's
-    // run opens its own tenant transaction and records its summary through @wardenx/audit.
+    // run opens its own tenant transaction and records its summary through @chartwarden/audit.
     if (platformDbHandle) {
       const m36IntegrityOrgs = buildActiveOrgEnumerator({
         platformDb: platformDbHandle.db,
@@ -9783,7 +9783,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     // absent row as uncovered (correctly, fail-closed). Nothing ever wrote a row, and
     // `planOpenAdmission` refuses every non-`arranged` admission on that flag — so no GIP and no
     // inpatient-respite admission could be opened on any deployment. The pure grid builder
-    // (`@wardenx/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
+    // (`@chartwarden/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
     // is the worker its own header named and that was never built.
     const m37ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
@@ -11901,8 +11901,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
 }
 
 if ((import.meta as { main?: boolean }).main) {
-  // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootWardenX`.
-  await bootWardenX((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
+  // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootChartWarden`.
+  await bootChartWarden((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
 }
 
 /**

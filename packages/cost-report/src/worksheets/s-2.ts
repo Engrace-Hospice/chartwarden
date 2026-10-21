@@ -1,10 +1,10 @@
-// @wardenx/cost-report — Worksheet S-2 (Ownership & Organizational Structure) TypeBox schema
+// @chartwarden/cost-report — Worksheet S-2 (Ownership & Organizational Structure) TypeBox schema
 // (CMS-1984-14, §4.2 / §1.1). S-2 discloses ownership type, the chain home office (when the provider is
 // part of a chain), and the related-organization listing that drives the Worksheet A-8 related-party
 // adjustments. Owner / related-org identities here are BUSINESS entities, not patients — no PHI (D18).
 // Money fields (e.g. home-office cost allocation) are INTEGER CENTS.
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** A single owner / officer / related-party disclosure row. */

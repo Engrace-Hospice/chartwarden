@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — source adapters: how a release file reaches the platform bucket without an
+// @chartwarden/terminology-loader — source adapters: how a release file reaches the platform bucket without an
 // operator upload. This package is the ONLY place a terminology source URL is fetched (vendor-adapter mandate).
 import { LoaderDataError } from "../errors";
 import type { LoadableSystemId } from "../types";

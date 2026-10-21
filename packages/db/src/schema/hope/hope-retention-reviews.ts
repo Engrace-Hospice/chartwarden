@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_retention_review` (M10 `hope-retention-scan`, GAP-181). One row per (organization,
+// @chartwarden/db — `hope_retention_review` (M10 `hope-retention-scan`, GAP-181). One row per (organization,
 // patient): the retention horizon the monthly scan computed for the patient's HOPE record and whether the
 // record is FLAGGED eligible for M4-certified destruction, BLOCKED (legal hold / open iQIES error / pending
 // correction) or cleared again. The scan only flags; destruction stays on the M4 destruction-certificate

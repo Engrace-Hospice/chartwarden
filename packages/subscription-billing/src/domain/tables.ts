@@ -1,11 +1,11 @@
-// @wardenx/subscription-billing — §3.5 owned-table catalog + §3.6 M4 audit-posture hints (M35-T01).
+// @chartwarden/subscription-billing — §3.5 owned-table catalog + §3.6 M4 audit-posture hints (M35-T01).
 //
 // Pure metadata the later tasks consume: T02 seeds the RLS split from {@link M35_TENANT_SCOPED_TABLES} /
 // {@link M35_PLATFORM_SHARED_TABLES}; the T02 `register-eraser.ts` boot step feeds {@link M35_AUDIT_POSTURES}
 // to M4's `AuditDenylistRegistry` as ADVISORY input (M35-F05 / ADR-0144: M4 is the decision-maker; M35 does
 // NOT own or override the trigger-suppression denylist — it only registers a requested posture per table).
 
-import type { M35TableName } from "@wardenx/types";
+import type { M35TableName } from "@chartwarden/types";
 
 /** §3.5 tenant-scoped tables — standard M1 RLS org-isolation + platform-admin bypass. */
 export const M35_TENANT_SCOPED_TABLES = [

@@ -1,4 +1,4 @@
-// @wardenx/mdm — the M29 NPPES-sync consumer logic (M40-T09, spec §4.7, §7.11–7.12).
+// @chartwarden/mdm — the M29 NPPES-sync consumer logic (M40-T09, spec §4.7, §7.11–7.12).
 //
 // M29 (the HL7/NPPES interop module, Wave H) owns the public NPPES sync and publishes
 // `m29.nppes.provider_synced` / `m29.nppes.provider_deactivated`. M40 CONSUMES them to keep its

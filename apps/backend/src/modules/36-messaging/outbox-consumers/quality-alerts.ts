@@ -20,12 +20,12 @@
 // correlation_id), so a relay redelivery never pages twice.
 // NO PHI: ids, enums, counts and instants only. A malformed event THROWS (relay retry -> DLQ — a visible
 // failure, never a silently dropped safety page).
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 import {
   M30_ABUSE_INCIDENT_KIND,
   M30_SENTINEL_INCIDENT_SEVERITY,
   qualityAlertCorrelationId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -41,7 +41,7 @@ export const M36_QUALITY_ALERT_EVENT_TYPES = [
   "m30.cahps.sample_ready",
 ] as const;
 
-// The sentinel / abuse predicates live in @wardenx/types (m30-alert-cadence.ts) because the M30 repeat sweep replays
+// The sentinel / abuse predicates live in @chartwarden/types (m30-alert-cadence.ts) because the M30 repeat sweep replays
 // them against the owning tables: the consumer and the sweep must agree on what a sentinel is.
 
 export interface QualityAlertPlan {

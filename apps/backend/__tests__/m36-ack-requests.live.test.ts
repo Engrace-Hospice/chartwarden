@@ -29,9 +29,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { ACK_DEADLINE_POLICY } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { ACK_DEADLINE_POLICY } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

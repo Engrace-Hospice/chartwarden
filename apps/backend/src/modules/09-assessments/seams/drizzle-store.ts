@@ -29,15 +29,15 @@
 // architecture §11), so new captures project cleanly on that column. `location_id` remains NULL on
 // every row: NO published seam carries an admission/patient location today (AdmissionSummary exposes
 // only providerEntityId; M5's PatientIdentity carries neither) — populating it needs AdmissionSummary
-// to grow `locationId` (an M6 + @wardenx/types change). Legacy pre-fix rows also stay PE-null.
+// to grow `locationId` (an M6 + @chartwarden/types change). Legacy pre-fix rows also stay PE-null.
 // The projection KEEPS THE THROW for both columns: a latest read that resolves a null-sited row THROWS
 // {@link AssessmentSeamDataGapError} naming exactly the missing fact(s) rather than fabricating a
 // siting, lying through the non-null DTO type, or silently substituting an older, fully-sited capture
 // as "latest". Tolerance was considered and rejected — the DTO's `LocationId` is non-null, so any
 // tolerant projection would be a wire-type lie; the honest states are "sited" or "loud, named gap".
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { LatestAssessment, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import type { LatestAssessment, ScaleSeriesPoint, ScaleType } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { AssessmentReaderStore } from "./store";
 

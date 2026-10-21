@@ -1,4 +1,4 @@
-// @wardenx/evv-aggregators — the per-state credential-store contract (M18-T06).
+// @chartwarden/evv-aggregators — the per-state credential-store contract (M18-T06).
 //
 // The M18 backend resolves `(provider, state)` credentials through this port and hands the opaque result to
 // `submit`/`poll`. The `secrets` map keys are vendor-specific and interpreted ONLY by the adapter (the §25.14

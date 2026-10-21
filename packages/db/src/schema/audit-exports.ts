@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_export` (M4 Audit §3.5, §3.6). A requested compliance export of audit
+// @chartwarden/db — `audit_export` (M4 Audit §3.5, §3.6). A requested compliance export of audit
 // rows: scope filter + format, building toward a watermarked artifact in object storage with a
 // TTL. Org-scoped on organization_id (standard app.org_id RLS lands in M4-T05); managed actions
 // require Compliance permissions. Not a PHI table (scope/refs only, no PE/location columns).

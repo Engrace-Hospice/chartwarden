@@ -1,4 +1,4 @@
-import type { DocumentDigest } from "@wardenx/types";
+import type { DocumentDigest } from "@chartwarden/types";
 // apps/backend/__tests__/document-readers.test.ts — M22-T05 the five §4.3 PUBLISHED reader seams.
 //
 // Covers each reader over its in-memory slice + the boot wiring: RenderedDocumentProvider (back-ref resolve),

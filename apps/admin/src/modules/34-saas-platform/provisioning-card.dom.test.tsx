@@ -3,8 +3,8 @@
 // failed `tenant.provision` job left the tenant in `provisioning` indefinitely. The card shows the job's state,
 // polls while it is in flight, and offers a retry when it has failed.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ProvisioningCard } from "./provisioning-card";
 

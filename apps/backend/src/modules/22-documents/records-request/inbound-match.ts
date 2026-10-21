@@ -16,8 +16,8 @@
 //
 // Ambiguity is never resolved by guessing: two different open requests answering (an OCR misread with two
 // valid readings, or two cover sheets in one fax) leaves the batch as it is and says so.
-import { type DbClient, schema } from "@wardenx/db";
-import { findRecordsRequestCodes } from "@wardenx/intake-extraction";
+import { type DbClient, schema } from "@chartwarden/db";
+import { findRecordsRequestCodes } from "@chartwarden/intake-extraction";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   RECORDS_REQUEST_AWAITING,

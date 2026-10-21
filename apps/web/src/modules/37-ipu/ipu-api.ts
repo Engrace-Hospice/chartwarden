@@ -47,7 +47,7 @@
 //     (#172). Nothing here asserts it, and the refusal says what to do.
 //   • Step-up (§D14) on restraint apply, GIP attest and the IRC cap override is resolved from the M2
 //     session. Nothing here asserts it; a 403 is the answer and it says what to do about it.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 

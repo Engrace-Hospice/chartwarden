@@ -1,4 +1,4 @@
-// @wardenx/db — `mdm_baa_required` (M40 MDM §3.5, D8). The per-tenant "is a BAA required for
+// @chartwarden/db — `mdm_baa_required` (M40 MDM §3.5, D8). The per-tenant "is a BAA required for
 // this entity kind?" config — ORG-SCOPED, keyed by (org, entity_kind). Seeded with HIPAA
 // defaults; Compliance tunes it per tenant. The §7.7 disclosure gate consults this together
 // with `mdm_baa_record`: a missing/expired BAA only blocks disclosure where this row says one

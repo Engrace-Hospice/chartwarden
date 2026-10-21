@@ -11,7 +11,7 @@ import {
   StatusPill,
   isStepUpRequired,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

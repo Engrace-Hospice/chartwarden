@@ -1,4 +1,4 @@
-// @wardenx/db — `vendor_routing_rule` (M21 §3.1.5). D4's deterministic routing ladder: which vendor (or
+// @chartwarden/db — `vendor_routing_rule` (M21 §3.1.5). D4's deterministic routing ladder: which vendor (or
 // internal hub, or partner pharmacy) fulfils a given SKU at a given Location for a given tenant. Resolution
 // is a single ORDER BY over `scope_kind` specificity then `precedence_priority` — there is NO fallback
 // chain. The §3.2 draft's `fallback_vendor_ids_jsonb` + `fulfillment_channel` model is explicitly REMOVED by

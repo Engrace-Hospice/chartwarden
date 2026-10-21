@@ -1,4 +1,4 @@
-// @wardenx/db — `time_off` (M17 §3.3 / D7). The negative-overlay PTO model: a row withdraws a window from a
+// @chartwarden/db — `time_off` (M17 §3.3 / D7). The negative-overlay PTO model: a row withdraws a window from a
 // clinician's availability. The requested → approved | denied | cancelled | consumed lifecycle is a discrete
 // workflow; approval emits `m17.reassignment_needed` for affected published visits. Clinician-scoped
 // (membership_id) — NOT patient-bearing → org-scoped; the M17-F01 tenancy columns are carried (nullable —

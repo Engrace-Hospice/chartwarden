@@ -10,7 +10,7 @@
 // numerator/denominator/rate. It pins the predicate: ONLY `evv_present` + qualifying-discipline + in-window
 // (service date at-or-before the death date) visits count — EVV-missing, non-qualifying-discipline, and
 // post-death visits are excluded.
-import { buildMeasureRegistry } from "@wardenx/quality";
+import { buildMeasureRegistry } from "@chartwarden/quality";
 import type {
   DeathDischargeReader,
   DeathDischargeRow,
@@ -18,7 +18,7 @@ import type {
   EvvBracketState,
   SignedEncounterDigest,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { resolveHvldlMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
 

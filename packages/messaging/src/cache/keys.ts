@@ -1,4 +1,4 @@
-// @wardenx/messaging — cache key grammar + TTLs + invalidation (M36-T08, spec §4.8).
+// @chartwarden/messaging — cache key grammar + TTLs + invalidation (M36-T08, spec §4.8).
 //
 // Pure, infra-free key construction for the three §4.8 messaging caches. The keys + TTLs live here
 // so the realtime/read paths (room-set computation, recipient resolution, unread badges) and the

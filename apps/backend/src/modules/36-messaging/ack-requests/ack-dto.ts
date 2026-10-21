@@ -1,11 +1,11 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-dto.ts - WP 4.2: row -> wire shape (snake_case, ISO instants).
-import { viewerActionsFor } from "@wardenx/messaging";
+import { viewerActionsFor } from "@chartwarden/messaging";
 import {
   type AckEscalationNote,
   type AckEventDto,
   type AckRequestDto,
   toAckAddressedRole,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { AckEventRow, AckRow } from "./ack-types";
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);

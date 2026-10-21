@@ -8,14 +8,14 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — prescriber roster admin (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (prescriber roster admin).
 // The per-tenant DoseSpot prescriber list for org_admin / compliance_officer: membership, enrollment, the
 // DEA schedules authorized, and the IAL2 identity-proofing status (§1311.115). The enroll / revoke / IAL2
 // re-verification write actions fill in as their write surfaces harden (each step-up enforced server-side).
 // `dosespot.epcs` is OFF in Phase 1, so EPCS-enabled prescribers are architecture-only here. Reads
-// GET /api/v1/admin/dosespot-prescribers via the typed client. Leaves only (@wardenx/ui).
+// GET /api/v1/admin/dosespot-prescribers via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { IAL2_TONE, stateLabel } from "./medication-status";

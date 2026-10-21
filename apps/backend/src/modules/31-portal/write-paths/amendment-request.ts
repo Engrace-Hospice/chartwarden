@@ -12,7 +12,7 @@
 // PURE: injected facts + the caregiver's form input in, a validated M5 submission payload or a
 // `PortalWriteError` out. No I/O — the discharge-read-only fact is resolved by the caller (T07) via M6, and
 // the actual M5 submit is the route's call to M5's amendment surface.
-import type { PatientId } from "@wardenx/types";
+import type { PatientId } from "@chartwarden/types";
 import { requirePortalWrite } from "./errors";
 
 /** §7.9 — what the amendment targets. A demographics field lives on M5; a narrative correction targets an M8

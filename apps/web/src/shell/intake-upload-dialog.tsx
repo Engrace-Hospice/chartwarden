@@ -3,8 +3,8 @@
 // Records tab (filed against that referral) and the Intake review queue (an unfiled fax: the cover sheet's
 // records-request code files it, or a reviewer does with Move document). Lives in the shell because M6
 // (Records tab) may not import M22's web module.
-import { Button, Modal, SelectField, StatusPill, t } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, StatusPill, t } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { verifiedUpload } from "./document-workflows";

@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, the PLATFORM CONSTANTS ADMIN (R2, §5.1.7). Platform-admin-only: the
 // CMS-published per-cap-year aggregate cap amounts (D3). Publish/amend are server-authoritative platform-admin
 // mutations (amend only before first tenant use); this read surface gates nav visibility only (ADR-0030). It

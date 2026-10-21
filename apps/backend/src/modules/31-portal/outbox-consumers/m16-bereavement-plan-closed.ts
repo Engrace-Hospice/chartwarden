@@ -18,7 +18,7 @@
 // outreachStats}` — no `patientId`. Resolved via M16's own registered `BereavementPlanProvider.planById`
 // seam (the SAME `getSeam("...")` opaque-pull idiom `resolveBereavedInWindow` in this file's sibling
 // already uses for `BereavedPortalScopeProvider` — M31 `dependsOn` includes 16, so this stays off a
-// `@wardenx/bereavement` import edge per that file's own header note). A plan the seam cannot resolve (a
+// `@chartwarden/bereavement` import edge per that file's own header note). A plan the seam cannot resolve (a
 // bad id, or a genuine seam outage) is a REFUSAL to act, never a guess at which patient to touch.
 //
 // SCOPE: this revokes every active `bereaved_family` grant for the decedent patient ACROSS EVERY bereaved
@@ -32,8 +32,8 @@
 //
 // IDEMPOTENT BY CONSTRUCTION: each UPDATE is guarded by `revoked_at IS NULL` in its own WHERE clause (the
 // telehealth consumers' precedent), so a redelivery after the first successful run matches zero rows.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { type M31EventEmitter, emitGrantsRevoked } from "../events";

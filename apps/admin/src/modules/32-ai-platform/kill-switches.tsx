@@ -10,8 +10,8 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.3 kill-switch dashboard
 // (`/admin/ai-platform/kill-switches`, `ai.kill_switch.read` + `ai.kill_switch.activate`).
 //

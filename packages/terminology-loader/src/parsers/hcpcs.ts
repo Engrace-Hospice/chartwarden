@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — HCPCS Level II parser (CMS quarterly release; tier 1 public).
+// @chartwarden/terminology-loader — HCPCS Level II parser (CMS quarterly release; tier 1 public).
 //
 // Two accepted inputs:
 //   1. the CMS fixed-width "alpha-numeric" record file (`HCPC<YYYY>_*_ANWEB.txt`, usually inside a zip), read

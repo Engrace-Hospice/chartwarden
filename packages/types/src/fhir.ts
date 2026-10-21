@@ -1,4 +1,4 @@
-// @wardenx/types — Module 28 (FHIR Gateway) leaf contracts (M28-T01).
+// @chartwarden/types — Module 28 (FHIR Gateway) leaf contracts (M28-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package, so every downstream consumer
 // (M1's boot validators, M5's inbound-proposal reviewer, M11/M40's cache-invalidation producers, the M33
@@ -24,7 +24,7 @@
 // and the Drizzle table shapes + migration (T02). Those land as their tasks land; T01 is the vocabulary
 // they are all typed against.
 //
-// NAMING: every exported symbol carries a `Fhir` / `FHIR_` / `M28_` prefix. `@wardenx/types` is
+// NAMING: every exported symbol carries a `Fhir` / `FHIR_` / `M28_` prefix. `@chartwarden/types` is
 // re-exported wholesale from `./index.ts`, so a bare `ClientStatus` / `Tier` / `OwnerModule` would
 // collide the day another module wants the same word (the M14 `IdgDecisionPayload` and M19
 // `TriageDisposition` precedents). `Fhir` — not `FHIR` — matches the repo's PascalCase convention for
@@ -41,7 +41,7 @@
 import type { OrgId, PatientId } from "./admission";
 import type { IsoInstant, MembershipId } from "./care-plan";
 
-// ── M28-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M28-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 
 export type FhirClientId = string;
 export type FhirClientCredentialId = string;

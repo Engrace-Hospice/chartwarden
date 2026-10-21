@@ -1,4 +1,4 @@
-// @wardenx/assessments — LPN cosignature workflow (§7.4, §2.3, §6) — M9-T03.
+// @chartwarden/assessments — LPN cosignature workflow (§7.4, §2.3, §6) — M9-T03.
 import { describe, expect, it } from "vitest";
 import {
   type CosignAttest,

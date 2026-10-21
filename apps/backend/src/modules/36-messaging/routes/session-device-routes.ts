@@ -10,12 +10,12 @@
 // Self-service needs no permission key: it can only ever reach the caller's own sessions. A session that is not the caller's (admin: not in the
 // caller's organisation), an unknown one and one already revoked are the same 404. Org, user and the current session id are the server-side
 // request context, never the client's. Nothing returned is secret (no token, IP address, raw user agent or endpoint value).
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import {
   SESSIONS_MANAGE_PERMISSION,
   SESSIONS_REVOKE_STEP_UP_KEY,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SessionDeviceService } from "../session-devices/session-device-service";
 import type { SessionDeviceActor } from "../session-devices/session-device-types";

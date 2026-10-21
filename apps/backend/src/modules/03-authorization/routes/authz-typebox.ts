@@ -6,7 +6,7 @@
 // `m24-typebox` / M30 `quality-typebox` precedent. Named `authz-typebox` (NOT `*schema*`) so the
 // table-ownership import heuristic never mistakes a TypeBox import for a Drizzle one.
 //
-// The shapes MIRROR the ports in `../authz-ports.ts` and the FROZEN `@wardenx/db` pgEnum value lists
+// The shapes MIRROR the ports in `../authz-ports.ts` and the FROZEN `@chartwarden/db` pgEnum value lists
 // (packages/db/src/enums.ts — `role_category`, `scope_level`, `engagement_type`); the schema wins on
 // conflict. Two column facts drive the strictness here, because M3 previously took these as bare
 // strings and only found out at the INSERT:
@@ -22,8 +22,8 @@
 // route's own `deps.roles.get()` → 404 is the real guard. Every other id param is uuid-shaped.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { PermissionMirrorRow } from "@wardenx/auth";
-import { ValidationError } from "@wardenx/types";
+import type { PermissionMirrorRow } from "@chartwarden/auth";
+import { ValidationError } from "@chartwarden/types";
 import type {
   BreakGlassStatus,
   BreakGlassView,
@@ -249,7 +249,7 @@ export type EnrollAuditorInput = Static<typeof EnrollAuditorBody>;
 
 // ── §4.2 RESPONSE DTOs (F0 enrichment) ───────────────────────────────────────────────────────────
 // The M3 read + mutation routes return typed views from `../authz-ports` (RoleView, MembershipRoleView,
-// BreakGlassView, EngagementView, EngagementSummary) plus the @wardenx/auth permission mirror, but the
+// BreakGlassView, EngagementView, EngagementSummary) plus the @chartwarden/auth permission mirror, but the
 // published API carried NO response contract for any of them, so `client:gen` typed those bodies as
 // `never`. These DTOs mirror the views 1:1 and are pinned to them by the compile-time `Conforms` aliases
 // below — a view field renamed/added breaks `bun run build` rather than silently drifting from the client.
@@ -297,7 +297,7 @@ export const RoleGrantRevokedResponseSchema = Type.Object({ revoked: Type.Litera
 /** GET /api/v1/me/permissions — the caller's effective permission keys (no service view; a key set). */
 export const MePermissionsResponseSchema = Type.Object({ permissions: Type.Array(Type.String()) });
 
-/** One permission catalog row — mirrors `@wardenx/auth` `PermissionMirrorRow`. */
+/** One permission catalog row — mirrors `@chartwarden/auth` `PermissionMirrorRow`. */
 export const PermissionMirrorResponseSchema = Type.Object({
   key: Type.String(),
   resource: Type.String(),

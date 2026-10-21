@@ -46,5 +46,5 @@ Statut : terminé — base de travail des phases 1 à 3
 
 1. Les maquettes sont une direction visuelle, non une source de données ou de comportements métier.
 2. Responsive et dark mode sont des critères de sortie pour chaque composant, pas une passe finale.
-3. La phase 1 étend `@wardenx/ui`; elle ne migre pas encore les trois écrans, afin que leur
+3. La phase 1 étend `@chartwarden/ui`; elle ne migre pas encore les trois écrans, afin que leur
    migration de phase 3 consomme un socle stable.

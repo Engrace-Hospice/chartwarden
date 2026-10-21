@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the configurable rule library: `cost_report_validation_rule`
+// @chartwarden/cost-report · repositories — the configurable rule library: `cost_report_validation_rule`
 // (platform defaults `organization_id IS NULL` layered with per-tenant rules; `regulatory_required` rules
 // cannot be tenant-disabled; MAC-jurisdiction-scoped rules ship additively; `predicate_spec` is consumed
 // by the rule engine — D16/D21) (M27 §3.3). This is the ONE M27 table with a NULLABLE organization_id
 // (the M3 permission-catalog precedent); the rule resolver UNIONs the platform-default rows with the
 // tenant's rows under `withOrgContext`. No PHI (D18).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

@@ -6,8 +6,8 @@
 // out" failure mode is eliminated structurally. This pure engine (M22-T03) returns side effects
 // DECLARATIVELY as data; the service layer (a later M22 task) executes them inside the aggregate's
 // optimistic-locked transaction. Keeping them as data makes the machines deterministic and unit-testable
-// with no DB and no MinIO client (D1 storage stays a port — see @wardenx/types DocumentStorageProvider).
-import type { DocumentAccessKind, IsoInstant, M22EventName } from "@wardenx/types";
+// with no DB and no MinIO client (D1 storage stays a port — see @chartwarden/types DocumentStorageProvider).
+import type { DocumentAccessKind, IsoInstant, M22EventName } from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.4). The service layer is the only place these

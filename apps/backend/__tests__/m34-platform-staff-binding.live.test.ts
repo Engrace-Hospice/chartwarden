@@ -19,8 +19,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbPermissionHolderReader } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { createDbPermissionHolderReader } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

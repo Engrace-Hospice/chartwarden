@@ -17,7 +17,7 @@
 // `document.(aggregate_type, aggregate_id) = ('report_export', exportId)` — the exportId the 202 handed back.
 //
 // Event name is a STRING literal; no M22 import, no new `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type M22DocumentRenderedPayload,
   M22_DOCUMENT_RENDERED,
@@ -26,8 +26,8 @@ import {
   type ScheduledDeliveryAction,
   applyScheduledDelivery,
   decideScheduledDelivery,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const RUN = schema.reportScheduleRun;

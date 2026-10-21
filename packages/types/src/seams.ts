@@ -104,7 +104,7 @@ import type {
   PatientReader,
   PatientWristbandVerifier,
 } from "./patient";
-// @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
+// @chartwarden/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
 // Per ADR-0005 D1, cross-module consumption via a boot-registered seam needs NO
 // dependsOn import edge: the INTERFACE lives here in a leaf package, and the
@@ -223,7 +223,7 @@ export type SeamName =
   | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
   | "AdmissionOnsetReader" // M6 — admissions started in a period (M30 opioid_on_admission_rate denominator)
   // M6's F2F/compliance-window aggregate (F-178, #248) follows the OPAQUE rich-seam pattern instead of its
-  // leaf-typed siblings above: the consumer-facing view interface lives in M30's own `@wardenx/quality`
+  // leaf-typed siblings above: the consumer-facing view interface lives in M30's own `@chartwarden/quality`
   // package (`ComplianceWindowCountsView`, packages/quality/src/seams/consumed/m6-compliance-window.ts,
   // the `ClaimLineReader`/`PatientDaysProvider` precedent), so the registry holds the instance as `unknown`
   // and M30 resolves it via `getSeam` + a cast to that view. Registered by M6 at boot over the fail-closed
@@ -242,7 +242,7 @@ export type SeamName =
   | "EncounterCreator" // M8 — open a draft encounter for an upstream reuser (M16 bereavement, M17 seeding)
   // M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9) — leaf-typed (interface in ./encounter), so it is
   // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
-  // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
+  // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @chartwarden/evv).
   | "EvvBracketResolver" // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
   // M18 (EVV) owned seams (§4.3 / D15) — leaf-typed (interfaces in ./evv, this leaf), so they are typed here
   // like M6..M17's seams. The sixth published M18 seam is `EvvBracketResolver` above (the EXISTING M8-consumed
@@ -417,7 +417,7 @@ export type SeamName =
   | "SafetyPolicyProvider" // M20 — the ONLY read path to the effective policy (§2.2.4), incl. the replay arm
   | "SafetySupervisorProvider" // M20 — who gets paged + the §7.8 coverage gaps (M36's composed resolver)
   // M32 (AI Platform) §4.2 PUBLISHED seams (M32-T06). OPAQUE rich-seams: every interface lives in
-  // @wardenx/ai-platform, which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15), so
+  // @chartwarden/ai-platform, which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15), so
   // the registry holds each instance as `unknown` and consumers that list `32` in their manifest
   // `dependsOn` import the real type and resolve through the typed accessor.
   //
@@ -451,7 +451,7 @@ export type SeamName =
   | "FhirClientReader" // M28 — FHIR client registry read (M34 SaaS console; registry metadata, no PHI)
   | "FhirInboundProposalReader" // M28 — staged inbound-proposal review queue (M5/M12; PHI — raw FHIR payload)
   // Two §4.4 CONSUMED forward-seams M28 requires but whose owner modules do not publish them yet. OPAQUE
-  // rich-seams (their rich interfaces live in @wardenx/billing / @wardenx/external-interfaces, which this
+  // rich-seams (their rich interfaces live in @chartwarden/billing / @chartwarden/external-interfaces, which this
   // leaf may not import), so the registry holds each as `unknown` and M28 resolves via `getSeam` + a cast
   // to its own consumer view. Both stay on the fail-closed deny-stub the whole of Phase 1:
   //   · `ClaimReader` (M23) — the W-FHIR-07 Claim/ClaimResponse/EOB projection. `fhir.write` OFF ⇒ the
@@ -673,7 +673,7 @@ export interface CareTeamProvider {
  * tenant's signatories for a purpose the grant was not made for. Leaf-safe (ids + a kind string).
  *
  * `kind` is a plain string rather than an enum type because this leaf package cannot import
- * `@wardenx/db`'s pgEnum; callers pass their own constant (M27 passes `"cost_report_approval"`). An
+ * `@chartwarden/db`'s pgEnum; callers pass their own constant (M27 passes `"cost_report_approval"`). An
  * unrecognized kind resolves to `false`, never to an error — the predicate's whole contract is
  * fail-closed.
  */
@@ -724,9 +724,9 @@ export interface DocumentRenderer {
 
 // M39's `ConsentEvaluator` (§4.3) follows the SAME opaque rich-seam pattern as TerminologyProvider /
 // MdmEntityProvider: its rich interface (four typed query methods + the per-category redaction-flag
-// shape + ConsentDenyReason) lives in @wardenx/consent, which this leaf may not import
+// shape + ConsentDenyReason) lives in @chartwarden/consent, which this leaf may not import
 // (`leaves-stay-leaves`). Every PHI-egress consumer already lists `39` in its manifest `dependsOn`, so
-// it imports the real `ConsentEvaluator` type from @wardenx/consent and resolves the impl through the
+// it imports the real `ConsentEvaluator` type from @chartwarden/consent and resolves the impl through the
 // module-39 typed accessor; the M1 registry holds/validates the instance fail-closed (`unknown`).
 
 /**
@@ -1098,8 +1098,8 @@ export interface SeamContracts {
   IntakeMetricsProvider: IntakeMetricsProvider;
   ExtractionProvenanceReader: ExtractionProvenanceReader;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
-  // @wardenx/consent (rich-seam pattern, see the note above the interface block). Consumers that
-  // list `39` in `dependsOn` import the real type from @wardenx/consent and resolve via the
+  // @chartwarden/consent (rich-seam pattern, see the note above the interface block). Consumers that
+  // list `39` in `dependsOn` import the real type from @chartwarden/consent and resolve via the
   // module-39 typed accessor; the M1 registry holds/validates the instance fail-closed.
   ConsentEvaluator: unknown;
   SessionContextResolver: SessionContextResolver;
@@ -1113,43 +1113,43 @@ export interface SeamContracts {
   // package, so the contract lives here. M2 registers the real Drizzle-backed reader over the deny-stub.
   OrganizationReader: OrganizationReader;
   // M38's `TerminologyProvider` is intentionally OPAQUE (`unknown`) here. Its rich interface
-  // (per-system generics, FHIR projections) lives in the feature package @wardenx/terminology,
+  // (per-system generics, FHIR projections) lives in the feature package @chartwarden/terminology,
   // which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15). Unlike the
   // edge-avoiding seams above, every M38 consumer already lists `38` in its manifest
-  // `dependsOn`, so it imports the real `TerminologyProvider` type from @wardenx/terminology
+  // `dependsOn`, so it imports the real `TerminologyProvider` type from @chartwarden/terminology
   // and resolves the impl through the module-38 typed accessor — the M1 registry only needs to
   // hold/validate the instance fail-closed, which `unknown` is sufficient for.
   TerminologyProvider: unknown;
   // M36's `AlertEmitter` + `MessagingProvider` follow the SAME opaque rich-seam pattern: their
-  // interfaces live in @wardenx/messaging (per-system payloads, DEK-encrypted message bodies),
+  // interfaces live in @chartwarden/messaging (per-system payloads, DEK-encrypted message bodies),
   // which this leaf may not import (`leaves-stay-leaves`). Consumers that list `36` in their
-  // manifest `dependsOn` import the real types from @wardenx/messaging and resolve the impl via
+  // manifest `dependsOn` import the real types from @chartwarden/messaging and resolve the impl via
   // the module-36 typed accessor; the M1 registry holds/validates the instance fail-closed.
   AlertEmitter: unknown;
   MessagingProvider: unknown;
   // WP 3.7: leaf-typed (the interface lives in ./messaging-promotion), read-only; M8 and M14 resolve it via getSeam.
   ChartPromotionSourceReader: ChartPromotionSourceReader;
   // M40's `MdmEntityProvider` follows the SAME opaque rich-seam pattern: its interface lives in
-  // @wardenx/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>` generics + the merge-redirect
+  // @chartwarden/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>` generics + the merge-redirect
   // shape), which this leaf may not import (`leaves-stay-leaves`). Consumers that list `40` in
-  // their manifest `dependsOn` import the real type from @wardenx/mdm and resolve the impl via the
+  // their manifest `dependsOn` import the real type from @chartwarden/mdm and resolve the impl via the
   // module-40 typed accessor; the M1 registry holds/validates the instance fail-closed.
   MdmEntityProvider: unknown;
   // M33's `MetricsProvider` follows the SAME opaque rich-seam pattern: its interface lives in
-  // @wardenx/reporting (this leaf may not import it — `leaves-stay-leaves`), so the registry holds the
+  // @chartwarden/reporting (this leaf may not import it — `leaves-stay-leaves`), so the registry holds the
   // instance as `unknown` and consumers (M30/M34/M37) resolve it via `getSeam` + cast to their own
   // consumer-defined view. Registered by M33 at boot over the fail-closed deny-stub.
   MetricsProvider: unknown;
   // M26's `CapAccrualReader` follows the OPAQUE rich-seam pattern (like MetricsProvider): the rich interface
-  // lives in @wardenx/cap-management, so the registry holds the instance as `unknown` and M27 resolves it via
+  // lives in @chartwarden/cap-management, so the registry holds the instance as `unknown` and M27 resolves it via
   // `getSeam` + cast to its own consumer view. Registered by M26 at boot over the fail-closed deny-stub.
   CapAccrualReader: unknown;
-  // M26's `CapProjectionProvider` — opaque rich-seam (interface in @wardenx/cap-management). M23 resolves it
+  // M26's `CapProjectionProvider` — opaque rich-seam (interface in @chartwarden/cap-management). M23 resolves it
   // via getSeam + an adapter for the §11.A `aggregate_cap_projection` / `ipu_cap_projection` rules. Registered
   // by M26 at boot over the fail-closed deny-stub.
   CapProjectionProvider: unknown;
   // M23/M25 → M27 cost-report binds. OPAQUE rich-seam pattern: the consumer-facing aggregate views live in
-  // M27's own consumer code (the producer interfaces in @wardenx/billing / @wardenx/remittance are not imported
+  // M27's own consumer code (the producer interfaces in @chartwarden/billing / @chartwarden/remittance are not imported
   // by this leaf), so the registry holds each instance as `unknown` and M27's ValidationContextBuilder resolves
   // via `getSeam` + cast to its minimal view. Registered by M23/M25 at boot over the fail-closed deny-stub.
   PatientDaysProvider: unknown;
@@ -1168,7 +1168,7 @@ export interface SeamContracts {
   // at boot over the fail-closed deny-stub.
   MedicaidClaimMatchProvider: unknown;
   CostReportFilingStatusReader: unknown;
-  // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @wardenx/quality
+  // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @chartwarden/quality
   // (this leaf may not import it — `leaves-stay-leaves`), so the registry holds each instance as
   // `unknown` and consumers (M22 / M28 / M33 / M34) resolve via `getSeam` + cast to their own view.
   // Registered by M30 at boot over the fail-closed deny-stub.
@@ -1179,7 +1179,7 @@ export interface SeamContracts {
   SecurityRiskAssessmentReader: unknown;
   // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
-  // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.
+  // opaque rich-seam pattern — interface in @chartwarden/mdm; M22/M28/M29 import the real type.
   BaaStatusProvider: unknown;
   // M6's reader seams (§4.7) are LEAF-TYPED — their interfaces live in ./admission (this package),
   // so the registry is statically typed against the real contract (no `unknown` opacity needed). M6
@@ -1202,7 +1202,7 @@ export interface SeamContracts {
   DischargeReader: DischargeReader;
   AdmissionOnsetReader: AdmissionOnsetReader;
   // M6's `ComplianceWindowCountsProvider` (F-178, #248) is OPAQUE (`unknown`) here — the consumer-facing
-  // interface lives in `@wardenx/quality` (M30's own package; see the SeamName union comment above), not
+  // interface lives in `@chartwarden/quality` (M30's own package; see the SeamName union comment above), not
   // in this leaf. M6 registers the real Drizzle-backed provider over the fail-closed deny-stub; M30 resolves
   // it via `getSeam` + a cast to its own `ComplianceWindowCountsView`.
   ComplianceWindowCountsProvider: unknown;
@@ -1367,7 +1367,7 @@ export interface SeamContracts {
   SafetyPolicyProvider: SafetyPolicyProvider;
   SafetySupervisorProvider: SafetySupervisorProvider;
   // M32's §4.2 published seams + the §4.5 prompt registry — OPAQUE rich-seam pattern (interfaces in
-  // @wardenx/ai-platform, which this leaf may not import). Consumers that list `32` in `dependsOn`
+  // @chartwarden/ai-platform, which this leaf may not import). Consumers that list `32` in `dependsOn`
   // import the real types and resolve via M32's typed accessors; the M1 registry only holds and
   // fail-closed-validates the instance, which `unknown` is sufficient for.
   //
@@ -1396,7 +1396,7 @@ export interface SeamContracts {
   FhirClientReader: FhirClientReader;
   FhirInboundProposalReader: FhirInboundProposalReader;
   // M23's `ClaimReader` + M29's `LabObservationReader` are the two §4.4 forward-seams M28 CONSUMES. OPAQUE
-  // rich-seam pattern (interfaces in @wardenx/billing / @wardenx/external-interfaces, not importable by this
+  // rich-seam pattern (interfaces in @chartwarden/billing / @chartwarden/external-interfaces, not importable by this
   // leaf), so the registry holds each as `unknown` and M28 resolves via `getSeam` + a cast to its own view.
   // Both stay on the fail-closed deny-stub the whole of Phase 1 (see the SeamName comments above).
   ClaimReader: unknown;

@@ -1,10 +1,10 @@
-// @wardenx/inpatient — M37-T06, §2.5 D6. The IRC 5-consecutive-day cap enforcer. An `irc_episode` opens
+// @chartwarden/inpatient — M37-T06, §2.5 D6. The IRC 5-consecutive-day cap enforcer. An `irc_episode` opens
 // when an `ipu_admission.kind='irc'` goes active (§2.2); the `irc-cap-watchdog` cron ticks the
 // consecutive-day count at per-org midnight, driving the state active → approaching_cap → breached and the
 // M36 alerts. The M3 ABAC predicate `m37.irc_episode.within_cap` reads {@link isWithinCap} so M23's per-diem
 // line generation is blocked at the gate on a breached episode. Pure & IO-free — the cron injects the day
 // count / prior-episode history; the service (M37-T11) persists the state + effects and drives break-glass.
-import type { IrcEpisodeState } from "@wardenx/types";
+import type { IrcEpisodeState } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../errors";
 
 /** §2.5 — IRC is permitted up to 5 consecutive days per episode (CoP 418.108 caregiver respite). */

@@ -7,7 +7,7 @@ import {
   FeatureFlagProvider,
   SystemStatusProvider,
   ToastProvider,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { isCop27Preview, renderCop27Preview } from "./cop27-preview";

@@ -5,7 +5,7 @@
 // injected `now`, and idempotent via per-plan emission markers so duplicate cron fires are no-ops. The
 // `apply-idg-decision` is now handled directly by the live M14 outbox binding. The legacy queue name is
 // retained for contract compatibility; `build-summary` remains a separate event-driven job.
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { warningOpensAt } from "../lifecycle/gate-clock";
 
 // ── §4.6 queue catalog ──────────────────────────────────────────────────────────────────────────────

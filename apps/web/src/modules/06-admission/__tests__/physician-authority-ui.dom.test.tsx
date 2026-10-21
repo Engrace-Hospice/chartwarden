@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // 42 CFR 418.25(a) admission recommendation + 42 CFR 418.26(b) discharge order UI.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { describe, expect, it, vi } from "vitest";

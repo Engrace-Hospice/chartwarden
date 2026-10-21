@@ -6,7 +6,7 @@
 // left over from a previously selected patient passed every client-side check. The server re-derives
 // and would refuse, but a wizard that lets a clerk get to "Assemble draft" has already made the error.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

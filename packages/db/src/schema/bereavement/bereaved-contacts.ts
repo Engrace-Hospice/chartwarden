@@ -1,4 +1,4 @@
-// @wardenx/db — `bereaved_contact` (M16 §3.3.2). D1's middle tier: one row per surviving person, because
+// @chartwarden/db — `bereaved_contact` (M16 §3.3.2). D1's middle tier: one row per surviving person, because
 // the CoP 418.64(d) obligation runs to EACH survivor — consent, opt-out, risk tier, schedule and portal
 // scope are all per-person, never collapsed onto the plan.
 //

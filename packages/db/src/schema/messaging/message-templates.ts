@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db - `message_template` and `tenant_message_template_overlay` (M36 WP 2.8, migration 1086).
+// @chartwarden/db - `message_template` and `tenant_message_template_overlay` (M36 WP 2.8, migration 1086).
 //
 // One table, three scopes: 'platform' (organization_id NULL, seeded, carries the required phrases that form the floor),
 // 'org' (a tenant-authored shared template) and 'personal' (one user's saved reply). A CHECK pins the columns each scope

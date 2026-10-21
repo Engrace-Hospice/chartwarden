@@ -32,8 +32,8 @@
 //
 // `default_location_ids` is jsonb (M1's `membership`), so the location list is read as a JSON array and
 // normalized here rather than joined — a `location`-scoped subscription matches any of them.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MembershipId,
@@ -41,7 +41,7 @@ import type {
   SafetyIncidentCategory,
   SafetyIncidentSeverity,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type {
   SafetyCoverageSubjectFacts,

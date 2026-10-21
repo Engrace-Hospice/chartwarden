@@ -3,7 +3,7 @@
 // each org's due handoffs are closed by the org-explicit `expireDue` (own transaction and row lock per handoff). A
 // per-handoff problem is isolated and counted inside it; an org-level failure fails the tick through the same fan-out
 // the integrity jobs use, so it is visible in the failed set and the DLQ alert. Flag-independent by design.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type M36IntegrityWorkerDeps, fanOutOrgs } from "../jobs/integrity-workers";
 import type { ExpirySummary } from "./handoff-expiry";

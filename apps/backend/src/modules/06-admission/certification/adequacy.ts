@@ -44,7 +44,7 @@
 //     the recomputed verdict must be inside the window AND the persisted flag must be exactly `true`.
 //     The window start is `period.f2fWindowStart` (the period's EXPECTED start, prior end + 1) when given,
 //     else `period.startDate`. `null` = the start is not derivable: unverifiable, fail closed.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import {
   RECERT_SEQUENCE_FLOOR,
   electionPeriodKindForSequence,

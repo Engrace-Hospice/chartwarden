@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — DETERMINISTIC ICD-10-CM coding checks on a referral packet (F-238).
+// @chartwarden/intake-extraction — DETERMINISTIC ICD-10-CM coding checks on a referral packet (F-238).
 //
 // These are rules, not AI: every flag cites the code set (M38, loaded from the CDC/NCHS release) or an
 // ICD-10-CM Official Guideline / CMS hospice rule, and each one only POINTS OUT — it never changes a code,

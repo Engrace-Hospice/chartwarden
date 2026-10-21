@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §2 lifecycle-service barrel (M35-T03).
+// @chartwarden/subscription-billing — §2 lifecycle-service barrel (M35-T03).
 //
 // The five PURE lifecycle cores over injected ports (routes/workers in T06 supply the Drizzle stores +
 // publish the returned outbox intents): subscription (§2.2 D7 status graph), invoice mirror (§2.2 Stripe-

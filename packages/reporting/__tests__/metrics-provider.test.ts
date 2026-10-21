@@ -1,8 +1,8 @@
 // #107 item 2 — M33's published MetricsProvider: with no MV executor bound it returns the FORWARD-SEAM
 // empty value (value:null, isForwardSeamDenyStub:true) over the authoritative catalog unit — never a
 // fabricated number (D6/D13). This is the state the seam is registered in today (MVs not yet materialized).
-import type { ReadReplicaSessionPort } from "@wardenx/reporting";
-import { MetricsProviderImpl } from "@wardenx/reporting";
+import type { ReadReplicaSessionPort } from "@chartwarden/reporting";
+import { MetricsProviderImpl } from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 
 /** A fake replica session whose `withSession` hands the body a db returning the seeded metric-catalog row. */

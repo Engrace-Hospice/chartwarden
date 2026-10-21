@@ -1,4 +1,4 @@
-// @wardenx/db — `external_physician` (M40 MDM §3.3). The CANONICAL physician record:
+// @chartwarden/db — `external_physician` (M40 MDM §3.3). The CANONICAL physician record:
 // one org-less row per real-world NPI, registry-sourced (NPPES), the same answer for every
 // tenant (§2.3). Carries NO organization_id by design — it is platform-shared master data on
 // the check-tenancy NON_ORG_SCOPED allowlist; this-tenant opinions (preferred contact,

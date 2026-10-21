@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — onboarding data port: `onboarding_task_template`
+// @chartwarden/saas-tenant-platform · repositories — onboarding data port: `onboarding_task_template`
 // (platform-shared read-only catalog) + `onboarding_task` (per-tenant runtime rows) (M34 §3.4).
 //
 // The eleven-step onboarding state machine (D3) is DATA-DRIVEN: the canonical step floor lives in the
@@ -7,7 +7,7 @@
 // seed changes, not code changes. At provisioning the service materializes one `onboarding_task` per
 // applicable template for the tenant; this repo reads the templates and drives the per-tenant task rows
 // (status transitions pending → in_progress → done/skipped/blocked).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { asc, eq } from "drizzle-orm";
 
 const T = schema.onboardingTaskTemplate;

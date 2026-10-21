@@ -1,4 +1,4 @@
-// @wardenx/mdm — the pure NPPES drift-detection engine (M40-T08, spec §7.5).
+// @chartwarden/mdm — the pure NPPES drift-detection engine (M40-T08, spec §7.5).
 //
 // Given the canonical physician state MDM last knew + the fresh records NPPES now publishes, compute
 // what DRIFTED: a deactivated NPI (the §7.5 headline — must be caught within 24h), a reactivation,

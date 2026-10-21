@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M27 (Cost Report). §4.4.
+// @chartwarden/quality — consumed-seam view of M27 (Cost Report). §4.4.
 //
 // M27 is BUILT, so the composition root binds this over M27's live `CostReportFilingStatusReader` (P2C).
 // M30 reads it for the CoP 418.310 compliance indicator — 42 CFR 418.310 makes failure to file a cost

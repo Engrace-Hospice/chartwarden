@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 `notr_record` (Notice of Termination/Revocation) fast-path lifecycle reducer
+// @chartwarden/billing — M23 `notr_record` (Notice of Termination/Revocation) fast-path lifecycle reducer
 // (§2.2 lines 243–260, D3). The spec proposes XState; the WardenX repo convention is a PURE hand-rolled
 // transition reducer (the `machines/claim.ts` exemplar + the M27 `cost-report/src/domain/lifecycle.ts` /
 // M39 consent precedents) and ARCHITECTURE WINS over the module spec on this conflict. This file is
@@ -20,7 +20,7 @@
 // `ack_999_rejected` → ACK_REJECTED edge is therefore modelled here, matching the NOE machine and the
 // §2.2 statement that NOTR window/ack handling is "identical in shape to NOE".
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock, no PHI/MBI
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock, no PHI/MBI
 // (D13). The state union is the package-canonical lowercase `NoticeState` from `./contracts` (NOE and
 // NOTR share the identical state shape — frozen `m23_notr_state = m23_noe_state.enumValues`). The DB enum
 // is UPPERCASE; the Phase-3 repository maps case at the DB boundary, as for `ClaimState`.

@@ -22,7 +22,7 @@ import type {
   TriageDisposition,
   TriageDispositionData,
   TriageEscalationTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { TriageSideEffect } from "./effects";
 import { require_ } from "./errors";
 import type { TriageActorDiscipline } from "./protocol";

@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.11 D11 IV continuous administration (M13-T06). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.11 D11 IV continuous administration (M13-T06). PURE, IO-free, `Date.now()`-free.
 //
 // A continuous infusion (morphine drip, midazolam drip) is NOT a discrete dose — it is a *session*: a sequence
 // of `administration_record` rows sharing one `iv_session_id`. Modeling each event as its own append-only row
@@ -22,7 +22,7 @@ import type {
   IsoInstant,
   IvSessionId,
   MedicationOrderId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { AdministrationStateError, require_ } from "../lifecycle/errors";
 
 /** §2.1 — the five IV-continuous modes (the `iv_continuous_*` subset of {@link AdministrationMode}). */

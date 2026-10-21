@@ -18,9 +18,9 @@
 //     audit/telemetry symmetry with the DataEraser contract, not as a row filter.
 //   • organization_invitation → a DELETE of the subject's PENDING rows within `scope.orgId`
 //     (org-scoped table, RLS on app.org_id), invoked inside withOrgContext.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser, OrgScope } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser, OrgScope } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

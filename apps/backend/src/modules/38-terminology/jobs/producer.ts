@@ -1,4 +1,4 @@
-import type { FollowUpPort, LoadableSystemId } from "@wardenx/terminology-loader";
+import type { FollowUpPort, LoadableSystemId } from "@chartwarden/terminology-loader";
 // apps/backend/src/modules/38-terminology/jobs/producer.ts — the BullMQ producer for the §4.3 queues (GAP-108).
 // Implements both the loader's {@link FollowUpPort} (what an activation owes) and the admin routes'
 // {@link TerminologyJobProducer}. Job ids are deterministic per (queue, version) so a repeated enqueue while the

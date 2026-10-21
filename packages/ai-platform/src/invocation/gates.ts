@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the §6 / §4.1 SDK gate sequence (M32-T04).
+// @chartwarden/ai-platform — the §6 / §4.1 SDK gate sequence (M32-T04).
 //
 // ONE PURE FUNCTION OWNS THE ORDER. Every gate that can refuse an `aiSdk.invoke` is evaluated here, in
 // the order the spec numbers them, over facts the service has already resolved. The service short-
@@ -41,7 +41,7 @@
 //
 // Gates 1, 3 and 4 are `aiGovernanceGateFor`'s (M32-T03) and are NOT re-implemented here; this file
 // calls it, having already taken gate 1 on its own so gate 2 can be interleaved at §6's position.
-import type { AiCapabilityUnavailable, AiCapabilityUnavailableReason } from "@wardenx/types";
+import type { AiCapabilityUnavailable, AiCapabilityUnavailableReason } from "@chartwarden/types";
 
 import { type AiGovernanceGateInput, aiGovernanceGateFor } from "../governance/capability-access";
 import { aiConsumerPostureFor } from "../lifecycle/state-machine";
@@ -139,7 +139,7 @@ export function evaluateAiInvocationGates(facts: AiInvocationGateFacts): AiInvoc
     return deny(
       "ai_full_flag",
       "phase_1_capability_shell",
-      "the 'ai.full' feature flag is off; WardenX dispatches no AI in Phase 1",
+      "the 'ai.full' feature flag is off; ChartWarden dispatches no AI in Phase 1",
       null,
     );
   }

@@ -7,8 +7,8 @@
 // (death, or any other reason = a live discharge — including a move out of the service area, condition code 52);
 // with none on file the episode ends `unknown`. A benefit period "ran" when it was active or completed (a pending
 // recert shell that never started does not count). Four set-based reads; RLS scopes them to the caller's org.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { PriorEpisodeEndKind, PriorEpisodeFacts } from "../intake/benefit-period";
 

@@ -27,8 +27,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { createDbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

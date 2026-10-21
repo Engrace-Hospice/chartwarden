@@ -13,10 +13,10 @@
 // nobody saw is the failure, so `triage_escalation.sla_breached_at` records the last page and the row is
 // re-published at most every `TRIAGE_ESCALATION_SLA_REPAGE_MINUTES` until someone acknowledges it. The marker
 // UPDATE does not bump `version` (cron bookkeeping must not 412 the human acknowledging at that instant).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { TRIAGE_ESCALATION_SLA_REPAGE_MINUTES } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { TRIAGE_ESCALATION_SLA_REPAGE_MINUTES } from "@chartwarden/types";
 import { and, asc, eq, isNull, lte, notInArray, or } from "drizzle-orm";
 import {
   type M19TriageCronDeps,

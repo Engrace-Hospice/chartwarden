@@ -17,10 +17,10 @@
 // committed is never re-run, and re-adding the same jobIds is a no-op. The hourly tick also applies the
 // org-local-hour gate (see `./index`). The `run*Cron(deps)` all-orgs entry points remain for direct
 // invocation (tests / manual replay) and isolate failures per org, rethrowing one summary at the end.
-import { type DbClient, organizationTimezone } from "@wardenx/db";
-import { fiscalYearFor } from "@wardenx/discipline-plans";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@wardenx/types";
+import { type DbClient, organizationTimezone } from "@chartwarden/db";
+import { fiscalYearFor } from "@chartwarden/discipline-plans";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@chartwarden/types";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import { computeStaffPatientCareTally } from "../consumers/patient-care-hours";
 import { resolveVolunteerVisitCandidates } from "../consumers/volunteer-visits";

@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_spec_item_isc` (M10 HOPE modernization Phase 1A). Normalized ISC activation
+// @chartwarden/db — `hope_spec_item_isc` (M10 HOPE modernization Phase 1A). Normalized ISC activation
 // matrix for CMS HOPE items; one row per item and internal item-set code.
 import { boolean, index, pgTable, primaryKey, uuid } from "drizzle-orm/pg-core";
 import { hopeIsc } from "../../enums";

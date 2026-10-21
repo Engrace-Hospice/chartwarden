@@ -1,4 +1,4 @@
-// @wardenx/billing — validation-run schemas: route #6 `POST /claims/:id:validate` (the `manual_re_run`
+// @chartwarden/billing — validation-run schemas: route #6 `POST /claims/:id:validate` (the `manual_re_run`
 // trigger), route #14 `GET /claims/:id/validation-runs` (per-claim run history / §11.A worklist), and
 // route #15 `GET /validation-runs/:runId` (single run with all results) — §4.1.
 import { type Static, Type } from "@sinclair/typebox";

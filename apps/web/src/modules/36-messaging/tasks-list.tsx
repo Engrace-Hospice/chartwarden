@@ -1,7 +1,7 @@
 // M36 WP 3.4 - "My tasks" (the Tasks tab of Notifications & Tasks). Row actions come only from each task's
 // allowed_actions (the server decides who may do what); a row changes only when the server's answer replaces it.
-import type { TaskAction, TaskDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
+import type { TaskAction, TaskDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

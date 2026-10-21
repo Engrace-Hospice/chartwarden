@@ -1,8 +1,8 @@
 // apps/web/src/modules/12-dosespot — shared medication/prescribing presentation helpers (R1, Lantern).
 // The §2.2 medication-order (14-state), transmission, refill, IAL2, and EPCS-certification enums each map
-// to the §6.6 badge taxonomy tone (grounded in the @wardenx/types unions). Controlled-substance / EPCS is
+// to the §6.6 badge taxonomy tone (grounded in the @chartwarden/types unions). Controlled-substance / EPCS is
 // the ONE place the gold `critical` tone is used (DESIGN.md §10 — gold is reserved for controlled-substance).
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // MedicationOrderStatus — the §2.2 D2 14-state lifecycle.
 export const MED_ORDER_TONE: Record<string, StatusTone> = {

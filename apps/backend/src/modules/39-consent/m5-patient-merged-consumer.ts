@@ -18,8 +18,8 @@
 //
 // IDEMPOTENT. The UPDATEs are keyed on `patient_id = source`, so a redelivery finds nothing, moves nothing and
 // emits nothing.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../bootstrap/outbox-dispatcher";
 import type { ConsentWriteOutboxPort } from "./consent-store-db";

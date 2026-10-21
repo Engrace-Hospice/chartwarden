@@ -25,7 +25,7 @@
 // with `target_kind='incident'` are written by the lifecycle layer, not by a request. The screen shows the
 // obligation as an outstanding fact rather than offering a button that would post it on her behalf, which
 // is the one thing §6 explicitly forbids.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

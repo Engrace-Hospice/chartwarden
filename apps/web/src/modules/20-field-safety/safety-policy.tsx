@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";

@@ -1,4 +1,4 @@
-// @wardenx/cap-management — M26 permission-key catalog (§4.6). The authoritative list of every permission
+// @chartwarden/cap-management — M26 permission-key catalog (§4.6). The authoritative list of every permission
 // key Module 26 owns; the backend re-exports this and registers it into M3's catalog (the M27
 // `M27_PERMISSIONS` precedent). Keys use the platform `resource.action` dot form. `cap.period.manage` /
 // `cap.settlement.manage` (finalize) additionally require M2 step-up at the route layer (D12) — the key

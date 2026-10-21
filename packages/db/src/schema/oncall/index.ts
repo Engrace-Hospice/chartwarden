@@ -1,4 +1,4 @@
-// @wardenx/db — M19 On-Call Triage schema barrel (§3.3, 10 owned tables, manifest-exact, +1 —
+// @chartwarden/db — M19 On-Call Triage schema barrel (§3.3, 10 owned tables, manifest-exact, +1 —
 // `on-call-roster-sync-queue.ts`, the §4.8 `m19.shift-sync.debounced` debounce table F-155/#248 built;
 // see its own header). The central ../index.ts re-exports this barrel; the 13 M19 pgEnums live in
 // ../../enums.ts (M19-T01, unprefixed SQL names — M19's §3.2 spells them without an `m19_` prefix, unlike
@@ -44,7 +44,7 @@
 // M2 owns `membership`, and M17's `visit.assigned_membership_id` set that precedent.
 //
 // Enums + the ten tables land in migration 0107; RLS/grants, the ten M4 write-audit triggers (with the
-// §3.6 denylists mirrored from `M19_AUDIT_DENYLIST` in @wardenx/types) and the §2.3 forward-transition
+// §3.6 denylists mirrored from `M19_AUDIT_DENYLIST` in @chartwarden/types) and the §2.3 forward-transition
 // guard in 0108. The ≥25-protocol platform-floor seed (§3.2 Phase E / §10 task 5) lands with the protocol
 // engine in M19-T03, which owns the red-flag predicate shape the question rows encode.
 

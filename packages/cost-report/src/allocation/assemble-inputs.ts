@@ -1,4 +1,4 @@
-// @wardenx/cost-report — the PURE allocation-input assembler (Form CMS-1984-14, §4320/§4330, D8). Composes
+// @chartwarden/cost-report — the PURE allocation-input assembler (Form CMS-1984-14, §4320/§4330, D8). Composes
 // M27's already-read worksheet state into the inputs the deterministic hospice chain consumes:
 //   • the Worksheet B step-down (`StepDownAllocateInput`): the general-service cost centers from Worksheet A
 //     (overhead, in allocation order) plus the four direct level-of-care centers from Worksheets A-1…A-4

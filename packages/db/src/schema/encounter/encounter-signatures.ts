@@ -1,4 +1,4 @@
-// @wardenx/db — `encounter_signature` (M8 §3.3). One row per signature slot (primary / cosignature /
+// @chartwarden/db — `encounter_signature` (M8 §3.3). One row per signature slot (primary / cosignature /
 // addendum) on an encounter, with the D13 step-up provenance (method + session + fresh step-up). PHI-
 // bearing → three-column tenancy rule (denormalized from the parent encounter). Partial unique indexes
 // enforce one primary + one cosignature per encounter. RLS + the M4 write-audit trigger land in

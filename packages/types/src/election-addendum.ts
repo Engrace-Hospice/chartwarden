@@ -1,4 +1,4 @@
-// @wardenx/types — FY2027 election statement addendum (42 CFR 418.24(b)(6), (c), (d) as amended by
+// @chartwarden/types — FY2027 election statement addendum (42 CFR 418.24(b)(6), (c), (d) as amended by
 // CMS-1851-F, effective 2026-10-01). The "Patient Notification of Hospice Non-Covered Items, Services, and
 // Drugs" is mandatory for every hospice election whose effective date is on or after 2026-10-01.
 //

@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `noe_record` (the Notice of Election root, §3.3; the §2.2 5-day-window
+// @chartwarden/billing · repositories — `noe_record` (the Notice of Election root, §3.3; the §2.2 5-day-window
 // fast path). ORG-SCOPED + VERSIONED — this repo mirrors the `claim` exemplar exactly: keyset-paginated org
 // read, deterministic `(provider_entity, noe_control_number)` get, and the REDUCER-DRIVEN, version-checked
 // `transitionToState` (§2.5 If-Match) the NOE service drives from `machines/noe`. The two demonstrate the
@@ -13,7 +13,7 @@
 // The 5-day-window watchdog cron enumerates in-flight rows past `window_target_at` via
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
 // `window_breached_at` through `transitionToState` (or a same-state patch). No PHI / no MBI (D13 / §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, asc, desc, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {

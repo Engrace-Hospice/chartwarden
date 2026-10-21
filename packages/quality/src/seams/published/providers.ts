@@ -1,4 +1,4 @@
-// @wardenx/quality — concrete implementations of the FIVE PUBLISHED seams (M30 §4.3).
+// @chartwarden/quality — concrete implementations of the FIVE PUBLISHED seams (M30 §4.3).
 //
 // The seam INTERFACES live in `../../seams` (QualityMeasureProvider / IncidentRegisterProvider /
 // QapiProjectProvider / ComplianceStatusProvider / SecurityRiskAssessmentReader); these are the live
@@ -15,9 +15,9 @@
 // aggregation grain comes from M40's `ProviderEntityReader` (a CONSUMED seam), so the composition root
 // binds it at P2C. UNBOUND ⇒ no provider entities resolve and the per-PE aggregates collapse to empty
 // (fail-closed: a not-yet-bound PE resolver never fabricates a cross-provider number, D6 / D13).
-import type { DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import type { DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import type {
   ComplianceStatus,
   Incident,

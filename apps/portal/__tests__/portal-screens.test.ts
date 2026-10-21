@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-// @wardenx/portal — M31-T08 screen-registry unit test. Guards the wiring the portal SPA depends on: every
+// @chartwarden/portal — M31-T08 screen-registry unit test. Guards the wiring the portal SPA depends on: every
 // §5.1 manifest entry binds to a real component, ids and routes are unique (a collision would silently
 // shadow a screen), and each nav-gating permission key is well-formed (a typo'd key would hide a screen).
 import { PORTAL_SCREEN_MANIFEST } from "../src/screens/manifest";

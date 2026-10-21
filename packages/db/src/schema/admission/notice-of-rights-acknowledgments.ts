@@ -1,4 +1,4 @@
-// @wardenx/db — `notice_of_rights_acknowledgment` (M6 §3.3). The beneficiary's acknowledgment of the
+// @chartwarden/db — `notice_of_rights_acknowledgment` (M6 §3.3). The beneficiary's acknowledgment of the
 // hospice notice of rights at admission. PHI-bearing (carries a patient reference) → the three-column
 // tenancy rule (org NOT NULL + nullable provider_entity_id / location_id). `witness_user_id` is an M1
 // user (FK); cross-module refs (M5 patient, M39 representative consent, M22 document) are plain uuid

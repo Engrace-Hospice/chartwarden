@@ -1,4 +1,4 @@
-// @wardenx/hope — J2051 trigger (D4) + SFV engine (§2.2.3, D3) — M10-T03.
+// @chartwarden/hope — J2051 trigger (D4) + SFV engine (§2.2.3, D3) — M10-T03.
 import { describe, expect, it } from "vitest";
 import {
   SFV_DUE_CALENDAR_DAYS,

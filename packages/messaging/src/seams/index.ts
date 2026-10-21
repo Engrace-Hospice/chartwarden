@@ -1,4 +1,4 @@
-// @wardenx/messaging — published seam implementations (M36-T06, spec §4.6).
+// @chartwarden/messaging — published seam implementations (M36-T06, spec §4.6).
 //
 // The boot-validated `AlertEmitter` impl composed over the M36-T04 engine + injected ports, with
 // an in-memory slice default. The published seam INTERFACES live in ../interfaces; this barrel

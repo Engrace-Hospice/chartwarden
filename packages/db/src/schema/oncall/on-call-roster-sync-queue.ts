@@ -1,4 +1,4 @@
-// @wardenx/db — `on_call_roster_sync_queue` (M19 §4.5 path 1 / §4.8 `m19.shift-sync.debounced`, the m19
+// @chartwarden/db — `on_call_roster_sync_queue` (M19 §4.5 path 1 / §4.8 `m19.shift-sync.debounced`, the m19
 // `handlers-unbound` group, #248 — F-155's own finding, now built). `reconcileOnCallRoster`
 // (`apps/backend/src/modules/19-oncall/roster/shift-sync.ts`) and `decideRosterSyncTrigger` have been a
 // complete, pure, well-documented reconciliation core since M19-T04 with NO caller anywhere: M19 shipped

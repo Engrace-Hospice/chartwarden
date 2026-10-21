@@ -7,8 +7,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { ACK_QUEUE_STATUSES, type AckQueueResponse } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ACK_QUEUE_STATUSES, type AckQueueResponse } from "@chartwarden/types";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

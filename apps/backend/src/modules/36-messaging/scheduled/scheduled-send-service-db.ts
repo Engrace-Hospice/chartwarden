@@ -5,7 +5,7 @@
 // below also name the owner, so a forgotten filter cannot surface a colleague's row. Org and user come from the
 // server-side request context, never the body. The routes have already authorised the channel (channel_visibility,
 // messaging.send, and messaging.announce for the announcement channel); the SEND is authorised again at dispatch.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CreateScheduledMessageInput,
   DEFAULT_MAX_SCHEDULED_PER_USER,
@@ -15,9 +15,9 @@ import {
   type ScheduledSendService,
   assertScheduleTime,
   normalizeScheduleTimeZone,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   type MessageBodyCipher,
@@ -102,7 +102,7 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
     return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
       const channel = await channelOr404(tx, orgId, input.channelId);
       if (channel.isArchived)
-        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+        throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
       if (input.parentMessageId) {
         await assertLiveRoot(tx, orgId, input.channelId, input.parentMessageId);
       }
@@ -115,7 +115,7 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
         .from(SM)
         .where(and(eq(SM.organizationId, orgId), eq(SM.userId, input.userId)))) as [{ n: number }];
       if (Number(n) >= maxPerUser) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SCHEDULE_LIMIT_REACHED",
           `at most ${maxPerUser} messages can be scheduled; send or cancel one first`,
           409,

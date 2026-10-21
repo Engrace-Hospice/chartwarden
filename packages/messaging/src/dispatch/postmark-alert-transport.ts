@@ -1,4 +1,4 @@
-// @wardenx/messaging — Postmark alert-email transport (M36 GAP-062, spec §4.4 / §4.7).
+// @chartwarden/messaging — Postmark alert-email transport (M36 GAP-062, spec §4.4 / §4.7).
 //
 // The OUT-OF-BAND alert path (`messaging.send_email`): a sanitized notification, never a body. Distinct from
 // `createPostmarkTransactionalEmailTransport` (auth/invite emails, void return): the delivery sweep needs the

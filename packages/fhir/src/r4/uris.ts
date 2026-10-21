@@ -1,4 +1,4 @@
-// @wardenx/fhir — identifier system URI assembly (§4.5 D9, M28-T04).
+// @chartwarden/fhir — identifier system URI assembly (§4.5 D9, M28-T04).
 //
 // D9 splits identifier namespaces: PLATFORM-owned URIs cover canonical identifiers shared across tenants
 // (NPI, NDC, RxNorm) and are FHIR-spec-standard; PER-TENANT URIs cover tenant-private identifiers (MRN,

@@ -33,7 +33,7 @@
 // (a BOOT validator) are registered by ../abac-predicates.ts and bound by nothing here. That file's header
 // states why binding either at a route would be an inversion or a category error. Nothing in this file
 // should grow a builder for them without reading it.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 import type { PreHandler } from "./actor";

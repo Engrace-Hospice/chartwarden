@@ -10,8 +10,8 @@
 // shared with the quarterly `patient.snapshot_rebuild` job (§4.5, `../jobs/snapshot-rebuild.ts`), which runs
 // it org-explicitly as the system and writes only drifted rows.
 import type { Static } from "@sinclair/typebox";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";
 import type {

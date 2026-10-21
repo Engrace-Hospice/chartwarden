@@ -1,4 +1,4 @@
-// @wardenx/billing — the FIVE published seam interfaces (§4.3) + the consumed-seam name catalog (§4.4).
+// @chartwarden/billing — the FIVE published seam interfaces (§4.3) + the consumed-seam name catalog (§4.4).
 // M23 publishes read-only reader/admin contracts; consumers import only the interface type, never an M23
 // schema/table. Registration into the M1 SeamRegistry is port-injected at the backend composition root
 // (see ./seam-registration) — NOT here (the M27/M30 `seams.ts` precedent). Every projection is aggregate
@@ -215,9 +215,9 @@ export interface CapProjectionProvider {
 }
 
 /**
- * M5-published, M23-ONLY-consumer (§4.4 / §3.6). The contract is leaf-typed in `@wardenx/types` (M5 is the
+ * M5-published, M23-ONLY-consumer (§4.4 / §3.6). The contract is leaf-typed in `@chartwarden/types` (M5 is the
  * producer and is not in M23's `dependsOn`, so neither side imports the other) and re-exported here for the
  * billing surface. Returns the transient MBI + name/DOB for ONE HETS 270 build; the caller is contractually
  * obligated NOT to persist it. M5 registers the real reader at boot; the M1 deny-stub THROWS until then.
  */
-export type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@wardenx/types";
+export type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@chartwarden/types";

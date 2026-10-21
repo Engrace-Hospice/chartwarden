@@ -2,8 +2,8 @@ import {
   DEFAULT_SEQUESTRATION_PERCENT,
   applySequestration,
   applySequestrationPolicy,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 sequestration applier (D11, spec §1.1 / §3.3 `sequestration_policy`)
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 sequestration applier (D11, spec §1.1 / §3.3 `sequestration_policy`)
 // pure-domain tests.
 //
 // The applier resolves WHICH percentage to apply — an active `sequestration_policy` snapshot for the

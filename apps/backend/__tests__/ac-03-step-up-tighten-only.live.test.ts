@@ -25,9 +25,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
-import { STEP_UP_POLICY } from "@wardenx/types";
+import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import { STEP_UP_POLICY } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDrizzleStepUpOverrideStore } from "../src/modules/02-identity/step-up-override-store";

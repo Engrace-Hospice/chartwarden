@@ -12,7 +12,7 @@
 // `service_date end-of-day + Nh` falls on the end-of-day of `service_date + (N/24) days`, so documenting
 // any time on a given calendar day is measured by that day's delta. No IO, no `Date.now()` — `asOfDate`
 // (the org-local finalize day) is injected, so the tiers are deterministic and unit-testable (§7.5/§7.6).
-import type { LateEntryTier, LocalDate } from "@wardenx/types";
+import type { LateEntryTier, LocalDate } from "@chartwarden/types";
 import { daysBetween } from "../lifecycle/validation";
 
 /**

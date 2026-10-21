@@ -1,4 +1,4 @@
-// @wardenx/db — `volunteer_compliance_gate` (M15 §3.3). One row per (volunteer membership × gate kind ×
+// @chartwarden/db — `volunteer_compliance_gate` (M15 §3.3). One row per (volunteer membership × gate kind ×
 // validity window): the 42 CFR §418.78(b)/(d) postures `VolunteerComplianceProvider.effectiveStatusFor()`
 // answers from — the LIVE binding that closes M17's Wave-F volunteer deny-stub (M15-T05).
 //

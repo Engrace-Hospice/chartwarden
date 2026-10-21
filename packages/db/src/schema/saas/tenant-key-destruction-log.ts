@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_key_destruction_log` (M34 SaaS Tenant Platform §3.5). The append-only forensic
+// @chartwarden/db — `tenant_key_destruction_log` (M34 SaaS Tenant Platform §3.5). The append-only forensic
 // audit trail for the cryptographic-shred sequence: one row per phase transition during
 // `services/shred-worker.ts executeShred` — 'deks_zeroized' | 'module_erasers_complete' |
 // 'minio_scope_destroyed' | 'certificate_filed' | 'dek_destruction_aborted_part_two_retention'

@@ -1,9 +1,9 @@
 // apps/backend/src/modules/08-encounters — Module 8 (Encounters & Visit Notes).
 // M8-T04 lands the pure domain core (the §2.3 encounter + addendum state machines, the §2.7 validation
 // catalog, the §2.8 in-transaction side-effect rules). Schema/RLS shipped in T02/T03 (types in
-// @wardenx/types from T01); HearthNote Layer 1 (T05), cosignature workflow (T06), late-entry tiers
+// @chartwarden/types from T01); HearthNote Layer 1 (T05), cosignature workflow (T06), late-entry tiers
 // (T07), seams (T08), routes (T09) all compose over this pure core.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import {
@@ -46,7 +46,7 @@ export * from "./authoring/index";
 // M8-T08 — the §4.7 owned seams (Billable/Signed/Mileage/Creator) + the M7 CarePlanReader M8 consumes.
 export * from "./seams/index";
 // M8-T09 — the §4.1 route inventory (31 routes) behind the REAL Authorization Contract on the §4.5 keys
-// M8 contributes to M3 (M8_CONTRIBUTED_PERMISSIONS in @wardenx/auth) + the §4.6 `m8.cosigner_role_match`
+// M8 contributes to M3 (M8_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) + the §4.6 `m8.cosigner_role_match`
 // ABAC predicate M8 registers into M3. In-memory route service + AbacResolver for boot-without-DB/tests.
 export {
   type EncounterRouteDeps,

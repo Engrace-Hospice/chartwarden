@@ -18,7 +18,7 @@
 //   discipline_scope       — the intervention's discipline matches the caller's (IDG Coordinator excepted).
 //
 // Consent (`dpoa_active`, `sud_disclosure_allowed`) resolves through M39's `ConsentEvaluator` seam; M7
-// `dependsOn` 39, so it imports the TYPE from @wardenx/consent and resolves the impl via the opaque M1
+// `dependsOn` 39, so it imports the TYPE from @chartwarden/consent and resolves the impl via the opaque M1
 // registry (`getSeam`). Registration is idempotent: the shared registry is single-owner / no-clear, so
 // re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import {
@@ -26,9 +26,9 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import type { ConsentEvaluator, ConsentTypeKey } from "@wardenx/consent";
-import type { CarePlanSignerRole } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { ConsentEvaluator, ConsentTypeKey } from "@chartwarden/consent";
+import type { CarePlanSignerRole } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import { IDG_COORDINATOR_ROLE, canAuthorInterventionDiscipline } from "./authoring/index";
 import type { AuthoringDisciplineScope } from "./authoring/index";

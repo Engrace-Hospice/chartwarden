@@ -6,7 +6,7 @@
 // in bootstrap (`readPlatformGlobalFlag`: M36 may not touch the M1-owned `feature_flag` table, `arch:tables`); it selects the
 // org-NULL row alone and resolves that single row through `resolveFeatureFlags`, so kill-switch/expiry semantics are those
 // of every other flag. Absent row or false = OFF. A read error THROWS (the caller fails closed); never mapped to "off".
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { readPlatformGlobalFlag } from "../../../bootstrap/feature-flag-store";
 
 export const GLOBAL_SEARCH_PLATFORM_FLAG_KEY = "messaging.global_search_platform_enabled";

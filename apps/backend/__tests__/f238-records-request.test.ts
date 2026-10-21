@@ -1,6 +1,6 @@
 // apps/backend/__tests__/f238-records-request.test.ts — F-238 step 4: requesting a prospect's older records.
 //
-// 1. The code + matcher (pure, @wardenx/intake-extraction): the alphabet has none of the characters OCR
+// 1. The code + matcher (pure, @chartwarden/intake-extraction): the alphabet has none of the characters OCR
 //    swaps, a check character catches every single misread, OCR confusions on the page are folded back,
 //    and ordinary clinical text ("RR 18", "CORRECT", "ERRATA") never yields a code.
 // 2. The cover sheet: the code large and in the instructions, the prospect's name + DOB only, escaped.
@@ -15,8 +15,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import {
   RECORDS_REQUEST_ALPHABET,
   findRecordsRequestCodes,
@@ -24,7 +24,7 @@ import {
   isValidRecordsRequestCode,
   normaliseRecordsRequestCode,
   recordsRequestCheckChar,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the per-tenant circuit breaker (M12-T06, spec §2.5 / Integrations §3.2 / M1 §25.14).
+// @chartwarden/dosespot — the per-tenant circuit breaker (M12-T06, spec §2.5 / Integrations §3.2 / M1 §25.14).
 // One breaker is instantiated per `organization_id` (one DoseSpot clinic per tenant) so a single-tenant
 // outage never opens the circuit for other tenants (§2.5 blast-radius). The breaker logic here is PURE and
 // deterministic — `nowInstant` and the rolling-failure window are injected, never read from a clock — so the

@@ -14,7 +14,7 @@
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 
-// ── shared value unions (mirror the FROZEN @wardenx/db pgEnum value lists; schema wins on conflict) ──────
+// ── shared value unions (mirror the FROZEN @chartwarden/db pgEnum value lists; schema wins on conflict) ──────
 
 export type SubscriptionStatus =
   | "trialing"

@@ -20,16 +20,16 @@
 // route after the transaction (throwing inside `withOrgContext` rolls the audit row back with everything else).
 // Wrong codes count toward a lockout (5 in a row -> 15 minutes, in the Better Auth lockout columns); a TOTP step
 // cannot be replayed; a recovery code is single use. SMS is never a factor.
-import { type AuditContext, audit } from "@wardenx/audit";
+import { type AuditContext, audit } from "@chartwarden/audit";
 import {
   type TotpSecretOptions,
   createTotpEnrolment,
   generateRecoveryCodes,
   matchTotpStep,
-} from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, ne, sql } from "drizzle-orm";
 import {
   type AuditorAccessPort,
@@ -126,50 +126,50 @@ export type PresentedFactor =
   | { readonly kind: "recovery"; readonly code: string };
 
 /** refusal -> typed envelope. Locked answers 429 and carries `Retry-After` via the caller. */
-export function enrolmentRefusalError(refusal: EnrolmentRefusal): WardenXError {
+export function enrolmentRefusalError(refusal: EnrolmentRefusal): ChartWardenError {
   switch (refusal.reason) {
     case "session_invalid":
-      return new WardenXError("SESSION_INVALID", "this auditor session is not valid", 401);
+      return new ChartWardenError("SESSION_INVALID", "this auditor session is not valid", 401);
     case "already_active":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_ENROLMENT_COMPLETE",
         "this auditor session has already completed enrolment",
         409,
       );
     case "terms_stale":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_TERMS_STALE",
         "the engagement terms have changed; reload and review the current terms",
         409,
       );
     case "terms_not_accepted":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_TERMS_REQUIRED",
         "accept the engagement terms before continuing",
         409,
       );
     case "factor_locked":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_2FA_LOCKED",
         "too many incorrect codes; try again later",
         429,
       );
     case "factor_invalid":
-      return new WardenXError("AUDITOR_2FA_INVALID", "that code is not valid", 401);
+      return new ChartWardenError("AUDITOR_2FA_INVALID", "that code is not valid", 401);
     case "factor_already_enrolled":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_2FA_ALREADY_ENROLLED",
         "a second factor is already enrolled; present a code from it",
         409,
       );
     case "factor_not_started":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_2FA_NOT_STARTED",
         "start authenticator setup before confirming a code",
         409,
       );
     case "factor_not_enrolled":
-      return new WardenXError(
+      return new ChartWardenError(
         "AUDITOR_2FA_NOT_ENROLLED",
         "no second factor is enrolled yet; set up an authenticator first",
         409,

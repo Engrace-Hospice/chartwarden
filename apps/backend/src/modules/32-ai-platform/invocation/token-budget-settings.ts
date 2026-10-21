@@ -6,9 +6,9 @@
 // registered by `settings-by-m32.ts`). The posture is unchanged: an org with no setting, or a capability
 // missing from it, is `budget_unconfigured`, which the cap gate REFUSES. A setting that fails its schema
 // also resolves to `null` (refuse), never to a guessed figure.
-import { type AiTokenBudget, aiTokenBudgetFor } from "@wardenx/ai-platform";
-import { type DbClient, organizationSettingsReader, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type AiTokenBudget, aiTokenBudgetFor } from "@chartwarden/ai-platform";
+import { type DbClient, organizationSettingsReader, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { AiTokenBudgetResolver } from "./store";
 

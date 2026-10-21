@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.shred` job handler (M34 §3.5 / §7.2, M34).
+// @chartwarden/saas-tenant-platform · services — the `tenant.shred` job handler (M34 §3.5 / §7.2, M34).
 //
 // The IRREVERSIBLE four-phase cryptographic shred of a `destruction_pending` tenant (§3.5 / §7.2 step 5).
 // This is the terminal `destruction_pending → destroyed` lifecycle effect (§2.5 r8): once Phase 3 runs the
@@ -42,7 +42,7 @@
 // boot wiring binds to a seam / the M4 destruction-cert registry / the M1 helpers (mirroring how 2A's
 // abac-predicates reached M5 via `getSeam("CaseloadProvider")`) — this package adds NO direct M1/M2/M4 import
 // and NO new manifest `dependsOn` edge (M34 stays `[1,2,3,4,36]`). The `TenantKeyRingRepository` IS used —
-// through a port too, so the service layer owns the `withPlatformContext` (M1 @wardenx/tenancy) scoping and the
+// through a port too, so the service layer owns the `withPlatformContext` (M1 @chartwarden/tenancy) scoping and the
 // single transaction the route/effect-runner commits the §2.5 r8 transition in.
 import type { TenantKeyRingRepository } from "../repositories/tenant-key-ring";
 

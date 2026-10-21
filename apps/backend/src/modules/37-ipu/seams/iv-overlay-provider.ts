@@ -13,14 +13,14 @@
 // FAIL CLOSED where it matters: no overlay row => `overlayApplies=false` (the patient is not on an IPU, M13's
 // own checks stand), but an overlay that EXISTS is applied in full — a missing rate, an unrecognized rate unit
 // or an unbounded window is decided by the pure `evaluateIvPreAdministration`, not waved through here.
-import { type DbClient, schema } from "@wardenx/db";
-import { type IvSafetyOverlayFields, evaluateIvPreAdministration } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type IvSafetyOverlayFields, evaluateIvPreAdministration } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   IpuIvPreAdministrationVerdict,
   IpuIvSafetyOverlayProvider,
   IpuIvSafetyOverlayView,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, notInArray } from "drizzle-orm";
 
 const O = schema.ipuIvSafetyOverlay;

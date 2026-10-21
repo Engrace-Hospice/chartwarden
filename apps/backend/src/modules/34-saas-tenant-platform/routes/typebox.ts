@@ -9,7 +9,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -24,7 +24,7 @@ if (!FormatRegistry.Has("email")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// ── §3 vocab mirrors (string-literal unions; the canonical enums live in @wardenx/db / @wardenx/types) ──
+// ── §3 vocab mirrors (string-literal unions; the canonical enums live in @chartwarden/db / @chartwarden/types) ──
 
 /** The eleven-state tenant lifecycle (§2.2). `signup_intent`/`destroyed` are never targetable via the
  *  status route (signup_intent is the genesis state; destroyed is reached only by the shred worker). */

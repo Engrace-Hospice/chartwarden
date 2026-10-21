@@ -17,8 +17,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import type { ParsedRemittanceAdvice, X12WorkerResult } from "@wardenx/x12-835-client";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import type { ParsedRemittanceAdvice, X12WorkerResult } from "@chartwarden/x12-835-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";

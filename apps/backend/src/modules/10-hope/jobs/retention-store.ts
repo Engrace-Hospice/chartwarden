@@ -3,7 +3,7 @@
 // (GAP-181). ORG-scoped, caller-owned `withOrgContext` tx (the caller's per-org fan-out owns the envelope so a
 // scan's reads, the outbox publish and the ledger write commit atomically). READ-ONLY over every clinical
 // table — the only write is the M10-owned review ledger.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 import type {
   HopeRetentionBasis,

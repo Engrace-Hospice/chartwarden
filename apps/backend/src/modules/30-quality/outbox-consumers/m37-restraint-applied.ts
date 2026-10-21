@@ -24,8 +24,8 @@
 // dead-letter — mirrors `buildM30BereavementPlanClosedConsumer`'s identical posture; see the siting seam's
 // own header for why an unsitable restraint-incident draft is advisory-adjacent rather than integrity-
 // critical.
-import type { DbClient } from "@wardenx/db";
-import { type IncidentTriggerEvent, handleRestraintApplied } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { type IncidentTriggerEvent, handleRestraintApplied } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { M30_SYSTEM_MEMBERSHIP_ID, buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

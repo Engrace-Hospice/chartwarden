@@ -1,4 +1,4 @@
-import { computeHciIndicator10 } from "@wardenx/quality";
+import { computeHciIndicator10 } from "@chartwarden/quality";
 // apps/backend/__tests__/m30-hci-indicator-10.test.ts — HCI indicator 10 (visits near death).
 //
 // The first HCI indicator to resolve from live seams. It reuses the SAME two the HVLDL path uses (M6's

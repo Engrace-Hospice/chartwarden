@@ -4,9 +4,9 @@
 // left as fail-closed `unboundWorkerPort` thunks, so every NOE/NOTR window-watch tick, every validation run and
 // every revalidation threw. Each port here is a thin adapter over an owner of the behaviour (the notice
 // repositories, the claim-validation service, BullMQ) — no business rules live in this file.
-import { createDefaultBillingRegistry, repositories } from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { WardenXError } from "@wardenx/types";
+import { createDefaultBillingRegistry, repositories } from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { ChartWardenError } from "@chartwarden/types";
 import { type ConnectionOptions, Queue } from "bullmq";
 import type { ClaimAssemblySeams } from "../services/claim-assembly";
 import {
@@ -39,19 +39,19 @@ export function buildNoticeWindowPort(): NoticeWindowPort {
       if (kind === "noe") {
         const repo = new repositories.NoeRepository(tx);
         const row = await repo.findById(noticeId);
-        if (!row) throw new WardenXError("NOT_FOUND", `noe ${noticeId} not found`, 404);
+        if (!row) throw new ChartWardenError("NOT_FOUND", `noe ${noticeId} not found`, 404);
         const res = await repo.transitionToState(row.id, expectedVersion, row.state, patch);
         if (!res.ok) {
-          throw new WardenXError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
+          throw new ChartWardenError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
         }
         return;
       }
       const repo = new repositories.NotrRepository(tx);
       const row = await repo.findById(noticeId);
-      if (!row) throw new WardenXError("NOT_FOUND", `notr ${noticeId} not found`, 404);
+      if (!row) throw new ChartWardenError("NOT_FOUND", `notr ${noticeId} not found`, 404);
       const res = await repo.transitionToState(row.id, expectedVersion, row.state, patch);
       if (!res.ok) {
-        throw new WardenXError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
+        throw new ChartWardenError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
       }
     },
   };
@@ -90,7 +90,7 @@ export function buildM23WorkQueueEnqueuePort(connection: ConnectionOptions): {
     port: {
       async enqueue(queueName, dedupeKey, payload) {
         if (!isWorkQueue(queueName)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SEAM_UNBOUND",
             `M23 work queue '${queueName}' has no producer`,
             503,
@@ -147,7 +147,7 @@ export function buildClaimValidationRunner(deps: {
   return {
     async run({ tx, organizationId, claimId, validationRunId, trigger }) {
       if (!VALIDATION_TRIGGERS.has(trigger)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VALIDATION_FAILED",
           `unknown validation-run trigger '${trigger}'`,
           422,

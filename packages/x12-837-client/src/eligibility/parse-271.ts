@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the pure HETS 271 (005010X279A1) response parser.
+// @chartwarden/x12-837-client — the pure HETS 271 (005010X279A1) response parser.
 //
 // Sources (CMS HETS 270/271 5010 Companion Guide, cited by section):
 //   §7.5.1 / Table 23 — Part A entitlement: 2110C `EB*1**…*MA` + `DTP*291` (D8 start, or RD8 start-end);

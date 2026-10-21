@@ -1,5 +1,5 @@
-import { Card, EmptyState, ErrorState, LoadingSpinner, t } from "@wardenx/ui";
-// @wardenx/portal — shared screen frame for the §5.1 caregiver surfaces. A titled card column inside the
+import { Card, EmptyState, ErrorState, LoadingSpinner, t } from "@chartwarden/ui";
+// @chartwarden/portal — shared screen frame for the §5.1 caregiver surfaces. A titled card column inside the
 // portal's centered reading width, with the loading / error / empty triad every read screen needs. Keeps
 // the individual screens focused on their data shape rather than re-deriving layout chrome.
 import type { CSSProperties, JSX, ReactNode } from "react";

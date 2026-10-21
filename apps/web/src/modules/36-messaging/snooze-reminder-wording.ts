@@ -1,6 +1,6 @@
 // M36 WP 4.10 (ADR-0077) - the words of snooze and reminders. PROVISIONAL (brief section 12): the presets, the lengths and the sentences wait
 // for the clinical lead. Plain sentences; nothing here names a patient or a message.
-import { SNOOZE_REMINDER_ERROR_CODES as CODES } from "@wardenx/types";
+import { SNOOZE_REMINDER_ERROR_CODES as CODES } from "@chartwarden/types";
 
 export interface DurationPreset {
   readonly minutes: number;

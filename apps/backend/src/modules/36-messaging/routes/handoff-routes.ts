@@ -14,8 +14,8 @@
 // actor are always the request context. Participant rules (sender or recipient only) live in the service: a missing handoff
 // and a non-participant are ONE 404. No `Idempotency-Key`: idempotency is the partial unique index (one open offer per
 // sender and receiver), so no request header is read here.
-import { requirePermission } from "@wardenx/auth";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { HandoffActorRef, HandoffService } from "../handoffs/handoff-service";
 import {

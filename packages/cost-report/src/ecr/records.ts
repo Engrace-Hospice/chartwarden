@@ -1,5 +1,5 @@
 import type { WorksheetCode } from "../contracts";
-// @wardenx/cost-report — M27 ECR record-type model + fixed-field formatting kernel (D11, §1.1 / §1.3).
+// @chartwarden/cost-report — M27 ECR record-type model + fixed-field formatting kernel (D11, §1.1 / §1.3).
 // The Electronic Cost Report (ECR) is the CMS-specified, fixed-field-format TEXT file the agency uploads
 // to MCReF; the CMS-1984-14 ECR specification defines record types, a worksheet/line/column addressing
 // scheme, and exact byte columns for each field. This file is the typed record model + the deterministic
@@ -16,7 +16,7 @@ import type { WorksheetCode } from "../contracts";
 // provisional. Swapping in the real layout is a constants-only edit — the record model does not change.
 //
 // PURE DOMAIN: reuses the M27 money kernel (`toDecimal`, D8) for the cents→dollars division only; no
-// Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No PHI — aggregate financial /
+// Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. No PHI — aggregate financial /
 // statistical values only (D18).
 import { type Cents, toDecimal } from "../domain/money";
 

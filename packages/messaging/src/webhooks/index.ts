@@ -1,4 +1,4 @@
-// @wardenx/messaging — webhook security layer (M36-T08, spec §4.9 / SD-056 / INT-016).
+// @chartwarden/messaging — webhook security layer (M36-T08, spec §4.9 / SD-056 / INT-016).
 //
 // The §4.9 two-layer inbound-webhook defense, shared by all three handlers (Twilio sms-status /
 // voice-status, Postmark event): the replay-window guard (§4.9.1) + the signature verifiers

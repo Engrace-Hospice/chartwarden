@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 NGS-J6 ADDITIVE MAC validation rule set (D16, §7.8). MACs carry
+// @chartwarden/cost-report — M27 NGS-J6 ADDITIVE MAC validation rule set (D16, §7.8). MACs carry
 // jurisdiction-specific cost-report quirks (statistical-basis conventions, supporting-documentation
 // requirements, rejection-code mappings); rather than fork the engine, each MAC ships an ADDITIVE rule
 // file layered on the platform defaults. NGS-J6 (National Government Services, Jurisdiction 6 — Engrace's
@@ -14,7 +14,7 @@
 // hold. These rules implement deterministic structural checks now; each is flagged where NGS-published
 // reference data is needed — no NGS-specific constant is fabricated as if verified.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import type { RuleDef } from "../types";
 import { passResult, skipResult, warnResult } from "../types";
 

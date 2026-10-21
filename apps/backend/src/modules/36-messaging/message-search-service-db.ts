@@ -11,7 +11,7 @@
 // (`status <> 'deleted'`) mean a tombstone is never even opened; the body searched is the CURRENT one (an edit
 // replaces the cipher in place). Hydration (reactions, pins, scan-gated attachments) is the shared read path, so a
 // result can never show more than the channel history would.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type MessageSearchInput,
   type MessageSearchResult,
@@ -22,10 +22,10 @@ import {
   bodyMatchesTerms,
   normalizeSearchText,
   searchPageSize,
-} from "@wardenx/messaging";
-import type { MessageBodyKind } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { MessageBodyKind } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";
@@ -63,7 +63,7 @@ export function searchTimeoutToError(error: unknown): unknown {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
     if ((current as { code?: unknown }).code === "57014") {
-      return new WardenXError(
+      return new ChartWardenError(
         "SEARCH_TIMEOUT",
         "the search took too long; narrow it with a filter or try again",
         503,
@@ -74,8 +74,8 @@ export function searchTimeoutToError(error: unknown): unknown {
   return error;
 }
 
-function badInput(message: string): WardenXError {
-  return new WardenXError("INVALID_SEARCH_QUERY", message, 422);
+function badInput(message: string): ChartWardenError {
+  return new ChartWardenError("INVALID_SEARCH_QUERY", message, 422);
 }
 
 function parseInstant(value: string | undefined, label: string): Date | undefined {
@@ -213,7 +213,7 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
         if (channel.isArchived) {
-          throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
         }
         const found = await scan(tx, orgId, input, { kind: channel.kind }, filters, cursor);
         const hydrated = await hydrateMessages(tx, found.ctx, found.matched, input.channelId);

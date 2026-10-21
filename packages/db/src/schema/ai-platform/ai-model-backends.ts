@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_model_backend` (M32 §3.2.4). The model registry: every backend M32 may route to,
+// @chartwarden/db — `ai_model_backend` (M32 §3.2.4). The model registry: every backend M32 may route to,
 // cloud or local, pinned to an exact model version.
 //
 // PLATFORM-SHARED (§3.3): one row per real backend, the same answer for every tenant. Listed in
@@ -19,7 +19,7 @@
 //
 // `zdr_status` stays a TEXT column with a value CHECK rather than a pgEnum: §3.1 declares twenty-one
 // enums and this vocabulary is not among them, so minting a pg type here would be M32 inventing DDL the
-// spec never declared. The union lives in `@wardenx/types` as `AiZdrStatus`.
+// spec never declared. The union lives in `@chartwarden/types` as `AiZdrStatus`.
 import { sql } from "drizzle-orm";
 import {
   boolean,

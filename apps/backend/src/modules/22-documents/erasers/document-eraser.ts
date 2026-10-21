@@ -24,9 +24,9 @@
 // Registers the REAL eraser over the Phase-0 `documents` deny-stub (`documents` is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub (same hook M5/M6/M7/M8/M36 use).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { type DataEraser, DegradedError, type OrgId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { type DataEraser, DegradedError, type OrgId } from "@chartwarden/types";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 import { deriveTenantBucket } from "../lifecycle/storage";

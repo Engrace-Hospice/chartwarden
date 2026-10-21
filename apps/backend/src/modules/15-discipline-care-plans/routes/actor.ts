@@ -6,10 +6,10 @@
 // Every authored row (a goal, an intervention, an assessment, a supervisory attestation, a volunteer
 // assignment, a compliance gate, an hour entry) is stamped with the server-assembled membership id — the
 // §8.6 (S) spoofing control: a caller cannot attest as another RN by putting their id in the body.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the session facts the §7.8/§7.9 disclosure gates read. */

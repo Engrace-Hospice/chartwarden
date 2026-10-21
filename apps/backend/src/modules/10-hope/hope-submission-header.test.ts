@@ -52,7 +52,7 @@ describe("HOPE software vendor configuration", () => {
       vendorId: "123456789",
       vendorName: "WardenX Inc",
       vendorEmail: "hope@wardenx.example",
-      productName: "WardenX",
+      productName: "ChartWarden",
       productVersion: "2026.9.26",
     });
   });
@@ -138,7 +138,7 @@ describe("HOPE submission header — control item values", () => {
       FAC_ID: "123456",
       SFTWR_VNDR_ID: "123456789",
       SFTWR_VNDR_EMAIL_ADR: "hope@wardenx.example",
-      SFTWR_PROD_NAME: "WardenX",
+      SFTWR_PROD_NAME: "ChartWarden",
       SFTWR_PROD_VRSN_CD: "2026.9.26",
       SFTWR_VNDR_NAME: "WardenX Inc",
       CRCTN_NUM: "02",

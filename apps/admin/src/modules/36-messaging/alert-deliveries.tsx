@@ -1,4 +1,4 @@
-import { Button, StatusPill, type StatusTone, useApiClient, useRequestGuard } from "@wardenx/ui";
+import { Button, StatusPill, type StatusTone, useApiClient, useRequestGuard } from "@chartwarden/ui";
 // apps/admin/src/modules/36-messaging — Alert deliveries (`/admin/messaging/alert-deliveries`, M36 §4.1, GAP-165).
 // Platform-ops failures-and-audit drill over GET /api/v1/admin/messaging/alert-deliveries: delivery METADATA only
 // (the server returns no recipient, destination or payload), cross-tenant, keyset-paginated via `nextBefore`.

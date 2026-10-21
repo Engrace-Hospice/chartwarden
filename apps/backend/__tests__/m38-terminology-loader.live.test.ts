@@ -14,9 +14,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { createTerminologyProvider } from "@wardenx/terminology";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { createTerminologyProvider } from "@chartwarden/terminology";
 import {
   EMBEDDING_DIMENSIONS,
   type LoadVersionDeps,
@@ -31,7 +31,7 @@ import {
   runLoadVersion,
   runRefreshEmbeddings,
   sha256Hex,
-} from "@wardenx/terminology-loader";
+} from "@chartwarden/terminology-loader";
 import type { Queue } from "bullmq";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

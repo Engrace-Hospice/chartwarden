@@ -11,7 +11,7 @@
 //   • Step-up (D13). `STEP_UP_REQUIRED` is surfaced with its code so the panel can offer the real
 //     `/step-up` screen; the message the server sent is shown, not replaced.
 //   • The Layer-3 gate at finalize/sign. A 409/422 names what is missing and is shown verbatim.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 import type { UpdateSelectionsBody } from "./encounters-api";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;

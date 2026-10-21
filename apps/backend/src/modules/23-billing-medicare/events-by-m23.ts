@@ -20,9 +20,9 @@
 // 1 mac_credential + 2 mac_portal + 1 billing-render + 1 abn), plus the 5 `m23.transfer_notice.*` events
 // (8xC / 8xD, migration 0375) and the 2 `m23.{noe,notr}.correction_created` events (migration 0378) added after
 // this count was taken. Severity (§4.10 col 2) and alert routing
-// (§4.9) are NOT part of the OutboxEventEntry shape — they live in `@wardenx/billing`'s alerts.ts.
+// (§4.9) are NOT part of the OutboxEventEntry shape — they live in `@chartwarden/billing`'s alerts.ts.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

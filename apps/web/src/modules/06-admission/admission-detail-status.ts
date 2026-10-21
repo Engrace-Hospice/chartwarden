@@ -1,6 +1,6 @@
 // apps/web/src/modules/06-admission — pure helpers + the post-activation patient poll for Admission Detail.
 // Split from admission-detail.tsx (file-size ceiling); nothing here renders.
-import { type ApiClient, formatDateOnly } from "@wardenx/ui";
+import { type ApiClient, formatDateOnly } from "@chartwarden/ui";
 import { type MutableRefObject, useCallback, useEffect, useState } from "react";
 import { stateLabel } from "./admission-status";
 import { ADDENDUM_WINDOW_LABEL } from "./election-addendum-format";

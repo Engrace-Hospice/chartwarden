@@ -1,7 +1,7 @@
 // M36 WP 2.9 — who is in a department (discipline / location) channel, with add and remove. Offered to a holder of
 // messaging.manage_members; the server also applies the channel-level rule (org_admin, or a clinical lead for a
 // location channel of their own location), so a refusal is shown, not assumed.
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ChannelArchiveControl } from "./channel-archive-control";

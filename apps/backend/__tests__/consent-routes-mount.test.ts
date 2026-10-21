@@ -1,4 +1,4 @@
-import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
+import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // apps/backend/__tests__/consent-routes-mount.test.ts — FB-T03 composition-root mount glue.
 //
 // Proves `mountConsentRoutes(app, db)` wires the M39 consent surface onto the host behind the same
@@ -7,7 +7,7 @@ import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 // over the handle; queries happen at request time), so a stub DbClient exercises the wiring without
 // live Postgres. The deep store reads are covered by the route inventory tests over the in-memory
 // backend (consent-routes.test.ts) and the live RLS suite (rls-isolation.live.test.ts).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountConsentRoutes } from "../src/modules/39-consent/index";

@@ -17,7 +17,7 @@ import type {
   PatientId,
   ScaleSeriesPoint,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The data port the §4.7 seam providers compose over. Methods return read-only DTO shapes (never

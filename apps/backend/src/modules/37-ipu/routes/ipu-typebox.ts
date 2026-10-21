@@ -4,8 +4,8 @@
 // touches Drizzle; the enrichment registry points at the same schemas so openapi.json carries the contract.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { GipCriteriaPayload } from "@wardenx/inpatient";
-import { ValidationError } from "@wardenx/types";
+import { GipCriteriaPayload } from "@chartwarden/inpatient";
+import { ValidationError } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 

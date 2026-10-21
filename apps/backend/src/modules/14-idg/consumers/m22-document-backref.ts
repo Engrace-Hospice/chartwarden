@@ -20,8 +20,8 @@
 //
 // TENANCY: a relay tick is not a request — the write runs in `withOrgContext` pinned to the event's own
 // `organizationId`, and the explicit `organization_id` predicate is the belt behind RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 

@@ -1,4 +1,4 @@
-// @wardenx/audit — the Drizzle reader behind the audit hash-chain seal and its sampled verification
+// @chartwarden/audit — the Drizzle reader behind the audit hash-chain seal and its sampled verification
 // (M4 §4.4). `audit_event` is HELPER-ONLY, so the only sanctioned reader of its rows is this package; the
 // backend job in apps/backend/src/modules/04-audit/jobs consumes this port and never selects the table.
 //
@@ -10,8 +10,8 @@
 //     re-serialised from a parsed object.
 // Every read runs inside `withOrgContext`, so RLS scopes it to the tenant, and carries an explicit
 // `organization_id` predicate as well.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, sql } from "drizzle-orm";
 import { type RecomputedMonth, createChainHasher, hashAuditRow } from "./chain-sample";
 

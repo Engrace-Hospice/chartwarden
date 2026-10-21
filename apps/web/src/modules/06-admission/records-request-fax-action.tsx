@@ -5,7 +5,7 @@
 // The fax number is prefilled from the request's own recipient fax (the referral itself carries no fax
 // number — only the referrer's phone). The server normalises NANP / E.164 and refuses anything undialable;
 // the send is idempotent per request, so once a fax is sent the action is replaced by its status.
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useEffect, useState } from "react";
 import {

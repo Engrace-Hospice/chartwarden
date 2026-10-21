@@ -37,8 +37,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";

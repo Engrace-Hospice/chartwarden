@@ -1,6 +1,6 @@
 // apps/backend/src/modules/09-assessments/seams/providers.ts — M9-T04 the §4.7 / D7 seam
 // implementations: pure orchestration over an injected {@link AssessmentReaderStore}. Each returns the
-// leaf-typed seam interface (@wardenx/types) the M1 registry validates and M7/M10/M14/M28/M32 resolve.
+// leaf-typed seam interface (@chartwarden/types) the M1 registry validates and M7/M10/M14/M28/M32 resolve.
 // The providers add NO tenant logic — RLS scopes every store read by the consumer's `app.org_id` (§4.7);
 // they only project store DTOs and apply the D4 read-time series/delta math with one home each.
 import type {
@@ -14,7 +14,7 @@ import type {
   ScaleSeriesPoint,
   ScaleSeriesProvider,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { AssessmentReaderStore } from "./store";
 
 /**

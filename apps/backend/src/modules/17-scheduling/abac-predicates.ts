@@ -12,7 +12,7 @@
 //        injected {@link SchedulingAbacResolver} (prod wires M2's credential reader); fail-closed when the
 //        membership/creds are unknown.
 //   discipline_matches_visit           — §1.1 D8 predicate 3: the membership's discipline is acceptable for
-//        the visit purpose per the pure `VISIT_PURPOSE_DISCIPLINES` map (@wardenx/scheduling). Fail-closed on
+//        the visit purpose per the pure `VISIT_PURPOSE_DISCIPLINES` map (@chartwarden/scheduling). Fail-closed on
 //        an unknown membership or an unknown purpose.
 //   not_on_pto                         — §4.7: NO approved `time_off` row overlaps the scheduled window. The
 //        overlap probe loads through the resolver (prod = the §4.7 `tstzrange && tstzrange` query under RLS).
@@ -21,9 +21,9 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import { type SchedulingDiscipline, VISIT_PURPOSE_DISCIPLINES } from "@wardenx/scheduling";
-import type { VisitPurpose } from "@wardenx/types";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { type SchedulingDiscipline, VISIT_PURPOSE_DISCIPLINES } from "@chartwarden/scheduling";
+import type { VisitPurpose } from "@chartwarden/types";
 
 /** The §4.7 predicate names M17 owns (registered into M3). Single-owner across the platform registry. */
 export const M17_ABAC_PREDICATES = [

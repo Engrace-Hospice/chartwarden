@@ -17,7 +17,7 @@
 // discharged-read-only patient, or a missing attestation produces a refusal, never a default-through. The
 // portal is the most consumer-exposed surface (§8); a write that reaches an upstream clinical module must
 // have cleared every M31-side precondition first (the upstream module re-validates — defense in depth).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7.7–§7.9 write-path failure-code catalog → HTTP status. */
 export const M31_WRITE_ERROR_STATUS = {
@@ -67,10 +67,10 @@ export type M31WriteErrorCode = keyof typeof M31_WRITE_ERROR_STATUS;
 /**
  * A guard / validation failure on one of the M31 portal write paths (§7.7–§7.9). Carries the precise code so
  * the §5 screens render an exact message; the M1 error handler maps `statusCode` to the HTTP response. Extends
- * the M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation), parallel to the
+ * the M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation), parallel to the
  * T03 `PortalStateError` and the T05 `TelehealthStateError`.
  */
-export class PortalWriteError extends WardenXError {
+export class PortalWriteError extends ChartWardenError {
   constructor(code: M31WriteErrorCode, message: string) {
     super(code, message, M31_WRITE_ERROR_STATUS[code]);
     this.name = "PortalWriteError";

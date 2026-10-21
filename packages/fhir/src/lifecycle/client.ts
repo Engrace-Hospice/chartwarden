@@ -1,4 +1,4 @@
-// @wardenx/fhir — §2.2 `fhir_client` onboarding state machine (M28-T01).
+// @chartwarden/fhir — §2.2 `fhir_client` onboarding state machine (M28-T01).
 //
 // The §2.2 diagram as a PURE function of (fromStatus, toStatus) → transition. No IO, no DB, no clock:
 // `fhir_client.status` is the state, the M4 write-audit trigger + the outbox are the ledger, and
@@ -20,7 +20,7 @@ import type {
   FhirClientServePosture,
   FhirClientStatus,
   FhirStatusTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The status a freshly-proposed client lands in (§2.2 `[*] --> proposed` / "Org Admin requests"). */
 export const FHIR_CLIENT_INITIAL_STATUS: FhirClientStatus = "pending_approval";

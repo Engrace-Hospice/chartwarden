@@ -1,4 +1,4 @@
-// @wardenx/messaging — the cross-module notification composer (M36-T09, spec §4.11, ADR-0024).
+// @chartwarden/messaging — the cross-module notification composer (M36-T09, spec §4.11, ADR-0024).
 //
 // ONE composer path for all six moved events (the §3.12.5 referral / critical-results /
 // transmission-failure families). A producer module (M6/M11/M22) emits its typed outbox event;

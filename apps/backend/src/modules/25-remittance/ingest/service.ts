@@ -5,7 +5,7 @@
 //   receiveAdvice — "Secure receive; validate; dedup" (§2.2 `queued`). Takes a raw 835 file ALREADY staged
 //     in MinIO (this package does not itself speak to a clearinghouse/SFTP — the actual external pull
 //     transport is a separate, unbuilt concern, same posture as every other unwired M25 forward seam) plus
-//     its bytes (to derive the ISA/ST dedup key locally — @wardenx/x12-835-client's
+//     its bytes (to derive the ISA/ST dedup key locally — @chartwarden/x12-835-client's
 //     `parseX12EnvelopeHeader`, no sidecar round-trip needed for just the header) and its sha256. Inserts
 //     the `remittance_advice` envelope row; the DB's `ux_remittance_envelope_dedupe` unique index is the
 //     actual dedup enforcement (§2.6) — a caught unique-violation means "already ingested", not an error,
@@ -23,7 +23,7 @@
 //     a SEPARATE, later transaction then marks the advice `failed` with a PHI-free reason so it stays
 //     operator-actionable via the EXISTING `remittance.replay` route (which re-emits
 //     `m25.edi.835_received`, naturally re-driving this same pipeline).
-import type { X12835WorkerClient } from "@wardenx/x12-835-client";
+import type { X12835WorkerClient } from "@chartwarden/x12-835-client";
 import type { MatchCandidate } from "../domain/match";
 import type { WriteOutboxPort } from "../routes/write-service";
 

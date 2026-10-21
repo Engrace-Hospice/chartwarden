@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.6 D7 time_off lifecycle state machine (M17-T03). Pure, IO-free.
+// @chartwarden/scheduling — §2.2.6 D7 time_off lifecycle state machine (M17-T03). Pure, IO-free.
 //
 // The §2.2.6 time_off machine:
 //
@@ -10,7 +10,7 @@
 // guards (failures raise the precise §2.2.6 code via SchedulingStateError), and return the new state + the
 // §2.4 in-transaction side-effect list. `time_off` carries no `visit_state_history` (that log is the
 // visit's), but every transition still writes the M4 audit row and bumps the optimistic `version`.
-import type { TimeOffState } from "@wardenx/types";
+import type { TimeOffState } from "@chartwarden/types";
 import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";
 import { TIME_OFF_DENIAL_REASON_MIN_LENGTH } from "./reason-floors";

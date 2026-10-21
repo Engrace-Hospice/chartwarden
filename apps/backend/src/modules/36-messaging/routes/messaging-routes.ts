@@ -5,7 +5,7 @@
 // post/edit/delete, read receipts, DM, member admin override, announcement), the SELF-only
 // notification preferences + delivery endpoints, and the alert inbox + alert-rule read/override.
 // Every route is gated by the REAL Authorization Contract (`requirePermission`/`requireAbac` from
-// @wardenx/auth, M3) on the §4.5 keys M36 registers into M3's catalog (M36_CONTRIBUTED_PERMISSIONS).
+// @chartwarden/auth, M3) on the §4.5 keys M36 registers into M3's catalog (M36_CONTRIBUTED_PERMISSIONS).
 //
 // AUTH SHAPE (§4.5): read/send/manage_members carry the `channel_visibility` ABAC predicate (it
 // branches per channel kind — caseload membership for care_team, bereavement membership for
@@ -16,7 +16,7 @@
 // auth, §4.9) and the platform-ops delivery-audit drill land with M36-T08.
 //
 // The handlers compose over the injected `MessagingRouteService` (M36-T07) — in the slice the
-// in-memory adapter from @wardenx/messaging; production injects the Drizzle/Valkey-backed service,
+// in-memory adapter from @chartwarden/messaging; production injects the Drizzle/Valkey-backed service,
 // whose mutations run inside `withOrgContext` so RLS on `app.org_id` is the backstop and whose
 // `sendMessage` envelope-encrypts the body under the tenant DEK (§3.4). Org/actor binding is always
 // server-side: the org/user come from `request.context`, never the body.
@@ -27,13 +27,13 @@ import {
   requireAbac,
   requirePermission,
   resolveActorPermissions,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type {
   AnnouncementService,
   MemberAdminActor,
   MessagingRouteService,
-} from "@wardenx/messaging";
-import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { ForbiddenError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
 import { resolveRichWrite } from "../rich-body-codec";
@@ -119,7 +119,7 @@ import {
 } from "./unacknowledged-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The named ABAC predicate the channel-scoped routes gate on (§4.5). */
@@ -232,7 +232,7 @@ export const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
   const raw = request.headers["idempotency-key"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IDEMPOTENCY_KEY_REQUIRED",
       "an Idempotency-Key header is required",
       400,
@@ -637,7 +637,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const { id } = parse(MessageParamsSchema, request.params);
     const body = parse(EditMessageBodySchema, request.body);
     if (body.body === undefined && body.bodyDoc === undefined) {
-      throw new WardenXError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
+      throw new ChartWardenError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
     }
     const rich = resolveRichWrite(body);
     await assertSbarFlag(request, sbarDeps, rich?.richBody);

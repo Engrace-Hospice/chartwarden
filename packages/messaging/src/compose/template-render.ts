@@ -1,4 +1,4 @@
-// @wardenx/messaging — notification-template resolution + render (M36-T09, spec §3.13, ADR-0024).
+// @chartwarden/messaging — notification-template resolution + render (M36-T09, spec §3.13, ADR-0024).
 //
 // The pure half of the cross-module notification composer (§4.11): given a platform-floor
 // `notification_template` row and an optional per-tenant overlay, compute the EFFECTIVE template

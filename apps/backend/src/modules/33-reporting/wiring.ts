@@ -7,7 +7,7 @@
 //   3. the §4.8 platform-job allowlist registration (the cross-org refresh / lag-probe / eraser jobs).
 //
 // BOUNDARY (M33 dependsOn [1,2,3,4,36] — no new edge): everything cross-module is reached through the
-// foundation helpers M1 owns (`@wardenx/tenancy`, `@wardenx/db`) or a PORT this file binds to a typed-TODO
+// foundation helpers M1 owns (`@chartwarden/tenancy`, `@chartwarden/db`) or a PORT this file binds to a typed-TODO
 // until the owning infra exposes a boot accessor. Nothing here adds a direct M2/M4/M22/M36 import.
 //
 // WHAT IS LIVE vs TYPED-TODO (the honest seam map):
@@ -21,13 +21,13 @@
 //     evaluator (drilldown maximal-narrows), and the tile/export SQL executor (tiles serve the
 //     forward-seam empty result). The replica-lag gate reports a healthy single-pool primary (no replica
 //     ⇒ no lag).
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 import { parseExpression } from "cron-parser";
 import { sql } from "drizzle-orm";
 
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type CsvExportOutboxPort,
   DashboardCatalogProviderImpl,
@@ -43,9 +43,9 @@ import {
   type TranslatorBaseCatalog,
   translateSpec,
   withReportSession,
-} from "@wardenx/reporting";
-import { isValidTimeZone } from "@wardenx/shared/dates";
-import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/reporting";
+import { isValidTimeZone } from "@chartwarden/shared/dates";
+import { registerPlatformJob, withOrgContext } from "@chartwarden/tenancy";
 
 import { getSeam, registerSeam } from "../../bootstrap/index";
 import { resolveReportableScope } from "./abac-predicates";
@@ -72,7 +72,7 @@ import { buildDrizzleTileSqlExecutor } from "./sql-executor";
 /**
  * The registered platform-job id M33's platform-scoped §4.8 workers (the on-PRIMARY MV refresh, the lag
  * probe, the tenant-offboarding eraser) enter `withPlatformContext` under. Registered on the
- * `@wardenx/tenancy` allowlist by {@link wireM33Tenancy} at boot — until then `withPlatformContext` REFUSES
+ * `@chartwarden/tenancy` allowlist by {@link wireM33Tenancy} at boot — until then `withPlatformContext` REFUSES
  * the caller (fail-closed; the allowlist starts empty). The M34 `M34_PLATFORM_JOB_ID` precedent.
  */
 export const M33_PLATFORM_JOB_ID = "m33.platform_ops";
@@ -104,7 +104,7 @@ export class M33InfraPortUnbound extends DegradedError {
 // ── tenancy allowlist registration (must run before any withPlatformContext entry) ────────────────────
 
 /**
- * Register M33's platform job id on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST so the §4.8
+ * Register M33's platform job id on the `@chartwarden/tenancy` PLATFORM_CONTEXT_ALLOWLIST so the §4.8
  * platform-scoped workers (the MV refresh on the PRIMARY, the lag probe, the tenant eraser) may enter
  * `withPlatformContext` (the allowlist starts empty — fail-closed). Idempotent (`Set.add`). The M34
  * `wireM34Tenancy` precedent.
@@ -331,7 +331,7 @@ const HEALTHY_SINGLE_POOL_LAG_GATE: ReplicaLagGatePort = {
  *     computes the FIRST fire and never asserts cadence — so a blank expression would resume as a
  *     once-a-minute report. Rejected explicitly, at the one place both paths funnel through.
  *  2. **An unrecognized timezone fails deep inside the evaluator**, as `CronDate: unhandled timestamp:
- *     null` — a message that tells a tenant admin nothing. `isValidTimeZone` (@wardenx/shared/dates, the
+ *     null` — a message that tells a tenant admin nothing. `isValidTimeZone` (@chartwarden/shared/dates, the
  *     PARAM-004 helper) is checked first so the 422 names the actual problem.
  *
  * Everything else (out-of-range fields, malformed syntax, an expression with no future occurrence such as

@@ -21,8 +21,8 @@
 //
 // "coordinator" = holds `idg.coordinate` (resolved server-side; never client input). `administrator` is a member of the
 // vocabulary but NOT a quorum seat, so recording an admin under it can never satisfy quorum.
-import { isIdgAttendanceDiscipline } from "@wardenx/idg";
-import { WardenXError } from "@wardenx/types";
+import { isIdgAttendanceDiscipline } from "@chartwarden/idg";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** What the route learned about the TARGET membership's authoritative disciplines. */
 export type AttendanceTargetFacts =
@@ -45,8 +45,8 @@ export interface AttendancePlan {
   readonly disciplineAttested: boolean;
 }
 
-export const attendanceSelfOnlyError = (): WardenXError =>
-  new WardenXError(
+export const attendanceSelfOnlyError = (): ChartWardenError =>
+  new ChartWardenError(
     "ATTENDANCE_SELF_ONLY",
     "you may only record your own attendance; a coordinator records other attendees",
     403,
@@ -54,7 +54,7 @@ export const attendanceSelfOnlyError = (): WardenXError =>
 
 export function planAttendanceRecord(input: AttendancePlanInput): AttendancePlan {
   if (!isIdgAttendanceDiscipline(input.discipline)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UNKNOWN_DISCIPLINE",
       `'${input.discipline}' is not an attendance discipline`,
       422,
@@ -64,7 +64,7 @@ export function planAttendanceRecord(input: AttendancePlanInput): AttendancePlan
   if (!input.actorIsCoordinator) {
     if (!isSelf) throw attendanceSelfOnlyError();
     if (input.coordinatorAttested) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ATTESTATION_REQUIRES_COORDINATOR",
         "only a coordinator may attest a discipline the member's roles do not confer",
         403,
@@ -72,14 +72,14 @@ export function planAttendanceRecord(input: AttendancePlanInput): AttendancePlan
     }
   }
   if (input.target.kind === "not_found") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ATTENDANCE_MEMBERSHIP_NOT_FOUND",
       "that membership is not an active member of this organization",
       422,
     );
   }
   if (input.target.kind === "unavailable") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ATTENDANCE_AUTHORITY_UNAVAILABLE",
       "could not verify the attendee's disciplines; please retry",
       503,
@@ -88,7 +88,7 @@ export function planAttendanceRecord(input: AttendancePlanInput): AttendancePlan
   if (input.target.disciplines.includes(input.discipline)) return { disciplineAttested: false };
   if (input.actorIsCoordinator && input.coordinatorAttested) {
     if (isSelf) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ATTESTATION_SELF_FORBIDDEN",
         "a coordinator may not attest a discipline for themself; ask another coordinator",
         403,
@@ -96,7 +96,7 @@ export function planAttendanceRecord(input: AttendancePlanInput): AttendancePlan
     }
     return { disciplineAttested: true };
   }
-  throw new WardenXError(
+  throw new ChartWardenError(
     "DISCIPLINE_NOT_HELD",
     input.actorIsCoordinator
       ? `the member does not hold the '${input.discipline}' discipline; record it as a coordinator attestation to override`

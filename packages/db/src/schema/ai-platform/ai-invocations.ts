@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_invocation` (M32 §3.2.8). The disclosure ledger: one row per attempt to invoke an AI
+// @chartwarden/db — `ai_invocation` (M32 §3.2.8). The disclosure ledger: one row per attempt to invoke an AI
 // capability, INCLUDING the attempts that were refused.
 //
 // THIS ROW IS THE §164.528 EVIDENCE. When a patient asks for an accounting of disclosures, the answer to

@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_spec_item_option` (M10 HOPE modernization Phase 1A). Official allowed coded
+// @chartwarden/db — `hope_spec_item_option` (M10 HOPE modernization Phase 1A). Official allowed coded
 // values from CMS itm_val. `value_code` is text because CMS codes are not guaranteed numeric.
 import { index, integer, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { hopeSpecItems } from "./hope-spec-items";

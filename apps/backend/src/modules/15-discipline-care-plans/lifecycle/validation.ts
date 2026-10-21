@@ -3,7 +3,7 @@ import {
   PLAN_KIND_AUTHOR_DISCIPLINES,
   VOLUNTEER_OUT_OF_SCOPE,
   type VolunteerOutOfScopeItem,
-} from "@wardenx/discipline-plans";
+} from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/validation.ts — M15-T03 (§2.3).
 //
 // The synchronous §2.3 validation catalog as pure guards over already-resolved facts. Every cross-module
@@ -16,7 +16,7 @@ import type {
   DisciplineAuthorRole,
   DisciplineGoalSource,
   DisciplinePlanKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /** Free-text minimum lengths the §2.3 sync rules enforce (trimmed). */

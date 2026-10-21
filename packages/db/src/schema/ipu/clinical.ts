@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 clinical-safety overlays (§2.5/§2.10, §3.3): ipu_iv_safety_overlay (the IV-pump
+// @chartwarden/db — M37 clinical-safety overlays (§2.5/§2.10, §3.3): ipu_iv_safety_overlay (the IV-pump
 // safety overlay that CLOSES the M13 Wave-E deferral), ipu_restraint_event + its reassessment cadence
 // ledger. TENANT-SCOPED, RLS on app.org_id. Restraint application is a step-up action — the
 // applied_step_up_assertion_id is NOT NULL. Free-text justification/notes/reason is PHI-denylisted

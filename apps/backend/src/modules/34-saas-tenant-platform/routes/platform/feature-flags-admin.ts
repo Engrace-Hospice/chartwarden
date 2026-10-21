@@ -4,7 +4,7 @@
 // seam (CRUD + kill switch). These routes DELEGATE the write to `m1.featureFlagAdmin.upsert(...)` /
 // `.killSwitch(...)` — the M34 route is the auth boundary; the actual write is M1 (§4.7). Dependency-
 // cruiser confirms M34 never imports M1's `feature_flag` schema directly: the seam is reached OPAQUELY in
-// the route-service adapter (Phase 2D via `getSeam(...)`), so no `@wardenx/db` flag-schema edge is created
+// the route-service adapter (Phase 2D via `getSeam(...)`), so no `@chartwarden/db` flag-schema edge is created
 // and M34 `dependsOn` stays `[1,2,3,4,36]` (the M22 forward-seam precedent).
 //
 // List (platform-global + per-tenant flags) is fully live (read via the M1 admin seam under
@@ -12,8 +12,8 @@
 // (global flag → platform-ops only; per-tenant flag → org_admin) + passkey-recent-5min step-up (§6 / D10).
 // The M36 `feature_flag.platform_emergency_changed` alert (plus the outbox row and the critical audit) on
 // kill-switch is the M1 seam's emission, in-tx with the write. Mirrors the sibling tenants.ts plugin shape.
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   FeatureFlagListQuerySchema,

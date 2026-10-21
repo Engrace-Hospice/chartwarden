@@ -3,7 +3,7 @@
 //   signed in  : one resolve call, then the thread route with the ids the server named; the /n/ entry is replaced
 //   any failure: the SAME generic page (404, 403, 500, a network error, a malformed id) with no id-derived text anywhere
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
 import axe from "axe-core";
 import { type JSX, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

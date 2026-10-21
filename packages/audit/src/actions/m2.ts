@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 2 (Identity & Org) action catalog (M4-T10; M4 spec §4.6.1 `m2.ts`).
+// @chartwarden/audit — Module 2 (Identity & Org) action catalog (M4-T10; M4 spec §4.6.1 `m2.ts`).
 //
 // The `m2.*` actions M2's identity/membership routes and the session step-up flow emit through
 // the mandated audit() surface (apps/backend/src/modules/02-identity/audit/*). All are security-

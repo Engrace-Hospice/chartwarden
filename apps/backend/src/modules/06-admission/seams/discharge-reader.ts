@@ -11,9 +11,9 @@
 // live-discharge definition, flagged here (not silently invented) the same way M7's 15-day grace-period
 // interpretation and M14's cadence interpretation are flagged elsewhere in this module family. Revisit if
 // a future CMS technical-spec refresh publishes a different cutoff.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DischargeReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DischargeReader } from "@chartwarden/types";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 
 const DE = schema.dischargeEvents;

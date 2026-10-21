@@ -1,12 +1,12 @@
-// @wardenx/emar — org-timezone clock math for the §2.3 D2 scheduled-dose materializer (M13-T03).
+// @chartwarden/emar — org-timezone clock math for the §2.3 D2 scheduled-dose materializer (M13-T03).
 // PURE, IO-free, `Date.now()`-free: every fact (the order timezone, the window start date, the
 // per-day local times) is passed in, so the math is deterministic across timezones and DST boundaries.
-// This is the M11 `@wardenx/orders` `lifecycle/time.ts` precedent carried forward: `packages/emar` is a
-// leaf feature lib (the backend depends on it, never the reverse) and may only import `@wardenx/types`.
+// This is the M11 `@chartwarden/orders` `lifecycle/time.ts` precedent carried forward: `packages/emar` is a
+// leaf feature lib (the backend depends on it, never the reverse) and may only import `@chartwarden/types`.
 // `Intl` (ICU ships with the runtime) resolves the zone offset, so the spec §2.3 DST edges — spring-forward
 // skips the 0200 slot, fall-back duplicates it — are handled exactly (the duplicate is de-duped by the
 // caller's instant set; the skipped wall time is mapped forward to its post-transition instant).
-import type { IsoInstant, LocalDate } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@chartwarden/types";
 
 /** Order timezone default when the patient location timezone is unset (matches the M6/M10/M11 default). */
 export const DEFAULT_ORDER_TIME_ZONE = "America/Los_Angeles";

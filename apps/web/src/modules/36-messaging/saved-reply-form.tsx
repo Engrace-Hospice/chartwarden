@@ -1,6 +1,6 @@
 // M36 WP 2.8 - one form for authoring a personal or shared saved reply. The server owns every rule (bounds, the PHI
 // lint, uniqueness); a refusal comes back as text and is shown in place without losing what was typed.
-import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@wardenx/ui";
+import { Button, InlineAlert, SelectField, TextAreaField, TextField } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import {

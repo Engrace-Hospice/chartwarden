@@ -39,7 +39,7 @@ import type {
   SafetyPolicyEffectiveDto,
   SafetyPolicyVersionId,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { SafetySideEffect } from "../lifecycle/effects";
 
 /** The three visit-bracketing kinds — the only ones a visit consumer ever materializes. §3.3's

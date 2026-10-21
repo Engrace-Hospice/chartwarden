@@ -1,4 +1,4 @@
-// @wardenx/messaging · crypto — barrel for the message body envelope crypto (M36 §3.4, FB-T05).
+// @chartwarden/messaging · crypto — barrel for the message body envelope crypto (M36 §3.4, FB-T05).
 export {
   loadMessagingKek,
   deriveOrgDek,

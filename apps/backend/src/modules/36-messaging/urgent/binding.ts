@@ -2,8 +2,8 @@
 // flag `messaging.urgent_clinical` is read through the platform's FeatureFlagReaderPort (tenant row wins; absent = off) AND
 // requires `messaging.sbar` (SBAR is mandatory), cached a few seconds per org. Eligibility of the recipient is the WP 3.5
 // recipient rule plus `messaging.urgent.receive`; nothing here reads an order or prescribing permission.
-import { type MessagingRouteService, derivePatient } from "@wardenx/messaging";
-import { URGENT_CLINICAL_FLAG_KEY, URGENT_RECEIVE_PERMISSION } from "@wardenx/types";
+import { type MessagingRouteService, derivePatient } from "@chartwarden/messaging";
+import { URGENT_CLINICAL_FLAG_KEY, URGENT_RECEIVE_PERMISSION } from "@chartwarden/types";
 import { HANDOFF_RECIPIENT_PERMISSIONS, recipientEligible } from "../handoffs/handoff-eligibility";
 import type { EligibilityPorts } from "../handoffs/handoff-eligibility";
 import type { HintOutboxPort } from "../message-hint-events";

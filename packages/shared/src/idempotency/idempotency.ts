@@ -1,10 +1,10 @@
-// @wardenx/shared — Idempotency helper (M1 Foundation §3.10; M1-T08).
+// @chartwarden/shared — Idempotency helper (M1 Foundation §3.10; M1-T08).
 //
 // Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is a
 // SHA-256 of (organization_id, key, body) per SEC-025 / M01-F13, so the same key with a
 // different body is a CONFLICT rather than a silent replay. A `pending` state guards the
 // concurrent-duplicate race (M01-F15). Storage is dependency-injected (IdempotencyStore):
-// packages/shared is a leaf and never imports @wardenx/db — the real Valkey/Postgres
+// packages/shared is a leaf and never imports @chartwarden/db — the real Valkey/Postgres
 // store is supplied by the M1 backend bootstrap (M1-T10) and the HTTP middleware that
 // wraps this helper is wired there too.
 import { createHash } from "node:crypto";

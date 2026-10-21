@@ -9,8 +9,8 @@
 //
 // One query for the whole id set (chunked), never N+1. Not a request: opens its own `withOrgContext` envelope (empty
 // acting user) with an explicit `organization_id` predicate behind RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 
 const PP = schema.patientPayers;

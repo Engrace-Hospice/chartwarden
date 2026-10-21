@@ -6,7 +6,7 @@
 // Until that lands, `enhanceNarrative` evaluates the §2.6 eligibility ladder, never leaves the process,
 // and returns the Layer-1 narrative verbatim as the deterministic fallback (architecture §1458). Every
 // function is pure; the eligibility ladder is the real T09/Wave-F logic, shipped and tested now.
-import type { Layer2EligibilityReason } from "@wardenx/types";
+import type { Layer2EligibilityReason } from "@chartwarden/types";
 
 /** The HearthNote platform feature flags. `layer2` is the Phase-1 global kill (default OFF). */
 export interface HearthnoteFlags {

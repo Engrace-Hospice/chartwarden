@@ -9,7 +9,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/38-terminology — Terminology Admin (M38, Track A).
 // Spec: docs/design/screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md — "Use Work Queue."
 // Search concepts within a code system; view a concept's detail. Backed by

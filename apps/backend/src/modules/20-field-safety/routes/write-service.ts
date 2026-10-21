@@ -45,7 +45,7 @@ import type {
   SafetySosOutcome,
   SafetySubscriptionModel,
   SafetySubscriptionScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { M20WriteActor } from "./actor";
 import type {
   SafetyCheckInView,

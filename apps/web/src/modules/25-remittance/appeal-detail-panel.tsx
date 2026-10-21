@@ -7,7 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the APPEAL LIFECYCLE PANEL (GAP-074): attach packet document / submit /
 // MAC acknowledgement / record decision / withdraw / close, over the live /api/v1/appeals/{id}/* routes
 // (§2.4 appeal machine: draft → submitted → under_review → decided → closed, withdraw from any open state).

@@ -1,4 +1,4 @@
-// @wardenx/fhir — MedicationRequest + MedicationStatement mappers (M12, M28-T04).
+// @chartwarden/fhir — MedicationRequest + MedicationStatement mappers (M12, M28-T04).
 //
 // Both project the M12 medication vocabulary to FHIR. The medication itself is a `CodeableConcept` on
 // the RxNorm system (D9 platform-canonical URI); when RxNorm is absent the free-text `medicationText`

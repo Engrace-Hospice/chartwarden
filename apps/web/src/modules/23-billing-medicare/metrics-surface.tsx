@@ -10,7 +10,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the METRICS SURFACE (R2, §5.1 #22 /
 // §4.6 `billing.claim.read_metrics`). The per-window aggregate drill-down behind the AR dashboard: the
 // claim-state mix the M33 reporting consumer projects, narrowable to a single ProviderEntity ("window").

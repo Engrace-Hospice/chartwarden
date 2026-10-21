@@ -11,8 +11,8 @@
 // treats them as org-level), and a row the actor personally owns (reporter / triage assignee / assigned
 // mortality reviewer — the same ownership arms the §4.7 predicates grant, so an assigned investigator is not
 // locked out of the record they were assigned).
-import { hasOrgWideScope } from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+import { hasOrgWideScope } from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import { type SQL, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { M30ReadActor } from "./actor";
@@ -37,7 +37,7 @@ export type QualityReadSurface = "incident" | "mortality" | "infection";
  * M30-specific org-wide READ arm (spec §6.5 `incident.read`, §6.6 `mortality.read` / `infection.read`):
  * only the cells marked ✓ (all rows) for these two roles. QAPI Coordinator: incident, mortality, infection.
  * Infection Control Lead: incident, infection (mortality.read is ✗ for ICL, so it has no arm there). This is
- * deliberately NOT in the shared `hasOrgWideScope` (@wardenx/auth), and it is never consulted for a write.
+ * deliberately NOT in the shared `hasOrgWideScope` (@chartwarden/auth), and it is never consulted for a write.
  */
 export const M30_ORG_READ_ROLES: Readonly<Record<QualityReadSurface, readonly string[]>> = {
   incident: ["qapi_coordinator", "infection_control_lead"],

@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — M30 §7.8 / D11: infection-surveillance event normalization (coding helpers).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — M30 §7.8 / D11: infection-surveillance event normalization (coding helpers).
 //
 // Each `infection_surveillance_event` row records a per-organism observation (pathogen, body site,
 // transmission context) keyed to a provider entity. Outbreak detection (./outbreak_detector) clusters
@@ -10,8 +10,8 @@ import type { schema } from "@wardenx/db";
 // PURE DOMAIN (P2a): coding helpers + a normalized projection of a surveillance row. No DB, no I/O, no
 // M38 value-set lookup (V-17 validation against the M38 pathogen / body-site value sets is a route-layer
 // concern in a LATER phase) — these helpers only canonicalize an already-validated code into the form
-// the cluster key compares. Empty/blank codes throw a `WardenXError`.
-import { WardenXError } from "@wardenx/types";
+// the cluster key compares. Empty/blank codes throw a `ChartWardenError`.
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * The minimal surveillance observation the cluster pipeline consumes — a structural subset of the
@@ -51,13 +51,13 @@ export interface NormalizedSurveillanceEvent {
 
 /**
  * Canonicalize a surveillance code: trim, collapse internal whitespace, and lowercase so casing /
- * spacing variants of the same M38 code resolve to one cluster key. Throws `WardenXError` on a blank
+ * spacing variants of the same M38 code resolve to one cluster key. Throws `ChartWardenError` on a blank
  * code (a real observation always carries a pathogen + body site — V-17).
  */
 function normalizeCode(raw: string, field: string): string {
   const normalized = raw.trim().replace(/\s+/g, " ").toLowerCase();
   if (normalized.length === 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "infection_surveillance_blank_code",
       `${field} must be a non-empty code`,
       422,
@@ -90,11 +90,11 @@ export function surveillanceClusterKey(
   return `${providerEntityId}${pathogen}${bodySite}`;
 }
 
-/** Parse an ISO-8601 instant (or `Date`), throwing `WardenXError` on an invalid value. */
+/** Parse an ISO-8601 instant (or `Date`), throwing `ChartWardenError` on an invalid value. */
 function toDate(value: Date | string): Date {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "infection_surveillance_invalid_timestamp",
       "observedAt is not a valid ISO-8601 instant",
       422,

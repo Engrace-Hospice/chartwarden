@@ -1,10 +1,10 @@
-// @wardenx/cost-report — Worksheet F (Balance Sheet) TypeBox schema (CMS-1984-14, §1.1). F is the
+// @chartwarden/cost-report — Worksheet F (Balance Sheet) TypeBox schema (CMS-1984-14, §1.1). F is the
 // provider's fiscal-year-end balance sheet: assets = liabilities + net assets/fund balance. The schema
 // carries the accounting identity tie flag the cross-worksheet validation asserts (total assets must equal
 // total liabilities plus equity to the dollar). All money is INTEGER CENTS; no PHI — entity financials only
 // (D18).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet F — balance sheet at fiscal-year-end. */

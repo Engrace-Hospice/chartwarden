@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T04 unit tests (spec §2.1, §7.1–7.2; §9.1 ≥95% on as-of).
+// @chartwarden/terminology — M38-T04 unit tests (spec §2.1, §7.1–7.2; §9.1 ≥95% on as-of).
 //
 // Proves the pure as-of resolution engine without live infra:
 //   • INCLUSION  — effectiveDate <= asOf <= endDate, inclusive upper bound (§2.5, §2.4.1).

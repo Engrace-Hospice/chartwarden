@@ -12,15 +12,15 @@ import {
   ValidationRepository,
   ValidationRuleRepository,
   emptyWorksheetData,
-} from "@wardenx/cost-report";
+} from "@chartwarden/cost-report";
 // apps/backend/src/modules/27-cost-report/routes/read-service-drizzle.ts — the Drizzle-backed
 // M27ReadRouteService (§4.1 GET surface: cost-report list/detail, worksheets, mappings, bad-debt,
 // statistics, imports, validations, ECR submissions, snapshots, compliance window, the rule library).
 //
 // Implements the {@link M27ReadRouteService} interface the route plugins compose over, but every read
-// opens ONE `withOrgContext(db, {organizationId, userId}, tx => …)` transaction (the M1 @wardenx/tenancy
+// opens ONE `withOrgContext(db, {organizationId, userId}, tx => …)` transaction (the M1 @chartwarden/tenancy
 // helper) so Postgres RLS scopes every statement to `app.org_id` — keeping tenant scoping in one home.
-// Inside the tx it reads through the @wardenx/cost-report data-port REPOSITORIES (each takes the `tx`
+// Inside the tx it reads through the @chartwarden/cost-report data-port REPOSITORIES (each takes the `tx`
 // handle) and projects rows to the deliberately-narrowed read DTOs. Mirrors the M30
 // routes/read-service-drizzle.ts precedent (one `read(actor, fn)` helper, one builder returning the
 // service, DTO mappers above it). M27 carries NO PHI (D18); money is INTEGER CENTS (D8).
@@ -28,9 +28,9 @@ import {
 // DTO discipline: the cipher / audit-denylisted columns (`raw_payload_cipher`, and on list views the
 // `materialized_inputs` / `worksheet_snapshot`) are NEVER projected here — only `getSnapshot` (the one
 // audit-read-logged route) surfaces the materialized payloads.
-import type { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import type { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import type { M27ReadActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
 import type {
@@ -251,7 +251,7 @@ function mapRule(row: schema.CostReportValidationRule): ValidationRuleView {
 
 /**
  * Build the Drizzle-backed {@link M27ReadRouteService}. Every method opens one `withOrgContext`
- * transaction (RLS-scoped to the actor's org) and reads through the @wardenx/cost-report repositories on
+ * transaction (RLS-scoped to the actor's org) and reads through the @chartwarden/cost-report repositories on
  * the tx handle. The route plugins gate each method on the §4.6 permission BEFORE the call reaches here —
  * this layer assumes an authorized, org-bound actor and never re-derives the org from anything but
  * `actor.organizationId`.

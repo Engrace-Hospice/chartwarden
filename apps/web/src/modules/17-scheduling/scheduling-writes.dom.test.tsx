@@ -11,7 +11,7 @@
 //   • The TIME-OFF QUEUE. Approved time off is what the conflict rules refuse a visit against, so an
 //     approval nobody could record was also a clinician the scheduler kept booking.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

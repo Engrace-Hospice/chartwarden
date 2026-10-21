@@ -7,7 +7,7 @@
 // `PatientReader` and M40's `followMerge`. This is the M22 `PatientDocumentRedirect` helper (§2.4 row
 // "patient.merged"). Pure: the merge facts (source → survivor) are injected as data; no DB. The §2.3
 // patient-binding-stability rule is enforced here — the only legal patient_id change is this cascade.
-import type { PatientId } from "@wardenx/types";
+import type { PatientId } from "@chartwarden/types";
 import { DocumentStateError } from "./errors";
 
 /** Match M5's `MAX_MERGE_HOPS` chain bound — a broken/over-long chain fails safe to the last resolvable id. */

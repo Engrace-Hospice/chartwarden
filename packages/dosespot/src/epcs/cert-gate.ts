@@ -1,4 +1,4 @@
-// @wardenx/dosespot — EPCS feature flag + per-tenant certification gate (§2.4 D18 / §1311.300, M12-T05).
+// @chartwarden/dosespot — EPCS feature flag + per-tenant certification gate (§2.4 D18 / §1311.300, M12-T05).
 // Pure, IO-free.
 //
 // EPCS (Electronic Prescribing of Controlled Substances) is fully BUILT in Phase 1, but production
@@ -11,7 +11,7 @@
 //      (default) and `audit_in_progress` block; `certified` permits; `revoked` blocks with an explicit alert.
 // Drafts of controlled-substance orders may always exist (clinicians need to write the plan); it is the
 // *transmission* of a Schedule II/III/IV/V NewRx that the gate blocks. Every fact is injected as data.
-import type { EpcsCertificationStatus } from "@wardenx/types";
+import type { EpcsCertificationStatus } from "@chartwarden/types";
 import { requireEpcs } from "./errors";
 
 /** The DoseSpot platform feature flags. `epcs` is the Phase-1 global kill switch (default OFF). */

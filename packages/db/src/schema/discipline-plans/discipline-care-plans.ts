@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_care_plan` (M15 §3.3). The plan ROOT: one row per (admission, kind) for the
+// @chartwarden/db — `discipline_care_plan` (M15 §3.3). The plan ROOT: one row per (admission, kind) for the
 // four CoP-driven discipline plans (aide_poc 418.76 · msw_plan 418.64(c) · spiritual_plan 418.64(d) ·
 // volunteer_plan 418.78). Bootstrapped on `m6.admission.activated` for the first three kinds, on the first
 // volunteer assignment for `volunteer_plan`; §2.2.1 lifecycle draft → active → draft_revising → discharged.

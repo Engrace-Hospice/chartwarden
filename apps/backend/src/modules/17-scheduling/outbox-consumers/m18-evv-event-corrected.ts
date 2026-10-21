@@ -26,8 +26,8 @@
 // Deliberately does NOT touch `evv_bracket_state`: the payload carries no new `gpsQuality`/
 // `geofenceDecision`, so there is no honest basis to re-derive the bracket flag from this event alone —
 // fabricating one would be the same mistake this arc's other findings refuse to make.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;

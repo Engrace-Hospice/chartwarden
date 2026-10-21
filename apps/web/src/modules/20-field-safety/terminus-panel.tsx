@@ -6,7 +6,7 @@
 // fail and the instruction to call emergency services must not depend on them. The PSAP administrative line
 // below it is supplementary, labelled with who verified it and when, and is only ever a number a human reads
 // and dials - the platform never dials a PSAP.
-import { t, useApiClient } from "@wardenx/ui";
+import { t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import {

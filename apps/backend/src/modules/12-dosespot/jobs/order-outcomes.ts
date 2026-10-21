@@ -4,8 +4,8 @@
 // updates BY ID guarded on `status = 'transmitted'` and asserts the row count, and publishes its events in the
 // same transaction. They return `false` (nothing written, nothing emitted) when the order is no longer
 // `transmitted` — already settled by the other path.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionMedicationOrder } from "@wardenx/dosespot";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
 import { and, eq, sql } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 

@@ -1,9 +1,9 @@
-// GAP-036 follow-up — the SUD-treatment drug list has ONE home (`@wardenx/dosespot`), and the 0340 backfill
+// GAP-036 follow-up — the SUD-treatment drug list has ONE home (`@chartwarden/dosespot`), and the 0340 backfill
 // migration's SQL list is derived from it. This test is the drift guard: edit the TS list without the SQL
 // (or vice versa) and it fails. No database: the migration file is read as text.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SUD_TREATMENT_DRUG_NAMES, isSudTreatmentDrug } from "@wardenx/dosespot";
+import { SUD_TREATMENT_DRUG_NAMES, isSudTreatmentDrug } from "@chartwarden/dosespot";
 import { describe, expect, it } from "vitest";
 import { isSudTreatmentDrug as gatesIsSudTreatmentDrug } from "../src/modules/12-dosespot/medication-order-safety-gates";
 

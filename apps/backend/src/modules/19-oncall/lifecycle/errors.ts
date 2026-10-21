@@ -2,7 +2,7 @@
 //
 // Every guard failure in the M19 on-call triage domain raises a `TriageStateError` carrying the
 // machine-readable code the §7 workflow tables and the §4.2 route error blocks name. The error extends the
-// M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
+// M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
 // error handler renders the exact code + status with no cross-module import edge. Mirrors the M7
 // `CarePlanStateError` / M15 `DisciplinePlanStateError` / M16 `BereavementStateError` precedent.
 //
@@ -11,7 +11,7 @@
 // wire code is the contract, so the two the spec wrote are kept exactly and every code the spec only
 // describes in prose follows the same shape — one module, one dialect. (M21's `M21_*` prefix exists
 // because M21's own §7 tables spell it that way; copying it here would have contradicted §7.1/§7.3.)
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 machine-readable failure-code catalog → HTTP status. */
 export const M19_ERROR_STATUS = {
@@ -276,7 +276,7 @@ export type M19ErrorCode = keyof typeof M19_ERROR_STATUS;
  * maps `statusCode` to the HTTP response. Per §2.2 every guard failure surfaces as one of these — never a
  * raw PG exception or a generic `ConflictError`.
  */
-export class TriageStateError extends WardenXError {
+export class TriageStateError extends ChartWardenError {
   constructor(code: M19ErrorCode, message: string) {
     super(code, message, M19_ERROR_STATUS[code]);
     this.name = "TriageStateError";

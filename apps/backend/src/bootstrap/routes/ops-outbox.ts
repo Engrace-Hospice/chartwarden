@@ -13,11 +13,11 @@
 // Management uses) as a pragmatic reuse rather than minting a new `ops.*` permission category for a
 // first, single-screen ops surface; revisit if/when more ops screens land (WX-PR-020's remaining
 // scope — job/queue visibility, tracing — noted as deferred in the backlog).
-import { requirePermission } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContextFromRequest } from "@chartwarden/tenancy";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, desc, eq, lt } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 

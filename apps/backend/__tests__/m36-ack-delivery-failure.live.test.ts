@@ -25,10 +25,10 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

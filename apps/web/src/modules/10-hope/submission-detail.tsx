@@ -5,13 +5,13 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE submission detail (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
 // Per-batch outcomes: status, item/accepted/rejected counts, transmit/accept timestamps. The §4.10 iQIES
 // submission lifecycle is read-only here; the inline Correct/Retry write actions fill in as their write
 // surfaces harden. Reads GET /api/v1/hope/submissions/:id via the typed client; the server enforces every
-// scope incl. PE scope (ADR-0030 — no authz on the frontend). Leaves only (@wardenx/ui).
+// scope incl. PE scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";

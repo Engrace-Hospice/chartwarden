@@ -2,7 +2,7 @@
 // The same modal shell as idg-meeting-modals.tsx (Modal + kit fields + in-place error, close only on
 // success). The SERVER owns permission (403 is surfaced), overlap (409), the end/duration/past-start
 // rules (422) and location scope (404); nothing here decides whether the caller may schedule.
-import { Button, Modal, SelectField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { type MeetingView, scheduleMeeting } from "./idg-api";

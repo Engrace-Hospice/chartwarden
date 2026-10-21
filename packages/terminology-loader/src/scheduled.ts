@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the five `terminology.scheduled_*` jobs' shared logic (M38 §4.3).
+// @chartwarden/terminology-loader — the five `terminology.scheduled_*` jobs' shared logic (M38 §4.3).
 //
 //   fetch (adapter) → sha256 → store in the PLATFORM bucket → register version → enqueue `load_version`
 //

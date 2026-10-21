@@ -1,4 +1,4 @@
-// @wardenx/messaging — WP 2.5 server-side message drafts.
+// @chartwarden/messaging — WP 2.5 server-side message drafts.
 //
 // One PRIVATE draft per (user, channel, thread root): `parentMessageId` null is the channel composer, a message id is
 // that thread's reply composer. The interface is shared by the in-memory slice impl (below) and the Drizzle impl in the
@@ -15,8 +15,8 @@ import {
   SBAR_URGENCY_HINTS,
   type SbarSections,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { MessageReferenceInput } from "../interfaces/provider";
 
 /** Same ceiling as a sent message body. */
@@ -70,8 +70,8 @@ export function decideDraftSave(
   return current.deviceId === input.deviceId ? "write" : "conflict";
 }
 
-export function draftConflictError(): WardenXError {
-  return new WardenXError(
+export function draftConflictError(): ChartWardenError {
+  return new ChartWardenError(
     "DRAFT_CONFLICT",
     "this draft was changed on another device; read it and choose how to merge",
     409,

@@ -11,10 +11,10 @@
 //                       custom rule's predicate DSL is evaluated by any engine today, so a persisted "rule"
 //                       would be dead data that never ran. A key that already exists is a 409; a new key is an
 //                       honest 501 naming exactly what is missing — never a 2xx that registered nothing.
-import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@wardenx/billing";
-import type { repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ValidationError, WardenXError } from "@wardenx/types";
+import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@chartwarden/billing";
+import type { repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { M23WriteActor } from "./actor";
 import type {
@@ -107,13 +107,13 @@ export function buildDrizzlePlatformAdminService(
 
     async registerPlatformRule(_actor, body) {
       if (platformRuleKeys.has(body.ruleKey)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PLATFORM_RULE_EXISTS",
           `platform rule '${body.ruleKey}' already exists in the code-defined registry`,
           409,
         );
       }
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PLATFORM_RULES_ARE_CODE_DEFINED",
         "platform validation rules are code-defined (each is a `check` function shipped with a release) and no dynamic platform-rule store or DSL evaluation engine exists; add the rule to packages/billing/src/rules and release it",
         501,

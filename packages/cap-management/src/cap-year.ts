@@ -1,4 +1,4 @@
-// @wardenx/cap-management — cap-year window math (D1: the cap accounting year is the federal FY,
+// @chartwarden/cap-management — cap-year window math (D1: the cap accounting year is the federal FY,
 // Oct 1 – Sep 30, per BBA-2018 §51005(b) / 42 CFR §418.309(b)). Pure date arithmetic on ISO `YYYY-MM-DD`
 // strings (no Date.now / timezone — the caller passes the as-of date). A cap year labelled 'FY2026' RUNS
 // Oct 1 2025 → Sep 30 2026 (the federal-FY convention: FY2026 ends Sep 30 2026).

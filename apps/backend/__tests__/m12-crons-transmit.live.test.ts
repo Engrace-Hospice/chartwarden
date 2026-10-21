@@ -7,7 +7,7 @@
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-transmit:live
  */
-import { DegradedError } from "@wardenx/dosespot";
+import { DegradedError } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { enqueueTransmissionIfBound } from "../src/modules/12-dosespot/index";
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
@@ -107,7 +107,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     });
     const load = async () =>
       inOrg(h.handle.db, ORG_A, async (tx) => {
-        const { schema } = await import("@wardenx/db");
+        const { schema } = await import("@chartwarden/db");
         const { eq } = await import("drizzle-orm");
         const [row] = await tx
           .select()
@@ -150,7 +150,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       transmission: false,
     });
     const result = await inOrg(h.handle.db, ORG_A, async (tx) => {
-      const { schema } = await import("@wardenx/db");
+      const { schema } = await import("@chartwarden/db");
       const { eq } = await import("drizzle-orm");
       const [row] = await tx
         .select()

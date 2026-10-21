@@ -28,16 +28,16 @@
 // an alert straight into the terminus with no SLA breach and call a spouse. The SLA watchdog
 // (`../jobs/cron-workers.ts`) is the only edge that enters the terminus. `terminus_unsupported` therefore
 // still DEAD-LETTERS (OPS-035's posture: a DLQ entry is a signal ops reviews, not noise).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MembershipId,
   OrgId,
   SafetySosAlertId,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildSosEscalatedAlert } from "../alerts";

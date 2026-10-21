@@ -1,4 +1,4 @@
-// @wardenx/db — `value_set` (M38 Terminology §3.5). A named, platform-curated set of
+// @chartwarden/db — `value_set` (M38 Terminology §3.5). A named, platform-curated set of
 // concepts (e.g. a HQRP measure's allowed codes) keyed by a stable slug. Members live in
 // `value_set_member`; the materialized read path is `value_set_expansion`; tenants may
 // add-only via `value_set_tenant_extension` (§7.6). Platform-shared reference

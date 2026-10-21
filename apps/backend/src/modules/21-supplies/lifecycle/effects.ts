@@ -19,7 +19,7 @@ import type {
   SuppliesAlertPayload,
   SupplyCourierAttestation,
   SupplyReceivedConfirmedActor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** One in-transaction side effect a transition declares (§2.11). */
 export type SupplySideEffect =

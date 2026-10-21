@@ -6,7 +6,7 @@
 // Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
 // `transferNoticeMachine`, is version-checked (§2.5 → 412), and emits its `m23.transfer_notice.*` event through
 // the injected catalog-validating outbox in the same transaction. The §20.1.3 rules are `evaluateTransferNotice`
-// (pure, `@wardenx/billing`); this file only gathers the one cross-row fact they need (other transfers in the
+// (pure, `@chartwarden/billing`); this file only gathers the one cross-row fact they need (other transfers in the
 // benefit period) and the M6 refresh (our admission date and physicians, which M6 may learn after the draft).
 //
 // SUBMISSION follows the NOE/NOTR outbox-only posture (D2): `submit` appends the queued `claim_submission`
@@ -24,9 +24,9 @@ import {
   repositories,
   transferNoticeMachine,
   transferNoticeTob,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { TransferInFactsResolver } from "../outbox-consumers/m6-transfer-in-notice";
 import type { JobEnqueuePort } from "../routes/write-service";
 import {
@@ -170,8 +170,8 @@ export interface TransferNoticeService {
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const LIVE: readonly NoticeState[] = ["draft", "ready", "submitted", "ack_pending"];
 
-function conflict412(current: number | null): WardenXError {
-  return new WardenXError(
+function conflict412(current: number | null): ChartWardenError {
+  return new ChartWardenError(
     "VERSION_CONFLICT",
     `the transfer notice was modified concurrently (current version ${current ?? "unknown"})`,
     412,
@@ -296,7 +296,7 @@ async function load(tx: BillingTx, organizationId: string, id: string): Promise<
 
 function requireDate(value: string, field: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
-    throw new WardenXError("VALIDATION_FAILED", `${field} must be a yyyy-mm-dd date`, 422);
+    throw new ChartWardenError("VALIDATION_FAILED", `${field} must be a yyyy-mm-dd date`, 422);
   }
 }
 
@@ -498,7 +498,7 @@ export function buildTransferNoticeService(
       assertNotAiActor(actor);
       const jobs = ports.jobs;
       if (!jobs) {
-        throw new WardenXError("SEAM_UNBOUND", "transfer-notice submission is not available", 503);
+        throw new ChartWardenError("SEAM_UNBOUND", "transfer-notice submission is not available", 503);
       }
       const facts = await freshFacts(actor.organizationId, transferNoticeId);
       return inOrg(actor, async (tx) => {
@@ -515,7 +515,7 @@ export function buildTransferNoticeService(
         // have been recorded since it was assembled).
         const evaluation = await evaluate(tx, notice);
         if (evaluation.blockers.length > 0) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TRANSFER_NOTICE_BLOCKED",
             evaluation.blockers.map((b) => b.message).join(" "),
             422,
@@ -581,7 +581,7 @@ export function buildTransferNoticeService(
           cancelReasonProvided: reason.length > 0,
         });
         if (stepped.error === "GUARD_FAILED") {
-          throw new WardenXError("VALIDATION_FAILED", "a cancel reason is required", 422);
+          throw new ChartWardenError("VALIDATION_FAILED", "a cancel reason is required", 422);
         }
         if (stepped.error) {
           throw new ConflictError(
@@ -606,7 +606,7 @@ export function buildTransferNoticeService(
         const source = await load(tx, actor.organizationId, transferNoticeId);
         await assertFollowUpAllowed(tx, source);
         if (args.correctedTransferDate === source.statementFromDate) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             "the corrected transfer date is the same as the date on file",
             422,

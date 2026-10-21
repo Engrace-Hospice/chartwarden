@@ -5,7 +5,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { CONSENT_TYPE_KEYS } from "@wardenx/consent";
+import { CONSENT_TYPE_KEYS } from "@chartwarden/consent";
 import type {
   CascadeRetryView,
   ConsentCatalogView,
@@ -20,8 +20,8 @@ import type {
   ExpiringConsentView,
   PostMortemEligibilityView,
   ReRenderReceiptView,
-} from "@wardenx/consent";
-import { ValidationError } from "@wardenx/types";
+} from "@chartwarden/consent";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -114,7 +114,7 @@ export const EvalAuditQuerySchema = Type.Object({
 // ── the §4.1 surface beyond the original slice ─────────────────────────────────────────────────
 //
 // The vocab unions below mirror the FROZEN pgEnums in packages/db/src/enums.ts (consent_recipient_kind,
-// consent_dpoa_*, consent_reminder_kind) and the @wardenx/consent type-level mirrors. An off-vocabulary
+// consent_dpoa_*, consent_reminder_kind) and the @chartwarden/consent type-level mirrors. An off-vocabulary
 // value is refused here rather than at the INSERT — the M3/M24 boundary-validation posture.
 
 const GRANTOR_KIND = Type.Union(
@@ -349,7 +349,7 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
 // The reads the M39 web screens call. Without these the generated client types every M39 response as
 // `content?: never` and a screen has to cast through a hand-maintained row shape that drifts silently —
 // the exact problem the M25 screens carried until their DTOs landed. These mirror the view interfaces in
-// @wardenx/consent's route service; that file is the contract, this is its wire projection.
+// @chartwarden/consent's route service; that file is the contract, this is its wire projection.
 //
 // Every route wraps its payload in `{ data }` (paged reads add `nextCursor`), so the envelope is modelled
 // here rather than left for each screen to guess at.

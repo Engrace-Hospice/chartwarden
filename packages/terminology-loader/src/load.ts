@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the generic version-load orchestrator (M38 §2.4.2, §3.1 `load.ts`, §4.3).
+// @chartwarden/terminology-loader — the generic version-load orchestrator (M38 §2.4.2, §3.1 `load.ts`, §4.3).
 //
 //   loading ──fetch · checksum · parse · stage──▶ staged ──activate──▶ active (prior ──▶ superseded)
 //      └────────────── deterministic fault ──────────────▶ failed (staging deleted; no concept rows exist)

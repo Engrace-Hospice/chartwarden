@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/24-billing-medicaid — M24 Billing — Medicaid screen registration (R2, ADR-0030,
 // §5.1). The read + write surface over the live /api/v1/medicaid-* + /api/v1/rb-* backend (38 routes). Each
 // `requiredPermission` is the REAL §4.7 M24 key the matching route gates on

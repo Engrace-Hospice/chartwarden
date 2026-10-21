@@ -11,7 +11,7 @@
 // Pure header guards (no IO). M14 cannot import M7's copy (module boundary), so this is a local mirror of the
 // M7/M22 `concurrency.ts` precedent. Both headers are registered `not-authorization` in
 // scripts/check-request-header-auth.ts: a wrong value can lose a write, never win one.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -26,7 +26,7 @@ export function requireIfMatch(): PreHandler {
     const raw = request.headers["if-match"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.trim().length === 0) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PRECONDITION_REQUIRED",
         "an If-Match header (the row version you read) is required on this route",
         428,
@@ -34,7 +34,7 @@ export function requireIfMatch(): PreHandler {
     }
     const m = IF_MATCH_RE.exec(value.trim());
     if (!m) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "If-Match must be the integer row version you read",
         400,
@@ -49,7 +49,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required on this route",
         400,
@@ -62,7 +62,7 @@ export function requireIdempotencyKey(): PreHandler {
 export function ifMatchVersionOf(request: FastifyRequest): number {
   const v = (request as WithIfMatch).ifMatchVersion;
   if (typeof v !== "number") {
-    throw new WardenXError("PRECONDITION_REQUIRED", "If-Match was not parsed for this route", 428);
+    throw new ChartWardenError("PRECONDITION_REQUIRED", "If-Match was not parsed for this route", 428);
   }
   return v;
 }

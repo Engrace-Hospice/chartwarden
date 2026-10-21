@@ -2,8 +2,8 @@
 // /api/v1/notifications/preferences`, notifications.preferences.manage; SELF-only). A routing grid (alert
 // category x severity -> channels), quiet hours and vacation forwarding, saved as one PUT. A 422
 // INVALID_ROUTING_MAP / 409 VACATION_FORWARD_* refusal surfaces its server message and keeps the draft.
-import { Button, TextField, useApiClient } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, TextField, useApiClient } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { renderLoadFallback, useLoad, useRestoreFocus } from "../ui";

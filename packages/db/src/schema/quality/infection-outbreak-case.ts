@@ -1,4 +1,4 @@
-// @wardenx/db — `infection_outbreak_case` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `infection_outbreak_case` (M30 §3.3; non-partitioned; retention class `compliance`).
 // A detected outbreak cluster (server-created only, V-18) over a (pathogen, body_site, time-window),
 // with IDG-review and containment lifecycle. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id
 // RLS). provider_entity_id is a logical FK to M40. No PHI (aggregate cluster, no patient_id); no

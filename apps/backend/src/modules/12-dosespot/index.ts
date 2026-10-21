@@ -4,7 +4,7 @@
 // M13/M14/M19/M28/M30/M31/M33 consume — + RefillInboxProvider — the refill-inbox read path the prescriber UI
 // and M19/M33 consume) registered into the M1 registry via `registerDoseSpotSeams` (driven from the
 // composition root's wireModuleSeams()).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerDoseSpotAbacPredicates as _registerM12Abac } from "./abac-predicates";
 import {
@@ -59,7 +59,7 @@ export {
   registerDoseSpotSeams,
 } from "./seams/index";
 // M12-T08 — the §4.7 ABAC predicates M12 owns (`prescriber_eligible` / `dea_schedule_authorized` /
-// `refill_inbox_scope`). The §4.6 permission keys M12 contributes to M3 live in @wardenx/auth
+// `refill_inbox_scope`). The §4.6 permission keys M12 contributes to M3 live in @chartwarden/auth
 // (M12_CONTRIBUTED_PERMISSIONS).
 export {
   type DoseSpotAbacDeps,

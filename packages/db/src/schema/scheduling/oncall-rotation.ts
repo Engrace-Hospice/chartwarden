@@ -1,4 +1,4 @@
-// @wardenx/db — `oncall_rotation_entry` (M17, GAP-029). The on-call rotation source behind
+// @chartwarden/db — `oncall_rotation_entry` (M17, GAP-029). The on-call rotation source behind
 // `VisitAssignmentReader.tonightsOnCallRoster` (M17 spec §4.3) that M19's Direct-model roster sync reads: one
 // row per (person × discipline × window). STAFF-scoped like `membership_credential` (organization_id +
 // membership_id only; M19 fans a roster entry out per ProviderEntity). Cancelled, never deleted, so the sync

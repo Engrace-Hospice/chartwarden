@@ -25,9 +25,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { ReportDefinitionRepository, ReportViewRepository } from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { ReportDefinitionRepository, ReportViewRepository } from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

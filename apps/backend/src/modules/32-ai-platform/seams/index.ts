@@ -24,7 +24,7 @@
 //     other modules' boot validators run to prove no contraband prompt exists. Its deny-stub THROWS, so
 //     leaving it unregistered because the AI pipeline happens to be unwired would take down M12, M13,
 //     M18, M21, M27 and M28 at boot over a fact none of them asked about.
-import type { AIPromptRegistry } from "@wardenx/ai-platform";
+import type { AIPromptRegistry } from "@chartwarden/ai-platform";
 
 import { registerSeam } from "../../../bootstrap/index";
 import type { AiInvocationPipeline } from "../invocation/service";

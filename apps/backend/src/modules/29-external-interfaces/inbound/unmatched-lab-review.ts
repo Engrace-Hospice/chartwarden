@@ -13,13 +13,13 @@
 // THE DISCARD writes no observation at all. The link row and its `lab_observation_value` children stay —
 // §8 retains an unmatched-then-discarded result for 180 days, and the §164.528 disclosure-accounting
 // record needs the receipt to survive the decision to ignore it — they just stop surfacing in the queue.
-import type { NewLabObservationRow } from "@wardenx/db/schema";
+import type { NewLabObservationRow } from "@chartwarden/db/schema";
 import type {
   LabAbnormalFlag,
   LabAbnormalSummary,
   LabResultStatus,
   LabTerminologyValidation,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { computeAbnormalSummary } from "./lab-abnormal";
 
 /** §5.2.4 — a discard must say why, in at least this many characters. Also a DB CHECK (migration 0200). */

@@ -11,14 +11,14 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type MemberAdminActor,
   type MessagingRouteService,
   createInMemoryMessagingService,
   mayManageChannelMembers,
   mayManageChannelMembersResolved,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,7 @@ const txHolder: { tx: unknown; ctx: Array<{ organizationId: string; userId: stri
   tx: undefined,
   ctx: [],
 };
-vi.mock("@wardenx/tenancy", async (orig) => ({
+vi.mock("@chartwarden/tenancy", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   withOrgContext: async (
     _db: unknown,

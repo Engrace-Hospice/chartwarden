@@ -1,8 +1,8 @@
 // apps/backend/src/bootstrap/outbox-persister.ts — M1-T10 transactional-outbox persister + boot catalog.
 //
 // packages/shared owns the catalog-validating dispatcher (`publishOutboxEvent`) but is a LEAF and may
-// not import @wardenx/db, so the real Drizzle insert into `outbox_event` and the full boot catalog are
-// assembled HERE, in the M1 composition layer (apps/backend), which CAN import @wardenx/{db,shared,types}.
+// not import @chartwarden/db, so the real Drizzle insert into `outbox_event` and the full boot catalog are
+// assembled HERE, in the M1 composition layer (apps/backend), which CAN import @chartwarden/{db,shared,types}.
 // This file supplies three things the composition root wires:
 //
 //   1. buildBootOutboxCatalog([...module contributions]) — the FULL eventName→entry catalog (M1 + the
@@ -15,15 +15,15 @@
 //      non-conformant; its events are registered in the catalog for completeness only).
 //   3. buildDbCatalogUpserter(db) + wireOutboxCatalog(db, catalog) — boot-populate `outbox_event_catalog`
 //      from the full catalog (idempotent UPSERT on `event_name`).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CatalogRowUpserter,
   M1_OUTBOX_EVENTS,
   buildOutboxEventCatalog,
   publishOutboxEvent,
   toOutboxCatalogRows,
-} from "@wardenx/shared";
-import type { ModuleEventContribution, OutboxEventEntry } from "@wardenx/types";
+} from "@chartwarden/shared";
+import type { ModuleEventContribution, OutboxEventEntry } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 
 /**

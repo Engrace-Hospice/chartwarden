@@ -11,8 +11,8 @@
 // Each shaped input is then fed through the REAL registered calculator (via buildMeasureRegistry) to assert a
 // sane rate/band. A non-HOPE measure (hvldl) still FAILS CLOSED — the non-HOPE families consume the M5–M18
 // read seams the integrator has not bound here yet.
-import { buildMeasureRegistry } from "@wardenx/quality";
-import type { HopeOrgRollupProvider, HopeRollupPeriod } from "@wardenx/types";
+import { buildMeasureRegistry } from "@chartwarden/quality";
+import type { HopeOrgRollupProvider, HopeRollupPeriod } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { resolveHopeMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
 

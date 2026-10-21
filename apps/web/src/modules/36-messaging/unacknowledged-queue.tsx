@@ -1,4 +1,4 @@
-import type { AckQueueItemDto, AckQueueStatus } from "@wardenx/types";
+import type { AckQueueItemDto, AckQueueStatus } from "@chartwarden/types";
 // apps/web/src/modules/36-messaging - WP 4.9 (ADR-0076): the supervisor's unacknowledged queue.
 // Spec: plan row 4.9 ("Supervisor sees every pending/overdue item in their scope; none hidden by filters"). Read-only.
 // Every request still waiting for a human, oldest deadline first, in a flat list: a state pill (words, never colour alone), how
@@ -13,7 +13,7 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, MouseEvent } from "react";
 import { Link } from "react-router-dom";

@@ -7,9 +7,9 @@
 // is never destructive on the satellite-table FKs (D8 resolver pattern). Registers the REAL eraser
 // over the Phase-0 deny-stub (the `clinical_record` data class is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it before validateErasers().
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

@@ -6,13 +6,13 @@
 // calls deferred carries a blocker and what would lift it. The second half is why this file exists:
 // the defect (#121) was not a check answering wrongly, it was twelve checks being nowhere while
 // `transitionEncounter` enforced a literal `true` and looked like it was enforcing them.
-import { STANDARD_VITALS_ROSTER, resolveTemplate } from "@wardenx/hearthnote";
+import { STANDARD_VITALS_ROSTER, resolveTemplate } from "@chartwarden/hearthnote";
 import type {
   CarePlanOverdueStatus,
   EncounterDiscipline,
   EncounterType,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATED_CHECKS,

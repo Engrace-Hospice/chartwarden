@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/care-team-sync/binding.ts - WP 3.9: the composition-root port for the
 // channel-membership-sync consumer. Built from ports so the root only supplies the live seams.
-import type { DbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type { ReviewWarn } from "../review/review-alerts";
 import { type ReviewStore, createDbReviewStore } from "../review/review-store-db";
 import { type TaskStore, createDbTaskStore } from "../tasks/task-store-db";

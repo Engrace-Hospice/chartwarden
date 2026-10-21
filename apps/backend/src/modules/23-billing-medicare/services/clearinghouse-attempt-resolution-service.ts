@@ -9,14 +9,14 @@
 // re-send under it would file the claim as new; the caller must use a new key and control number.
 // Only a still-reserved attempt that is past the window can be settled here; anything inside the window belongs to
 // the transport. The decision and who made it land in the audit trail (the table's M04 trigger).
-import { ConflictError, NotFoundError } from "@wardenx/types";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import {
   type AttemptUsage,
   type SubmissionAttemptStore,
   pastKeyWindow,
   scopeKey,
   settleGuard,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 
 export type ResolveStaleAttemptInput = {
   readonly providerEntityId: string;

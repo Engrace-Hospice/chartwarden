@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.1 `NarrativeEnhancementProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.1 `NarrativeEnhancementProvider` (M32-T06).
 //
 // The hot Phase-1 seam. M8 (HearthNote Layer 2) is the locked consumer and the reason M32 exists at all;
 // M14 (IDG cover polish) and M16 (bereavement risk narrative) attach optionally.

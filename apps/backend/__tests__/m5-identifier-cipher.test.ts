@@ -1,7 +1,7 @@
 // GAP-010 — the M5 identifier envelope + SSN blind index (unit; no DB). The crypto properties the live suite
 // re-proves against a real key ring: tenant/row/kind binding, tamper detection, rotation, fail-closed, no plaintext.
 import { randomBytes } from "node:crypto";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   IdentifierCipherIntegrityError,

@@ -1,6 +1,6 @@
 // M36 WP 5.9 (ADR-0084, PROPOSED) - every word the offboarding screen shows, in one place. PROVISIONAL pending clinical-lead and SEC review. The page
 // shows counts and fixed labels only: no name, message text or patient. State is always a word plus a glyph, never colour alone.
-import type { OffboardingItemKey, OffboardingItemState } from "@wardenx/types";
+import type { OffboardingItemKey, OffboardingItemState } from "@chartwarden/types";
 
 export const OFFBOARDING_TITLE = "Offboarding";
 export const OFFBOARDING_BREADCRUMB = "Admin / Messaging";

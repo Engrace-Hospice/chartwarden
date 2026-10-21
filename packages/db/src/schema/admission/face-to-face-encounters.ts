@@ -1,4 +1,4 @@
-// @wardenx/db — `face_to_face_encounter` (M6 §3.3). The CoP face-to-face attestation gating the
+// @chartwarden/db — `face_to_face_encounter` (M6 §3.3). The CoP face-to-face attestation gating the
 // third+ benefit period. PHI-bearing (carries an encounter reference) → the three-column tenancy
 // rule (org NOT NULL + nullable provider_entity_id / location_id). `performed_by_user_id` /
 // `window_override_by` are M1 users (FK); `encounter_id` is the M8 visit it was charted on (plain

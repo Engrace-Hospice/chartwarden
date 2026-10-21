@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, SelectField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the QIC RECONSIDERATION section of the appeal panel (hospice ADR/TPE/QIC PRD,
 // milestone 4): the cited-evidence list (draft only), the QIC's own decision clock derived from the receipt date the
 // person records, and the escalation to OMHA once the QIC is late. The server owns every rule (completeness, the
@@ -345,7 +345,7 @@ export function QicPanel({
           <h4 className="wx-action-title">Escalate to OMHA</h4>
           <Hint>
             The QIC has not decided by its date. Record the escalation request you sent outside
-            WardenX; WardenX does not send it for you. Recording it needs a recent step-up
+            ChartWarden; ChartWarden does not send it for you. Recording it needs a recent step-up
             verification and cannot be edited afterwards. Not yet confirmed with your billing SME:
             the escalation procedure, any form, and the ALJ amount-in-controversy requirement.
           </Hint>

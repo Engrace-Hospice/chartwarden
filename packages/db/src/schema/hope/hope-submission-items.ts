@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_submission_item` (M10 §3.3). A submission↔assessment join row recording one
+// @chartwarden/db — `hope_submission_item` (M10 §3.3). A submission↔assessment join row recording one
 // assessment's per-item iQIES outcome (pending→accepted/rejected) within a hope_submission batch.
 // Outside the PHI three-column rule (a join row, §3.3 tenancy note) → carries organization_id only (for
 // RLS) + an intra-module FK to hope_submission. The hope_assessment link is a plain uuid (the parent is

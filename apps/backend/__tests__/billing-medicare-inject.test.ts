@@ -17,7 +17,7 @@
 // M23 ships no `createInMemory*Backend` export (grepped the module — only `buildDrizzleM23ReadService` /
 // `buildDrizzleM23WriteService`), so this file is that backend, scoped to this file only (the M15/M19
 // precedent). `_billing-repo-fakes.ts` (the existing fakes file the domain-service tests share) fakes the
-// `@wardenx/billing` REPOSITORY layer `assembly.test.ts` et al. mock via `vi.mock("@wardenx/billing")` — a
+// `@chartwarden/billing` REPOSITORY layer `assembly.test.ts` et al. mock via `vi.mock("@chartwarden/billing")` — a
 // layer BELOW the route-service contracts this file mounts over (`M23ReadRouteService` / `M23WriteRouteService`
 // / `ClaimAssemblyService`), so it is not a fit here and is not imported; this file hand-rolls its own
 // backend directly against the route-service interfaces, per the module's own guidance.
@@ -43,9 +43,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { ClaimAssembleRequest, ClaimAssembleResponse } from "@wardenx/billing";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { ClaimAssembleRequest, ClaimAssembleResponse } from "@chartwarden/billing";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -1,9 +1,9 @@
-// @wardenx/db — `comfort_kit_template` (M21 §3.1.4). D3's platform-floor-plus-tenant-overlay definition of
+// @chartwarden/db — `comfort_kit_template` (M21 §3.1.4). D3's platform-floor-plus-tenant-overlay definition of
 // what a comfort kit IS: the four-medication floor (morphine 20 mg/mL 30 mL, lorazepam 2 mg/mL 15 mL,
 // haloperidol 5 mg/mL 10 mL, atropine 1% 5 mL) ships as ONE `is_platform_floor` row seeded in migration
 // 0103, and a tenant may EXTEND it (add medications) or TIGHTEN it (lower a replenishment threshold) but
 // never drop below the floor — the M9 D2 / M11 D3 / M15 D3 pattern, enforced by
-// `@wardenx/supplies`'s `template/floor` module at the write boundary.
+// `@chartwarden/supplies`'s `template/floor` module at the write boundary.
 //
 // TENANCY (ARCH-011 / ADR-0010): organization_id is NULLABLE and paired with `is_platform_floor`. The
 // platform-floor row is org-less by construction (one row, every tenant reads it); every tenant row carries

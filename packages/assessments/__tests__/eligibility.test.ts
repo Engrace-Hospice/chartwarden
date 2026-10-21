@@ -1,4 +1,4 @@
-import { SCALE_TYPES } from "@wardenx/types";
+import { SCALE_TYPES } from "@chartwarden/types";
 // packages/assessments/__tests__/eligibility.test.ts — M9-T05 the D8 discipline × scale eligibility
 // matrix (§4.7). Pins the load-bearing examples the spec fixes (§ Design decisions D8) and the
 // fail-closed behavior the recording gate + ABAC predicate rely on.

@@ -16,15 +16,15 @@
 // carve-out). Like the rest of the slice it runs over an injected store with an in-memory default;
 // production injects the Drizzle-backed store + the M1 key vault (DEK destruction is a key-vault op,
 // not a row UPDATE), and M4 files the destruction certificate for `messaging_tenant_data`.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type MessagingEraseStore,
   createInMemoryMessagingEraseStore,
   eraseTenantMessaging,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, messagingHoldLockName } from "@wardenx/types";
-import type { DataEraser } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, messagingHoldLockName } from "@chartwarden/types";
+import type { DataEraser } from "@chartwarden/types";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 import {

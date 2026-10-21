@@ -1,4 +1,4 @@
-// @wardenx/cost-report — the M27 tenant-offboarding / destruction eraseFn contract (M4 destruction
+// @chartwarden/cost-report — the M27 tenant-offboarding / destruction eraseFn contract (M4 destruction
 // registry, §3.7 / §8.4). Cost reports are COMPLIANCE-class survey evidence (7-year retention); the
 // destruction path is GATED — a `cost_report` that has ever been `submitted`/`accepted` (or whose latest
 // `ecr_submission.status='accepted'`) is destruction-BLOCKED on ordinary offboarding and may be reached

@@ -3,7 +3,7 @@
 // rebuilt from it. This is what heals rows written before the denominator fix (`gip_days > 0` with
 // `total_patient_days = 0`, which no event replay can repair because the replayed ledger insert is a conflict
 // and increments nothing) and any later drift. It publishes nothing and is idempotent.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];

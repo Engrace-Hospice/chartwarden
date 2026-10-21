@@ -20,9 +20,9 @@
 //      has no field for the AI advisory, the vendor handoff or any clinician free text (D11/D13), and the
 //      query below never selects those columns — so a future edit to the DTO cannot start leaking them by
 //      accident.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OnCallActor, PortalTriageSummary } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OnCallActor, PortalTriageSummary } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { seamOncallAbacPorts } from "../abac-predicates";
 import { readTriageMedicationContext } from "../clinical/medication-context";

@@ -173,12 +173,12 @@ describe("rule 2 — directory provenance", () => {
   });
 
   it("counts, rather than silently skips, schemas it cannot place by directory", () => {
-    // Local consts and @wardenx/* package imports have no comparable file. A gate that dropped them
+    // Local consts and @chartwarden/* package imports have no comparable file. A gate that dropped them
     // quietly while printing OK would be the same class of lie it exists to catch.
     const r = directoryProvenance(
       routes,
       new Map([[key, ["LocalConst", "PackageSchema"]]]),
-      [binding("PackageSchema", "@wardenx/billing", null)],
+      [binding("PackageSchema", "@chartwarden/billing", null)],
       REPO,
     );
     expect(r.checked).toBe(0);

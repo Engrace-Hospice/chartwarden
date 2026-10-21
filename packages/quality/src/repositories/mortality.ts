@@ -1,11 +1,11 @@
-// @wardenx/quality · repositories — the post-death review ledger: `mortality_review` (the structured
+// @chartwarden/quality · repositories — the post-death review ledger: `mortality_review` (the structured
 // clinical/satisfaction/compliance review created once per admission via an idempotent death event;
 // PARTITIONED monthly by `death_at`, composite PK id + death_at; retention class `phi`) (M30 §3.3).
 // ORG-SCOPED; the mortality service wraps these in `withOrgContext` and the PHI list routes drive cursor
 // pagination off `listByOrg` / `listForPatient` (keyset on (death_at, id) desc, §4.1.2). The free-text
 // dimension members are audit-denylisted (§3.6). Auto-creation idempotency runs through
 // `findByIdempotencyKey` + the per-admission `findByAdmission` (the per-leaf UNIQUEs).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { type SQL, and, desc, eq, lt, ne, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

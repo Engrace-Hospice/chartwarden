@@ -12,7 +12,7 @@ import type {
   PatientAllergyEntry,
   PatientIdentity,
   PatientLifecycleStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const PATIENT_CONTEXT_TILES = [
   "status",

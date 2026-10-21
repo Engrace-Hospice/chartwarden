@@ -1,4 +1,4 @@
-// @wardenx/db — `claim_state_history` (M23 Billing-Medicare §3.3; retention class `compliance`).
+// @chartwarden/db — `claim_state_history` (M23 Billing-Medicare §3.3; retention class `compliance`).
 // Append-only audit log of every `claim.state` transition (D4 lifecycle). `from_state` is NULL on the
 // initial creation row; `to_state` is always present. ORG-SCOPED: organization_id NOT NULL (canonical
 // app.org_id RLS).

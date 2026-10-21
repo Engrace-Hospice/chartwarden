@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — pair page-scanned ICD-10-CM codes with the model's diagnosis WORDING (F-238).
+// @chartwarden/intake-extraction — pair page-scanned ICD-10-CM codes with the model's diagnosis WORDING (F-238).
 //
 // The model returns `diagnoses[n].description` (+ `.role`) grounded to a page block; the scanner returns the
 // codes printed on the page. This joins them by position (same page, same Docling block) and wording (the

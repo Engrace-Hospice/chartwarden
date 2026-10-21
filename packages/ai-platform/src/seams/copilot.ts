@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.6 `CopilotProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.6 `CopilotProvider` (M32-T06).
 //
 // Two §2.4 capabilities sit behind this one seam — `copilot_clinical` (high risk) and `copilot_admin`
 // (medium) — and the caller picks between them with `scope`, not with a capability key. Same reason as

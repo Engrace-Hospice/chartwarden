@@ -1,10 +1,10 @@
 // apps/backend/src/modules/37-ipu/routes/service-drizzle.ts — the production M37 route service (T11b core
 // spine). Every op runs inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction as the
 // NOBYPASSRLS `wardenx_app` role, so tenant isolation is the RLS backstop, not app logic. Writes drive the
-// pure @wardenx/inpatient machines (transitionBedCleaning, planOpenAdmission) and emit `m37.*` through the
+// pure @chartwarden/inpatient machines (transitionBedCleaning, planOpenAdmission) and emit `m37.*` through the
 // injected WriteOutboxPort in the SAME unit of work (transactional outbox). `userId` is the M2 session user
 // id (the audit actor); `membershipId` stamps the row's created_by / by_membership_id columns.
-import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
+import { type DbClient, schema, todayForOrganization } from "@chartwarden/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
@@ -29,10 +29,10 @@ import {
   validateGipCriteriaPayload,
   validateRestraintApply,
   visitorConsentTypesFor,
-} from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
-import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
+} from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { getIpuBodyReleaseDocumentReader, getIpuMdmDirectoryReader } from "../seams";
 import type { IpuReadActor, IpuWriteActor } from "./actor";

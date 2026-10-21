@@ -34,14 +34,14 @@
       },
     },
     "apps/admin": {
-      "name": "@wardenx/admin",
+      "name": "@chartwarden/admin",
       "version": "0.0.0",
       "dependencies": {
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/manrope": "^5.2.8",
-        "@wardenx/admin-ui-shell": "workspace:*",
-        "@wardenx/types": "workspace:*",
-        "@wardenx/ui": "workspace:*",
+        "@chartwarden/admin-ui-shell": "workspace:*",
+        "@chartwarden/types": "workspace:*",
+        "@chartwarden/ui": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
         "react-router-dom": "^7.18.2",
@@ -51,22 +51,22 @@
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
         "@vitejs/plugin-react": "^4.3.4",
-        "@wardenx/auth": "workspace:*",
+        "@chartwarden/auth": "workspace:*",
         "tailwindcss": "^4",
         "vite": "^6.4.3",
       },
     },
     "apps/backend": {
-      "name": "@wardenx/backend",
+      "name": "@chartwarden/backend",
       "version": "0.0.0",
       "dependencies": {
         "@socket.io/redis-adapter": "8.3.0",
         "@socket.io/redis-emitter": "5.1.0",
-        "@wardenx/audit": "workspace:*",
-        "@wardenx/db": "workspace:*",
-        "@wardenx/shared": "workspace:*",
-        "@wardenx/tenancy": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/audit": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
+        "@chartwarden/tenancy": "workspace:*",
+        "@chartwarden/types": "workspace:*",
         "bullmq": "^5.81.3",
         "cron-parser": "^4.9.0",
         "fastify": "^5.12.5",
@@ -80,13 +80,13 @@
       },
     },
     "apps/portal": {
-      "name": "@wardenx/portal",
+      "name": "@chartwarden/portal",
       "version": "0.0.0",
       "dependencies": {
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/manrope": "^5.2.8",
-        "@wardenx/types": "workspace:*",
-        "@wardenx/ui": "workspace:*",
+        "@chartwarden/types": "workspace:*",
+        "@chartwarden/ui": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
         "react-router-dom": "^7.18.2",
@@ -101,15 +101,15 @@
       },
     },
     "apps/web": {
-      "name": "@wardenx/web",
+      "name": "@chartwarden/web",
       "version": "0.0.0",
       "dependencies": {
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/manrope": "^5.2.8",
         "@fontsource/ibm-plex-mono": "^5.2.7",
-        "@wardenx/auth": "workspace:*",
-        "@wardenx/types": "workspace:*",
-        "@wardenx/ui": "workspace:*",
+        "@chartwarden/auth": "workspace:*",
+        "@chartwarden/types": "workspace:*",
+        "@chartwarden/ui": "workspace:*",
         "bwip-js": "^4.11.4",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
@@ -130,10 +130,10 @@
       },
     },
     "packages/admin-ui-shell": {
-      "name": "@wardenx/admin-ui-shell",
+      "name": "@chartwarden/admin-ui-shell",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/ui": "workspace:*",
+        "@chartwarden/ui": "workspace:*",
         "react": "^18.3.1",
       },
       "devDependencies": {
@@ -141,29 +141,29 @@
       },
     },
     "packages/ai-platform": {
-      "name": "@wardenx/ai-platform",
+      "name": "@chartwarden/ai-platform",
       "version": "0.0.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.131.0",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/assessments": {
-      "name": "@wardenx/assessments",
+      "name": "@chartwarden/assessments",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/audit": {
-      "name": "@wardenx/audit",
+      "name": "@chartwarden/audit",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/db": "workspace:*",
+        "@chartwarden/db": "workspace:*",
       },
     },
     "packages/auth": {
-      "name": "@wardenx/auth",
+      "name": "@chartwarden/auth",
       "version": "0.0.0",
       "dependencies": {
         "@better-auth/expo": "1.6.25",
@@ -173,61 +173,61 @@
       },
     },
     "packages/bereavement": {
-      "name": "@wardenx/bereavement",
+      "name": "@chartwarden/bereavement",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/billing": {
-      "name": "@wardenx/billing",
+      "name": "@chartwarden/billing",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@wardenx/db": "workspace:*",
-        "@wardenx/shared": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/cahps-vendors": {
-      "name": "@wardenx/cahps-vendors",
+      "name": "@chartwarden/cahps-vendors",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/quality": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/quality": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/cap-management": {
-      "name": "@wardenx/cap-management",
+      "name": "@chartwarden/cap-management",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@wardenx/db": "workspace:*",
-        "@wardenx/shared": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/consent": {
-      "name": "@wardenx/consent",
+      "name": "@chartwarden/consent",
       "version": "0.0.0",
     },
     "packages/cost-report": {
-      "name": "@wardenx/cost-report",
+      "name": "@chartwarden/cost-report",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@wardenx/db": "workspace:*",
-        "@wardenx/gusto-client": "workspace:*",
-        "@wardenx/shared": "workspace:*",
-        "@wardenx/types": "workspace:*",
-        "@wardenx/xero-client": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/gusto-client": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
+        "@chartwarden/types": "workspace:*",
+        "@chartwarden/xero-client": "workspace:*",
       },
     },
     "packages/db": {
-      "name": "@wardenx/db",
+      "name": "@chartwarden/db",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/shared": "workspace:*",
+        "@chartwarden/shared": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "pg": "^8.13.1",
       },
@@ -236,168 +236,168 @@
       },
     },
     "packages/discipline-plans": {
-      "name": "@wardenx/discipline-plans",
+      "name": "@chartwarden/discipline-plans",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/domain": {
-      "name": "@wardenx/domain",
+      "name": "@chartwarden/domain",
       "version": "0.0.0",
     },
     "packages/dosespot": {
-      "name": "@wardenx/dosespot",
+      "name": "@chartwarden/dosespot",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/emar": {
-      "name": "@wardenx/emar",
+      "name": "@chartwarden/emar",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/evv-aggregators": {
-      "name": "@wardenx/evv-aggregators",
+      "name": "@chartwarden/evv-aggregators",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/fhir": {
-      "name": "@wardenx/fhir",
+      "name": "@chartwarden/fhir",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/forms": {
-      "name": "@wardenx/forms",
+      "name": "@chartwarden/forms",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/gusto-client": {
-      "name": "@wardenx/gusto-client",
+      "name": "@chartwarden/gusto-client",
       "version": "0.0.0",
     },
     "packages/hearthnote": {
-      "name": "@wardenx/hearthnote",
+      "name": "@chartwarden/hearthnote",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/narrative-vocab": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/narrative-vocab": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/hope": {
-      "name": "@wardenx/hope",
+      "name": "@chartwarden/hope",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/idg": {
-      "name": "@wardenx/idg",
+      "name": "@chartwarden/idg",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/inpatient": {
-      "name": "@wardenx/inpatient",
+      "name": "@chartwarden/inpatient",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.52",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/intake-extraction": {
-      "name": "@wardenx/intake-extraction",
+      "name": "@chartwarden/intake-extraction",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/iqies-client": {
-      "name": "@wardenx/iqies-client",
+      "name": "@chartwarden/iqies-client",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/mdm": {
-      "name": "@wardenx/mdm",
+      "name": "@chartwarden/mdm",
       "version": "0.0.0",
     },
     "packages/medicaid-adapters": {
-      "name": "@wardenx/medicaid-adapters",
+      "name": "@chartwarden/medicaid-adapters",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/billing": "workspace:*",
+        "@chartwarden/billing": "workspace:*",
       },
     },
     "packages/messaging": {
-      "name": "@wardenx/messaging",
+      "name": "@chartwarden/messaging",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/narrative-vocab": {
-      "name": "@wardenx/narrative-vocab",
+      "name": "@chartwarden/narrative-vocab",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/orders": {
-      "name": "@wardenx/orders",
+      "name": "@chartwarden/orders",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.41",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/quality": {
-      "name": "@wardenx/quality",
+      "name": "@chartwarden/quality",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/db": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/reporting": {
-      "name": "@wardenx/reporting",
+      "name": "@chartwarden/reporting",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/db": "workspace:*",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/db": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/routing-client": {
-      "name": "@wardenx/routing-client",
+      "name": "@chartwarden/routing-client",
       "version": "0.0.0",
     },
     "packages/saas-tenant-platform": {
-      "name": "@wardenx/saas-tenant-platform",
+      "name": "@chartwarden/saas-tenant-platform",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/db": "workspace:*",
+        "@chartwarden/db": "workspace:*",
       },
     },
     "packages/scheduling": {
-      "name": "@wardenx/scheduling",
+      "name": "@chartwarden/scheduling",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/shared": {
-      "name": "@wardenx/shared",
+      "name": "@chartwarden/shared",
       "version": "0.0.0",
       "dependencies": {
         "decimal.js": "^10.6.0",
@@ -405,53 +405,53 @@
       },
     },
     "packages/subscription-billing": {
-      "name": "@wardenx/subscription-billing",
+      "name": "@chartwarden/subscription-billing",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/supplies": {
-      "name": "@wardenx/supplies",
+      "name": "@chartwarden/supplies",
       "version": "0.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
         "decimal.js": "^10.6.0",
       },
     },
     "packages/telehealth-client": {
-      "name": "@wardenx/telehealth-client",
+      "name": "@chartwarden/telehealth-client",
       "version": "0.0.0",
     },
     "packages/tenancy": {
-      "name": "@wardenx/tenancy",
+      "name": "@chartwarden/tenancy",
       "version": "0.0.0",
     },
     "packages/terminology": {
-      "name": "@wardenx/terminology",
+      "name": "@chartwarden/terminology",
       "version": "0.0.0",
     },
     "packages/terminology-loader": {
-      "name": "@wardenx/terminology-loader",
+      "name": "@chartwarden/terminology-loader",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/terminology": "workspace:*",
+        "@chartwarden/terminology": "workspace:*",
       },
     },
     "packages/triage-vendors": {
-      "name": "@wardenx/triage-vendors",
+      "name": "@chartwarden/triage-vendors",
       "version": "0.0.0",
       "dependencies": {
-        "@wardenx/types": "workspace:*",
+        "@chartwarden/types": "workspace:*",
       },
     },
     "packages/types": {
-      "name": "@wardenx/types",
+      "name": "@chartwarden/types",
       "version": "0.0.0",
     },
     "packages/ui": {
-      "name": "@wardenx/ui",
+      "name": "@chartwarden/ui",
       "version": "0.0.0",
       "dependencies": {
         "openapi-fetch": "^0.13.0",
@@ -463,15 +463,15 @@
       },
     },
     "packages/x12-835-client": {
-      "name": "@wardenx/x12-835-client",
+      "name": "@chartwarden/x12-835-client",
       "version": "0.0.0",
     },
     "packages/x12-837-client": {
-      "name": "@wardenx/x12-837-client",
+      "name": "@chartwarden/x12-837-client",
       "version": "0.0.0",
     },
     "packages/xero-client": {
-      "name": "@wardenx/xero-client",
+      "name": "@chartwarden/xero-client",
       "version": "0.0.0",
     },
   },
@@ -1004,111 +1004,111 @@
 
     "@vitest/utils": ["@vitest/utils@4.1.11", "", { "dependencies": { "@vitest/pretty-format": "4.1.11", "convert-source-map": "^2.0.0", "tinyrainbow": "^3.1.0" } }, "sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ=="],
 
-    "@wardenx/admin": ["@wardenx/admin@workspace:apps/admin"],
+    "@chartwarden/admin": ["@chartwarden/admin@workspace:apps/admin"],
 
-    "@wardenx/admin-ui-shell": ["@wardenx/admin-ui-shell@workspace:packages/admin-ui-shell"],
+    "@chartwarden/admin-ui-shell": ["@chartwarden/admin-ui-shell@workspace:packages/admin-ui-shell"],
 
-    "@wardenx/ai-platform": ["@wardenx/ai-platform@workspace:packages/ai-platform"],
+    "@chartwarden/ai-platform": ["@chartwarden/ai-platform@workspace:packages/ai-platform"],
 
-    "@wardenx/assessments": ["@wardenx/assessments@workspace:packages/assessments"],
+    "@chartwarden/assessments": ["@chartwarden/assessments@workspace:packages/assessments"],
 
-    "@wardenx/audit": ["@wardenx/audit@workspace:packages/audit"],
+    "@chartwarden/audit": ["@chartwarden/audit@workspace:packages/audit"],
 
-    "@wardenx/auth": ["@wardenx/auth@workspace:packages/auth"],
+    "@chartwarden/auth": ["@chartwarden/auth@workspace:packages/auth"],
 
-    "@wardenx/backend": ["@wardenx/backend@workspace:apps/backend"],
+    "@chartwarden/backend": ["@chartwarden/backend@workspace:apps/backend"],
 
-    "@wardenx/bereavement": ["@wardenx/bereavement@workspace:packages/bereavement"],
+    "@chartwarden/bereavement": ["@chartwarden/bereavement@workspace:packages/bereavement"],
 
-    "@wardenx/billing": ["@wardenx/billing@workspace:packages/billing"],
+    "@chartwarden/billing": ["@chartwarden/billing@workspace:packages/billing"],
 
-    "@wardenx/cahps-vendors": ["@wardenx/cahps-vendors@workspace:packages/cahps-vendors"],
+    "@chartwarden/cahps-vendors": ["@chartwarden/cahps-vendors@workspace:packages/cahps-vendors"],
 
-    "@wardenx/cap-management": ["@wardenx/cap-management@workspace:packages/cap-management"],
+    "@chartwarden/cap-management": ["@chartwarden/cap-management@workspace:packages/cap-management"],
 
-    "@wardenx/consent": ["@wardenx/consent@workspace:packages/consent"],
+    "@chartwarden/consent": ["@chartwarden/consent@workspace:packages/consent"],
 
-    "@wardenx/cost-report": ["@wardenx/cost-report@workspace:packages/cost-report"],
+    "@chartwarden/cost-report": ["@chartwarden/cost-report@workspace:packages/cost-report"],
 
-    "@wardenx/db": ["@wardenx/db@workspace:packages/db"],
+    "@chartwarden/db": ["@chartwarden/db@workspace:packages/db"],
 
-    "@wardenx/discipline-plans": ["@wardenx/discipline-plans@workspace:packages/discipline-plans"],
+    "@chartwarden/discipline-plans": ["@chartwarden/discipline-plans@workspace:packages/discipline-plans"],
 
-    "@wardenx/domain": ["@wardenx/domain@workspace:packages/domain"],
+    "@chartwarden/domain": ["@chartwarden/domain@workspace:packages/domain"],
 
-    "@wardenx/dosespot": ["@wardenx/dosespot@workspace:packages/dosespot"],
+    "@chartwarden/dosespot": ["@chartwarden/dosespot@workspace:packages/dosespot"],
 
-    "@wardenx/emar": ["@wardenx/emar@workspace:packages/emar"],
+    "@chartwarden/emar": ["@chartwarden/emar@workspace:packages/emar"],
 
-    "@wardenx/evv-aggregators": ["@wardenx/evv-aggregators@workspace:packages/evv-aggregators"],
+    "@chartwarden/evv-aggregators": ["@chartwarden/evv-aggregators@workspace:packages/evv-aggregators"],
 
-    "@wardenx/fhir": ["@wardenx/fhir@workspace:packages/fhir"],
+    "@chartwarden/fhir": ["@chartwarden/fhir@workspace:packages/fhir"],
 
-    "@wardenx/forms": ["@wardenx/forms@workspace:packages/forms"],
+    "@chartwarden/forms": ["@chartwarden/forms@workspace:packages/forms"],
 
-    "@wardenx/gusto-client": ["@wardenx/gusto-client@workspace:packages/gusto-client"],
+    "@chartwarden/gusto-client": ["@chartwarden/gusto-client@workspace:packages/gusto-client"],
 
-    "@wardenx/hearthnote": ["@wardenx/hearthnote@workspace:packages/hearthnote"],
+    "@chartwarden/hearthnote": ["@chartwarden/hearthnote@workspace:packages/hearthnote"],
 
-    "@wardenx/hope": ["@wardenx/hope@workspace:packages/hope"],
+    "@chartwarden/hope": ["@chartwarden/hope@workspace:packages/hope"],
 
-    "@wardenx/idg": ["@wardenx/idg@workspace:packages/idg"],
+    "@chartwarden/idg": ["@chartwarden/idg@workspace:packages/idg"],
 
-    "@wardenx/inpatient": ["@wardenx/inpatient@workspace:packages/inpatient"],
+    "@chartwarden/inpatient": ["@chartwarden/inpatient@workspace:packages/inpatient"],
 
-    "@wardenx/intake-extraction": ["@wardenx/intake-extraction@workspace:packages/intake-extraction"],
+    "@chartwarden/intake-extraction": ["@chartwarden/intake-extraction@workspace:packages/intake-extraction"],
 
-    "@wardenx/iqies-client": ["@wardenx/iqies-client@workspace:packages/iqies-client"],
+    "@chartwarden/iqies-client": ["@chartwarden/iqies-client@workspace:packages/iqies-client"],
 
-    "@wardenx/mdm": ["@wardenx/mdm@workspace:packages/mdm"],
+    "@chartwarden/mdm": ["@chartwarden/mdm@workspace:packages/mdm"],
 
-    "@wardenx/medicaid-adapters": ["@wardenx/medicaid-adapters@workspace:packages/medicaid-adapters"],
+    "@chartwarden/medicaid-adapters": ["@chartwarden/medicaid-adapters@workspace:packages/medicaid-adapters"],
 
-    "@wardenx/messaging": ["@wardenx/messaging@workspace:packages/messaging"],
+    "@chartwarden/messaging": ["@chartwarden/messaging@workspace:packages/messaging"],
 
-    "@wardenx/narrative-vocab": ["@wardenx/narrative-vocab@workspace:packages/narrative-vocab"],
+    "@chartwarden/narrative-vocab": ["@chartwarden/narrative-vocab@workspace:packages/narrative-vocab"],
 
-    "@wardenx/orders": ["@wardenx/orders@workspace:packages/orders"],
+    "@chartwarden/orders": ["@chartwarden/orders@workspace:packages/orders"],
 
-    "@wardenx/portal": ["@wardenx/portal@workspace:apps/portal"],
+    "@chartwarden/portal": ["@chartwarden/portal@workspace:apps/portal"],
 
-    "@wardenx/quality": ["@wardenx/quality@workspace:packages/quality"],
+    "@chartwarden/quality": ["@chartwarden/quality@workspace:packages/quality"],
 
-    "@wardenx/reporting": ["@wardenx/reporting@workspace:packages/reporting"],
+    "@chartwarden/reporting": ["@chartwarden/reporting@workspace:packages/reporting"],
 
-    "@wardenx/routing-client": ["@wardenx/routing-client@workspace:packages/routing-client"],
+    "@chartwarden/routing-client": ["@chartwarden/routing-client@workspace:packages/routing-client"],
 
-    "@wardenx/saas-tenant-platform": ["@wardenx/saas-tenant-platform@workspace:packages/saas-tenant-platform"],
+    "@chartwarden/saas-tenant-platform": ["@chartwarden/saas-tenant-platform@workspace:packages/saas-tenant-platform"],
 
-    "@wardenx/scheduling": ["@wardenx/scheduling@workspace:packages/scheduling"],
+    "@chartwarden/scheduling": ["@chartwarden/scheduling@workspace:packages/scheduling"],
 
-    "@wardenx/shared": ["@wardenx/shared@workspace:packages/shared"],
+    "@chartwarden/shared": ["@chartwarden/shared@workspace:packages/shared"],
 
-    "@wardenx/subscription-billing": ["@wardenx/subscription-billing@workspace:packages/subscription-billing"],
+    "@chartwarden/subscription-billing": ["@chartwarden/subscription-billing@workspace:packages/subscription-billing"],
 
-    "@wardenx/supplies": ["@wardenx/supplies@workspace:packages/supplies"],
+    "@chartwarden/supplies": ["@chartwarden/supplies@workspace:packages/supplies"],
 
-    "@wardenx/telehealth-client": ["@wardenx/telehealth-client@workspace:packages/telehealth-client"],
+    "@chartwarden/telehealth-client": ["@chartwarden/telehealth-client@workspace:packages/telehealth-client"],
 
-    "@wardenx/tenancy": ["@wardenx/tenancy@workspace:packages/tenancy"],
+    "@chartwarden/tenancy": ["@chartwarden/tenancy@workspace:packages/tenancy"],
 
-    "@wardenx/terminology": ["@wardenx/terminology@workspace:packages/terminology"],
+    "@chartwarden/terminology": ["@chartwarden/terminology@workspace:packages/terminology"],
 
-    "@wardenx/terminology-loader": ["@wardenx/terminology-loader@workspace:packages/terminology-loader"],
+    "@chartwarden/terminology-loader": ["@chartwarden/terminology-loader@workspace:packages/terminology-loader"],
 
-    "@wardenx/triage-vendors": ["@wardenx/triage-vendors@workspace:packages/triage-vendors"],
+    "@chartwarden/triage-vendors": ["@chartwarden/triage-vendors@workspace:packages/triage-vendors"],
 
-    "@wardenx/types": ["@wardenx/types@workspace:packages/types"],
+    "@chartwarden/types": ["@chartwarden/types@workspace:packages/types"],
 
-    "@wardenx/ui": ["@wardenx/ui@workspace:packages/ui"],
+    "@chartwarden/ui": ["@chartwarden/ui@workspace:packages/ui"],
 
-    "@wardenx/web": ["@wardenx/web@workspace:apps/web"],
+    "@chartwarden/web": ["@chartwarden/web@workspace:apps/web"],
 
-    "@wardenx/x12-835-client": ["@wardenx/x12-835-client@workspace:packages/x12-835-client"],
+    "@chartwarden/x12-835-client": ["@chartwarden/x12-835-client@workspace:packages/x12-835-client"],
 
-    "@wardenx/x12-837-client": ["@wardenx/x12-837-client@workspace:packages/x12-837-client"],
+    "@chartwarden/x12-837-client": ["@chartwarden/x12-837-client@workspace:packages/x12-837-client"],
 
-    "@wardenx/xero-client": ["@wardenx/xero-client@workspace:packages/xero-client"],
+    "@chartwarden/xero-client": ["@chartwarden/xero-client@workspace:packages/xero-client"],
 
     "@webcontainer/env": ["@webcontainer/env@1.1.1", "", {}, "sha512-6aN99yL695Hi9SuIk1oC88l9o0gmxL1nGWWQ/kNy81HigJ0FoaoTXpytCj6ItzgyCEwA9kF1wixsTuv5cjsgng=="],
 

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-// @wardenx/portal — lots 6/7 contracts for the priority lists, composer, and account appearance.
-import { createApiClient } from "@wardenx/ui";
+// @chartwarden/portal — lots 6/7 contracts for the priority lists, composer, and account appearance.
+import { createApiClient } from "@chartwarden/ui";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 

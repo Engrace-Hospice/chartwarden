@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the six published seam interfaces (§4.3) + the published-name tuple. Consumed by
+// @chartwarden/cap-management — the six published seam interfaces (§4.3) + the published-name tuple. Consumed by
 // M23 (pre-submission validation), M27 (cost report), M30/M33 (reporting), M36 (alert recipient resolution).
 // The backend registers the Drizzle-backed implementations into the M1 SeamRegistry in a later phase (the
 // M27 seam-registration precedent). Monetary fields cross the seam as numeric STRINGS (cents-as-string) so a

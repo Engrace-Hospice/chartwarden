@@ -9,8 +9,8 @@
 // `m36.task.needs_owner` event. Converges on redelivery: a reassigned or flagged task no longer matches. Revocation never
 // depends on the `messaging.tasks` flag. Per-task failures are isolated, counted, and rethrown at the end so the
 // dispatcher retries; the error text carries no seam message.
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { publishMedicationQuestionUnrouted } from "../medication-questions/medication-question-events";
 import type { HintOutboxPort } from "../message-hint-events";
 import { publishTaskEvent } from "./task-events";

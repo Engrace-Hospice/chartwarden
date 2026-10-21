@@ -2,8 +2,8 @@
 // seams, parties) -> Claim837iInput -> the raw 837I and Stedi JSON. The golden claim reproduces the payload the Stedi
 // sandbox accepted on 2026-10-09 (packages/x12-837-client `stedi-claim.x12`), so a drift in the mapping shows here.
 import { inspect } from "node:util";
-import type { repositories } from "@wardenx/billing";
-import type { ClearinghouseContext } from "@wardenx/x12-837-client";
+import type { repositories } from "@chartwarden/billing";
+import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   type Claim837iLoaderDeps,

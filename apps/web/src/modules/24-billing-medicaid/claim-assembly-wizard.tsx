@@ -6,8 +6,8 @@ import {
   StatusPill,
   StepperWorkflowLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { GateItem } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GateItem } from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
 // draft-creation flow: patient + service range → claim kind (combined / hospice-only / R&B-only) → MCO
 // routing preview (from the patient's latest eligibility check) → COB confirmation when a Medicare primary

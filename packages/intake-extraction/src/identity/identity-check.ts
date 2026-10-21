@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — is this document about the patient the fax is filed under? (F-238)
+// @chartwarden/intake-extraction — is this document about the patient the fax is filed under? (F-238)
 //
 // A referral packet, and especially the older PCP and hospital records requested later, can carry another
 // patient's page: a misfiled fax, a wrong chart printed, two patients faxed back to back. Every document

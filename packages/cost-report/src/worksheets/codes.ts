@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 worksheet-code → TypeBox-schema RESOLVER (§4.2, D3). All 21 CMS-1984-14
+// @chartwarden/cost-report — M27 worksheet-code → TypeBox-schema RESOLVER (§4.2, D3). All 21 CMS-1984-14
 // worksheets share one `cost_report_worksheet` table discriminated by `worksheet_code`, with a
 // TypeBox-typed `data` jsonb per code; the per-worksheet schemas live one file per code under
 // `packages/cost-report/src/worksheets/`. This file is the central REGISTRY + resolver the service layer
@@ -11,7 +11,7 @@
 // bindings were swapped. The registry stays exported so a later fiscal-year-aware resolver (§4.2:
 // `a-2027.ts`) can layer over this map per the cost report's fiscal year.
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. No
 // PHI — worksheet data is aggregate financial/statistical only (D18).
 import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";

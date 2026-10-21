@@ -10,8 +10,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { PLATFORM_MESSAGE_TEMPLATES, createInMemoryTemplateService } from "@wardenx/messaging";
+} from "@chartwarden/auth";
+import { PLATFORM_MESSAGE_TEMPLATES, createInMemoryTemplateService } from "@chartwarden/messaging";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

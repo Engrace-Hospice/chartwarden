@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_snomed` (M38 Terminology §3.4). SNOMED CT US Edition
+// @chartwarden/db — `concept_snomed` (M38 Terminology §3.4). SNOMED CT US Edition
 // (~360k active concepts); one of the four Phase-1 per-system concept tables (§2.3).
 // SNOMED-specific columns: fully_specified_name, semantic_tag, and the hierarchy_path
 // ancestor-SCTID array (GIN-indexed for subsumption queries). Composite PK

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `intake_upload_batch` (M22 §3.3 / §2.2.5). The DocLens intake-batch aggregate: one
+// @chartwarden/db — `intake_upload_batch` (M22 §3.3 / §2.2.5). The DocLens intake-batch aggregate: one
 // row per uploaded bundle (fax/email/portal/admin/api), driving classify→extract→review→writeback.
 //
 // PHI-bearing by the three-column rule (it carries `patient_id`) → ARCH-011: the three tenancy

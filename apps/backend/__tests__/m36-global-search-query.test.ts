@@ -16,7 +16,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type SearchKeyProvider,
   deriveChannelKey,
@@ -24,8 +24,8 @@ import {
   nameTokenDigest,
   tagForPrefix,
   tagForWord,
-} from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -154,12 +154,12 @@ describe("static ratchet: excluded categories never hold messaging.read", () => 
 describe("query terms", () => {
   it("rejects a query with no indexable token (numbers, short words, ids) as 422 INVALID_SEARCH_QUERY", () => {
     for (const q of ["", "   ", "5 mg", "12345678", "hba1c", "no"]) {
-      expect(() => parseQueryTerms(q), q).toThrowError(WardenXError);
+      expect(() => parseQueryTerms(q), q).toThrowError(ChartWardenError);
       try {
         parseQueryTerms(q);
       } catch (error) {
-        expect((error as WardenXError).code).toBe("INVALID_SEARCH_QUERY");
-        expect((error as WardenXError).statusCode).toBe(422);
+        expect((error as ChartWardenError).code).toBe("INVALID_SEARCH_QUERY");
+        expect((error as ChartWardenError).statusCode).toBe(422);
       }
     }
   });
@@ -177,7 +177,7 @@ describe("query terms", () => {
       "india",
     ];
     expect(parseQueryTerms(words.slice(0, MAX_QUERY_TERMS).join(" "))).toHaveLength(8);
-    expect(() => parseQueryTerms(words.join(" "))).toThrowError(WardenXError);
+    expect(() => parseQueryTerms(words.join(" "))).toThrowError(ChartWardenError);
   });
 
   it("builds whole-word tags for all but the last term and a sparse prefix tag (3, 5, 8 or 12 characters) for the last", () => {
@@ -289,11 +289,11 @@ describe("GET /api/v1/messaging/search gate order", () => {
     request.context.roles = ["clinical_rn"];
     request.context.locationIds = [];
   }
-  const gate = (name: string, refuse?: WardenXError) => async () => {
+  const gate = (name: string, refuse?: ChartWardenError) => async () => {
     calls.push(name);
     if (refuse) throw refuse;
   };
-  const refusal = (code: string, status: number) => new WardenXError(code, code, status);
+  const refusal = (code: string, status: number) => new ChartWardenError(code, code, status);
 
   async function build(opts: {
     refuseAt?: string;

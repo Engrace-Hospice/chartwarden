@@ -9,7 +9,7 @@ import {
   useApiClient,
   useRequestGuard,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the §5.2 single-page-of-truth (R2).
 // Spec §5.2 (`/tenants/:orgSlug`) — the tenant overview: a context header (identity + lifecycle pill +
 // action menu) over the FIVE cards. Backed by GET /api/v1/platform/tenants/{orgSlug} (TenantOverview)

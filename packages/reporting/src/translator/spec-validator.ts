@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/reporting — translator step 1: SEMANTIC validation of a ReportDefinitionSpec against its
+import type { schema } from "@chartwarden/db";
+// @chartwarden/reporting — translator step 1: SEMANTIC validation of a ReportDefinitionSpec against its
 // base catalog (M33 §2.3, D4).
 //
 // The TypeBox schema (`schemas/report-definition-spec.ts`) already proved the spec is well-SHAPED
@@ -12,7 +12,7 @@ import type { schema } from "@wardenx/db";
 //
 // This file is the translator leaf: it owns the domain-error class, the comparator-by-type table, and
 // the SQL-identifier guard that the filter/scope/sql steps reuse — so there is no sibling import cycle.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 // ── Domain error catalog (§2.3) ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ export const TRANSLATOR_ERROR_STATUS = {
 export type TranslatorErrorCode = keyof typeof TRANSLATOR_ERROR_STATUS;
 
 /** A report-builder translation failure carrying one of the §2.3 codes. */
-export class ReportTranslatorError extends WardenXError {
+export class ReportTranslatorError extends ChartWardenError {
   constructor(
     code: TranslatorErrorCode,
     message: string,

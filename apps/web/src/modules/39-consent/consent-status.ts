@@ -4,7 +4,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/active · warning≈needs-attention/expiring ·
 // error≈revoked/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** consent_record.status → §6.6 tone. `revoked` is an ERROR tone, not neutral: a revoked consent is an
  *  active prohibition on disclosure, not merely an inert record. */

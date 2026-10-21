@@ -3,7 +3,7 @@
 // per org (createRouteRateLimit) and per (sender, recipient) pair so one person cannot flood one colleague with urgent alerts.
 // Every limit FAILS CLOSED (a store outage is a 503, never an unlimited send). PROVISIONAL numbers, pending clinical-lead review.
 // The pair bucket reads the recipient from the already-validated request body; a missing/odd body is left to the route schema.
-import { DegradedError, RateLimitedError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, RateLimitedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RateLimitStore } from "./rate-limit-store";
 import { type RouteRateLimit, createRouteRateLimit } from "./route-rate-limit";

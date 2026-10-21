@@ -1,4 +1,4 @@
-// @wardenx/messaging — out-of-band retry policy (M36 GAP-101, spec §4.4.1).
+// @chartwarden/messaging — out-of-band retry policy (M36 GAP-101, spec §4.4.1).
 //
 // The per-queue `attempts` + backoff the §4.4.1 table declares, applied to a delivery ROW (the dispatcher is a
 // row-driven sweep, so the budget lives on `notification_delivery.attempt_count`, not on a BullMQ job). Pure.

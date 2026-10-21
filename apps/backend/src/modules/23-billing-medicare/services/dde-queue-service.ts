@@ -25,15 +25,15 @@ import {
   repositories,
   validateDdeCodes,
   validateDdeNotes,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,
@@ -338,7 +338,7 @@ export function buildDdeQueueService(
       { ...patch, attemptNumber },
     );
     if (!versioned.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the DDE item was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
         412,

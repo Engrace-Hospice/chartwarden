@@ -4,7 +4,7 @@
 // that never fires still fails. The server decides everything: refusals are asserted verbatim, and the manual
 // match sends ONLY what the GAP-073 contract accepts (claim id + rationale).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

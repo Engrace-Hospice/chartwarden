@@ -7,7 +7,7 @@
 // golden-stable (§7.9) and gates semantic search on `ai.full` (§7.7).
 //
 // M38-T10 lands the operational surface: the §4.3 jobs (queue catalog + pure processors), the §4.6
-// cache key grammar + invalidation, the §8.1 audit-event action catalog (`m38.*`, in @wardenx/audit),
+// cache key grammar + invalidation, the §8.1 audit-event action catalog (`m38.*`, in @chartwarden/audit),
 // and the D8 tenant-offboarding eraser (below). The §5 screens DEFER — the M38 manifest has no
 // frontend/admin codePath (the same Wave-A deferral rule: a screen needs a manifest UI codePath to
 // land), so they are tracked for the follow-up that adds one.
@@ -89,8 +89,8 @@ export {
   registerTerminologyAbacPredicates,
 } from "./abac-predicates";
 
-import type { DbClient } from "@wardenx/db";
-import { createTerminologyProvider } from "@wardenx/terminology";
+import type { DbClient } from "@chartwarden/db";
+import { createTerminologyProvider } from "@chartwarden/terminology";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { createAttributionResolver as _createAttributionResolver } from "./attribution";
@@ -132,7 +132,7 @@ export function mountTerminologyRoutes(
   const provider = createTerminologyProvider(_createDbTerminologyStore(db));
   const ops = _createDbTerminologyOpsStore(db);
   // The remediation report's ONE bound producer today is M7's problem list, reached opaquely through
-  // the seam registry (no `@wardenx/care-plan` import edge, so M38 `dependsOn` stays [1,2,3,4]).
+  // the seam registry (no `@chartwarden/care-plan` import edge, so M38 `dependsOn` stays [1,2,3,4]).
   // Resolved lazily per call: registration order at boot is then irrelevant.
   const remediation = _createRemediationService({
     ops,

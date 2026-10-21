@@ -3,7 +3,7 @@
 // election statement addendum's signed paper copy (election-addendum-scan-form.tsx). Same file control, same
 // upload-stage notice, same right-hand drawer shell (aside.wx-admission-drawer, rail header, flat drawer card),
 // so the four ceremonies look and behave the same. Kit controls and tokens only.
-import { Button, Glyph, IconButton, InlineAlert, TextField, useDrawerA11y } from "@wardenx/ui";
+import { Button, Glyph, IconButton, InlineAlert, TextField, useDrawerA11y } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import type { UploadStage } from "../../shell/document-workflows";
 

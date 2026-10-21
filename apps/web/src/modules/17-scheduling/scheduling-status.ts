@@ -1,8 +1,8 @@
 // apps/web/src/modules/17-scheduling — shared scheduling presentation helpers (R1, Lantern).
 // The §2.2.1 visit, §2.2.4 proposal, §2.2.3 recurring, and §2.2.6 time-off enums each map to the §6.6
-// badge taxonomy tone (grounded in the @wardenx/types unions) so every M17 surface renders the same
+// badge taxonomy tone (grounded in the @chartwarden/types unions) so every M17 surface renders the same
 // StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // VisitStatus = proposed | published | en_route | in_visit | completed | no_show | cancelled | rescheduled.
 export const VISIT_TONE: Record<string, StatusTone> = {

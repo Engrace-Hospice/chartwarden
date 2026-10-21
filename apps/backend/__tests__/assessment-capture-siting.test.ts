@@ -1,4 +1,4 @@
-import type { AdmissionSiting, AdmissionSummary } from "@wardenx/types";
+import type { AdmissionSiting, AdmissionSummary } from "@chartwarden/types";
 // apps/backend/__tests__/assessment-capture-siting.test.ts — the §3.3 capture-siting resolver M9's
 // record/correct paths denormalize `provider_entity_id` through (capture-siting.ts). The resolution
 // chain under test: the published M6 `AdmissionStatusReader` seam answers the capture's admission

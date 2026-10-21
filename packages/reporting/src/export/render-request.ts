@@ -1,4 +1,4 @@
-// @wardenx/reporting · export — the shared M22 render-request contract for the PDF + XLSX export paths
+// @chartwarden/reporting · export — the shared M22 render-request contract for the PDF + XLSX export paths
 // (M33 §4.8 `report.export_render` / D7 / D10).
 //
 // PDF and XLSX exports are NOT streamed by M33: M33 builds the snapshot query, then hands the render to M22 via

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const calls: string[] = [];
 let withOrgCalls = 0;
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   runWithRequestContext: (_ctx: unknown, fn: () => unknown) => fn(),
   // Call 1 per org is the alert-id scan; the rest are per-alert transactions, and the first of those fails.
   withOrgContext: async (_db: unknown, ctx: { organizationId: string }) => {

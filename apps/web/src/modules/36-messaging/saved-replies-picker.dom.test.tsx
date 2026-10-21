@@ -2,7 +2,7 @@
 // moves with the arrow keys, inserts at the caret on Enter or click, closes on Escape with focus back in the composer,
 // reports a load failure with a retry, and what is finally sent is an ordinary message with no link to the reply.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

@@ -20,7 +20,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { usDate } from "./election-addendum-format";

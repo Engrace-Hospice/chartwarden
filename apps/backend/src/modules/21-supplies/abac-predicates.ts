@@ -32,8 +32,8 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import type { MembershipId } from "@wardenx/types";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import type { MembershipId } from "@chartwarden/types";
 
 /** The §4.4 predicate names M21 owns (registered into M3). Single-owner across the platform registry. */
 export const M21_ABAC_PREDICATES = [

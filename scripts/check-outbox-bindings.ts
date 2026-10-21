@@ -441,7 +441,7 @@ export interface CatalogFacts {
  * Every subscription-shaped exported constant in the corpus, grouped by the module that owns it.
  *
  * DISCOVERY IS THE WHOLE DEFECT (F-095). F-094 enumerated `M<N>_SUBSCRIBED_EVENT_NAMES` off the
- * `@wardenx/types` barrel and its own comment claimed "a seventh module publishing one is checked the day
+ * `@chartwarden/types` barrel and its own comment claimed "a seventh module publishing one is checked the day
  * it lands with no edit here". That was false when it was written: THIRTEEN more modules already declared
  * their subscriptions, under three other spellings and in another directory — `M<N>_OUTBOX_SUBSCRIPTIONS`
  * and `M<N>_UPSTREAM_SUBSCRIPTIONS` under each module's own `consumers` directory, the `_TOPICS` splits,

@@ -1,4 +1,4 @@
-// @wardenx/db — `volunteer_hour_entry` (M15 §3.3). The append-only line items the ledger row aggregates
+// @chartwarden/db — `volunteer_hour_entry` (M15 §3.3). The append-only line items the ledger row aggregates
 // (§2.2.7): one per volunteer-visit duration fed by the nightly aggregator from M8, one per typed
 // administrative-hours entry, one per audited manual correction.
 //

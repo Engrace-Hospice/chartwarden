@@ -3,9 +3,9 @@
 // one org-explicit pass per org. The vendor-facing crons (transmit, recovery drain, status sweep, benefit prewarm)
 // run ONLY for tenants that have a complete DoseSpot configuration — an unconfigured tenant is skipped, never
 // failed, so its orders are not exhausted by an adapter that was never bound for it.
-import type { DbClient } from "@wardenx/db";
-import type { DoseSpotTenantConfigResolver } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import type { DoseSpotTenantConfigResolver } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import {

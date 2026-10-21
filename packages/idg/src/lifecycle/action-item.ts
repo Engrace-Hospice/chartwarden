@@ -1,4 +1,4 @@
-// @wardenx/idg — §1.1 / D8 IDG action-item lifecycle + carry-forward + auto-close (M14-T03). Pure.
+// @chartwarden/idg — §1.1 / D8 IDG action-item lifecycle + carry-forward + auto-close (M14-T03). Pure.
 //
 // The action-item aggregate lifecycle (§1.1 / D8):
 //
@@ -12,7 +12,7 @@
 // linked action item flips to `auto_closed`. The §4.5 consumers (M14-T06) drive it; this is the pure
 // decider. Carry-forward (D8) is the T-24h overdue projection of still-open items onto the next meeting's
 // agenda — it does NOT change the action-item status, so it is a standalone planner.
-import type { IdgActionItemLinkedKind, IdgActionItemStatus } from "@wardenx/types";
+import type { IdgActionItemLinkedKind, IdgActionItemStatus } from "@chartwarden/types";
 import { type IdgSideEffect, type IdgTransitionResult, result } from "./effects";
 import { IdgStateError, require_ } from "./errors";
 

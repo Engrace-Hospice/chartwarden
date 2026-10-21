@@ -6,7 +6,7 @@ import {
   assembleEnvelopeCanonical,
   buildEnvelopeStorageUri,
   envelopeSha256,
-} from "@wardenx/iqies-client";
+} from "@chartwarden/iqies-client";
 import { describe, expect, it } from "vitest";
 import {
   type AssemblableAssessment,
@@ -96,7 +96,7 @@ describe("decideSubmitReadiness (iqies-submit-worker CAS + validation, §4.10)",
 });
 
 describe("transmit (envelope assembly + SHA-256 + MinIO key, §4.10)", () => {
-  it("threads the @wardenx/iqies-client envelope through to a transmit-result plan + event", () => {
+  it("threads the @chartwarden/iqies-client envelope through to a transmit-result plan + event", () => {
     const envelope = buildSubmissionEnvelope({
       providerEntityCcn: "123456",
       submissionPeriod: "2026-Q2",

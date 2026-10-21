@@ -1,4 +1,4 @@
-// @wardenx/db — `standing_order_instance` (M11 §3.3 / §2.4 D5). The spawn-history join: one row per
+// @chartwarden/db — `standing_order_instance` (M11 §3.3 / §2.4 D5). The spawn-history join: one row per
 // concrete `order_record` a `standing_order` template produced (system cadence spawn or clinician PRN
 // spawn). PHI-bearing → the three-column tenancy rule. Non-partitioned. The FK to `standing_order` is an
 // intra-module FK; `order_record_id` is a plain uuid with NO SQL FK because `order_record` is RANGE

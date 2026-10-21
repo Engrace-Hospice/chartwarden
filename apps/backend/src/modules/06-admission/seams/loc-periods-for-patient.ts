@@ -8,8 +8,8 @@
 //
 // `assigning` periods (an IRC/GIP awaiting bed confirmation) are NOT real periods of care and are excluded,
 // the same rule `LevelOfCareReader` applies. Returned oldest-first.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, isNull, lte, ne, or } from "drizzle-orm";
 
 const LOC = schema.levelOfCarePeriods;

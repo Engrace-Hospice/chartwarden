@@ -1,7 +1,7 @@
 // M36 WP 3.7 - "Propose for the chart": choose where a clinician should review the message. No text is sent or copied;
 // the server derives the patient from the channel. Server refusals land next to the choice; the notice that nothing
 // enters the chart stays on screen.
-import { Button, Modal } from "@wardenx/ui";
+import { Button, Modal } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import {

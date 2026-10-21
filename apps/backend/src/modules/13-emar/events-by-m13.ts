@@ -2,7 +2,7 @@
 // (M13-T08, spec §4.4). The full `m13.*` taxonomy keyed on M13's own tables, under the `m13.` namespace
 // (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for naming
 // (`mN.<resource>.<verb>`), ownership (moduleOwner='m13'), and valid declared consumers (real module ids).
-// The canonical wire `eventName` mirrors `M13_EVENT_NAMES` in @wardenx/types (the closed §4.4 set the
+// The canonical wire `eventName` mirrors `M13_EVENT_NAMES` in @chartwarden/types (the closed §4.4 set the
 // administration write path / PRN trigger / missed-dose sweep / reconciliation workflow / comfort-kit drawdown
 // / discharge cascade / policy admin may emit). Each entry adds the TypeBox `payloadSchema` + declared
 // consumers the dispatcher validates each publish against, so "DB updated but the event never went out" is
@@ -14,7 +14,7 @@
 // the typed outbox event (§1.1: "Outbox publication is the only cross-module communication M13 performs").
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -27,7 +27,7 @@ const mode = Type.Union([
   Type.Literal("iv_continuous_stop"),
 ]);
 // F-16x (#248) — the real `medicationOrderDraftPayload` shape M12's reconciliation consumer mints a draft
-// `medication_order` from (mirrors `@wardenx/emar`'s `ReconciliationMedicationDetails`). `lineKind` is
+// `medication_order` from (mirrors `@chartwarden/emar`'s `ReconciliationMedicationDetails`). `lineKind` is
 // narrowed to the ONE source this event can actually carry real content from today: `m12_medhx` is
 // genuinely blocked (no medication-history record projection exists anywhere in this codebase — see
 // `packages/emar/src/reconciliation/reconciliation.ts`'s header) and `m12_active` never reaches this event
@@ -54,7 +54,7 @@ const medicationOrderDraftPayload = Type.Object({
   ndc: Type.Optional(Type.Union([id, Type.Null()])),
 });
 
-// The §4.4 wire names mirror `M13_EVENT_NAMES` (@wardenx/types) EXACTLY — several merge resource+verb into a
+// The §4.4 wire names mirror `M13_EVENT_NAMES` (@chartwarden/types) EXACTLY — several merge resource+verb into a
 // single token (`m13.prn_administration_recorded`) rather than the stricter two-dot `OutboxEventName` template.
 // They satisfy check-fitness-gaps' `mN.<...>` scan; `eventName` is relaxed to `string` here (every other field
 // stays fully type-checked) and cast once to `ModuleEventContribution`.

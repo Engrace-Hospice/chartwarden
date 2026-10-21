@@ -1,4 +1,4 @@
-// @wardenx/hope — the Symptom-Follow-Up-Visit engine (M10-T03; §2.2.3, §2.3, D3, D4). PURE, IO-free.
+// @chartwarden/hope — the Symptom-Follow-Up-Visit engine (M10-T03; §2.2.3, §2.3, D3, D4). PURE, IO-free.
 // Three concerns:
 //   • creation  — `planSfvCreation`: when J2051 fires (D4), produce the one `symptom_follow_up_visit`
 //     descriptor with the D3 due-date (signed_at + 2 calendar days, org-TZ).
@@ -13,7 +13,7 @@ import type {
   HopeSfvStatus,
   IsoInstant,
   SymptomFollowUpVisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "../errors";
 import { DEFAULT_SFV_ALERT_CADENCE, type SfvAlertCadence } from "../scheduling/alert-cadence";
 import { addCalendarDays, endOfOrgDayInstant, orgLocalDate } from "../scheduling/time";

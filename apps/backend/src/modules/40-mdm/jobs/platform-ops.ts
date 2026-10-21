@@ -8,7 +8,7 @@
 //   2. LIVE — an injected sink (the composition root binds log + the optional `OPS_ALERT_WEBHOOK_URL` webhook).
 // The durable write is attempted FIRST and a failure propagates (the cron retries/DLQs); the sink is best-effort
 // and must never throw into the caller (a notice failure is not a second failure of the scan).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 
 export interface PlatformOpsNotice {

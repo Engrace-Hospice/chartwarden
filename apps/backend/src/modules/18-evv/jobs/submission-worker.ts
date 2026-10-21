@@ -15,9 +15,9 @@
 // critical `m18.evv.aggregator_timeout` event fires and an operator resubmits). A pre-call failure (credentials or a
 // fact unavailable) releases the claim WITHOUT consuming an attempt and is rethrown at the end of the tick so the
 // BullMQ job fails visibly (the failed set is the DLQ) — never a silent skip.
-import { type DbClient, schema } from "@wardenx/db";
-import type { BuildSubmissionPayloadArgs } from "@wardenx/evv-aggregators";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { BuildSubmissionPayloadArgs } from "@chartwarden/evv-aggregators";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { submissionServiceTypeCode } from "../capture-classification";
 import { transitionAggregatorSubmission } from "../domain/aggregator-submission";

@@ -32,8 +32,8 @@
 //     ideation" and the RN corrected it to "yes" a minute later, the call HAD a red flag, and a feature
 //     that showed 0 because a later row superseded an earlier one would hide the most clinically
 //     significant thing about the call from the risk model.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MeasureCounts,
@@ -47,7 +47,7 @@ import type {
   TriageEscalationTier,
   TriageMetricsWindow,
   TriageProtocolAnswerType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import type {
   ChiefComplaintTally,

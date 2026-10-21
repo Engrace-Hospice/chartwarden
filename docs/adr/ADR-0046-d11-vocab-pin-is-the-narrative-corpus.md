@@ -15,7 +15,7 @@ release cannot change the rendered text of an already-signed note. `encounter.vo
 `hearthnote_assembled_output.vocab_version_id` hold it.
 
 The column is a `uuid`. The narrative corpus versions itself as a **string** —
-`@wardenx/narrative-vocab`'s `VOCAB_VERSION`, currently `narrative-vocab@2026.06.0`. Nothing bridged
+`@chartwarden/narrative-vocab`'s `VOCAB_VERSION`, currently `narrative-vocab@2026.06.0`. Nothing bridged
 the two, so finalize wrote a fixed sentinel — `00000000-0000-4000-8000-0000000000d8` — onto **every
 encounter the platform has ever finalized**. It satisfied the `encounter_vocab_pinned_when_finalized`
 CHECK and the `m8.encounter.finalized` payload's required `vocabVersionId`, and identified nothing.
@@ -32,7 +32,7 @@ corpus and publish a reader seam.
 
 ## Decision
 
-**The pin is the `@wardenx/narrative-vocab` corpus release.** `packages/narrative-vocab` carries a
+**The pin is the `@chartwarden/narrative-vocab` corpus release.** `packages/narrative-vocab` carries a
 `(version → uuid)` release registry (`releases.ts`); finalize resolves the running build's release
 through it and pins that uuid. `VOCAB_VERSION_SENTINEL` is deleted, not bypassed.
 
@@ -55,8 +55,8 @@ module spec, and the module spec is an implementation proposal.
 
 3. **Pinning M38 would protect nothing — this is the reason that decides it.** Architecture §10.5.2
    makes Layer-1 assembly a pure function of (selection tree × template × the vocabulary library), and
-   names `packages/narrative-vocab/` as that library. `@wardenx/hearthnote` depends on
-   `@wardenx/narrative-vocab` and `@wardenx/types` and nothing else; **no SNOMED, LOINC or ICD-10
+   names `packages/narrative-vocab/` as that library. `@chartwarden/hearthnote` depends on
+   `@chartwarden/narrative-vocab` and `@chartwarden/types` and nothing else; **no SNOMED, LOINC or ICD-10
    concept is resolved anywhere in the assembly path.** A SNOMED release therefore cannot change a
    rendered narrative, and pinning its version would guard a door nothing walks through, while the
    package that *can* change the bytes stayed unpinned. D11's stated rationale — "M38 version updates

@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M8 (Encounters). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M8 (Encounters). PRESENT producer (§4.4).
 //
 // M30 consumes M8's `EncounterStatisticsProvider` and `SignedEncountersReader` for the HCI
 // visits-near-death indicator, the HVLDL last-three-days-of-life predicate, and the late-entry-rate

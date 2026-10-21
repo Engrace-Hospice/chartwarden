@@ -9,8 +9,8 @@
 // Org and actor are the server-side request context. The change is audited by the write-audit trigger on the table (who,
 // when, old, new); there is no separate domain event. Registered but inert: with default wiring the rate-limit check is
 // false, so ON is always refused until the composition root says the P2 limit is active.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchSettingsService } from "../global-search/settings-service";
 import { PutGlobalSearchSettingsBodySchema } from "./global-search-settings-typebox";

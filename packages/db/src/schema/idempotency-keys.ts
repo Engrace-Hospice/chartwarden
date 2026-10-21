@@ -1,4 +1,4 @@
-// @wardenx/db — `idempotency_key` (M1 Foundation §3.10). Stores the cached response
+// @chartwarden/db — `idempotency_key` (M1 Foundation §3.10). Stores the cached response
 // for an idempotent mutation, keyed per (organization, key). HELPER-ONLY: written
 // exclusively by the packages/shared idempotency middleware — never a direct
 // insert/select from a feature module (HELPER_ONLY_TABLES, manifest). org-scoped:

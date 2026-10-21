@@ -4,10 +4,10 @@ import {
   MESSAGING_GOVERNANCE_ORIGIN_MARKER,
   holdCoversGroup,
   isMessagingOnlyCriteria,
-} from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { messageHeldBy } from "@wardenx/messaging";
-import { MESSAGING_GOVERNANCE_HOLD_ORIGIN } from "@wardenx/types";
+} from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { messageHeldBy } from "@chartwarden/messaging";
+import { MESSAGING_GOVERNANCE_HOLD_ORIGIN } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import { legalHoldScopeOf } from "../src/modules/04-audit/legal-hold-scope";

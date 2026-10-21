@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36 WP 2.9 announcements & department channels.
+// @chartwarden/messaging — M36 WP 2.9 announcements & department channels.
 //
 // Announcements reuse the existing org-wide `announcement` channel kind; department channels reuse the
 // existing `discipline` / `location` kinds (no new kind). This service is the small WP 2.9 surface:

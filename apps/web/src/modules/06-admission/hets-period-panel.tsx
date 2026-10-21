@@ -6,7 +6,7 @@
 //
 // "Run HETS check" (only with `billing.eligibility.check`) POSTs /api/v1/billing/eligibility/check with an
 // Idempotency-Key (202: the worker runs the 270/271), then polls the read until a newer check lands.
-import { Button, InlineAlert, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, useApiClient } from "@chartwarden/ui";
 import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";

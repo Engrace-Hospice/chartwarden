@@ -1,13 +1,13 @@
-// @wardenx/assessments — M9 domain failure-code catalog (§4.4, M9-T03).
+// @chartwarden/assessments — M9 domain failure-code catalog (§4.4, M9-T03).
 //
 // Every guard / validation failure in the M9 assessment domain raises an `AssessmentStateError`
 // carrying the machine-readable code the spec's §4.4 table enumerates (e.g. `CORRECTION_MISMATCH`,
-// `COSIGN_REQUIRED`, `SCORE_OUT_OF_RANGE`). The error extends the M1 `WardenXError` envelope base
-// (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders it
+// `COSIGN_REQUIRED`, `SCORE_OUT_OF_RANGE`). The error extends the M1 `ChartWardenError` envelope base
+// (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler renders it
 // with the precise code + HTTP status with no cross-module import edge. The code→status mapping is the
 // single source mirrored from §4.4; nothing transitions on a string match — each code is an enumerated
 // constant (the M8 lifecycle convention). The route layer (M9-T05) reuses these codes verbatim.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §4.4 M9-specific failure-code catalog → canonical HTTP status, plus the domain-internal
  * lifecycle codes (correction / cosignature / significant-change transitions) the pure machines raise. */
@@ -62,7 +62,7 @@ export type M9ErrorCode = keyof typeof M9_ERROR_STATUS;
  * renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every guard
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class AssessmentStateError extends WardenXError {
+export class AssessmentStateError extends ChartWardenError {
   constructor(code: M9ErrorCode, message: string) {
     super(code, message, M9_ERROR_STATUS[code]);
     this.name = "AssessmentStateError";

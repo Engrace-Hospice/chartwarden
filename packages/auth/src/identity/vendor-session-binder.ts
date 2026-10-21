@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the M19 vendor session binder (M2-owned; F-030 / #75).
+// @chartwarden/auth · identity — the M19 vendor session binder (M2-owned; F-030 / #75).
 //
 // M19 owns the `external_triage_vendor` row and the shift that puts it on call; M2 owns the `session`
 // row. Nothing connected the two. So no session ever carried one of M19's two answering-service classes
@@ -19,7 +19,7 @@
 // Fail-closed: a session that is not in the requested org is refused rather than silently rescoped, and
 // the vendor id is required rather than defaulted — the `PortalSessionBinder` contract next door, for
 // the same reasons.
-import type { OrgScope, VendorSessionBinder, VendorSessionClass } from "@wardenx/types";
+import type { OrgScope, VendorSessionBinder, VendorSessionClass } from "@chartwarden/types";
 import { isVendorSessionClass } from "./session-classes";
 
 /** The `session` row fields the binder reads back to verify what it is about to write onto. */

@@ -2,7 +2,7 @@
 // Drizzle reader over `idg_patient_packet` (the per-admission review stamps; the active-admission POPULATION comes from M6, GAP-042) (the M9 `09-assessments/jobs/cron-store.ts` shape). ORG-scoped,
 // caller-owned `withOrgContext` tx — this file never opens its own tenancy envelope; `cron-workers.ts`'s
 // per-org fan-out owns that.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, asc, eq, gte, inArray, max } from "drizzle-orm";
 
 const PKT = schema.idgPatientPacket;

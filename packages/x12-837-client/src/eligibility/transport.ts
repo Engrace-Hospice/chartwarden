@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the HETS real-time transport port + the CAQH CORE "HTTP MIME Multipart"
+// @chartwarden/x12-837-client — the HETS real-time transport port + the CAQH CORE "HTTP MIME Multipart"
 // adapter.
 //
 // Connectivity (CMS HETS 270/271 5010 Companion Guide §4.3.2–4.3.4 + §4.4): HETS accepts real-time 270s

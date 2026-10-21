@@ -34,9 +34,9 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import { fhirInboundIsPatientScoped } from "@wardenx/fhir";
-import type { FhirInboundOwnerModule } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { fhirInboundIsPatientScoped } from "@chartwarden/fhir";
+import type { FhirInboundOwnerModule } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M28 OWNS (registered into M3). Single-owner across the platform registry. */

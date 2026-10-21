@@ -190,7 +190,7 @@
 - M10 Hope API · hope
 - M22 Documents API · extraction/index
 - M32 Ai Platform API · backend/src/modules/32-ai-plat
-- pkg reporting translator · WardenXError
+- pkg reporting translator · ChartWardenError
 - pkg reporting repositories · ReportingDb
 - pkg messaging interfaces · messaging/src/index
 - M9 Assessments API · assessments-typebox
@@ -1372,7 +1372,7 @@
 1. `DbClient` - 1164 edges
 2. `useApiClient()` - 841 edges
 3. `withOrgContext()` - 821 edges
-4. `bootWardenX()` - 648 edges
+4. `bootChartWarden()` - 648 edges
 5. `schema` - 575 edges
 6. `IsoInstant` - 444 edges
 7. `ApiClient` - 441 edges
@@ -2213,7 +2213,7 @@ Nodes (75): Id, Iso, Line, M22_CLINICAL_WRITEBACK_EVENTS, CandidateValueKeyProvi
 Cohesion: 0.04
 Nodes (73): AI_COMPLIANCE_READER_ROLE_KEYS, AI_SAFETY_OWNER_ROLE_KEYS, AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS, AiInvocationAbacFacts, AiPlatformAbacDeps, AiPlatformAbacResolver, AiTenantOptInAbacFacts, buildAiPlatformAbacPredicates() (+65 more)
 
-### Community 181 - "pkg reporting translator · WardenXError"
+### Community 181 - "pkg reporting translator · ChartWardenError"
 Cohesion: 0.04
 Nodes (68): IfMatchRequiredError, ConflictError, DegradedError, csvExportProcessor(), BaseNotActiveError, PdfRowLimitExceededError, CSV_EXPORT_ROW_CAP, CSV_FETCH_CHUNK_ROWS (+60 more)
 
@@ -3036,7 +3036,7 @@ Nodes (28): buildDrilldownAuditRow(), DrilldownAuditAppendPort, DrilldownAuditIn
 
 ### Community 386 - "Admin package.json · admin/package.json"
 Cohesion: 0.05
-Nodes (43): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @wardenx/admin-ui-shell, @wardenx/types (+35 more)
+Nodes (43): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @chartwarden/admin-ui-shell, @chartwarden/types (+35 more)
 
 ### Community 387 - "Backend Tests · m23-claim-assembly-seams.live."
 Cohesion: 0.06
@@ -3192,7 +3192,7 @@ Nodes (35): RFC-7523, apiKeyFingerprint(), FHIR_API_KEY_FINGERPRINT_CHARS, verif
 
 ### Community 425 - "Portal package.json · portal/package.json"
 Cohesion: 0.05
-Nodes (39): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @wardenx/types, @wardenx/ui (+31 more)
+Nodes (39): dependencies, @fontsource-variable/inter, @fontsource-variable/manrope, react, react-dom, react-router-dom, @chartwarden/types, @chartwarden/ui (+31 more)
 
 ### Community 426 - "M32 Ai Platform UI · compliance-ai"
 Cohesion: 0.06
@@ -3388,7 +3388,7 @@ Nodes (29): blankNonCode(), BODY_METHODS, checkRoutes(), Disagreement, extractRo
 
 ### Community 474 - "Backend package.json · dependencies"
 Cohesion: 0.06
-Nodes (33): dependencies, bullmq, cron-parser, fastify, ioredis, pino, prom-client, @wardenx/audit (+25 more)
+Nodes (33): dependencies, bullmq, cron-parser, fastify, ioredis, pino, prom-client, @chartwarden/audit (+25 more)
 
 ### Community 475 - "M12 Dosespot API · medication-order-safety-gates"
 Cohesion: 0.09
@@ -4004,7 +4004,7 @@ Nodes (20): ADR-0017 Medicaid R&B, TPL/crossover, cap separation, Medicaid R&B a
 
 ### Community 629 - "pkg cost-report · cost-report/package.json"
 Cohesion: 0.10
-Nodes (19): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/gusto-client, @wardenx/shared, @wardenx/types, @wardenx/xero-client, exports (+11 more)
+Nodes (19): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/gusto-client, @chartwarden/shared, @chartwarden/types, @chartwarden/xero-client, exports (+11 more)
 
 ### Community 630 - "pkg db · 0026_admission_m6_tables.sql"
 Cohesion: 0.27
@@ -4192,7 +4192,7 @@ Nodes (17): "aide_supervisory_visit", "discipline_assessment", "discipline_care_
 
 ### Community 676 - "pkg db · db/package.json"
 Cohesion: 0.11
-Nodes (17): dependencies, drizzle-orm, pg, @wardenx/shared, devDependencies, @types/pg, exports, ./schema (+9 more)
+Nodes (17): dependencies, drizzle-orm, pg, @chartwarden/shared, devDependencies, @types/pg, exports, ./schema (+9 more)
 
 ### Community 677 - "pkg orders · src/kinds"
 Cohesion: 0.13
@@ -4216,7 +4216,7 @@ Nodes (11): activeMemberIds(), createMessageBodyCipher(), insertEncryptedMessage
 
 ### Community 683 - "Web package.json · dependencies"
 Cohesion: 0.12
-Nodes (17): dependencies, @fontsource/ibm-plex-mono, @fontsource-variable/inter, react, react-dom, react-router-dom, @wardenx/auth, @wardenx/types (+9 more)
+Nodes (17): dependencies, @fontsource/ibm-plex-mono, @fontsource-variable/inter, react, react-dom, react-router-dom, @chartwarden/auth, @chartwarden/types (+9 more)
 
 ### Community 684 - "Web package.json · devDependencies"
 Cohesion: 0.12
@@ -4304,7 +4304,7 @@ Nodes (12): assertCosignSatisfied(), COSIGN_ELIGIBLE_DISCIPLINES, CosignAttest, 
 
 ### Community 706 - "pkg billing · billing/package.json"
 Cohesion: 0.12
-Nodes (15): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/shared, @wardenx/types, exports, @sinclair/typebox, @wardenx/db (+7 more)
+Nodes (15): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/shared, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/db (+7 more)
 
 ### Community 707 - "pkg billing schemas · schemas/eligibility-check"
 Cohesion: 0.13
@@ -4312,7 +4312,7 @@ Nodes (14): CursorPageQuery, EligibilityOutcomeApi, PageOf(), EligibilityCheckDe
 
 ### Community 708 - "pkg cap-management · cap-management/package.json"
 Cohesion: 0.12
-Nodes (15): dependencies, @sinclair/typebox, @wardenx/db, @wardenx/shared, @wardenx/types, exports, @sinclair/typebox, @wardenx/db (+7 more)
+Nodes (15): dependencies, @sinclair/typebox, @chartwarden/db, @chartwarden/shared, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/db (+7 more)
 
 ### Community 709 - "pkg db · 0004_foundation_audit_triggers"
 Cohesion: 0.23
@@ -4404,7 +4404,7 @@ Nodes (14): hash-wasm, dependencies, @better-auth/passkey, hash-wasm, @simpleweb
 
 ### Community 731 - "pkg admin-ui-shell · admin-ui-shell/package.json"
 Cohesion: 0.13
-Nodes (14): dependencies, react, @wardenx/ui, devDependencies, @types/react, exports, react, @types/react (+6 more)
+Nodes (14): dependencies, react, @chartwarden/ui, devDependencies, @types/react, exports, react, @types/react (+6 more)
 
 ### Community 732 - "pkg db · 0034_hope_m10_tables.sql"
 Cohesion: 0.26
@@ -4504,7 +4504,7 @@ Nodes (11): evaluateRoomOccupancy(), IpuRoomKindValue, isPrivateRoom(), MIXED_SE
 
 ### Community 759 - "pkg supplies · supplies/package.json"
 Cohesion: 0.14
-Nodes (13): dependencies, decimal.js, @sinclair/typebox, @wardenx/types, exports, decimal.js, @sinclair/typebox, @wardenx/types (+5 more)
+Nodes (13): dependencies, decimal.js, @sinclair/typebox, @chartwarden/types, exports, decimal.js, @sinclair/typebox, @chartwarden/types (+5 more)
 
 ### Community 760 - "services · test_render.py"
 Cohesion: 0.25
@@ -4624,7 +4624,7 @@ Nodes (11): AllowlistEntry, AllowlistParse, AllowlistViolation, checkAllowlist()
 
 ### Community 793 - "pkg ai-platform · ai-platform/package.json"
 Cohesion: 0.17
-Nodes (11): @anthropic-ai/sdk, dependencies, @anthropic-ai/sdk, @wardenx/types, exports, @wardenx/types, name, private (+3 more)
+Nodes (11): @anthropic-ai/sdk, dependencies, @anthropic-ai/sdk, @chartwarden/types, exports, @chartwarden/types, name, private (+3 more)
 
 ### Community 794 - "Docs adr · ADR-0015-election-certificatio"
 Cohesion: 0.18
@@ -4692,7 +4692,7 @@ Nodes (11): canTransition(), findTransition(), guardPasses(), isTerminal(), redu
 
 ### Community 810 - "pkg cahps-vendors · cahps-vendors/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/quality, @wardenx/types, exports, @wardenx/types, name, private, type (+3 more)
+Nodes (11): dependencies, @chartwarden/quality, @chartwarden/types, exports, @chartwarden/types, name, private, type (+3 more)
 
 ### Community 811 - "pkg db · 0008_authorization_m3_tables.s"
 Cohesion: 0.27
@@ -4744,23 +4744,23 @@ Nodes (7): AIDE_POC_REQUIRED_SIGNERS, RequiredSignersByVersionKind, REQUIRED_SIG
 
 ### Community 825 - "pkg hearthnote · hearthnote/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/narrative-vocab, @wardenx/types, exports, @wardenx/types, name, private, type (+3 more)
+Nodes (11): dependencies, @chartwarden/narrative-vocab, @chartwarden/types, exports, @chartwarden/types, name, private, type (+3 more)
 
 ### Community 826 - "pkg inpatient · inpatient/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @sinclair/typebox, @wardenx/types, exports, @sinclair/typebox, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @sinclair/typebox, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/types, name, private (+3 more)
 
 ### Community 827 - "pkg orders · orders/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @sinclair/typebox, @wardenx/types, exports, @sinclair/typebox, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @sinclair/typebox, @chartwarden/types, exports, @sinclair/typebox, @chartwarden/types, name, private (+3 more)
 
 ### Community 828 - "pkg quality · quality/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/db, @wardenx/types, exports, @wardenx/db, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @chartwarden/db, @chartwarden/types, exports, @chartwarden/db, @chartwarden/types, name, private (+3 more)
 
 ### Community 829 - "pkg reporting · reporting/package.json"
 Cohesion: 0.17
-Nodes (11): dependencies, @wardenx/db, @wardenx/types, exports, @wardenx/db, @wardenx/types, name, private (+3 more)
+Nodes (11): dependencies, @chartwarden/db, @chartwarden/types, exports, @chartwarden/db, @chartwarden/types, name, private (+3 more)
 
 ### Community 830 - "pkg saas-tenant-platform · SaasTenantPlatformEraseStore"
 Cohesion: 0.29
@@ -4888,7 +4888,7 @@ Nodes (8): order_transmission_attestation_append_only, audit_phi_write_order_tra
 
 ### Community 866 - "pkg assessments · assessments/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 867 - "pkg assessments · assessments/src/catalog"
 Cohesion: 0.20
@@ -4896,7 +4896,7 @@ Nodes (9): isLicensedScale(), LICENSED, SCALE_CATALOG, SCALE_FAMILY, SCALE_LABEL
 
 ### Community 868 - "pkg audit · audit/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/db, exports, @wardenx/db, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/db, exports, @chartwarden/db, name, private, type, types (+1 more)
 
 ### Community 869 - "pkg audit jobs · runSealPartition"
 Cohesion: 0.27
@@ -4904,7 +4904,7 @@ Nodes (5): IntegritySampleRow, SealCheckpoint, runSealPartition(), SealPartition
 
 ### Community 870 - "pkg bereavement · bereavement/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 871 - "pkg billing schemas · schemas/noe"
 Cohesion: 0.20
@@ -5036,75 +5036,75 @@ Nodes (9): globalRead, m2, m3, m3TemplateRead, m4, m4Tables, MIGRATIONS, rls (+1
 
 ### Community 903 - "pkg discipline-plans · discipline-plans/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 904 - "pkg dosespot · dosespot/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 905 - "pkg emar · emar/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 906 - "pkg evv-aggregators · evv-aggregators/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 907 - "pkg fhir · fhir/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 908 - "pkg forms · forms/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 909 - "pkg hope · hope/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 910 - "pkg idg · idg/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 911 - "pkg intake-extraction · intake-extraction/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 912 - "pkg iqies-client · iqies-client/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 913 - "pkg medicaid-adapters · medicaid-adapters/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/billing, exports, name, private, type, types, version (+1 more)
+Nodes (9): dependencies, @chartwarden/billing, exports, name, private, type, types, version (+1 more)
 
 ### Community 914 - "pkg messaging · messaging/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 915 - "pkg narrative-vocab · narrative-vocab/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 916 - "pkg saas-tenant-platform · saas-tenant-platform/package.j"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/db, exports, @wardenx/db, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/db, exports, @chartwarden/db, name, private, type, types (+1 more)
 
 ### Community 917 - "pkg scheduling · scheduling/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 918 - "pkg subscription-billing · subscription-billing/package.j"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 919 - "pkg terminology-loader · terminology-loader/package.jso"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/terminology, exports, name, private, type, types, version (+1 more)
+Nodes (9): dependencies, @chartwarden/terminology, exports, name, private, type, types, version (+1 more)
 
 ### Community 920 - "pkg triage-vendors · triage-vendors/package.json"
 Cohesion: 0.20
-Nodes (9): dependencies, @wardenx/types, exports, @wardenx/types, name, private, type, types (+1 more)
+Nodes (9): dependencies, @chartwarden/types, exports, @chartwarden/types, name, private, type, types (+1 more)
 
 ### Community 923 - "Docs plans · Wave F Plan (M14, M17, M18, M2"
 Cohesion: 0.25
@@ -5922,8 +5922,8 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Why does `withOrgContext()` connect `M28 Fhir API · withOrgContext` to `Backend Tests · createDbClient`, `Backend Tests · backend/src/index`, `Backend Tests · backend/src/modules/22-documen`, `M5 Patient API · types/src/index`, `pkg saas-tenant-platform repositories · DbClient`, `M11 Orders API · backend/src/modules/11-orders/`, `pkg quality measures · upstream-consumer-ports`, `M6 Admission API · backend/src/modules/06-admissi`, `M12 Dosespot API · backend/src/modules/12-dosespo`, `M20 Field Safety API · IsoInstant`, `M13 Emar API · backend/src/modules/13-emar/in`, `M23 Billing Medicare API · 23-billing-medicare/routes/cla`, `M3 Authorization API · backend/src/modules/03-authori`, `M24 Billing Medicaid API · m24-typebox`, `Backend Tests · tenancy/src/index`, `M23 Billing Medicare API · backend/src/modules/23-billing`, `M5 Patient API · portal-amendment-intake`, `M23 Billing Medicare API · claim-assembly`, `M25 Remittance API · 25-remittance/jobs/cron-worker`, `pkg consent routes · consent/src/routes/service`, `M25 Remittance API · backend/src/modules/25-remitta`, `M31 Portal API · PatientId`, `M6 Admission API · admission-routes`, `M23 Billing Medicare API · 23-billing-medicare/routes/rea`, `M24 Billing Medicaid API · backend/src/modules/24-billing`, `M20 Field Safety API · 20-field-safety/seams/provider`, `M7 Care Plan API · backend/src/modules/07-care-pl`, `M19 Oncall API · 19-oncall/routes/write-service`, `M30 Quality API · 30-quality/routes/write-servic`, `M30 Quality API · m30-jobs`, `M34 Saas Tenant Platform API · requirePermission`, `M37 Ipu API · backend/src/modules/37-ipu/ind`, `M32 Ai Platform API · ai-platform-stride.test`, `M23 Billing Medicare API · IsoDate`, `M32 Ai Platform API · governance/service`, `M6 Admission API · admission-route-service-db`, `M29 External Interfaces API · dispatch-worker`, `M19 Oncall API · backend/src/modules/19-oncall/`, `M15 Discipline Care Plans API · 15-discipline-care-plans/route`, `M37 Ipu API · 37-ipu/routes/service-drizzle`, `M2 Identity API · backend/src/modules/02-identit`, `M16 Bereavement API · backend/src/modules/16-bereave`, `M27 Cost Report API · 27-cost-report/routes/write-se`, `M4 Audit API · audit-typebox`, `M5 Patient API · patient-routes`, `M33 Reporting API · 33-reporting/routes/index`, `M20 Field Safety API · 20-field-safety/jobs/cron-work`, `M14 Idg API · schedule-materialise`, `M14 Idg API · backend/src/modules/14-idg/ind`, `M21 Supplies API · 21-supplies/routes/read-servic`, `M22 Documents API · 22-documents/records-request/i`, `pkg billing hipps · hipps/rhc-carry-over`, `M17 Scheduling API · backend/src/modules/17-schedul`, `M21 Supplies API · 21-supplies/consumers/index`, `pkg terminology interfaces · terminology/src/index`, `pkg types · src/bereavement`, `M15 Discipline Care Plans API · backend/src/modules/15-discipl`, `M19 Oncall API · 19-oncall/consumers/bindings`, `Backend Tests · f238-doclens-identity-relink.l`, `M27 Cost Report API · m27-jobs`, `M8 Encounters API · encounters-route-service-db`, `M29 External Interfaces API · 29-external-interfaces/routes/`, `M10 Hope API · v1_00_1/validation/index`, `M33 Reporting API · m33-jobs`, `M39 Consent API · backend/src/modules/39-consent`, `M19 Oncall API · oncall-clinical.test`, `M10 Hope API · backend/src/modules/10-hope/in`, `M10 Hope API · hope`, `pkg messaging interfaces · messaging/src/index`, `M19 Oncall API · 19-oncall/routes/read-service-`, `M19 Oncall API · 19-oncall/seams/index`, `M19 Oncall API · close-documented`, `M28 Fhir API · 28-fhir/routes/store`, `M30 Quality API · backend/src/modules/30-quality`, `M37 Ipu API · watchdog-workers`, `M23 Billing Medicare API · 23-billing-medicare/consumers/`, `M14 Idg API · 14-idg/routes/service`, `M26 Cap API · m26-typebox`, `M15 Discipline Care Plans API · 15-discipline-care-plans/jobs/`, `pkg quality seams · quality/src/seams/published/pr`, `pkg messaging resolution · alert-emitter-drizzle`, `M18 Evv API · spoof-detector`, `M20 Field Safety API · backend/src/modules/20-field-s`, `M18 Evv API · submission-worker`, `M10 Hope API · hope-answer-service`, `M5 Patient API · patient-route-service-db`, `M18 Evv API · backend/src/modules/18-evv/ind`, `Backend Tests · m23-taxonomy-occurrence.live.t`, `M23 Billing Medicare API · wage-index-service`, `M6 Admission API · discharge/index`, `M2 Identity API · 02-identity/seams`, `M21 Supplies API · 21-supplies/routes/write-servi`, `M35 Subscription API · backend/src/modules/35-subscri`, `M6 Admission API · benefit-period`, `M27 Cost Report API · backend/src/modules/27-cost-re`, `M17 Scheduling API · 17-scheduling/seams/index`, `M18 Evv API · evv-route-service-db`, `M33 Reporting API · 33-reporting/routes/write-serv`, `M22 Documents API · prospect-summary`, `M16 Bereavement API · 16-bereavement/routes/read-ser`, `M22 Documents API · intake-job`, `M34 Saas Tenant Platform API · saas-tenant-platform-inject.te`, `M11 Orders API · 11-orders/seams/drizzle-store`, `M23 Billing Medicare API · transfer-notice-service`, `Backend Tests · DispatchableOutboxEvent`, `M10 Hope API · hope-route-service-db`, `M34 Saas Tenant Platform API · saas-jobs`, `M9 Assessments API · backend/src/modules/09-assessm`, `M28 Fhir API · 28-fhir/index`, `M25 Remittance API · m25-835-ingestion.live.test`, `M32 Ai Platform API · 32-ai-platform/routes/index`, `M14 Idg API · packet-build`, `M17 Scheduling API · scheduling-route-service-db`, `M22 Documents API · review-workspace`, `pkg mdm provider · mdm-store-db`, `M21 Supplies API · 21-supplies/jobs/cron-workers`, `M23 Billing Medicare API · rate-table.routes`, `Backend Tests · f225-portal-document-access-lo`, `M10 Hope API · hope-readiness-service`, `M25 Remittance API · 25-remittance/routes/write-ser`, `M15 Discipline Care Plans API · 15-discipline-care-plans/consu`, `M9 Assessments API · assessments-route-service-db`, `M16 Bereavement API · 16-bereavement/routes/write-se`, `Backend Tests · m29-outbound-dispatch.live.tes`, `Backend Tests · m23-claim-assembly-seams.live.`, `pkg cap-management · 26-cap/seam-impls`, `M29 External Interfaces API · 29-external-interfaces/seams/p`, `pkg terminology-loader · m38-terminology-loader.live.te`, `M26 Cap API · backend/src/modules/26-cap/ind`, `M26 Cap API · 26-cap/jobs/index`, `pkg cap-management domain · psr`, `M14 Idg API · 14-idg/consumers/bindings`, `M25 Remittance API · 25-remittance/routes/read-serv`, `M26 Cap API · 26-cap/routes/write-service-dr`, `M25 Remittance API · remittance-inject.test`, `M31 Portal API · 31-portal/jobs/index`, `M8 Encounters API · 08-encounters/jobs/cron-worker`, `M7 Care Plan API · care-plan-route-service-db`, `M23 Billing Medicare API · 23-billing-medicare/abac-predi`, `M35 Subscription API · 35-subscription/routes/service`, `M7 Care Plan API · problem-proposals-db`?**
   _High betweenness centrality (0.024) - this node is a cross-community bridge._
-- **Are the 20 inferred relationships involving `bootWardenX()` (e.g. with `m34SoleTenantUserIds()` and `m34PlatformBypassAuditor()`) actually correct?**
-  _`bootWardenX()` has 20 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 20 inferred relationships involving `bootChartWarden()` (e.g. with `m34SoleTenantUserIds()` and `m34PlatformBypassAuditor()`) actually correct?**
+  _`bootChartWarden()` has 20 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `FULL_SESSION`, `moduleFiles`, `discoveredModules` to the rest of the system?**
   _18469 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Backend Tests · createDbClient` be split into smaller, more focused modules?**

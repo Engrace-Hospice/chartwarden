@@ -7,8 +7,8 @@ import type {
   OnCallRank,
   RoleSendPersonDto,
   RoleSendResolutionDto,
-} from "@wardenx/types";
-import { Button } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { Button } from "@chartwarden/ui";
 import type { JSX, RefObject } from "react";
 import {
   CONFIRM_LEGEND,

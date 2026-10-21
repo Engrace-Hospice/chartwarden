@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `claim_acknowledgment` (M23 Billing-Medicare §3.3; non-partitioned;
+// @chartwarden/billing · repositories — `claim_acknowledgment` (M23 Billing-Medicare §3.3; non-partitioned;
 // retention class `compliance`). APPEND-ONLY: one row per inbound 999 / 277CA / 835 acknowledgment file
 // processed for a submission — the ack-ingest worker appends a row capturing the parsed result; there is
 // deliberately NO update/delete method (the P1 DB append-only trigger is mirrored by the repo offering no
@@ -9,7 +9,7 @@
 // ENUM BOUNDARY: `kind` (ack_999|ack_277ca|ack_835) and `mac_jurisdiction` are DB-native lowercase enums
 // with no domain-alphabet divergence, so rows pass through UN-mapped (no codec; contrast `claim.state`).
 // `parsed_payload` carries only X12 status/reason codes — NEVER PHI/MBI (D13, §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   type BillingDb,

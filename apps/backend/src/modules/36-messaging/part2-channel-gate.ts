@@ -23,8 +23,8 @@
 // KNOWN LIMIT (reported on the gap): the flag comes from M5's `patient_privacy_flag_snapshot`, which the M5
 // reader reports as empty while the snapshot is marked invalidated. That window is closed by M5's recompute,
 // not here.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 

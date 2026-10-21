@@ -1,11 +1,11 @@
-// @wardenx/subscription-billing — M35 Subscription Billing (Stripe) package entrypoint (public barrel).
+// @chartwarden/subscription-billing — M35 Subscription Billing (Stripe) package entrypoint (public barrel).
 //
 // M35 owns the platform's monetization surface: the platform-shared plan catalog + meters, per-tenant
 // subscriptions and their D7 status machine, Stripe-mirrored invoices/lines/payment-methods, PHI-free
 // usage metering with HMAC-pseudonymized patient/user active-period counting, the D16 four-stage refund
 // workflow, promo codes, monthly MRR/ARR snapshots, the dunning ladder, and the outbox-only Stripe
 // dispatcher. Per ADR-0025 the M34↔M35 seam is bidirectional-but-edge-free; the cross-module wire
-// contracts (enum mirrors, seam interfaces, outbox taxonomy, alert rules) live in the leaf `@wardenx/types`.
+// contracts (enum mirrors, seam interfaces, outbox taxonomy, alert rules) live in the leaf `@chartwarden/types`.
 //
 // M35-T01 scope: the §3.3 enum VALUE tuples (runtime source of truth, `satisfies`-pinned to the leaf
 // unions) + the pure §2 domain kernels (the subscription / dunning / refund / invoice transition graphs,
@@ -20,7 +20,7 @@
 //
 // M35-T04 scope (adds `./stripe`): the §4.13 outbox-only Stripe dispatcher + the §4.14 HMAC webhook
 // ingestion core, both PURE over injected ports. The `stripe` SDK is NOT imported anywhere in the tree —
-// the SDK-free typed client (`@wardenx/xero-client` idiom) routes every call through an injected transport
+// the SDK-free typed client (`@chartwarden/xero-client` idiom) routes every call through an injected transport
 // (fail-closed by default), keeping the whole package inside the VENDOR_ADAPTERS boundary. Includes the
 // §8.7 audit-envelope redactor, the §4.13/§4.16 deterministic idempotency-key derivation, and the D15
 // envelope-encryption seam for `stripe_webhook_event`.
@@ -30,7 +30,7 @@
 // payment `resolve`, and the admin `skip_stage`/`reset` overrides — returning the `m35.dunning.*` outbox
 // intents + the `suspend`/`cancel` side-effect signal the T06 caller drives onto the subscription. The
 // §4.5 six PUBLISHED seams + the §4.6 three forward-seam CONSUMER VIEWS are bound into the M1 SeamRegistry
-// this task too (leaf interfaces in `@wardenx/types`, deny-stubs in the bootstrap; M34↔M35 no-edge per
+// this task too (leaf interfaces in `@chartwarden/types`, deny-stubs in the bootstrap; M34↔M35 no-edge per
 // ADR-0025). Still deferred: the Fastify routes + the live transport/store/mirror wiring + eraser (T06).
 
 // §3.3 enum value tuples (pgEnum seeds + §2 domain iteration source of truth).

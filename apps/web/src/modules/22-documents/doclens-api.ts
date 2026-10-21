@@ -12,7 +12,7 @@
 // REASON_REQUIRED`, `SUD_DETECTION_UNRESOLVED`, a 403 licence refusal). `Idempotency-Key` is attached to
 // every mutating request by the client middleware (`createApiClient`); the two routes that REQUIRE one
 // (SUD review, complete) also get an explicit key so the requirement is visible at the call site.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Ok<Op> = Op extends { responses: { 200: infer R } } ? Json<R> : never;

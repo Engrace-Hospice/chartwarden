@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_record` (M39 Consent §3.3 #3). THE entity: one row per consent execution,
+// @chartwarden/db — `consent_record` (M39 Consent §3.3 #3). THE entity: one row per consent execution,
 // APPEND-ONLY with explicit supersession chains (D1) — an "edit" inserts a new row pointing at the
 // prior via supersedes_consent_record_id; the prior stays alive (`superseded`) for survey
 // reconstruction. Three self-FKs (supersede / renewal / acting-consent chain-of-authority, D5) with

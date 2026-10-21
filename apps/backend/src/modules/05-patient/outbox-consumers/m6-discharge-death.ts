@@ -18,7 +18,7 @@
 // FAIL-CLOSED: an unresolvable death fact throws (dead-letters for a human) rather than guessing a
 // patient id. `recordDeathFromDischarge` is itself idempotent on an already-deceased patient, so a
 // redelivery after a partial failure converges safely.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { getSeam } from "../../../bootstrap/index";
 import { type M5OutboxPort, recordDeathFromDischarge } from "../deceased-db";
 

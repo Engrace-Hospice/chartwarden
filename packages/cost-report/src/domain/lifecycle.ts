@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 cost-report lifecycle reducer (§2.2). The spec proposes an XState v5
+// @chartwarden/cost-report — M27 cost-report lifecycle reducer (§2.2). The spec proposes an XState v5
 // machine (D4); the WardenX repo convention is a PURE hand-rolled transition reducer (see the M39
 // consent status-machine precedent), and ARCHITECTURE WINS over the module spec on this conflict. The
 // nine live states + terminal `closed` and their server-authoritative transitions are encoded as a flat
@@ -8,7 +8,7 @@
 // is encoded as a predicate taking the count as an argument; guards that need I/O (step-up auth,
 // elevated-approval, Valkey single-flight) live in the Phase-2 service layer, not here.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No PHI (D18).
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. No PHI (D18).
 import type { CostReportState } from "../contracts";
 
 /**

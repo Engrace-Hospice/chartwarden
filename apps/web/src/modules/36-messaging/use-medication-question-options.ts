@@ -2,8 +2,8 @@
 // comes ONLY from the options route (useFeatureFlag is never loaded in the real app). Fails closed: any error, 401, 403,
 // 404 or an unexpected shape reads as hidden. A monotonic request id drops a late answer for a channel the person has
 // left. The server stays the authority: with the flag off its POST answers 404.
-import type { MedicationQuestionOptions } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import type { MedicationQuestionOptions } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 
 export type EnabledOptions = Extract<MedicationQuestionOptions, { readonly enabled: true }>;

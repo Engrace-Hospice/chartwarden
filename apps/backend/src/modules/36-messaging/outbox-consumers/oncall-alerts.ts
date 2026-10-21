@@ -22,7 +22,7 @@
 //
 // NO PHI: ids, enums, minutes and instants only. A malformed event THROWS (relay retry -> DLQ — a visible
 // failure, never a silently dropped page).
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

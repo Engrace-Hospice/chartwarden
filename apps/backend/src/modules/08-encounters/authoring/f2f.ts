@@ -9,7 +9,7 @@
 // of M6's schema, so no `dependsOn` edge is created. The composition layer hands the descriptor to M6's
 // writer; both commit or both abort. The abort is structural: `transitionEncounter` throws on a failed
 // Layer-3 gate or stale step-up, so the plan (and therefore the M6 write) is never produced.
-import type { EncounterDiscipline, FaceToFaceEncounterId, LocalDate } from "@wardenx/types";
+import type { EncounterDiscipline, FaceToFaceEncounterId, LocalDate } from "@chartwarden/types";
 import {
   type EncounterState,
   type EncounterTransition,

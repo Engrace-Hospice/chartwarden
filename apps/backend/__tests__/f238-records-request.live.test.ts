@@ -28,8 +28,8 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { isValidRecordsRequestCode } from "@wardenx/intake-extraction";
+import { createDbClient } from "@chartwarden/db";
+import { isValidRecordsRequestCode } from "@chartwarden/intake-extraction";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { siteDisplayForOrg } from "../src/bootstrap/site-display-for-org";

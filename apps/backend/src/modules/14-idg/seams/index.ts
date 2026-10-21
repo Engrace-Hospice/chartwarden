@@ -13,7 +13,7 @@ import type {
   IdgDecisionProvider,
   IdgPacketProvider,
   IdgScheduleProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createIdgDecisionProvider,

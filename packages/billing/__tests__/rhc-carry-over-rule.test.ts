@@ -2,8 +2,8 @@ import {
   type RhcCarryOverSnapshot,
   type ValidationContext,
   rhcCarryOverHetsFresh,
-} from "@wardenx/billing";
-// @wardenx/billing — rule `rhc_carry_over_hets_fresh` (perDiemClass, warn, non-regulatory): a readmission within 60
+} from "@chartwarden/billing";
+// @chartwarden/billing — rule `rhc_carry_over_hets_fresh` (perDiemClass, warn, non-regulatory): a readmission within 60
 // days of a prior hospice discharge with a missing / stale (> 30 days) HETS check may have a wrong RHC split.
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";

@@ -10,8 +10,8 @@
 //   • `intentionally_held` → `info` (a deliberate clinical hold)
 // `missed_reason` (free text, audit-denylisted) NEVER crosses this seam; nor does any drug name — M14's digest
 // is an id, an enum, an instant and a severity. SEAM PULL at packet build; RLS scopes by `app.org_id`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray } from "drizzle-orm";
 
 const MD = schema.missedDoses;

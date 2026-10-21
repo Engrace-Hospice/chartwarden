@@ -6,9 +6,9 @@
 // `organization_id` predicate as the belt. The rendered file is stored ONLY as a tenant-DEK envelope
 // (`file_cipher`); the plaintext exists in memory for the render/push and for a download response.
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import type { CahpsExportJob, CahpsExportJobPort } from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { CahpsExportJob, CahpsExportJobPort } from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import type { CahpsExportJobView } from "../routes/read-service";
 import type { CahpsPhiCipher } from "./phi-cipher";

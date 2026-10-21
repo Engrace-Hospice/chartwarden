@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_goal` (M15 §3.3). The per-discipline goal, optionally hung off an M7 IPOC
+// @chartwarden/db — `discipline_goal` (M15 §3.3). The per-discipline goal, optionally hung off an M7 IPOC
 // problem/goal (`parent_problem_id` / `parent_goal_id`, LOGICAL uuid — M15 reads M7 through the
 // `CarePlanReader` seam, never through its schema). §2.2.3 status lifecycle; `original_text` is IMMUTABLE
 // after creation (M7 D6 pattern — DB length CHECK + service guard + audit-trigger refusal), revisions land

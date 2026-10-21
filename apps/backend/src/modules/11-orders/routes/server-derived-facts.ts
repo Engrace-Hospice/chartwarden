@@ -7,8 +7,8 @@
 //     `order_signature.signer_discipline` is always one the actor really has;
 //   - the §2.5 cosign inputs (who will sign, and the level-of-care transition) come from the STORED order:
 //     the drafter's discipline and the `level_of_care_change` payload's own fromLevel/toLevel.
-import type { LevelOfCare } from "@wardenx/orders";
-import { WardenXError } from "@wardenx/types";
+import type { LevelOfCare } from "@chartwarden/orders";
+import { ChartWardenError } from "@chartwarden/types";
 
 const LEVELS: readonly string[] = ["rhc", "irc", "chc", "gip"];
 const HTTP_UNPROCESSABLE = 422;
@@ -40,7 +40,7 @@ export function isVerbalRecorderDiscipline(discipline: string): boolean {
 export function assertDisciplineHeld(held: readonly string[], claimed: string): void {
   const claimedKey = norm(claimed);
   if (held.some((d) => norm(d) === claimedKey)) return;
-  throw new WardenXError(
+  throw new ChartWardenError(
     "DISCIPLINE_NOT_HELD",
     `The caller does not hold the '${claimed}' discipline.`,
     HTTP_UNPROCESSABLE,

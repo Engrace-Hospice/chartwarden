@@ -1,4 +1,4 @@
-// @wardenx/db — `medication_order_transmission` (M12 §3.3). The "audit anchor" for every DoseSpot adapter
+// @chartwarden/db — `medication_order_transmission` (M12 §3.3). The "audit anchor" for every DoseSpot adapter
 // call: one row per NewRx transmission attempt, carrying the D8 idempotency key (sha256 of
 // prescriberMembershipId + patientId + rxBusinessKey) and the rx-business-key (sha256 of rxcui + strength +
 // canonicalized sig), the queue→start→succeeded/failed timestamps, the retry counter, and the PHI-scrubbed

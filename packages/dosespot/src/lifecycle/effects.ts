@@ -1,4 +1,4 @@
-// @wardenx/dosespot — medication-order lifecycle side-effect descriptors (§2.2 / §2.6 D13, M12-T03).
+// @chartwarden/dosespot — medication-order lifecycle side-effect descriptors (§2.2 / §2.6 D13, M12-T03).
 //
 // The M11 §2.8 pattern carried forward: every transition carries an explicit, in-transaction side-effect
 // list (audit + outbox + child-row ops + the M11-seam invocations), and the COMMIT binds the
@@ -14,7 +14,7 @@ import type {
   M12AlertPayload,
   M12EventName,
   MedicationOrderDiscontinuationReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §4.9 — the discriminating `eventType` of a typed M36 alert M12 dispatches (no outbox wire name). */
 export type M12AlertEventType = M12AlertPayload["eventType"];

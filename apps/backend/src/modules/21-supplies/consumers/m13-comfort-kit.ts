@@ -34,7 +34,7 @@ import type {
   MembershipId,
   OutboxEventId,
   SupplyRequestId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { computeReturnDueAt } from "../lifecycle/index";
 import { SupplyStateError } from "../lifecycle/index";
 
@@ -352,7 +352,7 @@ export type ControlledSubstanceReemitAction =
    *  or an invented custody name would be worse than the (already-delivered) plain M13 signal. */
   | { readonly kind: "no_enrichment_context" }
   /** Re-emit as `m21.controlled_substance.discrepancy_detected` with `detectionSource: 'm13_reemit'` —
-   *  the exact shape `M21ControlledSubstanceDiscrepancyPayload` (`@wardenx/types`) requires, built from
+   *  the exact shape `M21ControlledSubstanceDiscrepancyPayload` (`@chartwarden/types`) requires, built from
    *  the REAL `comfort_kit_returned_content` row rather than a synthesized one, since M21's own
    *  `reconcileReturn` transaction already wrote it (strictly before this M13 event could ever fire —
    *  M13 only emits off the `m21.comfort_kit.return_reconciliation` event that same transaction's commit

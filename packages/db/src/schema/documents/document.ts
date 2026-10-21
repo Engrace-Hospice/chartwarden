@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `document` (M22 §3.3). The document aggregate root: one row per materialized
+// @chartwarden/db — `document` (M22 §3.3). The document aggregate root: one row per materialized
 // artifact (rendered form, uploaded file, intake source, consent capture). The current bytes live
 // in `document_version` (append-only); `active_version_id` is the single source of "current".
 //

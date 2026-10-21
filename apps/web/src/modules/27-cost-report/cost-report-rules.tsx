@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the VALIDATION RULE LIBRARY (R2, §5 / §11.B / D21). The platform-
 // default + tenant-extension rule catalog (org-NULL platform floor a tenant layers tightenings onto). A
 // collection surface (`/cost-report-validation-rules`); read-only — the server is the only authz point.

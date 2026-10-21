@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/audit/realtime-audit.ts — ADR-0054 item 12: socket connect/disconnect rows.
-// Org-scoped under `withOrgContext`, written through @wardenx/audit (never a direct insert). Ids and a reason only.
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
-import { withOrgContext } from "@wardenx/tenancy";
+// Org-scoped under `withOrgContext`, written through @chartwarden/audit (never a direct insert). Ids and a reason only.
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { RealtimeAuditEvent } from "../../../bootstrap/realtime";
 
 type Db = Parameters<typeof withOrgContext>[0];

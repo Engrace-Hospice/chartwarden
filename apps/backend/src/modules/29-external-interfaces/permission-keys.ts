@@ -1,16 +1,16 @@
 // apps/backend/src/modules/29-external-interfaces/permission-keys.ts — M29-T08 (§4.7).
 //
 // The twenty-one permission keys Module 29 registers into Module 3's catalog. The canonical map is
-// `M29_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// `M29_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it plus the ordered key list and the
 // step-up subset, so the §4.1/§4.2 routes gate on `requirePermission(key)` / `requireStepUp(key)` without
 // re-declaring the map (the M28/M32 posture — references the auth package directly, no drift).
-import { type M29ContributedPermissionKey, M29_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M29ContributedPermissionKey, M29_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
 export {
   M29_CONTRIBUTED_PERMISSIONS,
   type M29ContributedPermissionKey,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
 /** Union of every §4.7 permission key M29 owns. */
 export type M29PermissionKey = M29ContributedPermissionKey;

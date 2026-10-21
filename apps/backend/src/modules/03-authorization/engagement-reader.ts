@@ -14,10 +14,10 @@
 // request field). Until M2 writes it at magic-link consumption no live session carries one, so this reader is
 // never reached for a real auditor — the route denies everyone. A real `engagement ↔ auditor user` row would
 // let this reader also check the user.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AuditorEngagementReader, EngagementCoverage } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AuditorEngagementReader, EngagementCoverage } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { isEngagementLive, parseEngagementCoverage } from "./engagement-scope";
 

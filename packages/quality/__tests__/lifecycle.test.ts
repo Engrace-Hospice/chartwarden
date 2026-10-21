@@ -21,8 +21,8 @@ import {
   transitionQapiPip,
   transitionQapiProject,
   transitionSraCycle,
-} from "@wardenx/quality";
-// @wardenx/quality — M30 §2.2 PURE lifecycle-reducer unit tests (§7.3 / §7.4 / §7.5 / §7.6 / §7.13 / §7.15).
+} from "@chartwarden/quality";
+// @chartwarden/quality — M30 §2.2 PURE lifecycle-reducer unit tests (§7.3 / §7.4 / §7.5 / §7.6 / §7.13 / §7.15).
 //
 // Proves the four pure state machines + the mortality auto-creator enforce their §2.2 graphs and guards:
 //   - incident (§7.5): the seven-state machine + the M30-F03 resolver≠assignee two-person control;
@@ -33,12 +33,12 @@ import {
 //
 // PURE: no DB / Valkey / BullMQ — every reducer is `(state, event) → state(+effects)` and every guard fact
 // is injected on the event (the M33 `refresh.test.ts` / M30 `measure-registrations.test.ts` idiom). Each
-// test asserts an OBSERVABLE outcome (next state, effect list, or the precise WardenXError `code`/status),
+// test asserts an OBSERVABLE outcome (next state, effect list, or the precise ChartWardenError `code`/status),
 // never a tautology.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
-/** Assert `fn` throws a WardenXError carrying the exact `code` (+ optional HTTP status). */
+/** Assert `fn` throws a ChartWardenError carrying the exact `code` (+ optional HTTP status). */
 function expectWardenError(fn: () => unknown, code: string, status?: number): void {
   let thrown: unknown;
   try {
@@ -46,8 +46,8 @@ function expectWardenError(fn: () => unknown, code: string, status?: number): vo
   } catch (e) {
     thrown = e;
   }
-  expect(thrown).toBeInstanceOf(WardenXError);
-  const err = thrown as WardenXError;
+  expect(thrown).toBeInstanceOf(ChartWardenError);
+  const err = thrown as ChartWardenError;
   expect(err.code).toBe(code);
   if (status !== undefined) expect(err.statusCode).toBe(status);
 }

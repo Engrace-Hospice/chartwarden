@@ -14,8 +14,8 @@
 // it). Idempotent by construction: the UPDATE's WHERE clause pins
 // `evv_missing_resolution_resolved_at IS NULL`, so a redelivery after the first stamp matches zero rows and
 // is a silent no-op, mirroring the `transfer_event.document_id`/`m6-backref` NULL-guard shape (F-192).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const V = schema.visit;

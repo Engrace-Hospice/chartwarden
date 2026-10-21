@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.4 D3 PRN reassessment trigger (M13-T04). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.4 D3 PRN reassessment trigger (M13-T04). PURE, IO-free, `Date.now()`-free.
 //
 // A PRN administration is a `single_dose`-mode `administration_record` linked 1:1 to a `prn_administration`
 // row. On commit, M13 emits `m13.prn_administration_recorded` carrying the reassessment-due deadline and a
@@ -15,7 +15,7 @@ import type {
   MedicationOrderId,
   PatientId,
   PrnAdministrationId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * §2.4 — the medication's clinical category, resolved upstream via M38 (RxNorm/NDC → therapeutic class).

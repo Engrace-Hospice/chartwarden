@@ -19,7 +19,7 @@
 //   • §7.16 W-M22-23 SUD-redacted render  — a SUD-class row (or whole document) rendered for a caller WITHOUT
 //                an active 42 CFR Part 2 consent yields a deterministic REDACTED PLACEHOLDER (no PHI value);
 //                the document carries retention_class `compliance_42cfr_part2` + `metadata.sudRedacted=true`.
-import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
 
 // ── §7.16 SUD-redacted placeholder (no PHI) ─────────────────────────────────────────────────────────────
 

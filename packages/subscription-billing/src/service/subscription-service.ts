@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §2.2 subscription lifecycle service (pure over ports, M35-T03).
+// @chartwarden/subscription-billing — §2.2 subscription lifecycle service (pure over ports, M35-T03).
 //
 // Walks a `subscription` row through the D7 status graph. The pure transition legality lives in
 // `../domain/subscription-lifecycle` (`canTransitionSubscription`); this service adds the DB-facing
@@ -11,7 +11,7 @@
 // publish the returned {@link OutboxIntent}s. NOTHING here calls Stripe (that is the T04 dispatcher) or
 // registers a seam (T05).
 
-import type { IsoInstant, MembershipId, OrgId, PlanId, SubscriptionStatus } from "@wardenx/types";
+import type { IsoInstant, MembershipId, OrgId, PlanId, SubscriptionStatus } from "@chartwarden/types";
 import {
   canTransitionSubscription,
   isTerminalSubscriptionStatus,

@@ -19,7 +19,7 @@
  * SCOPE OF ownedTables — SERVER POSTGRESQL ONLY:
  *   ownedTables governs the central multi-tenant PostgreSQL schema only. It does NOT
  *   enumerate on-device / client-side stores. In particular, the mobile offline drafts
- *   in the @wardenx/mobile-offline package — M09 `assessment_draft` and M10
+ *   in the @chartwarden/mobile-offline package — M09 `assessment_draft` and M10
  *   `hope_assessment_draft` (encrypted sqlcipher tables, device-derived keys, defined
  *   in their specs as raw CREATE TABLE, evict-on-logout) — are deliberately OUT OF SCOPE
  *   and are not manifest-owned. They carry no org_id/RLS server contract and are never
@@ -181,7 +181,7 @@ exports.MODULES = [
       "apps/web/src/modules/03-authorization",
     ],
     dependsOn: [1, 2], // +1: M3's production RBAC data layer (effective-permission Drizzle store) needs
-    // M1's Drizzle client (@wardenx/db), like M2's db-session-store; its §2.2 join
+    // M1's Drizzle client (@chartwarden/db), like M2's db-session-store; its §2.2 join
     // also reads the M1-owned `membership` table.
     ownedTables: [
       "role",
@@ -683,7 +683,7 @@ exports.MODULES = [
       "apps/web/src/modules/19-oncall",
     ], // +web: Track B in-task screens (ADR-0030), land in M19-T08. `packages/oncall` from the spec's
     // §3.1 layout is deliberately NOT adopted — see the .ts manifest for the full read.
-    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): foundation edge — @wardenx/db + tenancy + the bootstrap
+    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): foundation edge — @chartwarden/db + tenancy + the bootstrap
     // eraser registry the §3.7 triage_record eraser registers into. See the .ts manifest.
     ownedTables: [
       "external_triage_vendor",
@@ -705,7 +705,7 @@ exports.MODULES = [
     name: "Field Safety",
     codePaths: ["apps/backend/src/modules/20-field-safety", "apps/web/src/modules/20-field-safety"], // +web: Track B in-task screens (ADR-0030), land in M20-T07. `packages/safety-client` (spec §3.1)
     // is NOT adopted — see the .ts manifest for the full read.
-    dependsOn: [1, 17, 36], // +M1 (M20-T02): @wardenx/db + tenancy + the bootstrap eraser registry the
+    dependsOn: [1, 17, 36], // +M1 (M20-T02): @chartwarden/db + tenancy + the bootstrap eraser registry the
     // §3.7 `safety_record` eraser registers into — the same foundation edge M15/M16/M18/M19/M21 carry.
     ownedTables: [
       "safety_acknowledgment",
@@ -968,7 +968,7 @@ exports.MODULES = [
     id: 29,
     name: "External Interfaces",
     codePaths: ["apps/backend/src/modules/29-external-interfaces"],
-    // +M1 (M29-T08): the backend module imports the @wardenx/db barrel + the M1-owned bootstrap seam
+    // +M1 (M29-T08): the backend module imports the @chartwarden/db barrel + the M1-owned bootstrap seam
     // registry (registerSeam/getSeam) to publish its §4.4 read seams — real compile edges (see .ts manifest).
     dependsOn: [1, 5, 11, 40],
     ownedTables: [
@@ -1077,8 +1077,8 @@ exports.MODULES = [
       "apps/web/src/modules/33-reporting",
     ],
     // M33 consumes clinical/billing producers THROUGH SEAMS (runtime getSeam + outbox), NOT imports, so
-    // the broad relationship inventory drops out of dependsOn (ADR-0005). Real edges: M1 (@wardenx/db +
-    // bootstrap getSeam), M2/M3/M4 (auth/audit/tenancy), M36 (@wardenx/messaging). Keep in sync with .ts.
+    // the broad relationship inventory drops out of dependsOn (ADR-0005). Real edges: M1 (@chartwarden/db +
+    // bootstrap getSeam), M2/M3/M4 (auth/audit/tenancy), M36 (@chartwarden/messaging). Keep in sync with .ts.
     dependsOn: [1, 2, 3, 4, 36],
     ownedTables: [
       "dashboard_tile_cache",
@@ -1105,7 +1105,7 @@ exports.MODULES = [
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",
     ],
-    // M1 edge is real: M34 repos import the @wardenx/db client + schema barrel and the backend module
+    // M1 edge is real: M34 repos import the @chartwarden/db client + schema barrel and the backend module
     // imports apps/backend/src/bootstrap (getSeam) — both M1-owned — plus M1 envelope/MinIO/idempotency.
     // Matches every peer DB consumer (M4 [1,2,3], M40 [1,2,3,4], M22 [1,5]). Keep in sync with .ts.
     dependsOn: [1, 2, 3, 4, 36],
@@ -1138,7 +1138,7 @@ exports.MODULES = [
       "apps/admin/src/modules/35-subscription-billing", // §5.2 platform-ops admin slice (M35A-T04); M34 owns the apps/admin shell (ADR-0030)
       "packages/subscription-billing",
     ],
-    // M1 foundation edge (withOrgContext + @wardenx/db + outbox + bootstrap seam/route wiring) — the
+    // M1 foundation edge (withOrgContext + @chartwarden/db + outbox + bootstrap seam/route wiring) — the
     // standard backend-owning-module dependency (M27/M28 precedent). M34↔M35 stays seam-both-ways NO
     // edge either direction (ADR-0025); no feature-module edge is added.
     dependsOn: [1],

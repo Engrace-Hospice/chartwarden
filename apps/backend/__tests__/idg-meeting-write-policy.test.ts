@@ -1,4 +1,4 @@
-import type { IdgMeetingStatus } from "@wardenx/types";
+import type { IdgMeetingStatus } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type IdgMeetingWriteOperation,

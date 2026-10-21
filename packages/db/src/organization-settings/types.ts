@@ -1,4 +1,4 @@
-// @wardenx/db — Organization-Settings Registry types (M1 Foundation §3.15).
+// @chartwarden/db — Organization-Settings Registry types (M1 Foundation §3.15).
 //
 // `organization.settings` is a typed JSONB column governed by a registered-keys
 // discipline (Decision D6): a module may only store a settings key it has declared

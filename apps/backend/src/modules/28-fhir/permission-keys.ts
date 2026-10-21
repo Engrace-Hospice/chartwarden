@@ -1,13 +1,13 @@
 // apps/backend/src/modules/28-fhir/permission-keys.ts — M28-T08 (§4.6).
 //
 // The twelve permission keys Module 28 registers into Module 3's catalog. The canonical map is
-// `M28_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// `M28_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it plus the ordered key list, so the
 // §4.1 admin routes gate on `requirePermission(key)` without re-declaring the map (the M32 posture —
 // references the auth package directly, no drift).
-import { type M28ContributedPermissionKey, M28_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M28ContributedPermissionKey, M28_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M28_CONTRIBUTED_PERMISSIONS, type M28ContributedPermissionKey } from "@wardenx/auth";
+export { M28_CONTRIBUTED_PERMISSIONS, type M28ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.6 admin permission key M28 owns. */
 export type M28PermissionKey = M28ContributedPermissionKey;

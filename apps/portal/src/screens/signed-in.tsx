@@ -4,7 +4,7 @@ import {
   Glyph,
   InlineAlert,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

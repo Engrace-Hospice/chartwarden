@@ -10,7 +10,7 @@ import {
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
   buildDlqAuditRecord,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   type ConnectionOptions,
   type Job,

@@ -6,8 +6,8 @@
 // survivor's raw contact details (the contact view projects ids and enums only), and a decrypt path with no consumer
 // would be a PHI read surface with no audit behind it. A blob that cannot be opened (rotated-out DEK, tampered row) reads
 // as an ABSENT channel, never as a guessed or partial one.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { BereavementCipher, BereavementCipherColumn } from "./bereavement-crypto";
 

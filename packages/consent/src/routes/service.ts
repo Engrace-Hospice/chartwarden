@@ -1,4 +1,4 @@
-// @wardenx/consent — the ConsentRouteService (M39 §4.1 route backend).
+// @chartwarden/consent — the ConsentRouteService (M39 §4.1 route backend).
 //
 // The injectable surface the M39 routes compose over. Originally a representative slice (create-draft
 // → sign → revoke, the patient list, the catalog, the decision audit); now the full §4.1 inventory

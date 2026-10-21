@@ -1,4 +1,4 @@
-// @wardenx/fhir — §4.10 M28 outbox event catalog (M28-T07).
+// @chartwarden/fhir — §4.10 M28 outbox event catalog (M28-T07).
 //
 // The typed union of every outbox event M28 emits onto the M1 dispatcher (architecture §25). T07's
 // bulk-export and inbound-proposal cores return these as PLAN descriptors; T08's routes/workers hand them
@@ -16,7 +16,7 @@ import type {
   FhirInboundOwnerModule,
   FhirInboundResourceId,
   FhirVersion,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export type M28OutboxEvent =
   | {

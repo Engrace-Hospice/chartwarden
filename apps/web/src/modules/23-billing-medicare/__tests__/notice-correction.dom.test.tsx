@@ -2,8 +2,8 @@
 // that shows the rejection, lets the biller keep or fix the notice date with a reason, posts it with an
 // Idempotency-Key, and links both ways between the rejected notice and its correction.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import {

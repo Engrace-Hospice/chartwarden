@@ -16,13 +16,13 @@
 //     scheduler might read as a pass.
 //
 // PURE — gate rows and `now` are injected; the Drizzle read + the seam registration land in M15-T05/T06.
-import { BLOCKING_VOLUNTEER_GATE_KINDS } from "@wardenx/discipline-plans";
+import { BLOCKING_VOLUNTEER_GATE_KINDS } from "@chartwarden/discipline-plans";
 import type {
   IsoInstant,
   MembershipId,
   VolunteerComplianceStatus,
   VolunteerGateKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type VolunteerGateFacts, isGateClearing } from "./gates";
 
 /**

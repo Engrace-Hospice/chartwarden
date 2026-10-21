@@ -1,9 +1,9 @@
 // M8's live M17 visit-publication consumer. M17's canonical trigger is `m17.visit.published`;
 // draft insertion and the m8.encounter.created event commit together, guarded by the unique
 // `(organization_id, visit_id)` index so a crash/retry cannot mint a second note.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { EncounterDiscipline, EncounterType, LocalDate } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { EncounterDiscipline, EncounterType, LocalDate } from "@chartwarden/types";
 import type {
   VisitPublishedPayload,
   VisitSeedingAction,

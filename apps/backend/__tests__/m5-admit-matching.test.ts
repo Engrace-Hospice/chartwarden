@@ -1,8 +1,8 @@
 // GAP-010 — admit feeds the §2.3 matcher the candidate's primary address / phone / email, so the soft
 // (>= 0.75) outcome is reachable and a same-name/DOB/address admit hard-blocks; and what admit cannot
 // persist is refused loudly instead of discarded. GAP-009 — the bypass writes a CRITICAL audit event.
-import type { DbClient } from "@wardenx/db";
-import { ValidationError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   assertAdmitDemographicsStorable,

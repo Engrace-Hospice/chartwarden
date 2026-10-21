@@ -1,6 +1,6 @@
-// @wardenx/billing — the RHC carry-over is bounded against an external (HETS) answer: interval attribution equals
+// @chartwarden/billing — the RHC carry-over is bounded against an external (HETS) answer: interval attribution equals
 // the per-day reference walk, and a hostile 271 (absurd dates, too many rows) is cheap, warned and bounded.
-import { type RhcHetsPeriod, computeRhcCarryOver } from "@wardenx/billing";
+import { type RhcHetsPeriod, computeRhcCarryOver } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { attributeOwnedDays } from "../src/per-diem-class/rhc-carry-over";
 

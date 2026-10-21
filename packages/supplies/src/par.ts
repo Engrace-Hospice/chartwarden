@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.7 / D5 par-stock arithmetic.
+// @chartwarden/supplies — the §2.7 / D5 par-stock arithmetic.
 //
 // `par_stock.current_quantity`, `reorder_point` and `min_safety_stock` are `numeric` columns, so every
 // quantity here is a decimal STRING and every comparison goes through Decimal. A shelf count that drifts by

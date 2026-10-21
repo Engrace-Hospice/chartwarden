@@ -11,7 +11,7 @@ import {
   HospiceCoverageFieldsSchema,
   SetHospiceCoverageBodySchema,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   MedicationHistoryRecordView,
   RxBenefitLookupView,

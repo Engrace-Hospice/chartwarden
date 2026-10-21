@@ -6,7 +6,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the platform/compliance ADMIN CONSOLE (R2).
 // Spec §5.1.7 (`/reports/admin`) — the materialized-view registry + replica-lag posture (D14). Backed by
 // GET /api/v1/reporting/admin/mvs (refresh telemetry + status) + GET /api/v1/reporting/admin/lag (the

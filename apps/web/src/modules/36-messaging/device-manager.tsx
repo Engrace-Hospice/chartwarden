@@ -2,8 +2,8 @@
 // acts at once (the row leaves the list only after the server confirms, and "<device> revoked" is announced politely). Revoking THIS device asks
 // first, because it signs the caller out: the confirm names what will happen, and only after the server says the session is revoked does the page
 // leave for the sign-in screen (drafts and the remembered deep link are cleared, like the account menu's sign-out).
-import type { DeviceDto } from "@wardenx/types";
-import { Button, Modal, PageHeader } from "@wardenx/ui";
+import type { DeviceDto } from "@chartwarden/types";
+import { Button, Modal, PageHeader } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { clearAllDrafts } from "../../shell/ceremony-drafts";

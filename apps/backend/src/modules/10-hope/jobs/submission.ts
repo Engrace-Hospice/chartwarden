@@ -8,7 +8,7 @@
 //     accepted) is never re-included (the §3 uniqueness constraint backs this up).
 //   • iqies-submit-worker (every 30 min) — CAS queued→in_flight, re-run pre-submission validation per
 //     item; ANY blocking error rolls the batch back to queued + alerts (never a partial transmit); else
-//     hand the envelope to `@wardenx/iqies-client.submitBatch`, store it (encrypted) in MinIO, record the
+//     hand the envelope to `@chartwarden/iqies-client.submitBatch`, store it (encrypted) in MinIO, record the
 //     SHA-256, emit `m10.hope.submission_transmitted`. Idempotent: a re-pick of an `in_flight` row skips.
 //   • iqies-reconcile-worker (hourly) — fold the acceptance report into per-item outcomes + the batch
 //     status (all accepted → accepted / all rejected → rejected / mixed → partially_accepted) + a
@@ -19,8 +19,8 @@
 // Capture (Tier 2) is decoupled from submission (Tier 3): an iQIES outage queues batches and retries per
 // §4.8.1 — it never blocks `recordHopeTimepoint` (§5.6 / §7.10). The adapter call + SHA-256 + MinIO put
 // are the only IO; they live in the boot-bound driver. Everything in this file is pure decision logic.
-import type { HopeEnvelopeItem, HopeSubmissionEnvelope } from "@wardenx/iqies-client";
-import type { HopeRfaKind, HopeSubmissionItemStatus, HopeSubmissionStatus } from "@wardenx/types";
+import type { HopeEnvelopeItem, HopeSubmissionEnvelope } from "@chartwarden/iqies-client";
+import type { HopeRfaKind, HopeSubmissionItemStatus, HopeSubmissionStatus } from "@chartwarden/types";
 
 // ── shared event shape (mirrors the §2.4 catalog the runner publishes) ───────────────────────────────
 
@@ -190,7 +190,7 @@ export function decideSubmitReadiness(input: {
 
 /**
  * Build the `HopeSubmissionEnvelope` for a batch the driver is about to transmit. Pure projection of the
- * batch's PE CCN + period + items into the `@wardenx/iqies-client` envelope model (the canonical
+ * batch's PE CCN + period + items into the `@chartwarden/iqies-client` envelope model (the canonical
  * serialization + SHA-256 are computed by the client). Correction items carry `correctsIqiesRecordId`.
  */
 export function buildSubmissionEnvelope(input: {

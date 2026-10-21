@@ -1,4 +1,4 @@
-// @wardenx/assessments — §4.9 M36 typed-alert builder (M9-T06).
+// @chartwarden/assessments — §4.9 M36 typed-alert builder (M9-T06).
 //
 // When the significant-change detector fires `m9.assessment.significant_change` inside the recording
 // transaction, M9 emits a typed alert M36 delivers verbatim (§4.9 — "M9 emits the deterministic message;
@@ -9,16 +9,16 @@
 // escalation job) wraps the returned payload in the outbox envelope.
 //
 // The rule-id taxonomy + CRITICAL_RULES + the AssessmentSignificantChangeAlert shape live in the leaf
-// `@wardenx/types`; this builder is the only producer of that payload so the severity/recipients
+// `@chartwarden/types`; this builder is the only producer of that payload so the severity/recipients
 // invariants hold in exactly one place.
 
-import { isCriticalRule } from "@wardenx/types";
+import { isCriticalRule } from "@chartwarden/types";
 import type {
   AssessmentAlertSeverity,
   AssessmentSignificantChangeAlert,
   ScaleType,
   SignificantChangeRuleId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { firstEmissionSeverity } from "./significant-change";
 
 /** The facts the detector (record path) / escalation cron pass to build one §4.9 alert. */

@@ -28,13 +28,13 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type ConsentRecordView,
   type ConsentRouteService,
   createInMemoryConsentRouteService,
-} from "@wardenx/consent";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/consent";
+import { createDbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

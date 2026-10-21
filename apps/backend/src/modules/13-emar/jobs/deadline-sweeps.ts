@@ -14,9 +14,9 @@
 // the trigger rows (`prn_administration.reassessment_due_at`) and already answers "was a scale captured?"
 // through M9's published `ScaleSeriesProvider` (the `prn_effectiveness_documented_rate` read). The sweep
 // therefore lives HERE and emits `m13.prn_reassessment.overdue`; M36 consumes that.
-import { type DbClient, schema } from "@wardenx/db";
-import { evaluateReturnOverdue } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { evaluateReturnOverdue } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 

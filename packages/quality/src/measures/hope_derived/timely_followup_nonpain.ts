@@ -1,4 +1,4 @@
-// @wardenx/quality — HOPE-derived measure: Timely Follow-Up for Non-Pain Symptom Impact (TFP-NPSI)
+// @chartwarden/quality — HOPE-derived measure: Timely Follow-Up for Non-Pain Symptom Impact (TFP-NPSI)
 // (§1.1, D4). Pure, IO-free. CMS HQRP-active FY2028; runs today against M10 `HopeJ2051Provider` data.
 //
 // TFP-NPSI = % of HOPE J2051 NON-PAIN symptom-impact triggers (impact moderate-or-severe) where a Symptom

@@ -3,7 +3,7 @@
 // The Conditions-of-Participation self-assessment surface: the 23 CoP citation rows with their current
 // self-assessed status (`compliant | at_risk | deficient`), the evidence pointers behind each, and the
 // 6-month review attestation. Every route is gated by the REAL Authorization Contract
-// (`requirePermission` from @wardenx/auth, M3) on the §4.6 `cop.*` keys, both of which carry `abac:"inOrg"`
+// (`requirePermission` from @chartwarden/auth, M3) on the §4.6 `cop.*` keys, both of which carry `abac:"inOrg"`
 // in the catalog — so `requirePermission` is the authoritative gate and the org RLS predicate (the
 // `withOrgContext` tx) is the scoping. CoP rows are org-scoped compliance posture — NO PHI — so no
 // `requirePatientScope` layer applies.
@@ -13,7 +13,7 @@
 // `applyIdempotency` middleware does the 24h replay caching). The R-80 read discloses the org's own
 // citation rows cursor-paginated per §4.1.2. Org/actor binding is ALWAYS server-side (`request.context`,
 // never the body). Mirrors M33 routes/definitions.routes.ts.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

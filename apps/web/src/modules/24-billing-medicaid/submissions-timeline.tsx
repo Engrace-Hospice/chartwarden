@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the SUBMISSIONS TIMELINE (R2, §5.1 #8). Every submission
 // attempt for one claim: attempt index, resolved channel, adapter vendor + version, result, error code, and
 // the next poll time for an async channel. Backed by GET /api/v1/medicaid-claims/{id}/submissions. Read-only

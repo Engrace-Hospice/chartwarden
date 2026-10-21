@@ -25,9 +25,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { SYSTEM_LOCKED_FLOORS, allPermissionMirrorRows } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { SYSTEM_LOCKED_FLOORS, allPermissionMirrorRows } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 

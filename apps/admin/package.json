@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/admin",
+  "name": "@chartwarden/admin",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,9 +16,9 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",
-    "@wardenx/admin-ui-shell": "workspace:*",
-    "@wardenx/types": "workspace:*",
-    "@wardenx/ui": "workspace:*",
+    "@chartwarden/admin-ui-shell": "workspace:*",
+    "@chartwarden/types": "workspace:*",
+    "@chartwarden/ui": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.2"
@@ -26,7 +26,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4",
     "@types/react": "^18.3.0",
-    "@wardenx/auth": "workspace:*",
+    "@chartwarden/auth": "workspace:*",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4",

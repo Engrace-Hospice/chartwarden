@@ -16,7 +16,7 @@ import type {
   RevocationRenderPayload,
   SignatureRecord,
   TransferRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export const SENTINEL_NAME = "Zelda Quillfeather-Ramirez";
 export const SENTINEL_MRN = "MRN-ZQR-90417";

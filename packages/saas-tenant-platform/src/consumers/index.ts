@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · consumers barrel (M34 §7.3 / §4.5).
+// @chartwarden/saas-tenant-platform · consumers barrel (M34 §7.3 / §4.5).
 //
 // M34's outbox-subscription surface — the consumers that handle events OTHER modules emit. Today this is
 // the single M22 §1.1-handshake back-ref consumer: M22 replies `m22.document.rendered` after rendering

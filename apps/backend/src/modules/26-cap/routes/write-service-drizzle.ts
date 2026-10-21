@@ -1,6 +1,6 @@
 // apps/backend/src/modules/26-cap/routes/write-service-drizzle.ts — the Drizzle-backed M26 WRITE service.
 // Each command runs under withOrgContext (RLS), validates the §2.2 cap-period transition via the pure state
-// machine (@wardenx/cap-management lifecycle), stamps the acting user, and emits the §4.10 outbox event on
+// machine (@chartwarden/cap-management lifecycle), stamps the acting user, and emits the §4.10 outbox event on
 // the caller's tx (transactional outbox). A bad transition → INVALID_TRANSITION (409); a missing row →
 // NOT_FOUND. Projection/settlement math is the pure domain — this layer only reads accruals, persists
 // snapshots, and emits. Money is BIGINT cents; no MBI/PHI enters an outbox payload (D13).
@@ -16,10 +16,10 @@ import {
   computeSettlement,
   settlementDirection,
   statusOnFirstAccrual,
-} from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { PsrFileStorePort, PsrReconcileEnqueuePort } from "../psr/psr-reconcile";
 import { orgContextFor } from "../system-actor";
@@ -44,7 +44,7 @@ import type {
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-class ConflictError extends WardenXError {
+class ConflictError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 409);
     this.name = "ConflictError";

@@ -1,10 +1,10 @@
-// @wardenx/audit — action-catalog entry shape (M4-T10; M4 spec §4.6.1).
+// @chartwarden/audit — action-catalog entry shape (M4-T10; M4 spec §4.6.1).
 //
 // The action taxonomy is a typed, queryable catalog consolidated from every owner module's
 // registration. It makes provenance unambiguous, enables grep-friendly debugging, and lets M4
 // enforce module-ownership of action names at boot (§4.6.7). The spec's §4.6.1 file layout puts
 // the per-module catalog files under `packages/foundation/src/audit-actions/`; foundation is a
-// banned package in this repo (ADR-0005 D4), so the canonical home is `@wardenx/audit/actions`
+// banned package in this repo (ADR-0005 D4), so the canonical home is `@chartwarden/audit/actions`
 // (M4 owns `packages/audit`) — the only behavioral difference is the import path.
 import type { RetentionClass } from "../retention";
 import type { DenylistCategory } from "../triggers/scrub";

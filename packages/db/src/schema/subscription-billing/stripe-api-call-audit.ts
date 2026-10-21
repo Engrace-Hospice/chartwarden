@@ -1,4 +1,4 @@
-// @wardenx/db — `stripe_api_call_audit` (M35 §3.3). PLATFORM-ONLY append-only ledger of every outbound
+// @chartwarden/db — `stripe_api_call_audit` (M35 §3.3). PLATFORM-ONLY append-only ledger of every outbound
 // Stripe API call. It DOES carry an `organization_id` column (nullable — some ops are platform-wide), so
 // the phi-guards gate treats it as org-scoped and it gets RLS-enable + a write-audit trigger (0143), but
 // it is written by the platform Stripe dispatcher, not by tenant requests. The request/response envelopes

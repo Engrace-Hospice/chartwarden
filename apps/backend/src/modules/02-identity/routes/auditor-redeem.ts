@@ -15,7 +15,7 @@
 // idempotency control (an Idempotency-Key cache would have to replay a `Set-Cookie`, which it must not).
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { RateLimitedError, ValidationError } from "@wardenx/types";
+import { RateLimitedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type AuditorRedemptionDeps, redeemAuditorLink } from "../auditor-redemption";
 

@@ -7,7 +7,7 @@
 //   • `DisciplinePlanReader`         — the plan read path M14 (IDG one-pager), M22 (plan PDF), M28 (FHIR
 //                                      `CarePlan`), M31 (portal) and M33 (dashboards) consume;
 //   • `MswRiskFactorReader`          — the psychosocial factors M16's bereavement rubric SCORES (§1.2);
-//   • `VolunteerComplianceProvider`  — **LOCKED** in `@wardenx/types/scheduling` by M17 (M17-F06/ADR-0009).
+//   • `VolunteerComplianceProvider`  — **LOCKED** in `@chartwarden/types/scheduling` by M17 (M17-F06/ADR-0009).
 //                                      Registering it CLOSES M17's Wave-F volunteer-gate deny-stub — the D8
 //                                      pre-schedule predicate 6 (`VOLUNTEER_GATE_UNMET`, 42 CFR §418.78(b));
 //   • `SupervisoryCadenceReader`     — **LOCKED** likewise, per-ADMISSION. Registering it CLOSES M17's
@@ -30,7 +30,7 @@ import type {
   SupervisoryCadenceReader,
   VolunteerComplianceProvider,
   VolunteerGateExpiryReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   DEFAULT_ORG_TIME_ZONE,

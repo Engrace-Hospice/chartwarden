@@ -12,7 +12,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";

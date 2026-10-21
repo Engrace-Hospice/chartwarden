@@ -1,4 +1,4 @@
-// @wardenx/db — `session` (M1 Foundation §3.8, Better Auth table). Cross-org session
+// @chartwarden/db — `session` (M1 Foundation §3.8, Better Auth table). Cross-org session
 // state owned by a user; the active org is carried as a nullable column rather than a
 // scoping FK, so `session` is NON_ORG_SCOPED in check-tenancy.ts.
 //

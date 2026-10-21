@@ -6,8 +6,8 @@
 // RxBenefit endpoint yet — see `client/endpoints.ts` — or the vendor is down) nothing is written; after
 // {@link MAX_CONSECUTIVE_FAILURES} failures in a row the pass stops so a dead endpoint is not hammered once per
 // medication. Cached rows expire after {@link CACHE_TTL_MS}.
-import { type DbClient, schema } from "@wardenx/db";
-import { isDegradedError } from "@wardenx/dosespot";
+import { type DbClient, schema } from "@chartwarden/db";
+import { isDegradedError } from "@chartwarden/dosespot";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 

@@ -2,7 +2,7 @@
 //
 // Proves the backend governance wiring M30 owns:
 //
-//   (a) the §4.6 `M30_CONTRIBUTED_PERMISSIONS` catalog is exactly the pure `@wardenx/quality`
+//   (a) the §4.6 `M30_CONTRIBUTED_PERMISSIONS` catalog is exactly the pure `@chartwarden/quality`
 //       `M30_PERMISSIONS` tuple (34 keys) AND is exactly the permission-key set the §4.1 route files
 //       gate on — no catalog key without a route, no route key without a catalog entry (orphan check),
 //       and every catalog entry names a real §4.7 ABAC default predicate.
@@ -17,9 +17,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
-import { abacRegistry, resetRbacEngine, setEffectivePermissionResolver } from "@wardenx/auth";
-import { M30_PERMISSIONS } from "@wardenx/quality";
+import type { AbacContext, AbacTarget } from "@chartwarden/auth";
+import { abacRegistry, resetRbacEngine, setEffectivePermissionResolver } from "@chartwarden/auth";
+import { M30_PERMISSIONS } from "@chartwarden/quality";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {
@@ -44,7 +44,7 @@ const ROUTES_DIR = join(HERE, "..", "src", "modules", "30-quality", "routes");
 // (a) §4.6 permission catalog — pure-tuple parity + route-key orphan check.
 // -----------------------------------------------------------------------------
 describe("M30 §4.6 contributed-permission catalog", () => {
-  it("is exactly the 34-key pure @wardenx/quality M30_PERMISSIONS tuple (no add/drop/rename)", () => {
+  it("is exactly the 34-key pure @chartwarden/quality M30_PERMISSIONS tuple (no add/drop/rename)", () => {
     const catalogKeys = Object.keys(M30_CONTRIBUTED_PERMISSIONS).sort();
     expect(catalogKeys).toHaveLength(34);
     expect(catalogKeys).toEqual([...M30_PERMISSIONS].sort());

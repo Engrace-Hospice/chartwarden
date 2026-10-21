@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_care_plan_version` (M15 §3.3). The §2.2.2 hybrid-versioning row (M7 D1
+// @chartwarden/db — `discipline_care_plan_version` (M15 §3.3). The §2.2.2 hybrid-versioning row (M7 D1
 // verbatim): draft → in_review → signed → superseded. `state_snapshot` is SEALED at the `in_review`
 // transition — later edits to the underlying goal/intervention/assessment rows never mutate it, and the
 // M4 write-audit trigger denylists its narrative-bearing branches (§3.6). `required_signer_set` freezes the

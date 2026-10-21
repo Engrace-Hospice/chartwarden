@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_seal` (M4 Audit §3.5, §10.4). Phase-2 tamper-evidence chain: one seal per
+// @chartwarden/db — `audit_seal` (M4 Audit §3.5, §10.4). Phase-2 tamper-evidence chain: one seal per
 // audit partition links to the prior seal via prev_chain_hash, forming a hash chain over the
 // ordered event hashes (created behind the `audit_hash_chain_enabled` flag; the integrity verify
 // lands in M4-T11/§3.1 integrity). organization_id is nullable so platform-scope partitions can be

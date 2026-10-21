@@ -7,7 +7,7 @@
 // they land; the events are published now. `m39.consent.signed`/`revoked` drive M5's
 // privacy_flag_snapshot recompute (M5 D10); `expiring_soon` drives the M36 reminder alert (§4.10).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared minimal payload core — every consent event carries the patient + org id. */
 const core = {

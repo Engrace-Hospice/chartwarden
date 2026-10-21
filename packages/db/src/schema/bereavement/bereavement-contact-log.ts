@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_contact_log` (M16 §3.3.5). D1's leaf: what ACTUALLY happened on a touchpoint.
+// @chartwarden/db — `bereavement_contact_log` (M16 §3.3.5). D1's leaf: what ACTUALLY happened on a touchpoint.
 // One outreach can produce many logs (one anniversary letter, five addressees, one shared M22 document), so
 // this is the only M16 table that grows with volume rather than with headcount.
 //

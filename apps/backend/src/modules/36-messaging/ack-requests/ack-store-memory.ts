@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts - WP 4.2: an in-memory twin of the store for the service's
 // unit tests. It mirrors the unique-per-message arbiter and the optimistic version; the state machine itself is the service's
 // (and, in production, the database trigger's) - the live suite proves that one.
-import { unroutedRetryDue } from "@wardenx/messaging";
-import { ACK_OPEN_STATUSES } from "@wardenx/types";
+import { unroutedRetryDue } from "@chartwarden/messaging";
+import { ACK_OPEN_STATUSES } from "@chartwarden/types";
 import {
   type AckEscalation,
   type AckEventRow,

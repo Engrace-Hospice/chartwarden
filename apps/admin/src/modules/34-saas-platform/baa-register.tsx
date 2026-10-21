@@ -11,14 +11,14 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Platform-tenant BAA register (M34, §3.8 / D11, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. "Use Work Queue."
 // Lists the platform→tenant Business Associate Agreement records across tenants (DISTINCT from M40's
 // tenant→external register) via GET /api/v1/platform/baa-register, by tenant / addendum version /
 // status / expiration, with BAA-status pills. Read-only here; execution/attestation are separate
-// command surfaces. Imports only leaves (@wardenx/ui) + the shared M34 tone maps. Laid out as the
+// command surfaces. Imports only leaves (@chartwarden/ui) + the shared M34 tone maps. Laid out as the
 // redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";

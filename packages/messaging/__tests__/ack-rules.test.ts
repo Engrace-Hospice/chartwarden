@@ -1,5 +1,5 @@
 // M36 WP 4.2 - the acknowledgment-request state machine and deadline policy (pure).
-import { ACK_CLASSES, ACK_DEADLINE_POLICY, ACK_STATUSES, type AckStatus } from "@wardenx/types";
+import { ACK_CLASSES, ACK_DEADLINE_POLICY, ACK_STATUSES, type AckStatus } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ACK_TRANSITIONS,

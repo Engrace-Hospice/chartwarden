@@ -1,4 +1,4 @@
-// @wardenx/db — `vitals` (M8 §3.3). A captured vital-signs set for an encounter, with explicit units and
+// @chartwarden/db — `vitals` (M8 §3.3). A captured vital-signs set for an encounter, with explicit units and
 // per-field LOINC for FHIR mapping. PHI-bearing → three-column tenancy rule (denormalized from the
 // parent encounter). Numeric measurements stored as text to preserve units/precision; range CHECKs guard
 // physiologic plausibility. RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).

@@ -1,7 +1,7 @@
 // GAP-122 — the level-of-care change form: GIP shows the three D12 attestations and stays unsubmittable until
 // all are checked; the request carries them; IRC/GIP success says the bed is still being assigned.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";

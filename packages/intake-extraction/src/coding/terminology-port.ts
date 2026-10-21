@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — the ICD-10-CM facts the DocLens coding checks need (F-238), as a port.
+// @chartwarden/intake-extraction — the ICD-10-CM facts the DocLens coding checks need (F-238), as a port.
 // The backend implements it over M38 (`concept_icd10cm` + `deprecation_mapping`, loaded from the CDC/NCHS
 // release by scripts/db/load-icd10cm.ts); tests implement it over a fixture cut from that same data.
 

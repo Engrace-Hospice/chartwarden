@@ -23,14 +23,14 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type AlertEmitter,
   PLATFORM_DEFAULT_ALERT_RULES,
   createAlertEmitter,
   toNewAlertRuleRows,
-} from "@wardenx/messaging";
-import type { AckQueueResponse } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { AckQueueResponse } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";

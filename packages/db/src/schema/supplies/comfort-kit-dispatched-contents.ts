@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_dispatched_content` (M21 §3.1.9). D6: one row per medication line that
+// @chartwarden/db — `comfort_kit_dispatched_content` (M21 §3.1.9). D6: one row per medication line that
 // physically left the hub in a kit. THIS IS THE DEA 21 CFR §1304 PERPETUAL LOG's outbound half — lot number,
 // expiration, exact quantity, the M12 prescription behind it, and the schedule. Everything the return
 // reconciliation subtracts from lives here.

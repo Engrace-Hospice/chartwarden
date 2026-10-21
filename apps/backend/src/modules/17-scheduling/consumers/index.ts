@@ -12,14 +12,14 @@
 // `m8.encounter.signed` producer exists (Wave E) — this binding is LIVE-eligible. M11's `m11.order_requires_visit`
 // and M14's `idg.decision_recorded` (kind `change_visit_frequency`) flow into the proposal queue and are wired by
 // the proposal task (M17-T04); the EVV `m18.evv.check_in/out_recorded` advance bindings land with M18 (Wave F).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   VISIT_GRAPH,
   type VisitEvent,
   type VisitState,
   transitionVisit,
-} from "@wardenx/scheduling";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/scheduling";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { DispatchableOutboxEvent } from "../../../bootstrap/outbox-dispatcher";
 

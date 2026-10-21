@@ -1,4 +1,4 @@
-// @wardenx/ui — API client React context (F0-T02, ADR-0032). Replaces the Phase-0
+// @chartwarden/ui — API client React context (F0-T02, ADR-0032). Replaces the Phase-0
 // `trpc-provider.tsx` placeholder (the backend is REST, not tRPC). The M1 shell builds one
 // `ApiClient` via createApiClient() and provides it here; every screen reads it with useApiClient().
 import { createContext, createElement, useContext } from "react";

@@ -1,6 +1,6 @@
 // apps/backend/__tests__/_fake-dosespot-vendor.ts — *** TEST DOUBLE — NOT DOSESPOT *** (F-230, #248).
 //
-// `FakeDoseSpotVendor` stands in for the DoseSpot HTTP API at the `DoseSpotClient` port (@wardenx/dosespot
+// `FakeDoseSpotVendor` stands in for the DoseSpot HTTP API at the `DoseSpotClient` port (@chartwarden/dosespot
 // `client/contract.ts`) and, for webhooks, for the vendor's delivery (`FakeDoseSpotWebhookSender`). It exists
 // ONLY so live suites can drive OUR side of the vendor boundary (persistence, RLS, catalog-validating
 // publisher, idempotency, the M14 slot) end to end. What it proves is OUR code's behaviour GIVEN a payload of
@@ -8,7 +8,7 @@
 // below are OUR contract's (webhook script-status field names are explicitly PROVISIONAL, payloads.ts), the
 // signature is computed with OUR `computeWebhookSignature`, and no real vendor sample was ever consulted —
 // none exists in this repository. Never import this from `src/`; it must not be reachable from production.
-import { computeWebhookSignature } from "@wardenx/dosespot";
+import { computeWebhookSignature } from "@chartwarden/dosespot";
 import type {
   DoseSpotClient,
   DoseSpotEpcsSessionResponse,
@@ -22,7 +22,7 @@ import type {
   DoseSpotPrescriptionStatusResponse,
   DoseSpotRxBenefitPayload,
   DoseSpotRxBenefitResponse,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 
 export interface FakeDoseSpotVendorScript {
   /** The DoseSpot-side patient id `upsertPatient` answers with. */

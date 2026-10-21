@@ -17,7 +17,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbAuditChainReader } from "@wardenx/audit";
+import { createDbAuditChainReader } from "@chartwarden/audit";
 import {
   createInMemoryEffectivePermissionStore,
   createInMemorySessionContextStore,
@@ -25,8 +25,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

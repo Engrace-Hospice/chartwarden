@@ -3,8 +3,8 @@ import type {
   PortalSessionStore,
   VendorSessionRow,
   VendorSessionStore,
-} from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/02-identity/portal-session-store.ts — the live `session`-row write surface
 // behind M2's `PortalSessionBinder` seam (F-030 / #75).
 //
@@ -22,7 +22,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // shares this implementation behind its own typed façade rather than a second copy. The interfaces stay
 // separate because their `scope` shapes and their class unions are genuinely different — collapsing
 // them into one `Record<string, string>` would let a portal binder write a vendor key.
-import type { OrgScope } from "@wardenx/types";
+import type { OrgScope } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 
 /** Build the Drizzle-backed store. `db` is the M1 client; every statement is org-scoped inline. */

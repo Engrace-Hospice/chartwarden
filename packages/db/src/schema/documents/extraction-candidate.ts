@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `extraction_candidate` (M22 §3.3 / §2.2.6). One per extracted field: the value,
+// @chartwarden/db — `extraction_candidate` (M22 §3.3 / §2.2.6). One per extracted field: the value,
 // risk level, source bounding box, vision-verification + SUD-detection flags. Org-scoped; the PHI
 // value lives DEK-encrypted in `value_cipher` (or `value_text`); `value_text` / `value_cipher` /
 // `vision_disagreement` / `source_bounding_box` are DENYLISTED in the audit trigger (§3.6). The CHECK

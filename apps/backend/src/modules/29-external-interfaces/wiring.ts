@@ -3,9 +3,9 @@
 //
 // The §4.9-shaped `m29-outbound-retry-sweep` cron (`outbound/dispatch-worker.ts`) fans out over every
 // active org's due `hl7_message_outbound` retries. That fan-out's active-org source enters
-// `withPlatformContext` under this job id; the id must be on the `@wardenx/tenancy`
+// `withPlatformContext` under this job id; the id must be on the `@chartwarden/tenancy`
 // `PLATFORM_CONTEXT_ALLOWLIST` (starts empty → fail-closed) for the enumerator to be admitted.
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 
 /** The platform job id M29's outbound retry-sweep cron enters `withPlatformContext` under to enumerate
  *  active orgs. Registered on the allowlist by {@link wireM29Tenancy} at boot. */

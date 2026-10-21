@@ -1,4 +1,4 @@
-// @wardenx/messaging — out-of-band notification surface (M36-T06, spec §4.7).
+// @chartwarden/messaging — out-of-band notification surface (M36-T06, spec §4.7).
 //
 // The PHI sanitization wrapper — the only path to out-of-band vendors. The vendor dispatchers
 // (twilio/postmark/web-push) + the dependency-cruiser rule that forces every one of them through

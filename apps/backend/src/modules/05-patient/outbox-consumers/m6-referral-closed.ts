@@ -7,8 +7,8 @@
 // The payload may carry `patientCreatedByUserId` (the grant holder); the end is then scoped to that user.
 // M5 does not depend on M6: the patient id arrives on the event payload (`patientId`, optional — a referral
 // closed before any patient existed has none and the delivery is a no-op). Idempotent and org-explicit.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { endAdmittingAssignments } from "../assignments-db";
 
 export const M5_REFERRAL_CLOSED_CONSUMER = {

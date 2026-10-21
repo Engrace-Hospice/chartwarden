@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.8 D17 medication-reconciliation worksheet (M13-T06). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.8 D17 medication-reconciliation worksheet (M13-T06). PURE, IO-free, `Date.now()`-free.
 //
 // Reconciliation is a *workflow*, not a separate clinical surface: four M6 events (`admission` /
 // `transfer_in` / `discharge` / `recertification`) open a `medication_reconciliation_worksheet`; the clinician
@@ -29,7 +29,7 @@ import type {
   ReconciliationTriggerKind,
   ReconciliationWorksheetId,
   ReconciliationWorksheetStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { AdministrationStateError, require_ } from "../lifecycle/errors";
 
 // ── Worksheet open (consumes the four M6 trigger events) ─────────────────────────────────────────────────

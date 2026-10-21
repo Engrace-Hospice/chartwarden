@@ -1699,13 +1699,13 @@ Like M6's `AdmissionEventApplier`, these are **internal services** invoked by th
 
 ```ts
 // apps/backend/src/modules/11-orders/consumers/lab-transmission-applier.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { AuditLogger } from '@wardenx/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { AuditLogger } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
-import { db } from '@wardenx/db'
-import { orderRecord } from '@wardenx/db/schema/orders'
+import { db } from '@chartwarden/db'
+import { orderRecord } from '@chartwarden/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 interface Lm29TransmittedPayload {
   readonly outboundMessageId: string
@@ -1902,13 +1902,13 @@ export class LabTransmissionApplier {
 
 ```ts
 // apps/backend/src/modules/11-orders/consumers/lab-results-applier.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { AuditLogger } from '@wardenx/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { AuditLogger } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
-import { db } from '@wardenx/db'
-import { orderRecord } from '@wardenx/db/schema/orders'
+import { db } from '@chartwarden/db'
+import { orderRecord } from '@chartwarden/db/schema/orders'
 import { eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 interface Lm29ObservationAttachedPayload {
   readonly observationId: string
@@ -2090,12 +2090,12 @@ export function registerM29Consumers(
 // apps/backend/src/modules/11-orders/workers/lab-results-overdue-sweep.worker.ts
 import { Worker } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { orderRecord } from '@wardenx/db/schema/orders'
+import { db } from '@chartwarden/db'
+import { orderRecord } from '@chartwarden/db/schema/orders'
 import { and, eq, sql, lt } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
-import { mkAlertsClient } from '@wardenx/foundation/seams/alerts'
+import { withPlatformContext } from '@chartwarden/tenancy'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
+import { mkAlertsClient } from '@chartwarden/foundation/seams/alerts'
 
 const logger = pino({ name: 'lab-results-overdue-sweep' })
 const outbox = mkOutbox(db, logger)

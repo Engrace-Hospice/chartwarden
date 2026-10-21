@@ -15,7 +15,7 @@ import type {
   OrgId,
   PatientId,
   SignedUrlDescriptor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The render request the store materializes into a `document` (+ genesis `document_version`) row, or a

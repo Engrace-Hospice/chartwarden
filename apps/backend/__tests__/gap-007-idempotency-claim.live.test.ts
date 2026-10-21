@@ -14,8 +14,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { IdempotencyStore } from "@wardenx/shared";
+import { createDbClient } from "@chartwarden/db";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

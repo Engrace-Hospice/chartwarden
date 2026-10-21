@@ -9,7 +9,7 @@ import {
   WorkQueueLayout,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the Privacy Officer's work queue (M5 §5.1 "Privacy flags", reached
 // per patient at /patients/:id/privacy). Lists patients whose privacy-flag snapshot carries a restriction
 // or is stale, filterable by origin (`?origin=`) — e.g. a WardenLens detection no reviewer has resolved.

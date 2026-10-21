@@ -5,7 +5,7 @@
  * service-drizzle.ts) over real Postgres + RLS: dedup-at-insert, a genuinely transactional multi-claim
  * post (all-or-nothing), denial/PR-ledger seeding, posting-outcome classification, and cross-tenant
  * isolation. The X12835WorkerClient is a controllable FAKE (no real x12-worker sidecar exists in this
- * environment) — the local ISA/ST envelope-header extraction (@wardenx/x12-835-client
+ * environment) — the local ISA/ST envelope-header extraction (@chartwarden/x12-835-client
  * `parseX12EnvelopeHeader`) is real and exercised directly by the "malformed" case.
  *
  * F-128 (#251) — the whole file used to drive `receiveAdvice`/`postAdvice` over the bare superuser
@@ -27,15 +27,15 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repositories } from "@wardenx/billing";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { repositories } from "@chartwarden/billing";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   ParsedRemittanceAdvice,
   X12WorkerResult,
   X12835WorkerClient,
-} from "@wardenx/x12-835-client";
-import { degraded835 } from "@wardenx/x12-835-client";
+} from "@chartwarden/x12-835-client";
+import { degraded835 } from "@chartwarden/x12-835-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
@@ -67,7 +67,7 @@ const CLAIM_UNMAPPED = "00000000-0000-0000-0000-00000000ca05";
 const CLAIM_RECOUP = "00000000-0000-0000-0000-00000000ca06";
 const PATIENT_1 = "00000000-0000-0000-0000-0000000e0001";
 
-// ── ISA/ST envelope construction (real, fixed-width — see @wardenx/x12-835-client/envelope-header) ──────
+// ── ISA/ST envelope construction (real, fixed-width — see @chartwarden/x12-835-client/envelope-header) ──────
 function buildRawEdi(isa13: string, st02: string): string {
   const sep = "*";
   const elems = [

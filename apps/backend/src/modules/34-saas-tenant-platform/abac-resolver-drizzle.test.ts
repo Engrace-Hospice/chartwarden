@@ -1,7 +1,7 @@
 // M34 (GAP-098) — the Drizzle TenantPlatformAbacResolver, unit-tested over injected runners/readers (no DB):
 // the real §4.6 predicates run over the resolver so the matrix proves platform_ops + a valid grant passes and
 // everything else (absent/expired/revoked grant, same actor, wrong tenant, reader error) stays denied.
-import type { AbacContext } from "@wardenx/auth";
+import type { AbacContext } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { buildTenantPlatformAbacPredicates } from "./abac-predicates";
 import {

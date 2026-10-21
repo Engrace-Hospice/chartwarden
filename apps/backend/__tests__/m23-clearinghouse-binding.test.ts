@@ -4,7 +4,7 @@ import {
   CLEARINGHOUSE_VENDOR_ENV as REGISTRY_ENV,
   PRODUCTION_CLEARINGHOUSE_VENDORS as REGISTRY_PRODUCTION_VENDORS,
   parseClearinghouseVendor,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
 import { CLEARINGHOUSE_VENDOR_ENV, PRODUCTION_CLEARINGHOUSE_VENDORS } from "../src/bootstrap/env";
 import {

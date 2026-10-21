@@ -6,7 +6,7 @@ import type {
   AiKillSwitchActivationPatch,
   AiKillSwitchDeactivationPatch,
   AiKillSwitchRowSnapshot,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 // apps/backend/src/modules/32-ai-platform/safety/store.ts — the data PORTS M32-T05's safety services
 // compose over, plus in-memory implementations for the slice tests.
 //
@@ -36,7 +36,7 @@ import type {
   AiHallucinationTriageStatus,
   AiKillSwitchActorKind,
   AiKillSwitchReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── projections ────────────────────────────────────────────────────────────────────────────────────
 

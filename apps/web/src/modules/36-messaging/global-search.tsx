@@ -4,7 +4,7 @@
 // availability read (the settings route needs `messaging.global_search.manage`), so the search call's own refusal is the
 // only truth, and it is shown in the panel as "not turned on" (no reason, no hint about who can enable it).
 // The query lives in this component's state only: no storage, no URL, no analytics.
-import { Button, Glyph } from "@wardenx/ui";
+import { Button, Glyph } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, MouseEvent } from "react";
 import { absoluteTime } from "./messaging-utils";

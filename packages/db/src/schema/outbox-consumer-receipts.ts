@@ -1,4 +1,4 @@
-// @wardenx/db - per-consumer completion receipts for the M1 transactional outbox.
+// @chartwarden/db - per-consumer completion receipts for the M1 transactional outbox.
 // A source event may have several independently deployed consumers. The dispatcher keeps the
 // source row pending until every catalog-declared module is live, while this table prevents an
 // already-completed binding from being replayed on every deferred poll or process restart.

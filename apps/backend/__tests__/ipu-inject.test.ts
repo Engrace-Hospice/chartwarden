@@ -37,7 +37,7 @@
 //
 // This file's hand-rolled in-memory `IpuRouteService` (below) does no RN-coverage enforcement of its own
 // — it is a pure wiring/schema smoke test, and the domain rule is already covered by
-// `m37-ipu-write.live.test.ts` (live Drizzle) and `@wardenx/inpatient`'s own pure-function suite — so
+// `m37-ipu-write.live.test.ts` (live Drizzle) and `@chartwarden/inpatient`'s own pure-function suite — so
 // every route below gets genuine 2xx coverage now, including the 5 that were previously blocked.
 //
 // No FormatRegistry gap here (unlike M25/M26's *-typebox.ts files): `ipu-typebox.ts`'s `id` alias is a
@@ -52,8 +52,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -121,7 +121,7 @@ let seedGipProposals: (rows: Array<GipProposalView & { organizationId: string }>
  *  gip-criteria/irc-episode/body-release tables are keyed by admissionId (one active row per admission, as
  *  the real §4.1 route shapes assume). No business-rule enforcement beyond existence checks — this is a
  *  wiring/schema smoke test, not a domain-logic test (the pure §2 machines are already covered by
- *  `@wardenx/inpatient`'s own suite + `m37-ipu-write.live.test.ts`). */
+ *  `@chartwarden/inpatient`'s own suite + `m37-ipu-write.live.test.ts`). */
 function createIpuTestBackend(): IpuRouteService {
   const gipProposals: Array<GipProposalView & { organizationId: string }> = [];
   seedGipProposals = (rows) => gipProposals.push(...rows);

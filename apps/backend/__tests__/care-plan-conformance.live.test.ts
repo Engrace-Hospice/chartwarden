@@ -35,7 +35,7 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -244,7 +244,7 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
     });
 
     runConformanceSuite("live Drizzle", async () => {
-      const { createDbClient } = await import("@wardenx/db");
+      const { createDbClient } = await import("@chartwarden/db");
       const {
         buildCarePlanAbacPredicates,
         createDbCarePlanAbacResolver,

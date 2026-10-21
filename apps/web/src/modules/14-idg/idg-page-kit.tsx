@@ -3,7 +3,7 @@
 // actions), an underline `.wx-subtabs` strip, a `.wx-stat-grid` of label-first `.wx-stat-card`s, a boxed
 // `.wx-filter-panel` with a full-width search and labelled selects, and a `.wx-table-footer`. Only the
 // shared classes from index.css are used, so a change to the kit changes these screens too.
-import { Glyph, type GlyphName, t } from "@wardenx/ui";
+import { Glyph, type GlyphName, t } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import "./idg-lifecycle.css";

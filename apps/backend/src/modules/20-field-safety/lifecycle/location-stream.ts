@@ -35,7 +35,7 @@ import type {
   SafetyEmergencyContactConsentStatus,
   SafetyPolicyEffectiveDto,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { requireSafety } from "./errors";
 
 /**

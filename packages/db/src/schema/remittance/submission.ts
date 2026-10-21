@@ -1,4 +1,4 @@
-// @wardenx/db — M25 milestone 6a (migration 1124): the submission attempt. One row per filing made (or prepared) for an
+// @chartwarden/db — M25 milestone 6a (migration 1124): the submission attempt. One row per filing made (or prepared) for an
 // ADR response, an appeal / QIC request, a reopening request or a QIC escalation request. Statuses, purposes, channels
 // and adapters are text + CHECK (closed sets mirrored in domain/submission.ts), so there is no new pgEnum. Exactly
 // one of the three subject FKs is set (CHECK); retained proof (confirmation, receipt time, receipt document) is

@@ -1,4 +1,4 @@
-// @wardenx/consent — the revocation-cascade status machine (§2.2.3, D7).
+// @chartwarden/consent — the revocation-cascade status machine (§2.2.3, D7).
 //
 // M39-T04. The typed cascade walks pending → in_progress → completed, or → partial_failed when the
 // retry budget (5 attempts over 1h, exponential backoff per the M1 outbox helper) is exhausted with

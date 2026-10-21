@@ -1,4 +1,4 @@
-// @wardenx/db — `external_physician_tenant_overlay` (M40 MDM §3.4). The ORG-SCOPED overlay:
+// @chartwarden/db — `external_physician_tenant_overlay` (M40 MDM §3.4). The ORG-SCOPED overlay:
 // this-tenant's opinion about a canonical physician (§2.3) — preferred contact, relationship
 // notes, do-not-refer policy, preferred ranking, negotiated terms — exactly the fields whose
 // answer drifts by who you ask, so they cannot be canonical. One overlay row per (physician,

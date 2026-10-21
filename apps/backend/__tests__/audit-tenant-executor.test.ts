@@ -5,8 +5,8 @@
 // A pooled connection that earlier ran a `withOrgContext` transaction keeps `app.org_id = ''`, so
 // `audit_event_org_append` cast `''::uuid` and every elevated audit read 500'd ("invalid input syntax
 // for type uuid"). The sink must open its own org-scoped transaction from the row it writes.
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createTenantAuditExecutor } from "../src/modules/04-audit/index";
 

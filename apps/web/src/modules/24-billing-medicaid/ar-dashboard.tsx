@@ -7,7 +7,7 @@ import {
   PageHeader,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID AR DASHBOARD (R2, §5.1 #1). The billing
 // manager's landing surface: open-AR totals, aging buckets, per-state AR balance, and the rolling denial
 // rate + MCO breakdown from the metrics read. Backed by GET /api/v1/medicaid-ar-dashboard (+ /metrics);

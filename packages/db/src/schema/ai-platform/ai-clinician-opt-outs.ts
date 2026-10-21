@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_clinician_opt_out` (M32 §3.2.7 / §5.4). The individual clinician's refusal: even
+// @chartwarden/db — `ai_clinician_opt_out` (M32 §3.2.7 / §5.4). The individual clinician's refusal: even
 // where the tenant has opted in, this person's work is not run through this capability.
 //
 // TENANT-SCOPED: organization_id NOT NULL, RLS keyed ONLY on app.org_id (0116). The row is keyed on the

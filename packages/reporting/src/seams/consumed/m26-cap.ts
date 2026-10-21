@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M26 (Cap Management). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M26 (Cap Management). ABSENT producer (§4.4).
 //
 // M26 is not yet implemented → forward-seam DENY-STUB. M26 registers the real `CapAccrualReader` /
 // `CapProjectionProvider` / `InpatientCapProvider` / `CapSettlementProvider` / `CapMetricsProvider` over

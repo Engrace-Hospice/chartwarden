@@ -5,7 +5,7 @@
 // M23/M24/M25/M26/M27 events-by-mN precedent), and the dispatcher validates each `m15.*` publish against the
 // TypeBox payloadSchema inside the SAME transaction as the mutation (transactional outbox).
 //
-// The shapes MIRROR the §2.4 payload interfaces frozen in `@wardenx/types` (packages/types/src/
+// The shapes MIRROR the §2.4 payload interfaces frozen in `@chartwarden/types` (packages/types/src/
 // discipline-plans.ts, M15-T01) — those are the contract M14/M16/M17/M22/M28/M30/M33/M36 type-check
 // against; this file is their runtime validator. The envelope carries `organizationId`, so no payload
 // repeats it.
@@ -16,7 +16,7 @@
 // D12: M22 owns the render, M15 emits the typed payload), so it is declared `Type.Unknown()` and travels
 // only to the modules named in `declaredConsumers`.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const Iso = Type.String({ minLength: 1 });

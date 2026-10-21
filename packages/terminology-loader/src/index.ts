@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the M38 loader adapter package (spec §3.1, §4.3; M1 §6.23 integration).
+// @chartwarden/terminology-loader — the M38 loader adapter package (spec §3.1, §4.3; M1 §6.23 integration).
 //
 // Pure per-system parsers, stage-and-diff, checksum, the licensing gate, the version-load / scheduled-source /
 // refresh-expansions / refresh-embeddings orchestrators, and the fail-closed source adapters. It imports no

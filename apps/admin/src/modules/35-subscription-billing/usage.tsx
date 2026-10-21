@@ -1,5 +1,5 @@
-import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, StatusPill, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Tenant usage drill-down (`/admin/usage/:organizationId`,
 // usage.admin.read). The meter-by-meter current-period usage for one tenant over GET
 // /api/admin/usage/:organizationId/current, with used / included / overage and the projected overage cost.

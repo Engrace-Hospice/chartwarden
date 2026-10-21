@@ -2,7 +2,7 @@
 // when the flag is off, so that is the signal (useFeatureFlag is never loaded in the real app). Read ONCE per API client
 // and fail closed on any error (a failure is not cached, so a later mount tries again; an "off" answer is). The server
 // stays the authority: with the flag off its handoff routes answer 404.
-import { type ApiClient, useApiClient } from "@wardenx/ui";
+import { type ApiClient, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 
 const sharedReads = new WeakMap<ApiClient, Promise<boolean>>();

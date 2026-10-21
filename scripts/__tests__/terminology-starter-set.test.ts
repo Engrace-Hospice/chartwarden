@@ -2,7 +2,7 @@
 // demo seed script uses must be in the set, so a picker can find what a seeded chart already carries.
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { PLATFORM_CODE_SYSTEMS } from "@wardenx/terminology";
+import { PLATFORM_CODE_SYSTEMS } from "@chartwarden/terminology";
 import { describe, expect, it } from "vitest";
 import {
   ICD10CM_STARTER_CODES,

@@ -3,7 +3,7 @@
 // Drizzle column, the migration text, and the store wiring (no longer stripping the starter).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 

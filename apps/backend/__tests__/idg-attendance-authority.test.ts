@@ -5,8 +5,8 @@ import {
   IDG_REQUIRED_QUORUM,
   attendableDisciplinesForRoleKeys,
   evaluateQuorum,
-} from "@wardenx/idg";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/idg";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type AttendancePlanInput,
@@ -30,7 +30,7 @@ const refusal = (input: AttendancePlanInput): { code: string; status: number } =
   try {
     planAttendanceRecord(input);
   } catch (err) {
-    if (err instanceof WardenXError) return { code: err.code, status: err.statusCode };
+    if (err instanceof ChartWardenError) return { code: err.code, status: err.statusCode };
     throw err;
   }
   throw new Error("expected a refusal");

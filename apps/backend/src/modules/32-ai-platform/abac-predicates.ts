@@ -61,7 +61,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 
 /** The §4.7 predicate names M32 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M32_ABAC_PREDICATES = [
@@ -102,7 +102,7 @@ export const AI_SAFETY_OWNER_ROLE_KEYS = [
  * deployment the safety owner's write surface reaches every tenant (a `platform`-scoped kill switch writes
  * the NULL-org row that stops the capability for all of them), so this key confers the safety-owner
  * authority only when the deployment declares itself single-tenant. The other two keys are reserved
- * platform keys (`@wardenx/auth` `isReservedPlatformRoleKey`): the enrichment reader and the
+ * platform keys (`@chartwarden/auth` `isReservedPlatformRoleKey`): the enrichment reader and the
  * effective-permission store drop them unless they come from a platform-owned role row.
  */
 export const AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS: readonly string[] = ["clinical_safety_lead"];
@@ -131,7 +131,7 @@ function safetyOwnerRoleKeys(singleTenantDeployment: boolean): readonly string[]
  *
  * The same role set `ai_safety_owner` decides on, exported so the kill-switch route can hand the SERVICE
  * layer a caller kind derived from the session rather than from the body. The reserved keys only reach
- * `roles` from a platform-owned role row (`@wardenx/auth` `roleConfersKey`).
+ * `roles` from a platform-owned role row (`@chartwarden/auth` `roleConfersKey`).
  */
 export function hasPlatformKillSwitchAuthority(
   roles: readonly string[],

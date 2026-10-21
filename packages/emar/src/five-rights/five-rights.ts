@@ -1,4 +1,4 @@
-// @wardenx/emar — §5.11 five-rights validator (M13-T03). PURE, IO-free, shared with the frontend.
+// @chartwarden/emar — §5.11 five-rights validator (M13-T03). PURE, IO-free, shared with the frontend.
 //
 // The five rights of medication administration — right patient, right drug, right dose, right route, right
 // time — checked at the administration write gate against M12's order (§2.2 / §5.11 / §2.9 D10 caregiver
@@ -8,7 +8,7 @@
 // (`FiveRightsBanner.tsx`) the server enforces — one source of truth, no drift. It returns a result rather
 // than throwing so the UI can highlight every failed right at once; `assertFiveRights` is the server-side
 // throwing wrapper that maps onto the M13 error catalog (the route returns 422).
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { AdministrationStateError } from "../lifecycle/errors";
 
 /** One of the five rights of medication administration (§5.11). */

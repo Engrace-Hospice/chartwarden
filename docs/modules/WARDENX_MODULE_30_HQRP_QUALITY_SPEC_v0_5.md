@@ -1228,7 +1228,7 @@ Four M30 PHI-bearing tables register erasers with M4 per the destruction workflo
 The four registrations (in `apps/backend/src/modules/30-quality/services/eraser-registration.ts`, called from boot):
 
 ```typescript
-import { registerEraser } from '@wardenx/audit/destruction';
+import { registerEraser } from '@chartwarden/audit/destruction';
 
 registerEraser({
   domain: 'm30.incident_report',
@@ -2185,7 +2185,7 @@ M30 publishes the following alert types into M36's secure-messaging fabric. Each
 | `m30.alerts.cop_review_overdue` | warn | 6 months since last attestation on a citation | Compliance Officer, Administrator | every 14d until attested |
 | `m30.alerts.cahps_sample_ready` | info | Monthly sample built and ready for export | QAPI Coordinator | once |
 
-> **As-built repeat cadences (GAP-049).** The four repeating rows above are raised by two cooperating halves. M36's `quality-alerts` consumer sends the first page (bucket 0) when the M30 event is published; the `m30.alert_repeat_sweep` cron (every 15 minutes, `jobs/alert-repeat-sweeps.ts`) sends the repeats. The platform has no repeat concept (`alert_rule` has no interval, `alert` has no open/resolved state), so "still open" is re-derived from the owning rows on every tick, and the repeat's correlation id carries an **origin-anchored** bucket `floor((now - origin) / interval)` (`outbox:<alertType>:<key>:r<N>`; `alert` is UNIQUE on (organization_id, correlation_id), so a re-run inside a bucket is absorbed and a missed run catches up to the current bucket only). Open predicates: sentinel = `incident_report.lifecycle = 'submitted' AND triaged_at IS NULL AND severity = 'critical'` (origin `reported_at`; a `reopened` incident was already triaged and does **not** restart the cadence); abuse = same, `kind = 'allegation_of_abuse'`, **6h** (not the sentinel's 4h; one incident can carry both); outbreak = `infection_outbreak_case.status = 'open' AND idg_reviewed_at IS NULL` (origin `created_at`); threshold = the latest period's value is red (the band is now persisted, `quality_measure_value.band_color`, migration 1051) and no non-abandoned `qapi_project` is linked to the `measure:<code>` indicator (a project is "chartered" when inserted, §4.10 `m30.qapi.project_chartered`; origin = first red computation of that period). Intervals, ceilings and the sentinel/abuse predicates live in one table (`@wardenx/types` `M30_REPEAT_CADENCES`) read by both the consumer and the sweep. **Caps (D4):** none on the three safety pages (they page until a person acts); the 7-day threshold series stops 90 days after its origin. Repeats re-use the seeded rules of the original alert types and carry `repeatOrdinal`. **Recipients:** `qapi_coordinator` and `infection_control_lead` are the keys M30's ABAC already uses, but a tenant may not have provisioned them (GAP-006). When the first emit resolves zero recipients the consumer and the sweep re-emit once under `m30.alerts.recipient_fallback` (a seeded `tenant_admins` rule) with a `:fb` correlation id of its own, because the original id is spent by the zero-recipient alert row. Per-tenant tightening of the cadences (D15) and acknowledge-to-snooze are not built.
+> **As-built repeat cadences (GAP-049).** The four repeating rows above are raised by two cooperating halves. M36's `quality-alerts` consumer sends the first page (bucket 0) when the M30 event is published; the `m30.alert_repeat_sweep` cron (every 15 minutes, `jobs/alert-repeat-sweeps.ts`) sends the repeats. The platform has no repeat concept (`alert_rule` has no interval, `alert` has no open/resolved state), so "still open" is re-derived from the owning rows on every tick, and the repeat's correlation id carries an **origin-anchored** bucket `floor((now - origin) / interval)` (`outbox:<alertType>:<key>:r<N>`; `alert` is UNIQUE on (organization_id, correlation_id), so a re-run inside a bucket is absorbed and a missed run catches up to the current bucket only). Open predicates: sentinel = `incident_report.lifecycle = 'submitted' AND triaged_at IS NULL AND severity = 'critical'` (origin `reported_at`; a `reopened` incident was already triaged and does **not** restart the cadence); abuse = same, `kind = 'allegation_of_abuse'`, **6h** (not the sentinel's 4h; one incident can carry both); outbreak = `infection_outbreak_case.status = 'open' AND idg_reviewed_at IS NULL` (origin `created_at`); threshold = the latest period's value is red (the band is now persisted, `quality_measure_value.band_color`, migration 1051) and no non-abandoned `qapi_project` is linked to the `measure:<code>` indicator (a project is "chartered" when inserted, §4.10 `m30.qapi.project_chartered`; origin = first red computation of that period). Intervals, ceilings and the sentinel/abuse predicates live in one table (`@chartwarden/types` `M30_REPEAT_CADENCES`) read by both the consumer and the sweep. **Caps (D4):** none on the three safety pages (they page until a person acts); the 7-day threshold series stops 90 days after its origin. Repeats re-use the seeded rules of the original alert types and carry `repeatOrdinal`. **Recipients:** `qapi_coordinator` and `infection_control_lead` are the keys M30's ABAC already uses, but a tenant may not have provisioned them (GAP-006). When the first emit resolves zero recipients the consumer and the sweep re-emit once under `m30.alerts.recipient_fallback` (a seeded `tenant_admins` rule) with a `:fb` correlation id of its own, because the original id is spent by the zero-recipient alert row. Per-tenant tightening of the cadences (D15) and acknowledge-to-snooze are not built.
 
 ### 4.10 Outbox event catalog
 
@@ -2602,7 +2602,7 @@ export const M30_REQUIRED_SEAMS: ReadonlyArray<{ seamKey: string; consumerModule
 ```ts
 // apps/backend/src/modules/30-quality/services/cosign.ts (v0.3 extension)
 
-import { STEP_UP_POLICY } from '@wardenx/foundation/auth/step-up-policy'    // M2 v0.3
+import { STEP_UP_POLICY } from '@chartwarden/foundation/auth/step-up-policy'    // M2 v0.3
 
 export async function closeWithCosign(input: {
   kind: 'sra_cycle_closure' | 'qapi_pip_closure'
@@ -4168,7 +4168,7 @@ Before merging this manifest patch, the following must be true (verified by CI):
 
 - [ ] `pnpm dependency-cruiser apps packages` returns `no dependency violations found` after the new rules in §13.2 are added.
 - [ ] `pnpm tsc --noEmit -p apps/backend` returns 0 errors with the new seam imports.
-- [ ] `pnpm test --filter @wardenx/quality` runs the §9 test plan to ≥90% coverage.
+- [ ] `pnpm test --filter @chartwarden/quality` runs the §9 test plan to ≥90% coverage.
 - [ ] The boot validator `validateM30AIBlock(seamRegistry)` is invoked in `boot.ts` and returns without throwing.
 - [ ] The boot validator `validateSeamRegistry()` confirms all 5 published M30 seams are registered and that all 21 consumed seams (per §4.4) resolve to a registered provider — failing fast if any deny-stub is exercised.
 - [ ] `pnpm drizzle-kit check` confirms migration phases A–D are append-only against the current production schema baseline.

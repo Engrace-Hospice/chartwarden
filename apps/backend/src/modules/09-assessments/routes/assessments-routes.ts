@@ -2,10 +2,10 @@ import {
   ASSESSMENT_DISCIPLINES,
   disciplineCanRecordScale,
   scaleDefinitions,
-} from "@wardenx/assessments";
+} from "@chartwarden/assessments";
 // apps/backend/src/modules/09-assessments/routes/assessments-routes.ts — M9-T05 the §4.1 route inventory
 // (18 routes, +1 F-208 (#248) explicit summary-document-request trigger) behind the REAL Authorization
-// Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.6 keys M9 registers into M3's catalog (M9_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected AssessmentRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -25,9 +25,9 @@ import {
 // a different id (cosignatures' assessmentId, acknowledge's eventId) bind the new M9-owned `assessment.scope`
 // predicate instead (`ASSESSMENT_SCOPE_FOR` — see abac-predicates.ts header for why). The 2 internal batch
 // routes and the 4 admin license/policy routes are unchanged (spec ABAC column is "caller asserts" / "—").
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
-import type { ScaleType } from "@wardenx/types";
+import { type AbacTarget, requireAbac, requirePermission } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import type { ScaleType } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcknowledgeChangeSchema,
@@ -54,7 +54,7 @@ import {
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import type { AssessmentRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AssessmentRouteDeps {
@@ -424,7 +424,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   // F-067 — the instrument catalog. `SCALE_CATALOG`'s own header calls itself "the single source the
   // record-modal scale picker (T07) ... read", and there was no record modal: the ITEMS a scale's `data`
   // payload must carry — how many, what kind, what range, which option values — existed only as
-  // TypeScript interfaces in `@wardenx/assessments`. A client cannot read a type, and the create
+  // TypeScript interfaces in `@chartwarden/assessments`. A client cannot read a type, and the create
   // publishes `data` as a bare object, so a capture form could only be a hand-copied duplicate of those
   // shapes, free to drift from what `scoring.ts` computes over.
   //

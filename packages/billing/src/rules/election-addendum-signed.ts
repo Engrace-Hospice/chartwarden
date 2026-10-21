@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `election_addendum_signed` (election, regulatory). FY2027 (CMS-1851-F): the
+// @chartwarden/billing — §4.5 rule `election_addendum_signed` (election, regulatory). FY2027 (CMS-1851-F): the
 // election statement addendum ("Patient Notification of Hospice Non-Covered Items, Services, and Drugs",
 // 42 CFR 418.24(c)) is mandatory for every election effective on or after 2026-10-01, and MLN Connects
 // (2026-10-01) makes it a condition for payment: "satisfied when there's a valid signed addendum in the

@@ -3,7 +3,7 @@
 // suffix) through the injected M5 port, each item's status through its owning seam, and the Part 2 gate is re-applied to
 // the VIEWER on every read. An item whose patient the viewer may not see (or whose gate cannot answer) renders as
 // `restricted` with no label and no ids.
-import { allowedHandoffActions, effectiveDeadline, handoffRole } from "@wardenx/messaging";
+import { allowedHandoffActions, effectiveDeadline, handoffRole } from "@chartwarden/messaging";
 import type {
   HandoffAction,
   HandoffCloseReason,
@@ -13,7 +13,7 @@ import type {
   HandoffItemKind,
   HandoffItemState,
   HandoffState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { HANDOFF_SOURCE_CONCURRENCY, mapLimit } from "./handoff-sources";
 import type { HandoffItemRow, HandoffRow } from "./handoff-store-db";

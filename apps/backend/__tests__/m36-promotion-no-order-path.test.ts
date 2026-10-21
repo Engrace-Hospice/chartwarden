@@ -3,7 +3,7 @@
 // medications code mentions chart promotion; and the promotion code names no order, medication or prescribing target.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { CHART_PROMOTION_TARGETS, isChartPromotionTarget } from "@wardenx/types";
+import { CHART_PROMOTION_TARGETS, isChartPromotionTarget } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

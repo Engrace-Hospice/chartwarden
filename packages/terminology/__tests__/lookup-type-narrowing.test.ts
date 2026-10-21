@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T11 test plan §9.1 "Lookup type narrowing".
+// @chartwarden/terminology — M38-T11 test plan §9.1 "Lookup type narrowing".
 //
 // The seam is per-system, not one polymorphic concept table (M38-T01 rationale): `lookup<S>`
 // narrows `properties` to the system's bespoke shape. `lookup('loinc', …)` yields the six LOINC

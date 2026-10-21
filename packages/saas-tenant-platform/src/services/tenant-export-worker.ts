@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.export` job handler (M34 §3.7 / §7.6, D9/D19).
+// @chartwarden/saas-tenant-platform · services — the `tenant.export` job handler (M34 §3.7 / §7.6, D9/D19).
 //
 // THE ORG-SCOPED FAN-OUT (the inverse of the per-patient DSAR path). One `tenant_export_job` row drives
 // a whole-tenant NDJSON archive: the worker iterates the registered `TenantExportShard` set (every

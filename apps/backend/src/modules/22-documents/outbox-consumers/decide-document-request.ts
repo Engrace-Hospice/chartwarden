@@ -38,7 +38,7 @@
 // `upsertRenderedDocument`, so the redelivery-dedup and the artifact it protects are atomic — no separate
 // receipt table with its own lost-write crash window between "the version was written" and "the dedup key
 // was recorded". `render-consumer.ts` resolves the fact via `store.documentVersionForSourceEvent`.
-import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
 
 // ── The §4.11 `*.document_requested` events M22 renders (string literals — no producer import) ──────────
 
@@ -94,7 +94,7 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // their producing module's own document-request table, and STILL never emitted (the producer-side
   // half of the gap, distinct from every event above this line, which was a catalog-declaration
   // problem). Each is now genuinely emitted, in the SAME transaction as the fact it announces:
-  // `m13.administration_record.document_requested` — the pure `@wardenx/emar` machine has declared this
+  // `m13.administration_record.document_requested` — the pure `@chartwarden/emar` machine has declared this
   // as a `commit`-time effect on `perAdministrationPdfRequired` since M13-T03; the DB write service
   // never read the effect list (it reimplements `commit` inline rather than calling
   // `transitionAdministration`) and now checks the same tenant policy flag directly.

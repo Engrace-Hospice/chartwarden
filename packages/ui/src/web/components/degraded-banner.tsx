@@ -1,4 +1,4 @@
-// @wardenx/ui — degraded-mode banner (spec §5.2). Renders whenever any subscribed system
+// @chartwarden/ui — degraded-mode banner (spec §5.2). Renders whenever any subscribed system
 // status component is non-operational; hidden when everything is operational.
 import type { JSX } from "react";
 import { useSystemStatus } from "../../core/providers/system-status-provider";

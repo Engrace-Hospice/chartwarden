@@ -1,7 +1,7 @@
 -- M5 Privacy Officer screen — grant `privacy.admin` (M5 §4.7: "Privacy Officer, Compliance Officer · abac none ·
 -- resync snapshot, etc.") to the roles the spec names, WHEREVER THE TENANT HAS CREATED THEM.
 --
--- `privacy.admin` was catalogued in @wardenx/auth (M5_CONTRIBUTED_PERMISSIONS) and no role granted it, so the M5 §5.1
+-- `privacy.admin` was catalogued in @chartwarden/auth (M5_CONTRIBUTED_PERMISSIONS) and no role granted it, so the M5 §5.1
 -- "Privacy flags (`/patients/:id/privacy`)" screen and the §4.2 resync route were 403 for everyone. The code-side
 -- source of truth is packages/auth/src/roles/templates.ts: `privacy.admin` is in the `hipaa_privacy_officer` floor and
 -- in the `compliance_officer` default grant. `org_admin` is deliberately NOT granted (M5 §6 "Resync privacy flags":

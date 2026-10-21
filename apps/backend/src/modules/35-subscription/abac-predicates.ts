@@ -27,7 +27,7 @@ import {
   type AbacTarget,
   PLATFORM_OPS_ROLE_KEYS,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
 /** The §4.8 predicate names M35 OWNS and registers into M3 (five). `inOrg` (M3) is excluded — re-used. */
 export const M35_REGISTERED_ABAC_PREDICATES = [
@@ -43,7 +43,7 @@ export type M35RegisteredAbacPredicate = (typeof M35_REGISTERED_ABAC_PREDICATES)
 
 /**
  * The platform-ops roles that satisfy `platform_billing_scope`. RE-DERIVED from the platform-owned role
- * catalog (`@wardenx/auth` `PLATFORM_OPS_ROLE_KEYS`, registered as `platform_staff` templates in ADMIN-T02)
+ * catalog (`@chartwarden/auth` `PLATFORM_OPS_ROLE_KEYS`, registered as `platform_staff` templates in ADMIN-T02)
  * so the ABAC gate's admit-set and the role catalog are a single source and can never drift.
  */
 const PLATFORM_BILLING_ROLES: readonly string[] = PLATFORM_OPS_ROLE_KEYS;

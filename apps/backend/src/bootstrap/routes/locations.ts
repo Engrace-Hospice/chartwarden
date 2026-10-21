@@ -13,9 +13,9 @@
 //
 // Non-PHI tenancy metadata only (name / address / timezone / status), so the read is audited as `none`
 // like its `provider-entities.ts` sibling, whose shape this mirrors deliberately.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError } from "@chartwarden/types";
 import { and, asc, eq, ilike, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 

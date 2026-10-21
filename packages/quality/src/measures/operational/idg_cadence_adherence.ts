@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: IDG cadence adherence (CoP 418.56). Pure. No IO.
+// @chartwarden/quality — operational measure: IDG cadence adherence (CoP 418.56). Pure. No IO.
 // Rate of required IDG meetings held within the ≤ 15-day cadence (higher is better). Source: M14
 // `IdgScheduleProvider.getCadenceAdherence`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

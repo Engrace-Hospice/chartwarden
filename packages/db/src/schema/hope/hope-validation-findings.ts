@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_validation_finding` (M10 §3.3). One row per CMS HOPE pre-submission rule result
+// @chartwarden/db — `hope_validation_finding` (M10 §3.3). One row per CMS HOPE pre-submission rule result
 // against a hope_assessment: rule id, severity (error blocks submission / warning advisory), the
 // section + item code, and the resolved lifecycle. PHI-bearing (the `message` may quote item values) →
 // the three-column tenancy rule (PE/location denormalized from the assessment, §3.3 tenancy note). RLS

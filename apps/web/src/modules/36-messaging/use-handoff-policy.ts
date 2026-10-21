@@ -1,6 +1,6 @@
 // M36 WP 3.5 - the organization's effective handoff expiry (tighten-only). Hidden unless the GET answers: 404 means
 // handoffs are off, 403 or anything unreadable means "do not offer the control". The server decides; this infers nothing.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { HandoffPolicy } from "./use-handoff-compose";
 

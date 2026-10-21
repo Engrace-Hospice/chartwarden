@@ -2,7 +2,7 @@
 // `published → en_route` advance (F-152, #248).
 //
 // M17's own D3/D14 spec calls EVV the AUTHORITATIVE driver of the visit lifecycle, and
-// `@wardenx/scheduling`'s `transitionVisit` has supported an EVV-sourced `start` event
+// `@chartwarden/scheduling`'s `transitionVisit` has supported an EVV-sourced `start` event
 // (`VisitAdvanceSource: { via: "evv" }`) since the machine shipped — its own doc comment names
 // `m18.evv.check_in_recorded` explicitly as one of the two events that "matched this visit (system
 // actor)". Nothing ever bound it: the pair sat in `scripts/outbox-deferred-consumers.ts`'s m17
@@ -17,10 +17,10 @@
 // has ever written it. The self-attest path has no `eventId` to write (there is no `evv_event` row on that
 // path), which is presumably why the column was never wired there; THIS consumer does have one
 // (`m18.evv.check_in_recorded`'s own `eventId`), so it is written here for the first time.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionVisit } from "@wardenx/scheduling";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { VisitStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionVisit } from "@chartwarden/scheduling";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { VisitStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;

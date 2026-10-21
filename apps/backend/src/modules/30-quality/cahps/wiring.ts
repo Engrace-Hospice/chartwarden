@@ -1,10 +1,10 @@
 // apps/backend/src/modules/30-quality/cahps/wiring.ts — GAP-087. The one place the composition root assembles M30's
 // CAHPS pipeline: the tenant-DEK cipher over the injected key ring, the vendor-adapter factory map from
-// `@wardenx/cahps-vendors`, and the M5/M6 ports the sampler reads through. The root passes the SAME result to the
+// `@chartwarden/cahps-vendors`, and the M5/M6 ports the sampler reads through. The root passes the SAME result to the
 // route mount (R-11 config sealing, R-15 file download) and to the worker deps (sample cron + export worker), so
 // there is exactly one cipher and one adapter map.
-import { CAHPS_ADAPTER_FACTORIES } from "@wardenx/cahps-vendors";
-import type { DbClient } from "@wardenx/db";
+import { CAHPS_ADAPTER_FACTORIES } from "@chartwarden/cahps-vendors";
+import type { DbClient } from "@chartwarden/db";
 import type { M30ReadActor } from "../routes/actor";
 import { readExportFile } from "./export-job-store";
 import { type CahpsKeyProvider, type CahpsPhiCipher, createCahpsPhiCipher } from "./phi-cipher";

@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T04, §2.2 D2. The pure `ipu_admission` lifecycle machine — the M37 unit-of-work,
+// @chartwarden/inpatient — M37-T04, §2.2 D2. The pure `ipu_admission` lifecycle machine — the M37 unit-of-work,
 // one-to-one with an M6 level_of_care_period for the IPU levels (GIP / IRC), or an arranged remote-IPU
 // episode. IO-free and deterministic: per-event facts (M6 LCP ack, RN-coverage active, GIP criteria present,
 // discharge/death events, room occupancy) are resolved upstream (the M6 outbox consumers, the RN-coverage
@@ -17,7 +17,7 @@
 //   active ─discharge──────→ discharged        (source bed → discharged_dirty; IRC closes irc_episode)
 //   active ─recordDeath────→ deceased          (auto-opens ipu_body_release; bed stays occupied until release)
 //   {discharged,transferred,deceased} ─postCloseSettlement→ closed
-import type { IpuAdmissionKind, IpuAdmissionState, IpuBedId } from "@wardenx/types";
+import type { IpuAdmissionKind, IpuAdmissionState, IpuBedId } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../errors";
 import type { BedCleaningEvent } from "./ipu-bed";
 

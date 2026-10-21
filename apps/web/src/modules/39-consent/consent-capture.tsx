@@ -8,7 +8,7 @@ import {
   cardSurface,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — M39 CONSENT CAPTURE AND SIGNATURE (report 09 mini-spec #1,
 // FLOW-003, WX-PR-010). Route `/patients/:patientId/consents/new`.
 //

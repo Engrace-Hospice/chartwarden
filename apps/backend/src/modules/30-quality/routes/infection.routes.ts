@@ -10,17 +10,17 @@
 //   R-93 PATCH /quality/infection/outbreaks/:caseId     — update outbreak status (notify/contain/resolve;
 //        aggregate; version-OCC, no Idempotency-Key).
 //
-// AUTHORIZATION (the REAL §4.6/§4.7 contract — `requirePermission` + `requireAbac` from @wardenx/auth, M3):
+// AUTHORIZATION (the REAL §4.6/§4.7 contract — `requirePermission` + `requireAbac` from @chartwarden/auth, M3):
 // each route gates on its §4.6 key, then composes the §4.1 ABAC column (the M3-base `inOrg`). The two event
 // routes (R-90/R-91) are PHI: the §4.1 "requirePatientScope()" gate is realized in THIS codebase by the
 // `inOrg` predicate here PLUS the M3 patient-level RLS predicate active inside the service's ONE
 // `withOrgContext` tx (P2c) PLUS the row-level `part2Redisclosure` redaction — there is no standalone
-// `requirePatientScope` export in @wardenx/auth (the §4.1 note's mechanism, not a symbol). The outbreak
+// `requirePatientScope` export in @chartwarden/auth (the §4.1 note's mechanism, not a symbol). The outbreak
 // routes (R-92/R-93) are aggregate-only (org-scoped, no patient PHI). R-91 carries `Idempotency-Key`; the
 // PATCH (R-93) is version-OCC-protected and §4.1.1-exempt. Org/actor binding is ALWAYS server-side
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER the body. The service emits the §4.10
 // `m30.infection.*` events transactionally inside the same unit of work as the mutation.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

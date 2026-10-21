@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — the EXEMPLAR APPEND-ONLY repo: `validation_run` (one row per claim
+// @chartwarden/billing · repositories — the EXEMPLAR APPEND-ONLY repo: `validation_run` (one row per claim
 // validation cycle, §3.3, D5; the DB carries an append-only write-audit trigger from P1). This port offers
 // INSERT + READ ONLY — there is deliberately NO update/delete method: a run's outcome is recorded once at
 // completion and never mutated; a re-validation is a NEW row (a new `trigger`). This is the PATTERN every
@@ -9,7 +9,7 @@
 // `validation_run_idempotency_uq` unique index; `append` is INSERT … ON CONFLICT DO NOTHING then read-back,
 // so a retried run never doubles. ENUM BOUNDARY: `trigger` / `outcome` are DB-native lowercase enums with
 // no domain-alphabet divergence, so rows pass through un-mapped (contrast `claim.state`). No PHI / MBI (D13).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

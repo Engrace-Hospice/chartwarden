@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T02 unit tests (M4 spec §3.3, M04-F06, D10).
+// @chartwarden/audit — M4-T02 unit tests (M4 spec §3.3, M04-F06, D10).
 //
 // Proves the PHI write-audit trigger generator without live infra:
 //   • SHAPE — emits the §3.3 function/owner/trigger triad, scrubbing the denylist into the diff.

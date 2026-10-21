@@ -1,6 +1,6 @@
-// @wardenx/billing — M23 canonical shared DOMAIN VALUE TYPES (§2.1 / §4.3). The id aliases, the
+// @chartwarden/billing — M23 canonical shared DOMAIN VALUE TYPES (§2.1 / §4.3). The id aliases, the
 // pgEnum-mirroring string unions, and the published-seam DTO shapes the seams + every subtree reference.
-// Kept local to the package (the M27 `contracts.ts` precedent) so M23 takes no `@wardenx/domain` edge for
+// Kept local to the package (the M27 `contracts.ts` precedent) so M23 takes no `@chartwarden/domain` edge for
 // ids that the shared leaves do not yet declare. NO PHI / NO MBI on any of these surfaces (D13 / §3.6 /
 // §8.7) — every reader projection is aggregate or id-keyed; the MBI digit is NEVER a field on any DTO.
 //

@@ -1,7 +1,7 @@
 // WP 2.7b C2 (ADR-0058 decision 11) - the per-(org, key version) build state: tag width, resumable checkpoint, last
 // reconciliation, statistics. `head_buckets` holds bucket numbers only (never a token); it is scrubbed from the audit images.
-import { schema } from "@wardenx/db";
-import { PADDING_FLOOR, tagBitsForTotalRows } from "@wardenx/messaging";
+import { schema } from "@chartwarden/db";
+import { PADDING_FLOOR, tagBitsForTotalRows } from "@chartwarden/messaging";
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

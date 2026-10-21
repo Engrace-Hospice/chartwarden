@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

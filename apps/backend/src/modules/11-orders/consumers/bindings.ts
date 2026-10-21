@@ -41,10 +41,10 @@
 // The read and both writes are M11-owned tables inside one `withOrgContext`, so RLS scopes them as
 // `wardenx_app`. The consumed event name is a STRING literal and no M6 schema is imported: M11 reads M6
 // solely through the foundation outbox, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionOrder } from "@wardenx/orders";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrderKind, OrderStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionOrder } from "@chartwarden/orders";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrderKind, OrderStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";

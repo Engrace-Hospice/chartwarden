@@ -1,6 +1,6 @@
-// @wardenx/cost-report — M27 canonical shared DOMAIN VALUE TYPES (§2.1 / §4.3). The id aliases and the
+// @chartwarden/cost-report — M27 canonical shared DOMAIN VALUE TYPES (§2.1 / §4.3). The id aliases and the
 // pgEnum-mirroring string unions the seams and every subtree reference. Kept local to the package (the
-// M30 `contracts.ts` precedent) so M27 takes no `@wardenx/types` edge for ids that `@wardenx/types` does
+// M30 `contracts.ts` precedent) so M27 takes no `@chartwarden/types` edge for ids that `@chartwarden/types` does
 // not yet declare. No PHI (D18).
 
 // ── branded-ish id aliases (string at runtime; documentary at the type layer) ────────────────────────

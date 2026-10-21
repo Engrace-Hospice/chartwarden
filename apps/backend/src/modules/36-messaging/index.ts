@@ -5,18 +5,18 @@
 // surface every clinical/billing module emits through — into the M1 registry, and declares
 // `MessagingProvider` fail-closed (its DB-backed impl lands with routes/realtime, M36-T07/T08).
 // The §4.7 PHI sanitization wrapper (`sanitizeForOutOfBand`) — the only path to out-of-band
-// channels — ships in @wardenx/messaging and is exercised by the §7.2 golden test.
+// channels — ships in @chartwarden/messaging and is exercised by the §7.2 golden test.
 //
 // M36-T08 (./routes/webhook-routes) adds the three inbound vendor webhook routes (§4.9) — the
 // only M36 routes NOT session-authenticated; they authenticate by the §4.9 two-layer defense
 // (replay window + Twilio HMAC / Postmark IP-allowlist + bearer token) before reconciling
 // `notification_delivery`. The realtime event/room CONTRACT (§4.3), the §4.4 job queue catalog +
 // pure processors (hash_verify / retention legal-hold filter / DLQ OPS-035 record), and the §4.8
-// cache grammar ship in @wardenx/messaging; the §8.1.2 job-emitted audit events are catalogued
-// under `m36.*` in @wardenx/audit. The Socket.IO server + BullMQ workers + Valkey adapter WIRING
+// cache grammar ship in @chartwarden/messaging; the §8.1.2 job-emitted audit events are catalogued
+// under `m36.*` in @chartwarden/audit. The Socket.IO server + BullMQ workers + Valkey adapter WIRING
 // is deferred to M1 infra (the same deferred-binding stance as the M38 jobs).
 //
-// M36-T09 (cross-module notification composition, ADR-0024) lands in @wardenx/messaging
+// M36-T09 (cross-module notification composition, ADR-0024) lands in @chartwarden/messaging
 // (`./compose`): SD-017 assigns recipient resolution + preference-aware routing to M36, so the
 // referral / critical-results / transmission-failure notification families moved off M14. The
 // `composeAndDispatch` engine loads a `notification_template` (tighten-only tenant overlay),
@@ -140,9 +140,9 @@ export {
   EmailDeliveryError,
   type OutboundEmail,
   type TransactionalEmailTransport,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
@@ -483,7 +483,7 @@ export {
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
 
-// WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
+// WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @chartwarden/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";
 export { registerTemplateRoutes } from "./routes/template-routes";
 

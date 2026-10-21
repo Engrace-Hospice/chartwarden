@@ -14,8 +14,8 @@ import {
   createInMemorySessionContextStore,
   requireStepUp,
   resetAuthorizationContract,
-} from "@wardenx/auth";
-import { type HttpRequestContext, StepUpRequiredError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type HttpRequestContext, StepUpRequiredError } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";

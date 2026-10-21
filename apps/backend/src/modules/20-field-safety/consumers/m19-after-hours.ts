@@ -33,7 +33,7 @@ import type {
   OrgId,
   ProviderEntityId,
   SafetyPolicyEffectiveDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { isAfterHours } from "../lifecycle/policy";
 import { getOnCallProvider } from "../seams/consumed";
 

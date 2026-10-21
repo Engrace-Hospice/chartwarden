@@ -1,5 +1,5 @@
-import type { DbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type SchedulingAutomationService,

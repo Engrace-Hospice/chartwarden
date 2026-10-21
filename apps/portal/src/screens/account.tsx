@@ -6,7 +6,7 @@ import {
   TextField,
   useApiClient,
   useTheme,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";

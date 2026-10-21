@@ -1,4 +1,4 @@
-// @wardenx/terminology — in-memory adapters for the terminology job processors (M38-T10, §4.3).
+// @chartwarden/terminology — in-memory adapters for the terminology job processors (M38-T10, §4.3).
 //
 // Deterministic, infra-free ports the job unit tests run against — the same forward pattern as the
 // M4 audit job ports. Each adapter records what the processor asked it to do so a run's effects are

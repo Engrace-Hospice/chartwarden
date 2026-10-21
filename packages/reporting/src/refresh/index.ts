@@ -1,4 +1,4 @@
-// @wardenx/reporting · refresh barrel — the three-tier MV-refresh subsystem (M33 §2.4–§2.6 / §4.5 / §4.8).
+// @chartwarden/reporting · refresh barrel — the three-tier MV-refresh subsystem (M33 §2.4–§2.6 / §4.5 / §4.8).
 //
 // PURE port-injected handlers for the `report.mv_refresh` + `report.lag_probe` workers (the M34 worker-package
 // precedent: pure logic here, the live BullMQ `Worker`/`Queue` construction binds at app boot in P2C). Three

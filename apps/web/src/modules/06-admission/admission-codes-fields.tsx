@@ -7,11 +7,11 @@ import {
   type AdmissionTypeCode,
   isAdmissionSourceCode,
   isAdmissionTypeCode,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/web/src/modules/06-admission — the UB-04 Type of Admission (FL 14) and Point of Origin (FL 15) pickers. The
 // codes are facts about the admission that M6 owns; M23 prints them on every claim (the claim is blocked without
 // them), so they are asked wherever an admission is created or its details are completed.
-import { SelectField } from "@wardenx/ui";
+import { SelectField } from "@chartwarden/ui";
 import type { JSX } from "react";
 
 export interface AdmissionCodesDraft {

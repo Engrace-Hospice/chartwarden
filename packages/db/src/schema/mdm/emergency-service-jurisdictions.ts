@@ -1,4 +1,4 @@
-// @wardenx/db - `emergency_service_jurisdiction` (M40; migration 0901, GAP-032). The TENANT-CURATED PSAP catalog
+// @chartwarden/db - `emergency_service_jurisdiction` (M40; migration 0901, GAP-032). The TENANT-CURATED PSAP catalog
 // behind M20's SOS-terminus `surface_psap_number` effect. organization_id NOT NULL, RLS on app.org_id, no PHI
 // (a PSAP administrative line is public). A row retires with `is_active = false`, never deleted. `polygon` holds
 // GeoJSON-style rings (`[[[lng,lat], ...], ...]`), same shape as `safety_high_risk_area.polygon`.

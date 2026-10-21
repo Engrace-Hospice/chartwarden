@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T11 §7 Workflow Acceptance Criteria (the consolidated done-means suite).
+// @chartwarden/messaging — M36-T11 §7 Workflow Acceptance Criteria (the consolidated done-means suite).
 //
 // The §9 unit/integration coverage lives in the per-task suites (fan-out, outcome, sanitize,
 // recipient-resolution, alert-rules-seed, destruction, webhooks, cache, jobs, realtime,

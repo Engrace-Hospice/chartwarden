@@ -2,8 +2,8 @@
 // cron's Drizzle reader + upsert over `ipu_shift` / `ipu_staff_assignment` / `ipu_rn_coverage_window`
 // (the M9/M14 `jobs/cron-store.ts` shape). ORG-scoped, caller-owned `withOrgContext` tx — this file never
 // opens its own tenancy envelope; `cron-workers.ts`'s per-org fan-out owns that.
-import { type DbClient, schema } from "@wardenx/db";
-import type { StaffAssignmentFact } from "@wardenx/inpatient";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { StaffAssignmentFact } from "@chartwarden/inpatient";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { CoverageWindowRow } from "./index";
 

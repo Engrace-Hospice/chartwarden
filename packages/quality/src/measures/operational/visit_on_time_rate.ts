@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: visit on-time rate. Pure. No IO.
+// @chartwarden/quality — operational measure: visit on-time rate. Pure. No IO.
 // Rate of scheduled visits performed within the on-time window (higher is better). Source: M17
 // `VisitMetricsProvider.getVisitOnTimeRate`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

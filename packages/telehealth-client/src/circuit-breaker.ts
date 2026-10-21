@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — the telehealth-vendor circuit breaker (M31-T05, spec §4.5 / §7.3 / M1 §25.14).
+// @chartwarden/telehealth-client — the telehealth-vendor circuit breaker (M31-T05, spec §4.5 / §7.3 / M1 §25.14).
 // One breaker guards the vendor endpoint so a Daily.co outage fails fast into the §7.3 Tier-3 degraded path
 // (offer audio-only, then reschedule-in-person) instead of blocking the room-mint / join flow. The breaker
 // logic here is PURE and deterministic — `nowInstant` and the rolling-failure window are injected, never read

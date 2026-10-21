@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T07 unit tests for the §2.3 D3 24/7 RN-coverage invariant.
+// @chartwarden/inpatient — M37-T07 unit tests for the §2.3 D3 24/7 RN-coverage invariant.
 import { describe, expect, it } from "vitest";
 import {
   effectiveRnCoverageActive,

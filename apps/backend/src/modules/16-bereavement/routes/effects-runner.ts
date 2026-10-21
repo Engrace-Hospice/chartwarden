@@ -1,4 +1,4 @@
-import type { M16EventName } from "@wardenx/types";
+import type { M16EventName } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/effects-runner.ts — M16-T06 (§2.6).
 //
 // The executor for the DECLARATIVE side-effect lists the §2.2–§2.4 machines return. M16-T03 deliberately

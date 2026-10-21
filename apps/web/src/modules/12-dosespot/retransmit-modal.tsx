@@ -1,4 +1,4 @@
-import { Button, InlineAlert, Modal, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, Modal, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — the Retransmit confirmation (GAP-125; spec WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md
 // "Retry a transmission_failed order (creates a new medication_order with replaces_medication_order_id set — never an
 // in-place retransmit)"). The server decides who may (prescribing.sign + the sign standing rule); a refusal is shown here

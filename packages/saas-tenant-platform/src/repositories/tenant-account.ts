@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — `tenant_account` (+ its status-event ledger and
+// @chartwarden/saas-tenant-platform · repositories — `tenant_account` (+ its status-event ledger and
 // the platform → first-admin `tenant_invitation`) data port (M34 §3.3, §3.4).
 //
 // A thin Drizzle reader/writer over the M34-owned tables: the lifecycle service (§2.2) and the
@@ -7,11 +7,11 @@
 //
 // CONVENTION (mirrors packages/audit drizzle-audit-query + packages/auth rbac/drizzle-store): the
 // repo takes the Drizzle client (`SaasDb`) in its constructor and issues plain Drizzle queries; the
-// SERVICE layer wraps each call in `withOrgContext` (M1 @wardenx/tenancy) so Postgres RLS scopes
+// SERVICE layer wraps each call in `withOrgContext` (M1 @chartwarden/tenancy) so Postgres RLS scopes
 // every statement to `app.org_id`. The repo therefore accepts either the pooled `DbClient` or a
 // transaction handle from `withOrgContext` — both satisfy `SaasDb`. The repo never opens its own
 // transaction and never sets RLS GUCs: scoping is the service's job (single home for that rule).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { type SQL, and, desc, eq, lt, or } from "drizzle-orm";
 
 /**

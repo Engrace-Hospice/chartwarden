@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export class HopeSpecRegistryError extends Error {

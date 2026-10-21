@@ -8,7 +8,7 @@ import {
   MESSAGE_LEGAL_HOLD_RELEASE_STEP_UP_KEY,
   MESSAGE_RETENTION_DATA_CLASSES,
   MESSAGING_RETENTION_MANAGE_PERMISSION,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

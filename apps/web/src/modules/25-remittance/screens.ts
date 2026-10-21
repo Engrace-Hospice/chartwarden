@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/25-remittance — M25 Remittance & Denials screen registration (R2, ADR-0030, §5).
 // The read surface over the live /api/v1/remittance|denials|appeals|taxonomy/* backend (31 routes). Each
 // `requiredPermission` is the REAL §4.6 M25 key the matching route gates on (already in

@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — the `TenantSubscriptionEntitlementReader` FORWARD seam (M34 §4.6, D15).
+// @chartwarden/saas-tenant-platform — the `TenantSubscriptionEntitlementReader` FORWARD seam (M34 §4.6, D15).
 //
 // The one seam M34 CONSUMES rather than publishes: the billing/subscription entitlements M35 will own
 // (plan tiers, seat counts, feature entitlements). M35 is not yet locked, so per D15 this ships a
@@ -7,7 +7,7 @@
 // answer rather than a thrown import or a fail-open `true`. When M35 lands it registers the real
 // reader over this stub (the rich-seam deny-stub-proxy pattern: interface in the consuming package,
 // the M1 registry holds the instance opaquely as `unknown`, a deny-stub default applies fail-closed
-// until the owner registers — mirrors @wardenx/mdm's forward-seam convention).
+// until the owner registers — mirrors @chartwarden/mdm's forward-seam convention).
 
 /**
  * The entitlements M35 will resolve per tenant (§4.6). Forward-declared minimally here — M35 owns the

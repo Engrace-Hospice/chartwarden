@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the NewRx transmission domain (M12-T06, spec §2.2 / §4.10 / D8). The D8 idempotency-key
+// @chartwarden/dosespot — the NewRx transmission domain (M12-T06, spec §2.2 / §4.10 / D8). The D8 idempotency-key
 // computation (`rx-business-key` + `sig-canonicalize`) that makes a double-sign a no-op at the pharmacy, and
 // the PURE `medication_order_transmission` enqueue / success / failure planners (with the §4.10 retry-budget
 // exhaustion that flips the row to `transmission_failed` + the §4.9 M36 alert). IO-free; the service + worker

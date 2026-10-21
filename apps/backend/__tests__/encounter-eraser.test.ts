@@ -3,7 +3,7 @@
 // Phase-0 deny-stub (validateErasers passes at boot), the eraser crypto-erases the HearthNote ciphertext
 // FIRST then deletes the encounter subtree + tombstones the encounter root, and the m8 action catalog is
 // well-formed (namespace + uniqueness) — and disjoint from M5/M6/M7's data classes.
-import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
+import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

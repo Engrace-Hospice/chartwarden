@@ -1,10 +1,10 @@
-// @wardenx/types — Standard error envelope + error class hierarchy (M1 Foundation
+// @chartwarden/types — Standard error envelope + error class hierarchy (M1 Foundation
 // §4.3; M1-T10).
 //
 // Every error response the platform emits uses the ONE envelope shape below, so clients
 // (and every module's routes) have a single contract. Per ADR-0005 D3 these live in the
 // `packages/types` leaf — NOT the banned `packages/foundation` — so any module's routes
-// can throw a `WardenXError` subclass and the M1 Fastify error handler
+// can throw a `ChartWardenError` subclass and the M1 Fastify error handler
 // (apps/backend/src/bootstrap/plugins/error-handler.ts) renders it into the envelope
 // without a cross-module import edge.
 import { type Static, Type } from "@sinclair/typebox";
@@ -59,9 +59,9 @@ export type ErrorCode = keyof typeof ERROR_CODES;
 /**
  * Base application error. A route throws one of these; the M1 error handler reads
  * `code`/`statusCode`/`details` and renders the envelope. Anything that is NOT a
- * WardenXError is treated as an unexpected 500 (`INTERNAL_ERROR`) — never leaked verbatim.
+ * ChartWardenError is treated as an unexpected 500 (`INTERNAL_ERROR`) — never leaked verbatim.
  */
-export class WardenXError extends Error {
+export class ChartWardenError extends Error {
   constructor(
     public readonly code: string,
     message: string,
@@ -69,18 +69,18 @@ export class WardenXError extends Error {
     public readonly details?: ErrorDetailType[],
   ) {
     super(message);
-    this.name = "WardenXError";
+    this.name = "ChartWardenError";
   }
 }
 
-export class ValidationError extends WardenXError {
+export class ValidationError extends ChartWardenError {
   constructor(message: string, details: ErrorDetailType[]) {
     super("VALIDATION_FAILED", message, ERROR_CODES.VALIDATION_FAILED, details);
     this.name = "ValidationError";
   }
 }
 
-export class NotFoundError extends WardenXError {
+export class NotFoundError extends ChartWardenError {
   // RLS-hidden rows return NOT_FOUND too (spec §4.3) — same response, no existence oracle.
   constructor(resource: string, id?: string) {
     super("NOT_FOUND", `${resource}${id ? ` ${id}` : ""} not found`, ERROR_CODES.NOT_FOUND);
@@ -88,14 +88,14 @@ export class NotFoundError extends WardenXError {
   }
 }
 
-export class UnauthorizedError extends WardenXError {
+export class UnauthorizedError extends ChartWardenError {
   constructor(message = "Authentication required") {
     super("UNAUTHORIZED", message, ERROR_CODES.UNAUTHORIZED);
     this.name = "UnauthorizedError";
   }
 }
 
-export class ForbiddenError extends WardenXError {
+export class ForbiddenError extends ChartWardenError {
   constructor(message = "Forbidden") {
     super("FORBIDDEN", message, ERROR_CODES.FORBIDDEN);
     this.name = "ForbiddenError";
@@ -124,21 +124,21 @@ export class ForbiddenError extends WardenXError {
  * to 412 would rewrite the declared responses of 138 route guards to say something about a
  * precondition header they do not have.
  */
-export class StepUpRequiredError extends WardenXError {
+export class StepUpRequiredError extends ChartWardenError {
   constructor(message = "A recent re-authentication is required for this operation") {
     super("STEP_UP_REQUIRED", message, ERROR_CODES.STEP_UP_REQUIRED);
     this.name = "StepUpRequiredError";
   }
 }
 
-export class ConflictError extends WardenXError {
+export class ConflictError extends ChartWardenError {
   constructor(message: string) {
     super("CONFLICT", message, ERROR_CODES.CONFLICT);
     this.name = "ConflictError";
   }
 }
 
-export class RateLimitedError extends WardenXError {
+export class RateLimitedError extends ChartWardenError {
   constructor(message = "Too many requests") {
     super("RATE_LIMITED", message, ERROR_CODES.RATE_LIMITED);
     this.name = "RateLimitedError";
@@ -146,7 +146,7 @@ export class RateLimitedError extends WardenXError {
 }
 
 /** Double-submit CSRF cookie/header mismatch or missing on a cookie-authenticated mutation (WX-PR-017). */
-export class CsrfValidationError extends WardenXError {
+export class CsrfValidationError extends ChartWardenError {
   constructor(message = "CSRF validation failed") {
     super("CSRF_VALIDATION_FAILED", message, ERROR_CODES.CSRF_VALIDATION_FAILED);
     this.name = "CsrfValidationError";
@@ -154,7 +154,7 @@ export class CsrfValidationError extends WardenXError {
 }
 
 /** Same `Idempotency-Key` replayed with a DIFFERENT body (spec §4.3 / §4.6). */
-export class IdempotencyConflictError extends WardenXError {
+export class IdempotencyConflictError extends ChartWardenError {
   constructor(message = "Idempotency-Key reused with different body") {
     super("IDEMPOTENCY_CONFLICT", message, ERROR_CODES.IDEMPOTENCY_CONFLICT);
     this.name = "IdempotencyConflictError";
@@ -162,7 +162,7 @@ export class IdempotencyConflictError extends WardenXError {
 }
 
 /** A dependency is unavailable; the platform is in degraded mode (spec §4.3). */
-export class DegradedError extends WardenXError {
+export class DegradedError extends ChartWardenError {
   constructor(component: string, message: string) {
     super("DEGRADED", `${component}: ${message}`, ERROR_CODES.DEGRADED);
     this.name = "DegradedError";

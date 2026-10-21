@@ -1,4 +1,4 @@
-// @wardenx/db — `fhir_client_credential` (M28 §3.3). The API-key / JWKS-pin material for a `fhir_client`.
+// @chartwarden/db — `fhir_client_credential` (M28 §3.3). The API-key / JWKS-pin material for a `fhir_client`.
 // Rotation retires the prior row and opens a 30-day overlap window (§2.2).
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). `client_id` carries a

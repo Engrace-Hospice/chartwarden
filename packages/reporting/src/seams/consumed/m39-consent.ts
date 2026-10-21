@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M39 (Consent). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M39 (Consent). PRESENT producer (§4.4).
 //
 // M33 calls M39 `ConsentEvaluator.evaluateForReporting` at DRILLDOWN time only (never on aggregate
 // tile reads): a drilldown that would expose patient identifiers is NARROWED (not refused) under SUD /

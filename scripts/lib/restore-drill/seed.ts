@@ -14,9 +14,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import type { IdempotencyStore } from "@wardenx/shared";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { buildServer } from "../../../apps/backend/src/bootstrap/index";

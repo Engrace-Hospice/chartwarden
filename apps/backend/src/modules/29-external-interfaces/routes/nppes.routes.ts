@@ -13,7 +13,7 @@
 // UNBOUND (no queue connection — a db-only or REDIS-less boot) still fails closed, but as a 503
 // `NPPES_SYNC_QUEUE_UNBOUND` rather than the old blanket 501: "this deployment has no worker" is an
 // operational fact an operator can fix, where 501 said "this feature does not exist".
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";

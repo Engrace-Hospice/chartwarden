@@ -21,8 +21,8 @@
 //
 // ONE TRANSACTION: the rows and the `m12.medication_history_record.draft_created_from_extraction` reply
 // commit together. FAIL-CLOSED: a malformed, cross-tenant or wrong-target payload THROWS (retry → DLQ).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ClinicalDraftCreatedFromExtractionPayload,
   type DocLensClinicalLineOutcome,
@@ -31,7 +31,7 @@ import {
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
   doclensClinicalLineKey,
   parseDocLensClinicalCommit,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 

@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — deterministic in-memory ports (the unit tests' and route tests' stand-ins). The
+// @chartwarden/terminology-loader — deterministic in-memory ports (the unit tests' and route tests' stand-ins). The
 // store mirrors the database state machine closely enough to assert the loader's guarantees without infra:
 // staging is separate from the concept table, `fail` deletes staging, activation supersedes the prior version.
 import { SourceNotFoundError } from "./errors";

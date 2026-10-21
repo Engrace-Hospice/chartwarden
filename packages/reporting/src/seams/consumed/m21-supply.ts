@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M21 (Supply / DME / Pharmacy). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M21 (Supply / DME / Pharmacy). ABSENT producer (§4.4).
 //
 // M21 is not yet implemented → forward-seam DENY-STUB. M21 registers the real `SupplyMetricsProvider` /
 // `VendorVarianceReader` over this stub when it lands (P2C).

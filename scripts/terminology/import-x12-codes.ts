@@ -19,7 +19,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type LoadableSystemId, parseSource } from "@wardenx/terminology-loader";
+import { type LoadableSystemId, parseSource } from "@chartwarden/terminology-loader";
 
 interface Source {
   readonly system: Extract<LoadableSystemId, "carc" | "rarc">;

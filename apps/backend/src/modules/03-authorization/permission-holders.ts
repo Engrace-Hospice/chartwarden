@@ -8,8 +8,8 @@
 // than the requester. Read under the caller's org context, so RLS scopes it and another tenant's holders are never
 // visible. The result is a hint for a friendlier refusal, not an authorization decision: the co-sign itself re-checks
 // the caller's permission.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
 export type MembershipsHoldingPermissionReader = (

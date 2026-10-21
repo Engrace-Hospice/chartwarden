@@ -4,7 +4,7 @@
 // M14/M28/M30/M31/M33/M37 consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30
 // consume) registered into the M1 registry via `registerEmarSeams` (driven from the composition root's
 // wireModuleSeams()).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { registerEmarAbacPredicates as _registerM13Abac } from "./abac-predicates";
@@ -25,12 +25,12 @@ export function mountEmarRoutes(
 ): void {
   // GAP-022 — the §2.9 D10 caregiver-review gate's RN-case-manager fact, through M5's published
   // CareTeamProvider seam. `getSeam` is the M1 registry (M13 dependsOn 1) and the seam INTERFACE is a
-  // @wardenx/types leaf, so this adds no M13→M5 compile edge. Passed as a thunk so it resolves per call,
+  // @chartwarden/types leaf, so this adds no M13→M5 compile edge. Passed as a thunk so it resolves per call,
   // after wireModuleSeams() has registered M5's provider.
   // F-031 — M12's already-published `MedicationOrderProvider` seam, narrowed to the identity facts an
   // administration is FILED under (patient / admission / drug name / route). Thunked for the same reason as
   // the case-manager reader above: seams register after the route mount. Adds no M13->M12 compile edge (the
-  // seam interface is a @wardenx/types leaf) and no new manifest dependency — M13 already dependsOn 12.
+  // seam interface is a @chartwarden/types leaf) and no new manifest dependency — M13 already dependsOn 12.
   const backend = buildEmarBackend(db, outbox);
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });
@@ -137,7 +137,7 @@ export {
 } from "./seams/index";
 // M13-T08 — the four §4.7 ABAC predicates M13 owns (`administering_clinician_eligible` /
 // `controlled_substance_witness_eligible` / `caregiver_attested_review_required` /
-// `reconciliation_authoring_eligible`). The §4.6 permission keys M13 contributes to M3 live in @wardenx/auth
+// `reconciliation_authoring_eligible`). The §4.6 permission keys M13 contributes to M3 live in @chartwarden/auth
 // (M13_CONTRIBUTED_PERMISSIONS).
 export {
   type CaregiverReviewAbacFacts,

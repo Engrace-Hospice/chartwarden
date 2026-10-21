@@ -13,7 +13,7 @@
 // These cases assert the two properties that matter: no request may ever carry an invalid
 // certificate id, and a refusal must remain visible to the operator.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { TenantOverview } from "./tenant-overview";

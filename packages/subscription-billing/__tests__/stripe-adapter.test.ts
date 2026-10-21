@@ -1,7 +1,7 @@
 // M35-T04 — §4.13/§4.14/§8.7 Stripe adapter pure cores (verifier / redactor / idempotency / dispatcher /
 // webhook ingestion). Pure, no DB — in-memory fakes for every injected port.
 import { createHmac } from "node:crypto";
-import type { OrgId, StripeApiCallAuditId } from "@wardenx/types";
+import type { OrgId, StripeApiCallAuditId } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { createStripeClient, failClosedStripeHttpPort } from "../src/stripe/client";
 import {

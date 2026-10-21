@@ -6,8 +6,8 @@
 // request tenant context (RLS), so these reads run only inside a request. The expiry tick and the offboarding sweep never
 // call them. One source failing lists only that kind as unavailable; it never fails the others, and an offer that needs an
 // unavailable kind is refused (fail closed).
-import { HANDOFF_VISIT_HORIZON_HOURS } from "@wardenx/messaging";
-import type { HandoffItemKind } from "@wardenx/types";
+import { HANDOFF_VISIT_HORIZON_HOURS } from "@chartwarden/messaging";
+import type { HandoffItemKind } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 export const HANDOFF_SOURCE_CONCURRENCY = 8;

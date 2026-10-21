@@ -26,7 +26,7 @@ import {
   ForbiddenError,
   IdempotencyConflictError,
   NotFoundError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   DEFAULT_EVV_WINDOW_AFTER_MS,
   DEFAULT_EVV_WINDOW_BEFORE_MS,

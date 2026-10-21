@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Accept tenant invitation (M34 first admin, /tenant-invite/:token).
 // The provisioning job emails the first admin a link built from M34_INVITATION_ACCEPT_URL. That token lives in
 // `tenant_invitation`, which the M2 page (`/invite/:token`, `organization_invitation`) cannot see — so this page
@@ -73,7 +73,7 @@ export function AcceptTenantInvitation(): JSX.Element {
 
   if (!token || phase === "invalid") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p role="alert" style={{ color: "var(--color-error)" }}>
           {INVALID_MESSAGE}
@@ -85,7 +85,7 @@ export function AcceptTenantInvitation(): JSX.Element {
   if (phase === "accepted") {
     return (
       <CenteredCardLayout
-        brand={<strong>WardenX</strong>}
+        brand={<strong>ChartWarden</strong>}
         footer={<a href="/login">Back to sign in</a>}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -109,11 +109,11 @@ export function AcceptTenantInvitation(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
+    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
       <form onSubmit={accept} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Accept your invitation</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
-          You’ve been invited to administer a new WardenX organization. Accept to activate your
+          You’ve been invited to administer a new ChartWarden organization. Accept to activate your
           account; we’ll then email you a link to set your password.
         </p>
         <label

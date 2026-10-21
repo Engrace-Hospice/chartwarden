@@ -1,6 +1,6 @@
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError } from "@chartwarden/types";
 import { asc, ilike, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 

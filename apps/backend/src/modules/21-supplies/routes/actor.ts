@@ -12,10 +12,10 @@
 // dispatch as a colleague and pass their own witness check. So the server stamps the actor, always — the
 // ONE exception being `disposal_witness_membership_id`, which is by definition a SECOND person and
 // therefore must come from the body; the §3.1.10 CHECK and the §4.4 predicate are what keep it honest.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the Location scope the §4.4 predicates compare against. */

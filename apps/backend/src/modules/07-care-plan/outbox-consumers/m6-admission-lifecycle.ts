@@ -1,7 +1,7 @@
 // M7 consumers for M6 admission lifecycle events. These consume only M6's public outbox payloads and
 // call M7's route service, so M7 does not import M6 internals.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

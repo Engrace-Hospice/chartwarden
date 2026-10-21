@@ -21,8 +21,8 @@
 // spend between cost-report periods. `unreconciledRequestCount` counts accrued rows that never got their
 // `invoice_reconciled_at`, which is the number a finance reviewer reads as "how much of this is still an
 // estimate".
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   ActiveDispatchView,
   ComfortKitDispatchedContentPayload,
@@ -31,7 +31,7 @@ import type {
   RoutingRuleResolved,
   SupplyReceivedConfirmedActor,
   SupplyRequestStatusView,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { EMPTY_SUPPLY_COST_TOTALS, type SuppliesSeamStore, type SupplyCostTotals } from "./store";
 

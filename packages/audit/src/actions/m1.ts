@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 1 (Foundation) action catalog (M4-T10; M4 spec §4.6.1 `m1.ts`).
+// @chartwarden/audit — Module 1 (Foundation) action catalog (M4-T10; M4 spec §4.6.1 `m1.ts`).
 //
 // M1 captures mutations through the DB write-audit triggers (per-table `<table>.<op>` events)
 // and the transactional outbox, not through app-level `mN.*` audit() calls — so it contributes

@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — what makes a submission THIS submission (ADR-0053 D4). Shared by the in-memory reference
+// @chartwarden/x12-837-client — what makes a submission THIS submission (ADR-0053 D4). Shared by the in-memory reference
 // transport and the vendor adapters so the idempotency identity is defined once.
 import { createHash } from "node:crypto";
 import type { ClearinghouseScope, ClearinghouseSubmission } from "./types";

@@ -4,7 +4,7 @@
 // administration + cosign), W-EMAR-08 (medication reconciliation at admission), W-EMAR-09 (discharge cascade +
 // comfort-kit return), W-EMAR-10 (IV continuous session: start → titrate → stop), W-EMAR-11 (five-rights catch:
 // wrong route) — exercised end-to-end over the in-memory `EmarRouteService` (the same backend the §4.1 routes
-// compose over, M13-T08) plus the pure `@wardenx/emar` machines the comfort-kit / IV-session / discharge-cascade
+// compose over, M13-T08) plus the pure `@chartwarden/emar` machines the comfort-kit / IV-session / discharge-cascade
 // / reconciliation-trigger paths drive. Deterministic: no infra, injected clock.
 //
 // The route-auth handshake (§4.6/§4.7) + the wire status codes live in emar-routes.test.ts; each pure machine
@@ -29,7 +29,7 @@ import {
   evaluateReturnOverdue,
   planDischargeCascade,
   planIvSegment,
-} from "@wardenx/emar";
+} from "@chartwarden/emar";
 import { describe, expect, it } from "vitest";
 import { type EmarOrderSeed, createInMemoryEmarBackend } from "../src/modules/13-emar/index";
 
@@ -261,7 +261,7 @@ describe("M13-T11 §5 workflow acceptance", () => {
     });
     // carry_forward of a caregiver-reported line mints an M12 draft from real, typed drug content — a
     // `m12_medhx` line CANNOT (no medication-history record projection exists anywhere in this codebase;
-    // see `@wardenx/emar`'s `ReconciliationMedicationDetails` doc — that refusal is its own test below).
+    // see `@chartwarden/emar`'s `ReconciliationMedicationDetails` doc — that refusal is its own test below).
     await svc.recordDecision(ORG, RN_USER, "ws-1", {
       lineKind: "caregiver_reported",
       sourceId: "hist_1",

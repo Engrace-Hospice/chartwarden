@@ -7,8 +7,8 @@ import {
   type CHART_PROMOTION_REJECT_REASONS,
   type ChartPromotionReview,
   ConflictError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 export const CHART_PROMOTION_DECIDED_EVENT = "m8.chart_promotion.decided";
@@ -49,8 +49,8 @@ export interface AddendumPromotionInput {
   readonly reviewerUserId: string;
 }
 
-export const promotionNotAvailable = (): WardenXError =>
-  new WardenXError("PROMOTION_NOT_AVAILABLE", "that proposal is not available to review", 422);
+export const promotionNotAvailable = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_NOT_AVAILABLE", "that proposal is not available to review", 422);
 
 const toView = (r: ChartPromotionReview): ChartPromotionView => ({
   request_id: r.requestId,

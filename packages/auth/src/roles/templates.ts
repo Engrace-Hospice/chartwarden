@@ -1,4 +1,4 @@
-// @wardenx/auth · role catalog + `system_locked` permission floor (M3 — Authorization,
+// @chartwarden/auth · role catalog + `system_locked` permission floor (M3 — Authorization,
 // M3-T02; spec §3.4, §3.4.1, M03-F06).
 //
 // The role catalog is the public surface every module binds permissions to. A role is a
@@ -12,8 +12,8 @@
 
 // NOTE: these two unions mirror the `role_category` / `scope_level` DB enums (spec §3.2,
 // authored in packages/db/src/enums.ts under M3-T01). They are inlined rather than imported
-// from `@wardenx/db` on purpose: M3 (dependsOn: [2]) may reach db only through the
-// `packages/db/src/schema` type surface, not the `@wardenx/db` runtime barrel (the import
+// from `@chartwarden/db` on purpose: M3 (dependsOn: [2]) may reach db only through the
+// `packages/db/src/schema` type surface, not the `@chartwarden/db` runtime barrel (the import
 // boundary in .dependency-cruiser.cjs). check-ddl-legality.ts keeps the DB enum canonical.
 
 import { SYSTEM_ROLE_DISPLAY_NAMES } from "./display-names";

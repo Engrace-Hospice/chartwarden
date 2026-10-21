@@ -16,8 +16,8 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { bereavementDischargeLegitimacy, deriveDischargeClaimCodes } from "@wardenx/billing";
-import { createDbClient } from "@wardenx/db";
+import { bereavementDischargeLegitimacy, deriveDischargeClaimCodes } from "@chartwarden/billing";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";

@@ -1,4 +1,4 @@
-// @wardenx/consent — the consent_record_recipient lifecycle (§2.2.2, D6).
+// @chartwarden/consent — the consent_record_recipient lifecycle (§2.2.2, D6).
 //
 // M39-T04. Per-recipient consents only. A recipient is `added`, then either `removed` (removed_at
 // set) or `expired` (its own expires_at passed). Adding/removing a recipient does NOT supersede the

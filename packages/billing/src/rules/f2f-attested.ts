@@ -1,5 +1,5 @@
 import { periodsOverlappingClaim } from "./_util";
-// @wardenx/billing — §4.5 rule `f2f_attested_for_recert` (f2f, error, regulatory). A face-to-face
+// @chartwarden/billing — §4.5 rule `f2f_attested_for_recert` (f2f, error, regulatory). A face-to-face
 // encounter attestation is required for the third and subsequent benefit periods (42 CFR §418.22(a)(4)).
 // Reads the resolved `electionPeriods` + `faceToFace` snapshots; only periods with sequence ≥ 3 are in
 // scope. PURE: reads ctx only.

@@ -1,5 +1,5 @@
-// @wardenx/db — `validation_run` (M23 Billing-Medicare §3.3, D5; append-only; retention class
-// `operational`). One row per claim validation cycle: the rule engine in `@wardenx/billing` records a
+// @chartwarden/db — `validation_run` (M23 Billing-Medicare §3.3, D5; append-only; retention class
+// `operational`). One row per claim validation cycle: the rule engine in `@chartwarden/billing` records a
 // run for each (claim, trigger) pass, with idempotent collapse on `run_input_hash`. ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS).
 //

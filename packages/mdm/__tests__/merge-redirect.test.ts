@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T04 unit tests (spec §2.1, §7.1–7.2).
+// @chartwarden/mdm — M40-T04 unit tests (spec §2.1, §7.1–7.2).
 //
 // Locks the transparent merge-redirect chase + the canonical+overlay join: a live canonical id
 // resolves to itself with no breadcrumb (§7.1 fast path), a merged id resolves through to its

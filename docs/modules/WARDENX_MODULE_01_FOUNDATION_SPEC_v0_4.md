@@ -1657,9 +1657,9 @@ export const ORGANIZATION_SETTINGS_REGISTRY: readonly OrganizationSettingEntry[]
 ```ts
 // apps/backend/src/modules/01-foundation/boot/organization-settings-registry.ts
 
-import { db } from '@wardenx/db'
-import { organizationSettingsRegistry } from '@wardenx/db/schema/foundation'
-import { ORGANIZATION_SETTINGS_REGISTRY } from '@wardenx/foundation/organization-settings'
+import { db } from '@chartwarden/db'
+import { organizationSettingsRegistry } from '@chartwarden/db/schema/foundation'
+import { ORGANIZATION_SETTINGS_REGISTRY } from '@chartwarden/foundation/organization-settings'
 
 export async function bootOrganizationSettingsRegistry(): Promise<void> {
   for (const entry of ORGANIZATION_SETTINGS_REGISTRY) {
@@ -2051,7 +2051,7 @@ import type {
   OnCallShiftProvider, BereavementWindowProvider, VolunteerGateProvider,
   SupervisionProvider, AssessmentCompletenessProvider, HopeCompletenessProvider,
   DataClass,
-} from '@wardenx/types/seams'
+} from '@chartwarden/types/seams'
 
 type SeamKey = string
 const seams = new Map<SeamKey, unknown>()
@@ -2304,7 +2304,7 @@ export type ErrorEnvelopeType = Static<typeof ErrorEnvelope>
 
 ```typescript
 // packages/types/src/error-class.ts
-export class WardenXError extends Error {
+export class ChartWardenError extends Error {
   constructor(
     public code: string,
     message: string,
@@ -2312,41 +2312,41 @@ export class WardenXError extends Error {
     public details?: Array<{ field?: string; code: string; message: string }>,
   ) {
     super(message)
-    this.name = 'WardenXError'
+    this.name = 'ChartWardenError'
   }
 }
 
-export class ValidationError extends WardenXError {
+export class ValidationError extends ChartWardenError {
   constructor(message: string, details: ErrorDetail[]) {
     super('VALIDATION_FAILED', message, 422, details)
   }
 }
 
-export class NotFoundError extends WardenXError {
+export class NotFoundError extends ChartWardenError {
   constructor(resource: string, id?: string) {
     super('NOT_FOUND', `${resource}${id ? ` ${id}` : ''} not found`, 404)
   }
 }
 
-export class UnauthorizedError extends WardenXError {
+export class UnauthorizedError extends ChartWardenError {
   constructor(message = 'Authentication required') {
     super('UNAUTHORIZED', message, 401)
   }
 }
 
-export class ForbiddenError extends WardenXError {
+export class ForbiddenError extends ChartWardenError {
   constructor(message = 'Forbidden') {
     super('FORBIDDEN', message, 403)
   }
 }
 
-export class ConflictError extends WardenXError {
+export class ConflictError extends ChartWardenError {
   constructor(message: string) {
     super('CONFLICT', message, 409)
   }
 }
 
-export class DegradedError extends WardenXError {
+export class DegradedError extends ChartWardenError {
   constructor(component: string, message: string) {
     super('DEGRADED', `${component}: ${message}`, 503)
   }
@@ -2372,13 +2372,13 @@ Error code catalog (initial — extended per module):
 ```typescript
 // apps/backend/src/plugins/error-handler.ts
 import fp from 'fastify-plugin'
-import { WardenXError } from '@wardenx/types'
+import { ChartWardenError } from '@chartwarden/types'
 
 export default fp(async (fastify) => {
   fastify.setErrorHandler((err, request, reply) => {
     const correlationId = request.context?.correlationId ?? 'unknown'
 
-    if (err instanceof WardenXError) {
+    if (err instanceof ChartWardenError) {
       request.log.info(
         {
           errCode: err.code,
@@ -2417,7 +2417,7 @@ export default fp(async (fastify) => {
 // apps/backend/src/plugins/request-context.ts
 import fp from 'fastify-plugin'
 import { randomUUID } from 'crypto'
-import type { RequestContext } from '@wardenx/types'
+import type { RequestContext } from '@chartwarden/types'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -3296,7 +3296,7 @@ If no targeting rule matches, the flag's `value` (default) is returned, subject 
 
 ```typescript
 // packages/feature-flags/src/index.ts
-import type { OrgContext } from '@wardenx/db'
+import type { OrgContext } from '@chartwarden/db'
 
 export type FlagContext = OrgContext & {
   roles?: string[]

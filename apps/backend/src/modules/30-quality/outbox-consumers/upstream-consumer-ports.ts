@@ -1,6 +1,6 @@
 // apps/backend/src/modules/30-quality/outbox-consumers/upstream-consumer-ports.ts — F-150 (#248).
 //
-// The Drizzle-backed half of `@wardenx/quality`'s pure §4.10 upstream-event handlers
+// The Drizzle-backed half of `@chartwarden/quality`'s pure §4.10 upstream-event handlers
 // (`packages/quality/src/consumers/handlers.ts`, RULE 3(d)): those handlers are pure + port-injected and
 // were never bound to a running consumer anywhere (`M30ConsumerPorts` had no implementation in this repo
 // at all). This file is that implementation.
@@ -35,7 +35,7 @@
 // `enqueueRecompute` is exercised by the consumers this file's siblings (`upstream-events.ts`,
 // `m16-plan-closed.ts`) bind that consume ONLY `ports.enqueueRecompute`; `createIncidentDraft` is now
 // exercised by `m37-restraint-applied.ts`'s `buildM30RestraintAppliedConsumer` (F-185).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type M30ConsumerPorts,
   MEASURE_FY_BOUNDARY_v2025,
@@ -47,8 +47,8 @@ import {
   resolvePeriodRule,
   resolvePeriodWindow,
   unboundWorkerPort,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -64,7 +64,7 @@ export const M30_SYSTEM_MEMBERSHIP_ID = "00000000-0000-0000-0000-000000000030";
 /**
  * Resolve the {@link MeasureFyBoundary} in effect for a reference date. Mirrors
  * `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`'s own private `resolveFyBoundary` (not exported
- * from `@wardenx/quality`) — the boundary constants are versioned by the calendar year they activate in,
+ * from `@chartwarden/quality`) — the boundary constants are versioned by the calendar year they activate in,
  * so the LATEST constant whose year has arrived wins.
  */
 function resolveFyBoundary(asOf: Date): MeasureFyBoundary {
@@ -226,7 +226,7 @@ const MAX_CAUSE_DEPTH = 5;
 /**
  * True iff `err` is the `23505` raised by `incident_report`'s per-leaf `..._auto_creation_uidx` partial-
  * unique index — the §2.6 auto-creation idempotency backstop, not some other constraint. Mirrors
- * `classifyDatabaseError`'s `.cause`-walk (`@wardenx/db` `business-rules.ts`) without pulling in that
+ * `classifyDatabaseError`'s `.cause`-walk (`@chartwarden/db` `business-rules.ts`) without pulling in that
  * registry's caller-facing-409 machinery, which this internal consumer-port no-op has no use for.
  */
 function isAutoCreationRedelivery(err: unknown): boolean {

@@ -13,17 +13,17 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, createDbClient } from "@wardenx/db";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
   eraseTenantMessaging,
   messageHeldBy,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { richBodyToPlainText, sanitizeRichBody } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { richBodyToPlainText, sanitizeRichBody } from "@chartwarden/types";
 import { Queue } from "bullmq";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

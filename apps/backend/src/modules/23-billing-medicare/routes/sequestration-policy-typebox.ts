@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox.ts — M23 sequestration-policy
 // request/response TypeBox shapes (F-212). Named `*-typebox` for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. `percentage` is a decimal STRING on the wire (D11, never a float); the plausibility band and the
-// effective window are validated by `validateSequestrationPolicyEntry` (@wardenx/billing) so the error names every problem.
+// effective window are validated by `validateSequestrationPolicyEntry` (@chartwarden/billing) so the error names every problem.
 // Org / actor / membership binding is server-side — no body field carries an org id or the entering membership.
 import { type Static, Type } from "@sinclair/typebox";
 import { parse } from "./billing-typebox";

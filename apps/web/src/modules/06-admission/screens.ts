@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/06-admission — M6 screen registration (Track B, ADR-0030).
 // The §5 admission screens that have a backing M6 read route on the generated client: the Referral
 // Inbox (§5.2.1), the Admission Census (§5.2.12 entry), the Admission Detail + activation gate

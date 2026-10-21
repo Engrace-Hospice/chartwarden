@@ -1,4 +1,4 @@
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 // apps/admin/src/shell — session/tenant context (M1, ADR-0030). Ported verbatim from
 // apps/web/src/shell/session.tsx (see that file for the full design rationale): self-loads the
 // authenticated actor's role/membership context from the live `GET /api/v1/auth/context` endpoint on

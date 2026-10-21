@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.1 building blocks every per-kind `supply_request.data` schema shares.
+// @chartwarden/supplies — the §2.1 building blocks every per-kind `supply_request.data` schema shares.
 //
 // PURE — TypeBox declarations and nothing else.
 

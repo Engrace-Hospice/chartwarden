@@ -1,4 +1,4 @@
-// @wardenx/db — M26 Cap Management §3.3 — the projection snapshot ledger + the threshold-event queue.
+// @chartwarden/db — M26 Cap Management §3.3 — the projection snapshot ledger + the threshold-event queue.
 // cap_projection_snapshot is append-only (insert-only; dashboards read latest-per-scope) and LIST-partitioned
 // on cap_period_id (§3.2; high volume — ~1k rows/tenant/nightly batch). cap_threshold_event is the
 // band-transition queue (non-partitioned, low volume) with acknowledge/resolve mutations.

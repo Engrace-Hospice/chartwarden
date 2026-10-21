@@ -1,4 +1,4 @@
-// @wardenx/ui core — native-capability ports (ADR-0035). Screens and hooks depend on these
+// @chartwarden/ui core — native-capability ports (ADR-0035). Screens and hooks depend on these
 // interfaces, NEVER on `@capacitor/*` directly. Two adapter sets fulfill them: the web adapters
 // in this folder (browser APIs / graceful fallback) and the Capacitor adapters wired at the
 // native entrypoint (added with the Capacitor build PR). This is what keeps `apps/web` a pure

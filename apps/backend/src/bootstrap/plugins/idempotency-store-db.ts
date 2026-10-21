@@ -36,9 +36,9 @@
 // ids — but a client that hashes or signs the raw response bytes would see a difference on replay.
 // Left as-is rather than switching the column to `json`: HTTP idempotency guarantees the same
 // RESPONSE, not the same serialization, and `jsonb` is what the table has shipped with.
-import { type DbClient, schema } from "@wardenx/db";
-import type { IdempotencyRecord, IdempotencyStore, IdempotentResponse } from "@wardenx/shared";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { IdempotencyRecord, IdempotencyStore, IdempotentResponse } from "@chartwarden/shared";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 
 /** How long a cached response stays replayable (§3.10). */

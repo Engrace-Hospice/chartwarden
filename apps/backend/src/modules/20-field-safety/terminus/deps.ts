@@ -6,7 +6,7 @@ import type {
   EmergencyServiceJurisdictionReader,
   MembershipId,
   SosContactCaller,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { SosTerminusPort } from "../jobs/terminus-port";
 import type { SafetyDecipherPort } from "../routes/read-service-drizzle";
 import type { SafetySeamStore } from "../seams/store";

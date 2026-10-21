@@ -4,22 +4,22 @@
 //
 // Both are org-explicit: the caller (the BullMQ shell in ./integrity-workers.ts) enumerates active orgs and calls
 // one of these per org; each opens its own `withOrgContext` (system actor) — a worker tick is not a request. All
-// audit rows go through `@wardenx/audit` `audit()` and carry ids, hashes and counts only (no PHI, no body text).
+// audit rows go through `@chartwarden/audit` `audit()` and carry ids, hashes and counts only (no PHI, no body text).
 //
 // The retention scan PLANS; it never deletes. Physical destruction needs the messaging hold/retention ADR
 // (ADR-0055 item 9) and the M4 certificate path, which is Phase 5 work. What this proves today is the rule that
 // matters first: a held message is withheld from the plan.
 import { randomUUID } from "node:crypto";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
 import {
   type HashMismatchEvent,
   type HashVerifyRunResult,
   type HashVerifySampleRow,
   messageBodySha256,
   runHashVerify,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { BodyKeyUnavailableError } from "../body-key-ring";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { countLegacyBodiesInTx } from "./body-backfill";

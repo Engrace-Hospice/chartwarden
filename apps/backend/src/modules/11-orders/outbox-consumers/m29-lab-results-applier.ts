@@ -25,8 +25,8 @@
 // observation>`, so a redelivery (or a second consumer racing) is a no-op that re-publishes nothing.
 // An attachment with no `orderRecordId` (a result bound to a patient but no order) changes no order and is
 // skipped; so is an id that names no lab order in this tenant.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 

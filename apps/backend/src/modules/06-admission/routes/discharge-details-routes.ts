@@ -14,8 +14,8 @@
 // route's convention). A first-time value needs no reason; replacing a recorded value needs `correctionReason`
 // (409 DISCHARGE_DETAIL_CORRECTION_REASON_REQUIRED otherwise). Every change emits `m6.discharge.details_recorded`,
 // which M23 consumes to re-validate the admission's open claims.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { DegradedError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { IdParamsSchema, parse } from "./admission-typebox";
 import type { DischargeDetailsService } from "./discharge-details-service";

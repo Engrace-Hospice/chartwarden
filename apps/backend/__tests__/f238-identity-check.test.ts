@@ -5,7 +5,7 @@ import {
   normaliseDob,
   splitFullName,
   worstIdentity,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import { describe, expect, it } from "vitest";
 
 const ARTHUR = { lastName: "Doclens", firstName: "Arthur", dateOfBirth: "1941-03-02" };

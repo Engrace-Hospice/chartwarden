@@ -1,6 +1,6 @@
 // apps/web/src/modules/06-admission/election-addendum-format.ts — pure labels / tones / countdown for the
 // election statement addendum panel (42 CFR 418.24(c)/(d)). No React, unit-testable.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 import type {
   AddendumOverview,
   AddendumStatus,
@@ -125,7 +125,7 @@ export function acknowledgementLabel(
       ? `${outcome} — scanned paper copy (content on paper)`
       : `${outcome} — scanned paper copy`;
   }
-  if (v.acknowledgementSource === "structured") return `${outcome} — recorded in WardenX`;
+  if (v.acknowledgementSource === "structured") return `${outcome} — recorded in ChartWarden`;
   return outcome;
 }
 

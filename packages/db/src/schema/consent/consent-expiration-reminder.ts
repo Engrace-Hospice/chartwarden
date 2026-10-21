@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_expiration_reminder` (M39 Consent §3.3 #7). The fired-reminder log for the
+// @chartwarden/db — `consent_expiration_reminder` (M39 Consent §3.3 #7). The fired-reminder log for the
 // platform-floor 90/30/14/7/1-day cadence (D9): one row per (consent record, reminder kind), with an
 // idempotency key so the hourly reminder cron never double-fires. delivery_channel routes through M36
 // (alert / email / in-app). Org-scoped child of consent_record → standard app.org_id RLS in M39-T03.

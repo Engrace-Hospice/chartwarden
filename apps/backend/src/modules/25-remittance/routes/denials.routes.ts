@@ -1,4 +1,4 @@
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/denials.routes.ts — M25 (§4.1 routes 9-17, 20) the denial
 // worklist: list, detail, the state ladder (assign/start/escalate/resolve/close/reopen), the step-up-gated
 // close-with-write-off, and the appeal spawn. Worklist read gates on `denial.worklist.read`; detail +

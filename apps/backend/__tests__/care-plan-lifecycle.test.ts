@@ -1,4 +1,4 @@
-import { REQUIRED_SIGNER_SET_IDG_REVIEW, REQUIRED_SIGNER_SET_INITIAL } from "@wardenx/types";
+import { REQUIRED_SIGNER_SET_IDG_REVIEW, REQUIRED_SIGNER_SET_INITIAL } from "@chartwarden/types";
 // apps/backend/__tests__/care-plan-lifecycle.test.ts — M7-T03 (§2.2 lifecycle, §2.3 validation).
 // The pure M7 care-plan domain core: the care_plan root + version + element machines, the §11 D5
 // Required Signer Set quorum, and the §2.3 synchronous validation guards. No DB — every fact is injected.

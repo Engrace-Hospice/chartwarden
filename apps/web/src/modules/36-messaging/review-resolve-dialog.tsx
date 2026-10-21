@@ -1,8 +1,8 @@
 // M36 WP 3.8 - a supervisor's decision on one review item: reassign its task, or close it with a reason CODE (no free
 // text). Esc / Back close it and focus returns to the opening button (the kit Modal). The server re-checks everything.
-import { TASK_CLOSE_REASONS } from "@wardenx/types";
-import type { ReviewItemDto, TaskCloseReason } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import { TASK_CLOSE_REASONS } from "@chartwarden/types";
+import type { ReviewItemDto, TaskCloseReason } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import {

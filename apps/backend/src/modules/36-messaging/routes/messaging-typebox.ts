@@ -11,7 +11,7 @@
 // service maps an unknown key to the §4.2 422 domain error.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { CHANNEL_KINDS } from "@wardenx/messaging";
+import { CHANNEL_KINDS } from "@chartwarden/messaging";
 import type {
   AlertInboxItem as ServiceAlertInboxItem,
   AlertRuleView as ServiceAlertRuleView,
@@ -22,8 +22,8 @@ import type {
   DeliveryEndpointView as ServiceDeliveryEndpointView,
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
-} from "@wardenx/messaging";
-import { MESSAGE_REACTION_KEYS, ValidationError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
 import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
 
 // --- shared scalars ---------------------------------------------------------------------------

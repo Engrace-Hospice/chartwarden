@@ -1,5 +1,5 @@
 // apps/backend/__tests__/patient-siting-reader.test.ts — M6's PatientSitingReader seam over a fake db.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createPatientSitingReader } from "../src/modules/06-admission/seams/patient-siting-reader";
 

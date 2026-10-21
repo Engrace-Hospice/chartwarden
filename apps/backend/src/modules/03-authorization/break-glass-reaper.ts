@@ -4,9 +4,9 @@
 // `m3.breakglass.ended` (outcome `expired`) was ever published. This sweep closes that: every lapsed,
 // unsettled grant becomes `expired` and the event is published in the same transaction. Idempotent — the
 // status-guarded UPDATE matches a row at most once, so a replayed tick or a racing replica emits nothing twice.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { registerPlatformJob, systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { registerPlatformJob, systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, inArray, lte } from "drizzle-orm";
 import type { M3OutboxPublisher } from "./authz-ports";

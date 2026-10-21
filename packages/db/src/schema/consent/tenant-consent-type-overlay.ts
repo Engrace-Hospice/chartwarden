@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_consent_type_overlay` (M39 Consent §3.3 #2). The per-org TIGHTEN-ONLY
+// @chartwarden/db — `tenant_consent_type_overlay` (M39 Consent §3.3 #2). The per-org TIGHTEN-ONLY
 // overlay on a platform consent type (D2/D8): a shorter expiration, a narrowed capture-method
 // subset, MORE reminders (never fewer), a non-loosening state addendum, a stricter jurisdiction
 // requirement. Org-scoped (not PHI — no patient field) → standard app.org_id RLS in M39-T03. The

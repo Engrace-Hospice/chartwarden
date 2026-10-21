@@ -3,8 +3,8 @@
 // The pure M19 cross-module boundary — no DB, no clock: every fact is injected. The seam-touching half
 // (`trigger-context`) is exercised through the M1 registry only where the read's SHAPE is the finding
 // (an M18 payload that carries no patient must still produce a fully anchored row).
-import type { M19SubscribedEventName, VisitDto, VisitReader } from "@wardenx/types";
-import { M19_SUBSCRIBED_EVENT_NAMES } from "@wardenx/types";
+import type { M19SubscribedEventName, VisitDto, VisitReader } from "@chartwarden/types";
+import { M19_SUBSCRIBED_EVENT_NAMES } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {

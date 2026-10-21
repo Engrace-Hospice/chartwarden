@@ -13,8 +13,8 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -391,7 +391,7 @@ describe("F-238 — GET /api/v1/intake/uploads/:id/summary + GET /api/v1/patient
     async getSummary(...args) {
       calls.push(args);
       if (!complete) {
-        throw new WardenXError("REVIEW_NOT_COMPLETE", "not complete", 409);
+        throw new ChartWardenError("REVIEW_NOT_COMPLETE", "not complete", 409);
       }
       return buildProspectSummary(input([]));
     },

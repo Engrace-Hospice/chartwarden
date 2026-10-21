@@ -1,10 +1,10 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/20-field-safety — M20 Field Safety screen registration (Track B / ADR-0030, §5.1).
 // The read + write surface over the live /api/v1/safety backend (30 routes, M20-T06).
 //
 // Each `requiredPermission` is the REAL §4.6 M20 key the matching route gates on
 // (apps/backend/src/modules/20-field-safety/permission-keys.ts → `M20_CONTRIBUTED_PERMISSIONS` in
-// @wardenx/auth) — this gates NAV VISIBILITY only. The server stays the authoritative enforcer, and a call
+// @chartwarden/auth) — this gates NAV VISIBILITY only. The server stays the authoritative enforcer, and a call
 // outside the caller's reach is a non-leaking 404 from the server, never a frontend hide.
 //
 // ── EACH SCREEN NAMES THE KEY ITS OWN PRIMARY READ GATES ON, NOT THE KEY ITS SUBJECT SUGGESTS ────────

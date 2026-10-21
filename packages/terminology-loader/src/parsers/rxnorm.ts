@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — RxNorm parser (NLM; tier 2: the full release needs a UMLS licence).
+// @chartwarden/terminology-loader — RxNorm parser (NLM; tier 2: the full release needs a UMLS licence).
 //
 // Input: the RxNorm Full release's RRF files (a zip whose `rrf/` folder holds them, or the files raw):
 //   RXNCONSO.RRF   required — concept atoms. Only SAB=RXNORM atoms with SUPPRESS=N become concepts; one concept

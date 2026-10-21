@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — ICD-10-PCS parser (CMS; tier 1 public).
+// @chartwarden/terminology-loader — ICD-10-PCS parser (CMS; tier 1 public).
 //
 // The PCS order file (`icd10pcs_order_YYYY.txt`) has the SAME fixed-width layout as the ICD-10-CM order
 // file (order no · code · valid-for-submission flag · short title · long title), so it shares that reader.

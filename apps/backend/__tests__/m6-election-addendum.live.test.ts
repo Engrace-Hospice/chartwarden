@@ -29,9 +29,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, organizationTimezone } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { NonCoveredItemSnapshot } from "@wardenx/types";
+import { createDbClient, organizationTimezone } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { NonCoveredItemSnapshot } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

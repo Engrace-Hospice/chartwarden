@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 measure-CALCULATOR unit tests (§3.1, §3.3, §4.11, §7 WF-03 / W-M30-26).
+// @chartwarden/quality — M30 measure-CALCULATOR unit tests (§3.1, §3.3, §4.11, §7 WF-03 / W-M30-26).
 //
 // Exercises the pure measure-calculator suite against synthetic injected populations (no DB, no seam, no
 // IO — the M33 `refresh.test.ts` / M34 pure-port idiom): the shared `ratioResult` kernel + banding floor,
@@ -57,7 +57,7 @@ import {
   resolvePeriodRule,
   // period math
   rolling12MonthToQuarterWindow,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 
 const EMPTY_SNAPSHOT: MeasureComputationSnapshot = {};

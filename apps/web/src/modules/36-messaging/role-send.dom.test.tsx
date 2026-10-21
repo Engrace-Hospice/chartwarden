@@ -4,8 +4,8 @@
 // explicit states that send nothing; the dialog's form never submits the composer's form; axe clean in each state.
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ROLE_SEND_FLAG_KEY } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@wardenx/ui";
+import { ROLE_SEND_FLAG_KEY } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";

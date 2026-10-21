@@ -11,8 +11,8 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { SBAR_SECTION_KEYS, type SbarSections } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { SBAR_SECTION_KEYS, type SbarSections } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

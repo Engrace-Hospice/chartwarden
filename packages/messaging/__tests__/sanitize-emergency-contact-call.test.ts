@@ -1,4 +1,4 @@
-// @wardenx/messaging - GAP-032: the emergency-contact call script (spec 4.7 amendment).
+// @chartwarden/messaging - GAP-032: the emergency-contact call script (spec 4.7 amendment).
 //
 // The voice channel's fixed script for OUT-OF-BAND ALERTS never speaks a name. The SOS terminus call is a
 // different, deliberate thing: an automated safety call to a clinician's consented emergency contact, which

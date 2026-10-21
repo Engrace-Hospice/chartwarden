@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/saas-tenant-platform",
+  "name": "@chartwarden/saas-tenant-platform",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/db": "workspace:*"
+    "@chartwarden/db": "workspace:*"
   }
 }

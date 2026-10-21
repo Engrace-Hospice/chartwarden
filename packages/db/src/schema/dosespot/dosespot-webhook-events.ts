@@ -1,4 +1,4 @@
-// @wardenx/db — `dosespot_webhook_event` (M12 §3.3 / §7.4 D7). The encrypted-at-rest receipt for every
+// @chartwarden/db — `dosespot_webhook_event` (M12 §3.3 / §7.4 D7). The encrypted-at-rest receipt for every
 // signature-verified inbound DoseSpot webhook (script_status_update / refill_request / medication_history_result
 // / patient_mismatch / prescriber_status_changed). The raw body is stored ONLY as a per-tenant DEK envelope
 // (`raw_body_cipher` + wrapped `raw_body_dek`, M1 envelope-encryption) with a SHA-256 `body_digest` for later

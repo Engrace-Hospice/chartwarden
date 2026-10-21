@@ -1,4 +1,4 @@
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 // apps/admin/src/modules/35-subscription-billing — M35A-T04 screen-registry unit test (the ADR-0030 substitute
 // for arch:ui-parity + arch:frame-fidelity, which scan apps/web ONLY and are blind to apps/admin). Guards the

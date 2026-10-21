@@ -1,11 +1,11 @@
-// @wardenx/quality — M30 measure-REGISTRATIONS unit tests (§3.1 / §4.8 / V-8).
+// @chartwarden/quality — M30 measure-REGISTRATIONS unit tests (§3.1 / §4.8 / V-8).
 //
 // Proves the gap between "workers boot" and "workers compute" is closed: `buildMeasureRegistry()` binds
 // EVERY catalog descriptor to its concrete pure calculator, the per-registration period rule cannot drift
 // from `MEASURE_CATALOG`, and the `m30.measure_recompute` worker — handed the real registry instead of the
 // old empty map — resolves a calculator by measure code and computes a real value rather than failing
 // closed with `MeasureRegistrationMissing`. PURE: no DB / Valkey / BullMQ (the M33 `refresh.test.ts` idiom).
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type ComputeHvldlInput,
   M30_MEASURE_REGISTRATIONS,
@@ -14,7 +14,7 @@ import {
   buildMeasureRegistry,
   computeHvldl,
   handleMeasureRecompute,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 
 describe("M30 measure registrations", () => {

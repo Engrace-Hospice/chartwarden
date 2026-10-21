@@ -1,7 +1,7 @@
 /**
  * M15-F04 — the 418.78(e) denominator: signed hands-on staff visit minutes from M8's digests.
  */
-import type { PatientId, SignedEncounterDigest } from "@wardenx/types";
+import type { PatientId, SignedEncounterDigest } from "@chartwarden/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const reader = vi.hoisted(() => ({ signedEncountersForPatientSince: vi.fn() }));

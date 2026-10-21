@@ -19,8 +19,8 @@
 // The `gps_quality` write relies on migration 0351, which permits ONLY the transition to 'suspected_spoof' on the
 // otherwise append-only `evv_event` row. The overwritten value is not lost: the geofence verdict lives on
 // `evv_geofence_evaluation` and the original capture facts (coords, accuracy, device) are untouched.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, lte } from "drizzle-orm";
 import { type EvvCoordsCipher, UNBOUND_EVV_COORDS_CIPHER } from "../coords";
 import { type Coordinate, haversineMeters } from "../domain/geofence";

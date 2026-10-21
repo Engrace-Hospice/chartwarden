@@ -1,4 +1,4 @@
-// @wardenx/db — `report_base_catalog` (M33 §3.3). The platform-global catalog of report bases:
+// @chartwarden/db — `report_base_catalog` (M33 §3.3). The platform-global catalog of report bases:
 // each base binds a `report_mv` materialized view (mv_key) to a dimension/measure catalog and the
 // drilldown-URL template. PLATFORM-scoped: NO organization_id (retention class `platform`); sits on
 // the check-tenancy NON_ORG_SCOPED allowlist. `mv_key` is a logical+SQL ref into

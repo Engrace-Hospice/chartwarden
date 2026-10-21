@@ -1,7 +1,7 @@
 // M36 WP 4.9 (ADR-0076) - every word the supervisor's unacknowledged queue shows, in one place. PROVISIONAL pending clinical-lead
 // review (brief section 11): change the text here, never the codes. The list is not a page and not the emergency path, it only reads,
 // and a filter only narrows what is shown: the total of everything waiting is always stated beside it.
-import type { AckClass, AckEscalationNote, AckQueueStatus } from "@wardenx/types";
+import type { AckClass, AckEscalationNote, AckQueueStatus } from "@chartwarden/types";
 
 export const QUEUE_TITLE = "Unacknowledged urgent requests";
 export const QUEUE_BREADCRUMB = "General / Messaging";

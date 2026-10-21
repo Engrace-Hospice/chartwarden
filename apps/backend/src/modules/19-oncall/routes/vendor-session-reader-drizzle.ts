@@ -12,7 +12,7 @@
 // entity), and the question here is "has this TENANT engaged an outsourced model at all" — a vendor
 // binding is org-wide, and narrowing it to one PE would refuse a legitimate bind for an agency whose
 // outsourced coverage starts at a different entity. Any row naming an outsourced model answers yes.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray } from "drizzle-orm";
 import type { VendorBindingFacts, VendorSessionBindReader } from "./vendor-sessions.routes";
 

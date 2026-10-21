@@ -4,7 +4,7 @@
 // received_confirmed → completed, with the two-phase post-`ordered` cancellation and the kit-only
 // `returned` branch.
 //
-// THE GRAPH IS NOT RESTATED HERE. Every legal edge comes from `SUPPLY_REQUEST_EDGES` in `@wardenx/supplies`
+// THE GRAPH IS NOT RESTATED HERE. Every legal edge comes from `SUPPLY_REQUEST_EDGES` in `@chartwarden/supplies`
 // (the package header promises exactly this), so the graph the machine runs, the graph the §5 UI timeline
 // renders and the graph the tests walk are one object. This file owns only what an edge table cannot carry:
 // the per-transition GUARDS and the §2.11 side-effect list.
@@ -18,7 +18,7 @@
 //   2. **`completeRequest` is three different rules behind one edge.** A one-shot DME/supply completes on
 //      receipt; a monthly rental stays open for the rental life so the recurring HCPCS line has a row to
 //      accrue against, and completes only on M11's discontinuation; a kit completes only on M13's ack. The
-//      predicate lives in `@wardenx/supplies` (`autoCompletesOnReceipt`) and the two waiting cases are
+//      predicate lives in `@chartwarden/supplies` (`autoCompletesOnReceipt`) and the two waiting cases are
 //      distinct error codes so a stalled-rental screen never reads as a stalled kit.
 //
 //   3. **`system_auto_confirm` is gated on the clock, not on intent.** The 72h fallback is the one actor
@@ -33,7 +33,7 @@ import {
   isVendorAssignmentCoherent,
   isVendorConfirmationOverdue,
   resolveTransition,
-} from "@wardenx/supplies";
+} from "@chartwarden/supplies";
 import type {
   DmeRentalCadence,
   IsoInstant,
@@ -42,7 +42,7 @@ import type {
   SupplyReceivedConfirmedActor,
   SupplyRequestKind,
   SupplyRequestStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type SupplySideEffect, type SupplyTransitionResult, result, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
 

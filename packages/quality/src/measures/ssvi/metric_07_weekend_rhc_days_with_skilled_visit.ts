@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 7: Weekend RHC days with a skilled visit as a percentage of total RHC days (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 7: Weekend RHC days with a skilled visit as a percentage of total RHC days (CMS-1851-F Table 9). Pure. No IO.
 //
 // Point at ≤ 4.8% (25th pct). Rate = Saturday/Sunday RHC days with ≥ 1 signed skilled visit ÷ ALL RHC days (CMS's
 // denominator is total RHC days, not weekend days). "Skilled" = nursing (RN/LPN) or medical social worker; CMS also

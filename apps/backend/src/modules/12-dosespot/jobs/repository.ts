@@ -3,7 +3,7 @@
 // (F-150, #248) debounced-enqueue + claim shape, adapted to this queue's two-kind vocabulary and its
 // `FOR UPDATE SKIP LOCKED` claim (the `outbox-dispatcher.ts` `pollOrgBatch` precedent, so two worker
 // ticks racing the same org's pending rows can never claim the same one).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 type DosespotSyncQueueKind = schema.DosespotSyncQueueKind;

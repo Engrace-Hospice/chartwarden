@@ -3,9 +3,9 @@
 // module's screen. It never edits, and nothing here issues a non-GET request. `unavailable` never says why (missing,
 // forbidden, erased and failing sources are one answer); a 404 means the tenant flag is off and degrades to the plain
 // placeholder the server projects for the same node.
-import { CLINICAL_LINK_PLAIN_TEXT } from "@wardenx/types";
-import type { ClinicalLinkKind } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import { CLINICAL_LINK_PLAIN_TEXT } from "@chartwarden/types";
+import type { ClinicalLinkKind } from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

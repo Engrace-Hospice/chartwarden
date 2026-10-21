@@ -25,7 +25,7 @@
 // The server stays the only authorization point: nothing here decides what a caller may see. An
 // out-of-scope call is a non-leaking 404 from the server, never a frontend hide — deliberately, because
 // "this call 403s" would tell an unauthorized caller that a particular patient rang the after-hours line.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
 

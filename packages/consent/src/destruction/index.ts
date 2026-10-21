@@ -1,4 +1,4 @@
-// @wardenx/consent — the consent-subtree destruction engine (M39-T10, §3.8, D20).
+// @chartwarden/consent — the consent-subtree destruction engine (M39-T10, §3.8, D20).
 //
 // Called by M4's destruction-cert workflow when a patient's overall retention class transitions to
 // eligible_for_destruction (the `consent` data class). Pure-over-a-port: the engine decides WHICH

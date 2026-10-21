@@ -1,4 +1,4 @@
-// @wardenx/billing — the M23 tenant-offboarding / per-patient destruction eraseFn contract (M4 destruction
+// @chartwarden/billing — the M23 tenant-offboarding / per-patient destruction eraseFn contract (M4 destruction
 // registry, §3.7 / §8.4). The billing record is COMPLIANCE-class (7 years past final action per CMS
 // 42 CFR §424 / §405 + state override, M4 D1); the eraser is keyed on retention class `billing_record`.
 //

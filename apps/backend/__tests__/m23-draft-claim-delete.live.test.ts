@@ -14,9 +14,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repositories } from "@wardenx/billing";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { repositories } from "@chartwarden/billing";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";

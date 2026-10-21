@@ -13,9 +13,9 @@
 // organization but holds no live role maps to an EMPTY array; an unknown / cross-tenant / revoked membership is ABSENT,
 // so a caller can tell "no such staff member" from "staff member with no discipline". RLS (`app.org_id`) is the wall;
 // the explicit `organization_id` predicate is the belt behind it. ONE query for the whole id set, never N+1.
-import { roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 
 const MB = schema.memberships;

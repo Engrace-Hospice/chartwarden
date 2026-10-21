@@ -1,4 +1,4 @@
-// @wardenx/billing — internal service-to-service seam HTTP endpoints (system_principal):
+// @chartwarden/billing — internal service-to-service seam HTTP endpoints (system_principal):
 // route #39 `GET /api/v1/internal/billing/claim-day-projection` (ClaimDayProjectionProvider; M26/M27),
 // route #40 `GET /api/v1/internal/billing/submissions` (ClaimSubmissionReader.acceptedSubmissionsInWindow;
 // M25) — §4.1. Aggregate / id-keyed; no PHI. These mirror the published seam DTOs verbatim.

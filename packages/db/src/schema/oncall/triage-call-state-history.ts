@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_call_state_history` (M19 §3.3). APPEND-ONLY, one row per §2.2.1 transition
+// @chartwarden/db — `triage_call_state_history` (M19 §3.3). APPEND-ONLY, one row per §2.2.1 transition
 // (M17's `visit_state_history` pattern). Two things depend on it beyond the audit story: §2.7's outage
 // detection finds the BCP window by looking for the gap where no transitions occurred, and the §8.3
 // repudiation control is exactly "every state change names an actor".

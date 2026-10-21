@@ -8,14 +8,14 @@
 //     onto the `createdAt` slot of {@link CursorKeyset} so this one helper serves every list route.
 //   - base64url JSON in the slice, HMAC-signed in prod — the route surface is stable either way. A
 //     malformed/tampered cursor is a 400 VALIDATION_FAILED (never page-from-start).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
+/** A @chartwarden/auth GuardHandler-shaped Fastify pre-handler. */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** 400 IDEMPOTENCY_KEY_REQUIRED — a mutating route did not carry the required `Idempotency-Key` header. */
-export class IdempotencyKeyRequiredError extends WardenXError {
+export class IdempotencyKeyRequiredError extends ChartWardenError {
   constructor() {
     super("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required on this route", 400);
     this.name = "IdempotencyKeyRequiredError";
@@ -62,7 +62,7 @@ export function decodeCursor(cursor: string): CursorKeyset {
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
 }
 

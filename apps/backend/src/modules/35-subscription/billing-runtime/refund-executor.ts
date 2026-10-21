@@ -20,7 +20,7 @@
 //
 // With no Stripe credential the bound client is the FAIL-CLOSED port: every call fails permanently and the
 // refund is marked `executed_failed` with `STRIPE_NOT_CONFIGURED` - it is never reported as paid out.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   STRIPE_MAX_ATTEMPTS,
   type StripeApiCallAuditStore,
@@ -29,8 +29,8 @@ import {
   type StripeDispatchEvent,
   type StripeMirrorApplier,
   dispatchStripeCall,
-} from "@wardenx/subscription-billing";
-import type { OrgId, StripeApiCallAuditId } from "@wardenx/types";
+} from "@chartwarden/subscription-billing";
+import type { OrgId, StripeApiCallAuditId } from "@chartwarden/types";
 import { and, asc, eq, gte, like, lt, sql } from "drizzle-orm";
 import type { PlatformRunner, WriteOutboxPort } from "../routes/service-drizzle";
 

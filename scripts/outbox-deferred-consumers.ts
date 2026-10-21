@@ -163,7 +163,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // `resolveDenialCategory` helper that reuses the existing `effectiveCategory` CARC-category
   // resolution rather than re-deriving it. Building it surfaced a third, undocumented blocker: neither
   // catalogued payload carries `providerEntityId`, which `denial_case` requires NOT NULL — resolved
-  // per event: M23's via a direct `@wardenx/billing` `ClaimRepository.findById` read (legal — M25's
+  // per event: M23's via a direct `@chartwarden/billing` `ClaimRepository.findById` read (legal — M25's
   // `dependsOn` includes 23); M18's via M17's `VisitReader` seam, wrapped in `runWithRequestContext`
   // since `SchedulingSeamStore.visitById` opens `withOrgContextFromRequest` and a dispatcher tick is
   // not a request (the same F-118 fix `19-oncall`/`20-field-safety` already apply for this identical
@@ -212,7 +212,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   //      null for an IPU-stock-kit-on-room line with no per-patient order — a real, documented M21
   //      business concept, `WARDENX_MODULE_21...md:58`) was investigated fresh rather than re-asserted:
   //      confirmed, by reading every M13 table (`administration_record`, `comfort_kit_drawdown`) and the
-  //      whole pure `@wardenx/emar` comfort-kit core, that NO precedent anywhere represents an order-less
+  //      whole pure `@chartwarden/emar` comfort-kit core, that NO precedent anywhere represents an order-less
   //      drawdown/administration — inventing one now would be deciding unreviewed DEA-adjacent
   //      controlled-substance-accounting semantics on the fly (the F-102 "a guessed provider entity is a
   //      mis-stated cost report" lesson one module over). Resolved by SCOPING rather than guessing: the
@@ -225,7 +225,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // All four events are now live-bound: `m13.comfort_kit.deployed` completes a handshake M21's own
   // `buildM21ComfortKitDeploymentAckConsumer` (F-153) had sat waiting on, unreachable, since it was
   // built — nothing had ever published the event it subscribes to. A new pure `applyKitReplenishment`
-  // (`@wardenx/emar`) fills the one genuine gap in the domain core (no function existed for "apply a
+  // (`@chartwarden/emar`) fills the one genuine gap in the domain core (no function existed for "apply a
   // physically-arrived replenishment to a drawdown"), capped at `expected_quantity` rather than allowed
   // to overshoot. Migration 0259 adds `comfort_kit_deployment`'s first-ever idempotency key
   // (`(organization_id, m21_supply_dispatch_id)`, NULLS DISTINCT) — the table had no live writer before

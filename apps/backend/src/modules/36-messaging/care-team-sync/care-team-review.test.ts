@@ -1,6 +1,6 @@
 // WP 3.9 - a clinician taken off a patient's care team: their open care-team tasks for that patient are queued for a
 // supervisor (never reassigned or closed here), only when the clinician is really off the roster.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import {
   ALICE,

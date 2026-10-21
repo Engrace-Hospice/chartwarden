@@ -2,7 +2,7 @@
 // focus, a listbox of the caller's replies (platform, organization, personal), arrow keys to move, Enter to insert,
 // Escape to close and hand focus back to the composer. Choosing a reply only calls `onInsert(body)`: the composer puts
 // the text in the draft, the user may edit it, and what is sent is an ordinary message (nothing links it to the reply).
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FocusEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { CATEGORY_LABEL, SCOPE_LABEL, type SavedReply } from "./saved-replies-types";

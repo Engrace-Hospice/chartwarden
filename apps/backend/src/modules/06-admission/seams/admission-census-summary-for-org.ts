@@ -9,9 +9,9 @@
 // with the explicit `organization_id` predicate behind it, uses the NULL system actor (a pure aggregate, no
 // acting human), and takes "today" in the ORG's timezone — the same calendar day the clinicians see — never
 // the server's.
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, isNull, lt, lte, sql } from "drizzle-orm";
 
 const ADM = schema.admissions;

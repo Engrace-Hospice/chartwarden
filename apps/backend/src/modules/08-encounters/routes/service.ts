@@ -18,15 +18,15 @@ import {
   requiredScalesFor,
   requiredVitalsFor,
   resolveTemplate,
-} from "@wardenx/hearthnote";
-import { VOCAB_VERSION, activeNarrativeVocabRelease, entriesFor } from "@wardenx/narrative-vocab";
+} from "@chartwarden/hearthnote";
+import { VOCAB_VERSION, activeNarrativeVocabRelease, entriesFor } from "@chartwarden/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
   EncounterType,
   LocalDate,
-} from "@wardenx/types";
-import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import {
   type F2fAttestationWrite,
   type MileageInput,
@@ -216,7 +216,7 @@ export interface MileageView {
 /**
  * One selectable vocabulary entry as the AUTHORING MENU offers it (F-063).
  *
- * `@wardenx/narrative-vocab`'s own header calls `entriesFor(encounterType, discipline)` "the entries a
+ * `@chartwarden/narrative-vocab`'s own header calls `entriesFor(encounterType, discipline)` "the entries a
  * menu surfaces … so the selection UI and the template engine see the same deterministic ordering" —
  * and no route ever surfaced it, so there was no selection UI to see anything. `PATCH .../selections`
  * takes `sectionId` and `code` as free strings at the boundary and the server rejects an unknown one,
@@ -1060,7 +1060,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         id,
         status: "draft",
         // The registry key, not an invented one. This used to be `${discipline}_${encounterType}_v1`,
-        // a string matching no template in `@wardenx/hearthnote`'s registry — so a client that used it
+        // a string matching no template in `@chartwarden/hearthnote`'s registry — so a client that used it
         // to fetch its section list would have found nothing (#114).
         templateKey: hearthnoteTemplateKey(args.encounterType, args.discipline),
         templateVersion: VOCAB_VERSION,

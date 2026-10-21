@@ -1,4 +1,4 @@
-// @wardenx/db — `report_drilldown_audit` (M33 §3.3). The insert-only audit trail of drilldown
+// @chartwarden/db — `report_drilldown_audit` (M33 §3.3). The insert-only audit trail of drilldown
 // navigations from a tile into an owner-module surface: actor, source tile, target module/surface,
 // the envelope-encrypted filter context (may carry patient identifiers under the per-tenant DEK),
 // the cross-module trace id, and the consent-narrowing posture. ORG-SCOPED: carries organization_id

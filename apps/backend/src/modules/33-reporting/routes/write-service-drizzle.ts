@@ -12,16 +12,16 @@
 // this adapter supplies the facts (the base's status, the view's definition-spec row_limit, the cron's next
 // two fires, the recipient-membership check) from real rows / injected ports and projects the rows to the
 // identical DTOs. The §4.10 `m33.*` outbox events are emitted through the injected (optional) outbox port.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   ReportCatalogRepository,
   ReportDefinitionRepository,
   ReportScheduleRepository,
   ReportShareRepository,
   ReportViewRepository,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";

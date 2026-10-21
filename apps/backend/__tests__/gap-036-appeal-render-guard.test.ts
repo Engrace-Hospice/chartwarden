@@ -1,6 +1,6 @@
 // GAP-036 - the appeal packet re-verifies its enclosures at RENDER time (a document can be superseded, destroyed or
 // reclassified to 42 CFR Part 2 between submit and render), and a refusal is a settled decision, not a retry.
-import { buildAppealPacketRenderPayload } from "@wardenx/types";
+import { buildAppealPacketRenderPayload } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import {

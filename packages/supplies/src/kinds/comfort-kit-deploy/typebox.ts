@@ -1,4 +1,4 @@
-// @wardenx/supplies — §2.1 `kind='comfort_kit_deploy'` request payload (D1 / D6 / D17).
+// @chartwarden/supplies — §2.1 `kind='comfort_kit_deploy'` request payload (D1 / D6 / D17).
 
 import { type Static, Type } from "@sinclair/typebox";
 

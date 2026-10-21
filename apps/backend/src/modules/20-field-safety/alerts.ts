@@ -30,7 +30,7 @@
 // ── THREE PROPERTIES THAT ARE THE POINT OF THE FILE ─────────────────────────────────────────────────
 //
 //   1. `systemLocked` IS NOT ADVISORY, AND THE LIST IS NOT LOCAL. §4.9 marks six rules locked and
-//      `@wardenx/types` already pins that set as `M20_SYSTEM_LOCKED_ALERT_TYPES`.
+//      `@chartwarden/types` already pins that set as `M20_SYSTEM_LOCKED_ALERT_TYPES`.
 //      {@link isSafetyAlertSuppressible} is the ONE function any tenant-policy check must go through and it
 //      consults the PINNED list, not the rule table below — so a rule edited here can never quietly unlock
 //      the six alerts an agency under staffing pressure would most want silenced. M20 has more locked rules
@@ -76,8 +76,8 @@ import type {
   SosAlertResolvedAlert,
   SosTerminusReachedAlert,
   VisitId,
-} from "@wardenx/types";
-import { M20_SYSTEM_LOCKED_ALERT_TYPES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { M20_SYSTEM_LOCKED_ALERT_TYPES } from "@chartwarden/types";
 
 /** The M36 alert CATEGORY every M20 rule rides (M36 §3.6's `alert_category` — already a member). */
 export const M20_ALERT_CATEGORY = "field_safety" as const;
@@ -274,7 +274,7 @@ export function safetyAlertRuleFor(
 /**
  * §4.9 — may a tenant setting suppress this alert?
  *
- * Consults the `@wardenx/types` pinned set, NOT the local rule table (property 1). An unknown event type
+ * Consults the `@chartwarden/types` pinned set, NOT the local rule table (property 1). An unknown event type
  * is treated as NOT suppressible: a rule nobody has classified must not default to silenceable, and on
  * this module the failure mode of getting it backwards is a page nobody receives.
  */
@@ -408,7 +408,7 @@ export function buildHighRiskAreaEnteredAlert(input: {
  *
  * The field is `severityLevel`, not `severity` — the payload's own `severity` is the M36 ALERT severity
  * (`warn`), and the incident's clinical severity is a different ladder entirely (`minor` …
- * `life_threatening`). @wardenx/types named them apart at M20-T01 so a builder cannot collapse them; the
+ * `life_threatening`). @chartwarden/types named them apart at M20-T01 so a builder cannot collapse them; the
  * builders below take the incident value under its own name for the same reason.
  */
 export function buildIncidentSubmittedAlert(input: {

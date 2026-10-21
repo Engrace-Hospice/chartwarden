@@ -20,13 +20,13 @@
 //      directly; M32 owns the adapter).
 //   3. FAILURE IS NOT A BLOCKER. A refused or failed augmentation returns the deterministic result with the
 //      reason attached. The score is already complete without it — Layer 2 adds prose, never the decision.
-import type { BereavementLayer2Reason } from "@wardenx/bereavement";
+import type { BereavementLayer2Reason } from "@chartwarden/bereavement";
 import {
   BEREAVEMENT_AI_FULL_FLAG as AI_FULL_FLAG,
   evaluateBereavementLayer2Eligibility,
   mergeAugmentation,
-} from "@wardenx/bereavement";
-import type { BereavementAugmentationResult, BereavementRiskTier } from "@wardenx/types";
+} from "@chartwarden/bereavement";
+import type { BereavementAugmentationResult, BereavementRiskTier } from "@chartwarden/types";
 import type { BereavementRiskScoreDraft, BereavementRiskScoreResult } from "./score";
 
 /** Resolves an org's feature flags. Structurally M1's `FeatureFlagReader`; absent ⇒ every flag off, which

@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac — the Authorization Contract (M3 — Authorization, M3-T05).
+// @chartwarden/auth · rbac — the Authorization Contract (M3 — Authorization, M3-T05).
 //
 // Spec §4.1 (the middleware EVERY module consumes) + §2.2 (the resolution pipeline).
 // This file ships the RBAC half of the single guard surface every module's routes use:
@@ -14,10 +14,10 @@
 // (`requireAbac`) lives in `../abac/require-abac` and consumes its own deny-default seam.
 //
 // `packages/auth` stays Fastify-agnostic: guards are typed against the structural
-// `GuardRequest` (the `@wardenx/types` `HttpRequestContext` on `request.context`), which
+// `GuardRequest` (the `@chartwarden/types` `HttpRequestContext` on `request.context`), which
 // is assignable from `FastifyRequest`, so the same guard is a valid Fastify preHandler
 // without this leaf package importing `fastify`.
-import { ForbiddenError, type HttpRequestContext, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, type HttpRequestContext, UnauthorizedError } from "@chartwarden/types";
 import type { PermissionKey } from "../permissions/catalog";
 
 /**
@@ -34,7 +34,7 @@ export interface GuardRequest {
 
 /**
  * A route preHandler in the §2.2 pipeline. Resolves (no-op) when access is permitted and
- * THROWS a `WardenXError` (401/403/404) when denied — the M1 error handler renders the
+ * THROWS a `ChartWardenError` (401/403/404) when denied — the M1 error handler renders the
  * envelope. Async so a guard may consult the DB-backed resolver/evaluator seams.
  */
 export type GuardHandler = (request: GuardRequest) => Promise<void>;

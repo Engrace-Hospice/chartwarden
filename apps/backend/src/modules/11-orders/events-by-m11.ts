@@ -3,7 +3,7 @@
 // namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file for
 // naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m11'), and valid declared consumers (real
 // module ids). The canonical wire `eventName` published to the M1 dispatcher follows M1 §3.17
-// (`m11.order.<entity>_<verb>`) and mirrors `M11_EVENT_NAMES` in @wardenx/types (the closed §4.4 set the
+// (`m11.order.<entity>_<verb>`) and mirrors `M11_EVENT_NAMES` in @chartwarden/types (the closed §4.4 set the
 // lifecycle machine / verbal-timer / standing-spawner / discontinuation cascade / lab appliers may emit).
 // This file adds the TypeBox `payloadSchema` + declared consumers the dispatcher validates each publish
 // against (§4.4 catalog), so the "DB updated but the event never went out" failure mode is closed in the
@@ -14,7 +14,7 @@
 // by M11 — the producer side ships, the consumer attaches when that module lands. That is the spec's
 // deny-stub posture: M11 never calls those modules' routes; it only emits the typed outbox event.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -43,7 +43,7 @@ const orderSignatureTargetKind = Type.Union([
 ]);
 
 // The §4.4 pinned `m11.order.hl7_orm_requested` payload (M11 produces, M29 consumes). Mirrors the
-// `OrmRequestedPayload` interface in @wardenx/types — the contract shared with the T-29.08 ORM builder.
+// `OrmRequestedPayload` interface in @chartwarden/types — the contract shared with the T-29.08 ORM builder.
 // Demographics are INTENTIONALLY MINIMAL (no SSN / NK1 / IN1 / GT1 per the T-29.08 §3.6 PHI denylist).
 // F-181 (#248) — exported so the M11 producer can `Value.Check` its payload BEFORE publishing: a payload the
 // catalog refuses would otherwise throw out of the sign transaction and block signing the order itself.

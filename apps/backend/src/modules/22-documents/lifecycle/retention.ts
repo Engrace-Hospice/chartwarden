@@ -6,7 +6,7 @@
 // workflow — D23), and the legal-hold OVERRIDE: a document under an active legal hold has no computable
 // disposition date and is never destruction-eligible regardless of its retention class (D12). All pure;
 // "now" and the anchor instants are injected, so the math is deterministic and unit-testable.
-import type { DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentRetentionClass } from "@chartwarden/types";
 import { DocumentStateError, require_ } from "./errors";
 
 /** §8.6 retention floors (days) per class, anchored to the disposition instant. `compliance` = 7y (M4 D1);

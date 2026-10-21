@@ -1,5 +1,5 @@
 import type { TradingPartnerCredentials } from "../credentials";
-// @wardenx/medicaid-adapters — the Oregon launch-gateway (WX-PR-011). Mirrors M23's
+// @chartwarden/medicaid-adapters — the Oregon launch-gateway (WX-PR-011). Mirrors M23's
 // `createM23LaunchGateway`/`m23LaunchGatewayConfigFromEnv` shape (apps/backend/.../jobs/launch-gateway.ts)
 // EXCEPT for one deliberate difference: M23's MAC/X12 sidecars are platform-wide (one bearer/URL pair from
 // env for the whole cluster), but Oregon's OHA MMIS / CCO endpoints are PER-PROVIDER-ENTITY — each PE's own

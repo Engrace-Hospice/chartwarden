@@ -8,10 +8,10 @@
 // ONE audited `withPlatformContext` transaction (F03/F09). The DSAR list is PHI-minimal by construction: it
 // projects job identity, status and SLA facts only - never the patient id, the requestor-verification evidence
 // or the bundle handles.
-import { type DbClient, schema } from "@wardenx/db";
-import { OnboardingRepository } from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 

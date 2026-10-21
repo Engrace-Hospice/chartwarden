@@ -6,9 +6,9 @@
 // writes M5's table), and `PatientCaregiverReader.primaryCaregiverUserId` (the `portal_caregiver_is_primary_or_dpoa`
 // ABAC read) resolves the PRIMARY current caregiver's user through it. Before this the reader was a deny-stub
 // ("no caregiver->user schema link exists"), so family caregivers could never pass the attestation gate.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientCaregiverReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientCaregiverReader } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
 
 export type CaregiverLinkOutcome = "linked" | "already_linked" | "caregiver_not_found" | "conflict";

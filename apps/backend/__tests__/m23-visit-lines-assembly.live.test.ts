@@ -24,9 +24,9 @@ import {
   placeOfServiceConsistency,
   repositories,
   visitLinesReportable,
-} from "@wardenx/billing";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/billing";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleVisitChargeService } from "../src/modules/23-billing-medicare/routes/visit-charge-service";

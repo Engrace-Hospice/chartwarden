@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — refill inbox (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill inbox). The
 // prescriber / clinical-supervisor queue of pending refill requests (§2.7 D9), sorted by request age (a proxy
@@ -19,7 +19,7 @@ import {
 // ABAC predicate narrows the list server-side to the caller's caseload OR the orders they prescribe (ADR-0030 —
 // no frontend authz; the patient name is SUD-consent-gated server-side). The approve/deny actions live on the
 // detail screen as their write surface hardens. Reads GET /api/v1/refills via the typed client.
-// Leaves only (@wardenx/ui).
+// Leaves only (@chartwarden/ui).
 // #91 — a row opens the REFILL, where the §2.7 approve/deny decision lives. The per-schedule refill
 // cap the decision is bounded by is the server's, and the detail is where the source order is visible.
 import { useCallback, useEffect, useMemo, useState } from "react";

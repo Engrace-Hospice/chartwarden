@@ -12,7 +12,7 @@
 // recovered notice on the same feed.
 // TENANT from the envelope `event.organizationId`, never the payload copy. NO host, port or certificate in the alert: ids,
 // enums and instants only. A malformed event THROWS (relay retry -> DLQ), never a silently dropped page.
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 
 import type {
   DispatchableOutboxEvent,

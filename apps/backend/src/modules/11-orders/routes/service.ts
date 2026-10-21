@@ -1,6 +1,6 @@
 // apps/backend/src/modules/11-orders/routes/service.ts — M11-T06 the §4.1 route service over an in-memory
 // backend (the M8-T09 / M9-T05 / M10-T06 in-mem-slice precedent; Drizzle in prod under `withOrgContext` so
-// RLS backstops every read). The service composes the PURE M11 domain (`@wardenx/orders`): the §2.2 D2
+// RLS backstops every read). The service composes the PURE M11 domain (`@chartwarden/orders`): the §2.2 D2
 // order lifecycle machine (`transitionOrder`), the §2.5 cosignature rules (`resolveCosignRequirement` /
 // `planCosignAttest`), the §2.2/§4.7 author / signer eligibility predicates, the §2.3 verbal-deadline math
 // (`computeVerbalDeadline`), and the §2.4 standing-order plans. Every state change records the §4.4 outbox
@@ -31,7 +31,7 @@ import {
   transitionOrder,
   validateOrderData,
   validateVerbalWindowHours,
-} from "@wardenx/orders";
+} from "@chartwarden/orders";
 import type {
   OrderDiscontinuationReason,
   OrderKind,
@@ -39,8 +39,8 @@ import type {
   OrderStatus,
   StandingOrderCadence,
   StandingOrderStatus,
-} from "@wardenx/types";
-import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
 import {
   type RecoveryAttestation,
   type RecoveryEvidence,

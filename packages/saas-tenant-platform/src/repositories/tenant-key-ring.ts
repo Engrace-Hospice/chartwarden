@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — `tenant_key_ring` (+ `tenant_key_destruction_log`)
+// @chartwarden/saas-tenant-platform · repositories — `tenant_key_ring` (+ `tenant_key_destruction_log`)
 // data port (M34 §3.5).
 //
 // The key ring holds the per-tenant DEK ciphertext wrapped by the platform KEK (the `TenantKeyProvider`
@@ -10,7 +10,7 @@
 // SECURITY DEFINER function (run as `tenant_platform_writer`); the table grants block any other path.
 // The shred service calls that function via `db.execute(sql\`SELECT m34_destroy_tenant_key_ring(...)\`)`
 // and uses THIS repo only for the metadata reads and the per-phase log inserts around it.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 
 const KR = schema.tenantKeyRing;

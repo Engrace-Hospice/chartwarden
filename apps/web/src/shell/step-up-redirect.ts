@@ -3,7 +3,7 @@
 // the user had typed survives the round trip. Only a 403 carrying `STEP_UP_REQUIRED` qualifies: any other
 // 403 is a permanent "not allowed", and redirecting it into a ceremony would be a loop with no exit.
 // The refusal test and the path are the shared kit's (also used by apps/admin), so both apps agree.
-import { isStepUpRequired, stepUpPath } from "@wardenx/ui";
+import { isStepUpRequired, stepUpPath } from "@chartwarden/ui";
 
 const DRAFT_PREFIX = "wx.step-up-draft:";
 

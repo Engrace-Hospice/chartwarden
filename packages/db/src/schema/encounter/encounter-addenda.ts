@@ -1,4 +1,4 @@
-// @wardenx/db — `encounter_addendum` (M8 §3.3). A correction/amendment drafted on a signed encounter
+// @chartwarden/db — `encounter_addendum` (M8 §3.3). A correction/amendment drafted on a signed encounter
 // (§2.4). PHI-bearing → three-column tenancy rule (provider_entity_id + location_id NOT NULL,
 // denormalized from the parent encounter). `reason` is clinician free-text → denylisted in the M4
 // write-audit trigger (M8-T03). RLS + trigger land in migration 0031 (M8-T03).

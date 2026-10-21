@@ -1,4 +1,4 @@
-// @wardenx/db — `qapi_program` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `qapi_program` (M30 §3.3; non-partitioned; retention class `compliance`).
 // The annual QAPI program record (CoP §418.58): one per (org, plan_year), carrying the governing-body
 // roster and the year-end attestation. Parent of qapi_indicator / qapi_project / qapi_pip /
 // qapi_governance_minutes (real intra-M30 FKs). ORG-SCOPED: organization_id NOT NULL (canonical

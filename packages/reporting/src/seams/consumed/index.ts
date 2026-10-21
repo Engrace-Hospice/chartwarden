@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam barrel (M33 §4.4).
+// @chartwarden/reporting — consumed-seam barrel (M33 §4.4).
 //
 // Every clinical/billing module's read seam M33 consumes through the M1 SeamRegistry (`getSeam`) — no
 // import edge. PRESENT producers (M5–M14, M17, M18, M22, M39, M40) expose a consumer-defined interface

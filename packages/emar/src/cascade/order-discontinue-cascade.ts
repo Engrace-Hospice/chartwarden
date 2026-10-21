@@ -1,4 +1,4 @@
-// @wardenx/emar — the `m12.medication_order.discontinued` scheduled-dose cascade (F-166, #248). PURE,
+// @chartwarden/emar — the `m12.medication_order.discontinued` scheduled-dose cascade (F-166, #248). PURE,
 // IO-free. The order-level counterpart to `discharge-cascade.ts`'s admission-level §2.5/§2.7 D14 plan:
 // `discontinueOrder` (or the M11/M6 discharge cascades acting through it) flips ONE order to
 // `discontinued`, and every future PENDING scheduled dose for THAT order — not the whole admission, which
@@ -12,7 +12,7 @@ import type {
   MedicationOrderId,
   ScheduledDoseId,
   ScheduledDoseStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The minimal scheduled-dose facts the cascade reads (mirrors `CascadeScheduledDose`, order-scoped). */
 export interface OrderCascadeScheduledDose {

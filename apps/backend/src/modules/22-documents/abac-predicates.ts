@@ -5,7 +5,7 @@
 // never authorizes by reading the request body — a document's owner facts are loaded through the injected
 // {@link DocumentAbacResolver} (org-scoped, RLS-backstopped). `document_owner_or_caseload` COMPOSES M5's
 // `caseload_or_scope`/`CaseloadProvider` (M3 D5) rather than duplicating caseload-lookup code; M22 reaches
-// the M5 seam OPAQUELY via `getSeam("CaseloadProvider")` so no `@wardenx/patient` import / dependency edge
+// the M5 seam OPAQUELY via `getSeam("CaseloadProvider")` so no `@chartwarden/patient` import / dependency edge
 // is created (M22 `dependsOn` stays `[1, 5]`).
 //
 // `extraction_reviewer_eligible` SUBSUMES the former licensure-floor check (M22-F16/F19 / ADR-0022): the
@@ -16,8 +16,8 @@
 // the licence M17 actually records, through the `CredentialReader` seam (the `CaseloadProvider` pattern
 // three lines up: opaque, no dependency edge). Registration is idempotent: the shared registry is
 // single-owner / no-clear, so re-boot (tests) is idempotent via registerPredicateIdempotent.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import type { DocumentRetentionClass } from "@wardenx/types";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import type { DocumentRetentionClass } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M22 owns (registered into M3). Single-owner across the platform registry. */
@@ -126,7 +126,7 @@ export interface DocumentAbacDeps {
   /**
    * The reviewer's ACTIVE clinical credentials (defaults to the boot-registered M17
    * `CredentialReader` seam). Reached opaquely, like `CaseloadProvider` — M22 `dependsOn` stays
-   * `[1, 5]` and no `@wardenx/scheduling` import is created.
+   * `[1, 5]` and no `@chartwarden/scheduling` import is created.
    */
   readonly activeCredentials?: (q: {
     organizationId: string;

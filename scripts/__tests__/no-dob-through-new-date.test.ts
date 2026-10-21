@@ -2,7 +2,7 @@
  * Guard (finding 8): a DOB is a date-only value. `new Date("1950-03-15")` is a UTC instant, so any
  * local getter/format then shows the day BEFORE in every US zone. Web/UI source must read a
  * `dob` / `dateOfBirth` through `parseLocalDateOnly` / `ageYears` / `formatDateOnly`
- * (`@wardenx/ui`), never `new Date(...)` / `Date.parse(...)`. No allowlist: there is no legitimate use.
+ * (`@chartwarden/ui`), never `new Date(...)` / `Date.parse(...)`. No allowlist: there is no legitimate use.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";

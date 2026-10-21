@@ -8,7 +8,7 @@ import {
   ageYears,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the patient chart's Clinical tab (2026-09-25 redesign, mockup
 // "Patient Chart — Clinical"). Every panel reads a real endpoint: diagnoses from the M7 plan of care,
 // PPS + ESAS-r from the M9 scale timeline, vitals + note text from the M8 encounter detail, open

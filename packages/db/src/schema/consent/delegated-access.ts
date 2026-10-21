@@ -1,4 +1,4 @@
-// @wardenx/db — `delegated_access` (M39 Consent §3.3 #8). The query-optimized PROJECTION from
+// @chartwarden/db — `delegated_access` (M39 Consent §3.3 #8). The query-optimized PROJECTION from
 // family_caregiver_access consent records (D10): one row per named family member + scope tier; the
 // consent record stays the source of truth, this is rebuilt transactionally on sign/supersede/revoke
 // by the projector service. M31's portal session-minter consults it (forward seam). PHI-bearing

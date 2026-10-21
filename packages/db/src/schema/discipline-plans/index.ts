@@ -1,4 +1,4 @@
-// @wardenx/db — M15 Discipline Care Plans schema barrel (§3.1/§3.3, 11 owned tables). The central
+// @chartwarden/db — M15 Discipline Care Plans schema barrel (§3.1/§3.3, 11 owned tables). The central
 // ../index.ts re-exports this barrel; the 13 pgEnums live in ../../enums.ts (M15-T01).
 //
 // Shape (§3.3): the plan ROOT (discipline_care_plan, one per admission × kind) owns the authored content

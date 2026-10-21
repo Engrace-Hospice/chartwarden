@@ -11,12 +11,12 @@ import type {
   MembershipId,
   SafetyPolicyEffectiveDto,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   SAFETY_POLICY_FLOOR,
   SAFETY_SOS_OPEN_STATES,
   SAFETY_SOS_TERMINAL_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   SAFETY_SOS_EDGES,
@@ -61,7 +61,7 @@ import {
 } from "../src/modules/20-field-safety/lifecycle/index";
 
 /**
- * Assert a guard raises the exact machine-readable code. `WardenXError.message` is prose for the clinician;
+ * Assert a guard raises the exact machine-readable code. `ChartWardenError.message` is prose for the clinician;
  * the CODE is the contract the §5 screens and the §7 tables key off, so the tests assert on it —
  * `toThrowError(/CODE/)` passes only when the prose happens to contain the token (the M15-T03 finding).
  */

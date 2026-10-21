@@ -1,4 +1,4 @@
-import { BOOTSTRAP_ON_ADMISSION_ACTIVATED } from "@wardenx/discipline-plans";
+import { BOOTSTRAP_ON_ADMISSION_ACTIVATED } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/plan.ts — M15-T03 (§2.2.1).
 //
 // The `discipline_care_plan` ROOT lifecycle: draft → active ⇄ draft_revising → discharged. One row per
@@ -10,7 +10,7 @@ import { BOOTSTRAP_ON_ADMISSION_ACTIVATED } from "@wardenx/discipline-plans";
 // `draft_revising` when an IDG decision opens the next version (§7.7), and seals as `discharged` when M6
 // emits `admission.discharged` (§7.11). Pure transitions over already-resolved facts; the per-version
 // machine lives in `./version`, the supervisory clock in `./supervisory`.
-import type { DisciplinePlanKind, IsoInstant } from "@wardenx/types";
+import type { DisciplinePlanKind, IsoInstant } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { DisciplinePlanStateError } from "./errors";
 import { computeNextSupervisoryDueAt } from "./supervisory";

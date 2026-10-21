@@ -10,8 +10,8 @@ import {
   StepperWorkflowLayout,
   StickyFooterActions,
   useApiClient,
-} from "@wardenx/ui";
-import type { GateItem, GateStatus } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GateItem, GateStatus } from "@chartwarden/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";

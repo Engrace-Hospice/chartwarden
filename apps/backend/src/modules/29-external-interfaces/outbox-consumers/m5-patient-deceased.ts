@@ -22,7 +22,7 @@
 // "Refuse any post-death A01/A04 events with a typed OperationOutcome" describes a REAL-TIME INGEST-TIME
 // check — a NEW inbound ADT for a deceased patient must never even reach `pending` — which is not an
 // outbox-consumer shape at all. `inbound/match-cascade.ts` runs synchronously, inside the MLLP listener's
-// parse pipeline, against an injected `PatientReader` seam (M5, `@wardenx/types`); that seam's
+// parse pipeline, against an injected `PatientReader` seam (M5, `@chartwarden/types`); that seam's
 // `PatientIdentity` return shape carries NO deceased/status field of any kind (confirmed against
 // `packages/types/src/patient.ts`'s full `PatientReader` interface), so nothing this outbox consumer
 // writes can retroactively extend a DIFFERENT, later request's synchronous seam call. Building the refusal
@@ -40,8 +40,8 @@
 // task-11's own header names for the sibling `.accepted`/`.rejected` pair. Catalogued alongside this
 // consumer, record-only (no consumer anywhere reads a proposal's expiry — the row itself is the durable
 // record, the same posture the sibling `.rejected` entry already states).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 import { expireProposal } from "../proposals/decision";

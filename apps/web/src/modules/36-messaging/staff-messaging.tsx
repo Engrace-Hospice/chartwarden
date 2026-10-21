@@ -1,4 +1,4 @@
-import { BACKGROUND_REQUEST_HEADERS, EmptyState, PageHeader, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation } from "react-router-dom";

@@ -2,7 +2,7 @@
 //
 // `hope_submission_acceptance_rate` is the §1.3 APU-penalty signal, and its denominator counts
 // assessments on batches with a TERMINAL iQIES posture. Nothing in this codebase has ever transmitted a
-// batch — `@wardenx/iqies-client` ships only its deny-stub adapter, so `submitBatch` has no caller — so
+// batch — `@chartwarden/iqies-client` ships only its deny-stub adapter, so `submitBatch` has no caller — so
 // the denominator is 0 on every deployment and `ratioResult` suppressed the measure as `insufficient_n`.
 //
 // Suppression was the right SHAPE and the wrong LABEL. `insufficient_n` means "we counted, and there were

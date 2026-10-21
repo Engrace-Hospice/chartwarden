@@ -18,12 +18,12 @@ interface Store {
 }
 const store: Store = { report: {}, patches: [], emissions: [] };
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => unknown) => fn({}),
 }));
 
-vi.mock("@wardenx/cost-report", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("@wardenx/cost-report")>();
+vi.mock("@chartwarden/cost-report", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@chartwarden/cost-report")>();
   return {
     ...orig,
     CostReportRepository: class {

@@ -1,6 +1,6 @@
 // apps/web/src/modules/30-quality — M30 mortality-review form structure (§2.2 / D9 / S-14).
 //
-// The three review dimensions mirror `@wardenx/quality`'s `mortality_review/dimensions.ts` (the server
+// The three review dimensions mirror `@chartwarden/quality`'s `mortality_review/dimensions.ts` (the server
 // completeness predicate reads the same REQUIRED keys). Kept as plain data so the drawer renders from it and
 // the "can complete" check is testable without a DOM.
 export type DimensionKey = "clinical" | "satisfaction" | "compliance";

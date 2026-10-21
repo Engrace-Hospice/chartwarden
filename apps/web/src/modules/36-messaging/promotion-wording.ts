@@ -1,7 +1,7 @@
 // M36 WP 3.7 - every word the chart-proposal UI shows, in one place. PROVISIONAL pending clinical-lead review (no
 // sign-off is recorded): change the text here, never the codes. A proposal never copies message text and never changes
 // the chart; the notices below say so plainly.
-import type { ChartPromotionStatus } from "@wardenx/types";
+import type { ChartPromotionStatus } from "@chartwarden/types";
 
 export const PROPOSE_BUTTON_LABEL = "Propose for chart";
 export const PROPOSE_DIALOG_TITLE = "Propose for the chart";

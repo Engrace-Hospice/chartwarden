@@ -10,7 +10,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the ELIGIBILITY CENTER (R2, §5.1
 // admin / §4.1 #22-23). The HETS 270/271 surface, per patient: enter a patient, read the eligibility-check
 // HISTORY (GET /billing/eligibility?patientId=) with a STALENESS highlight on each row (a check older than

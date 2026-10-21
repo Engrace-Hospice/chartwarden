@@ -2,7 +2,7 @@
 // tenant has tasks off, and 403/404 when the viewer lacks the permission, so `enabled:true` is the ONLY signal that shows
 // the tab (useFeatureFlag is never loaded in the real app). Read ONCE per API client; every other answer fails closed to
 // hidden (a failure is not cached, so a later mount tries again; an "off" answer is). The server stays the authority.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 

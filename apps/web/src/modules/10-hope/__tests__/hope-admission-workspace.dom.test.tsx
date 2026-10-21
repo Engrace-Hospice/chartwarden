@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HopeAssessmentDetail } from "../hope-assessment-detail";

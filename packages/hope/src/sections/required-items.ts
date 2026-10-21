@@ -1,4 +1,4 @@
-// @wardenx/hope — the required-items-per-RFA matrix (M10-T04; §2.3, §3, CMS HOPE submission spec). PURE
+// @chartwarden/hope — the required-items-per-RFA matrix (M10-T04; §2.3, §3, CMS HOPE submission spec). PURE
 // data: which HOPE Section letters every Reason-For-Assessment must carry for the CMS pre-submission
 // "required items" rule. The recording-boundary TypeBox (M10-T06) composes its discriminated union from
 // this matrix; the pre-submission validator (`../validation/validate-hope-assessment.ts`) diffs the
@@ -7,7 +7,7 @@
 // Section Q (Participation) is intentionally NOT listed for the Discharge RFA here: its presence is
 // conditional on the discharge reason (death omits Q; every live branch requires it) and is enforced by
 // the dedicated §2.3 / D9 cross-field rule, not the flat per-RFA matrix.
-import { HOPE_RFA_KINDS, type HopeRfaKind } from "@wardenx/types";
+import { HOPE_RFA_KINDS, type HopeRfaKind } from "@chartwarden/types";
 
 /** Every HOPE Section letter the engine recognises (the §2.1 A–Z section roster; L/P/R/S/T/U/V/W/Y are
  * not part of the CMS HOPE instrument and are intentionally absent). */

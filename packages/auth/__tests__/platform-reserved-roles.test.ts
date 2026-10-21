@@ -12,7 +12,7 @@ import {
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
   roleConfersKey,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 describe("GAP-003 reserved platform role keys", () => {

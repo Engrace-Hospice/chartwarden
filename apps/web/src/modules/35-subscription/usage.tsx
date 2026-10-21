@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 usage (§5.1 `/billing/usage`).
 // Current-period metered usage over GET /api/v1/usage/current — each meter as a progress bar (% of the
 // included quantity) with its threshold pill (ok/warning/breached) + projected overage cost — over the

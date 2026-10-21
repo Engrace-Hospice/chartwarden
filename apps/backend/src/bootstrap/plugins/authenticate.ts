@@ -10,8 +10,8 @@ import {
   DEVICE_ATTESTATION_ATTRIBUTE,
   type SessionTimeoutEnforcer,
   sessionClassRequiresMfa,
-} from "@wardenx/auth";
-import { type OrgScope, type SessionContextResolver, WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type OrgScope, type SessionContextResolver, ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
 
@@ -85,9 +85,9 @@ function assertCredentialStateMayCall(
   if (!required) return;
   const path = request.url.split("?")[0] ?? "";
   if (PASSWORD_CHANGE_ALLOWED_ROUTES.has(`${request.method.toUpperCase()} ${path}`)) return;
-  throw new WardenXError(
+  throw new ChartWardenError(
     "PASSWORD_CHANGE_REQUIRED",
-    "change the temporary password before accessing WardenX",
+    "change the temporary password before accessing ChartWarden",
     403,
   );
 }
@@ -148,7 +148,7 @@ function assertAuditorMayCall(request: FastifyRequest, stage: "enrolment" | "act
   const path = request.url.split("?")[0] ?? "";
   if (stage === "active") {
     if (AUDITOR_SAFE_METHODS.has(method) || AUDITOR_ALLOWED_MUTATION_PATHS.has(path)) return;
-    throw new WardenXError("AUDITOR_READ_ONLY", "auditor sessions are read-only", 403);
+    throw new ChartWardenError("AUDITOR_READ_ONLY", "auditor sessions are read-only", 403);
   }
   if (
     AUDITOR_ENROLMENT_ROUTES.has(`${method} ${path}`) ||
@@ -156,7 +156,7 @@ function assertAuditorMayCall(request: FastifyRequest, stage: "enrolment" | "act
   ) {
     return;
   }
-  throw new WardenXError(
+  throw new ChartWardenError(
     "AUDITOR_ENROLMENT_REQUIRED",
     "accept the engagement terms and verify a second factor before using this session",
     403,
@@ -237,7 +237,7 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
       if (!verdict.satisfied) {
         const path = request.url.split("?")[0] ?? "";
         if (!MFA_ENROLMENT_ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix))) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "MFA_ENROLMENT_REQUIRED",
             verdict.reason === "not_verified"
               ? "sign in again with your second factor before continuing (required for your role)"

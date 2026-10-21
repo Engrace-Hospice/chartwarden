@@ -18,8 +18,8 @@
 // `caseload_or_scope` treats an id-less target as the collection case and would allow it. A predicate that
 // throws (an unreadable M5 seam) is a deny, never a 500. Break-glass is a READ emergency grant and these
 // routes mutate, so it never satisfies the guard (`breakGlassBypassable: false`).
-import { requireAbac } from "@wardenx/auth";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { requireAbac } from "@chartwarden/auth";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { actorOf } from "./actor";
 import type { PortalOwnedTableOps } from "./store";
@@ -71,7 +71,7 @@ export const invitationPatientScope =
         })(request);
       } catch (error) {
         // Preserve the guard's own 401/403/404; an unreadable predicate (a seam throw) is a deny.
-        if (error instanceof WardenXError && error.statusCode < 500) throw error;
+        if (error instanceof ChartWardenError && error.statusCode < 500) throw error;
         throw new NotFoundError(NOT_FOUND_MESSAGE);
       }
     }

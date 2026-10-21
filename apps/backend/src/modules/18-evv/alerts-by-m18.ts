@@ -9,10 +9,10 @@
 // notification surface + the supervisor alert panel). Out-of-band channels (push / SMS) carry NO PHI — only a
 // generic prompt + an authenticated deep-link URL. This restriction holds for every M18 alert regardless of
 // severity, so the out-of-band `defaultChannels` are deliberately omitted from the platform floor here. The
-// payload TYPES mirror the `EvvAlertPayload` discriminated union in @wardenx/types (§4.9). The platform-floor
+// payload TYPES mirror the `EvvAlertPayload` discriminated union in @chartwarden/types (§4.9). The platform-floor
 // severity/cadence may be TIGHTENED by a tenant, never loosened (D11).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@wardenx/types";
+import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

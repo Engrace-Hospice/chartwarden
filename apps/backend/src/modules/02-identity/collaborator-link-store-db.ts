@@ -22,9 +22,9 @@
 // link and holds no staff permission. It is created in the same transaction as the use-count claim: a failure to
 // create it rolls the claim back.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   type CollaboratorLinkStore,
@@ -103,7 +103,7 @@ export function createDbCollaboratorLinkStore(
       if (!site) {
         // The patient has no siting (no admission to resolve a provider entity from): a link pinned to them could
         // not carry the ARCH-011 columns, and minting one anyway would be an unscoped grant. Refuse.
-        throw new WardenXError(
+        throw new ChartWardenError(
           "LINK_PATIENT_SITE_UNAVAILABLE",
           "the patient's site could not be resolved; a link cannot be issued",
           409,
@@ -117,7 +117,7 @@ export function createDbCollaboratorLinkStore(
         (kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : DEFAULT_COLLAB_SESSION_TTL_SEC);
       const maxUses = input.maxUses ?? 1;
       if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 10) {
-        throw new WardenXError("VALIDATION_FAILED", "maxUses must be an integer from 1 to 10", 422);
+        throw new ChartWardenError("VALIDATION_FAILED", "maxUses must be an integer from 1 to 10", 422);
       }
       const token = mintLinkToken(input.organizationId);
       const expiresAt = new Date(now().getTime() + linkTtlSec * 1000);

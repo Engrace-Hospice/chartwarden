@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the SUBMISSIONS TIMELINE (R2, §5.1 #8).
 // All `claim_submission` dispatch attempts for one claim: attempt index, outcome (§6.6 pill), the MinIO
 // presigned generated-file link, and the per-attempt correlation id (CorrelationIdBadge). Reads

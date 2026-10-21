@@ -4,9 +4,9 @@
 // Returns `null` when the membership is not an ACTIVE membership of the org (unknown, other-org, pending,
 // suspended or revoked) — such a person can never be a co-signer — otherwise the LIVE (unexpired, enabled,
 // non-reserved-tenant-row) role keys.
-import { roleConfersKey } from "@wardenx/auth";
-import { schema } from "@wardenx/db";
-import type { QualityDb } from "@wardenx/quality";
+import { roleConfersKey } from "@chartwarden/auth";
+import { schema } from "@chartwarden/db";
+import type { QualityDb } from "@chartwarden/quality";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 export async function selectActiveMemberRoleKeys(

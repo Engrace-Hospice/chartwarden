@@ -10,8 +10,8 @@
 // enum member — it maps to `null` (the column is nullable) and is treated as non-critical, so a bad flag can
 // never silently forge a critical page. The lab is authoritative for the flag it sends; we surface exactly
 // the six values HL7 Table 0078's hospice subset defines.
-import type { LabAbnormalFlag, LabAbnormalSummary } from "@wardenx/types";
-import { LAB_ABNORMAL_FLAGS } from "@wardenx/types";
+import type { LabAbnormalFlag, LabAbnormalSummary } from "@chartwarden/types";
+import { LAB_ABNORMAL_FLAGS } from "@chartwarden/types";
 
 const ABNORMAL_FLAG_SET: ReadonlySet<string> = new Set<string>(LAB_ABNORMAL_FLAGS);
 /** The two flags that page a caseload RN (D7). */

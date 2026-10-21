@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 per-diem rate calculator (D7, spec §3.3 `per_diem_rate_calculation` row). A PURE
+// @chartwarden/billing — M23 per-diem rate calculator (D7, spec §3.3 `per_diem_rate_calculation` row). A PURE
 // function that maps M6's `LevelOfCarePeriod` segments within a claim's from-through range to the CMS
 // hospice per-diem model: each day of the claim is assigned a level of care (RHC / CHC / IRC / GIP)
 // and, for RHC, the **ADR-0001 day-60 two-tier bucket** — RHC-High for election days 1–60, RHC-Low for
@@ -35,7 +35,7 @@
 // per-diem class code is an INTERNAL deterministic placeholder (see `derivePerDiemClassCode`); it is NOT a Medicare
 // HIPPS code (hospice claims carry none) and is never emitted on a claim.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate, LevelOfCare } from "../contracts";
 import { dayOfStay, fromEpochDay, toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";

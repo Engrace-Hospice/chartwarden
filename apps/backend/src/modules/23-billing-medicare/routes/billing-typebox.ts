@@ -6,14 +6,14 @@
 // M1's VALIDATION_FAILED envelope. Org/actor/membership binding is ALWAYS server-side (request.context) — no
 // body/query carries an org id or an authoring/acting/overriding membership id.
 //
-// VOCAB NOTE: the body/query string-literal unions mirror the FROZEN `@wardenx/db` pgEnum value lists +
-// the @wardenx/billing route-service CONTRACT arg shapes (the lowercase domain alphabet the read/write
+// VOCAB NOTE: the body/query string-literal unions mirror the FROZEN `@chartwarden/db` pgEnum value lists +
+// the @chartwarden/billing route-service CONTRACT arg shapes (the lowercase domain alphabet the read/write
 // services speak — enum case is mapped at the repository boundary). The optimistic-concurrency version is
 // carried on the `If-Match` header (§2.5; see concurrency.ts), NOT in the body.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -31,7 +31,7 @@ const uuid = () => Type.String({ format: "uuid" });
 const isoDate = () => Type.String({ format: "date" });
 const decimal = () => Type.String({ pattern: "^-?\\d+(\\.\\d+)?$" });
 
-// ── §3 vocab mirrors (canonical pgEnums live in @wardenx/db / @wardenx/billing contracts) ────────────────
+// ── §3 vocab mirrors (canonical pgEnums live in @chartwarden/db / @chartwarden/billing contracts) ────────────────
 const VALIDATION_SEVERITY = ["error", "warn", "info"] as const;
 const OVERRIDE_ROLE = [
   "billing_manager",
@@ -186,7 +186,7 @@ export const UpsertMacCredentialBodySchema = Type.Object({
 });
 
 // ── claims-core (route group A): list query / assemble / DRAFT-edit bodies ───────────────────────────────
-// (assemble / replace / void / submit / manual-validate request shapes are the @wardenx/billing route-
+// (assemble / replace / void / submit / manual-validate request shapes are the @chartwarden/billing route-
 // contract schemas; the claims.routes.ts plugin imports those from the package and `parse`s them here.)
 
 const LEVEL_OF_CARE = [

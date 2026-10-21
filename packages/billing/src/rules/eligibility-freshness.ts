@@ -1,5 +1,5 @@
 import { paramNumber } from "./_util";
-// @wardenx/billing — §4.5 rule `eligibility_check_freshness_30d` (eligibility, WARN, NON-regulatory). The
+// @chartwarden/billing — §4.5 rule `eligibility_check_freshness_30d` (eligibility, WARN, NON-regulatory). The
 // only platform-default rule a tenant may disable. The most-recent eligibility check should be within 30
 // days of submission; staleness is a warning, never a block. `ageDays` is PRECOMPUTED by the service
 // layer (the rule is clock-free). PURE: reads ctx only.

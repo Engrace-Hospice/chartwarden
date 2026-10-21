@@ -20,7 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleAuditEraserPorts } from "../src/modules/04-audit/erasers/audit-eraser";

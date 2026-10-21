@@ -1,4 +1,4 @@
-import { Glyph, useApiClient } from "@wardenx/ui";
+import { Glyph, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the benefit-period entry every NEW admission makes (readmission screen and the
 // plain New admission screen): the period number (prefilled with our history's suggestion, editable), a
 // "Confirmed against HETS / ELGA / ELGH" checkbox with the date checked, and a WARNING — never a block — when the

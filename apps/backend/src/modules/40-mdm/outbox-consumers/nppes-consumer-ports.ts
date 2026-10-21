@@ -17,9 +17,9 @@
 //     tenant. Routes through the migration-0186 SECURITY DEFINER insert inside the publisher.
 //   · per-tenant ALERT — the only genuinely org-scoped step, so it is the only one that opens
 //     `withOrgContext`, once per candidate org.
-import { type DbClient, schema } from "@wardenx/db";
-import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne, sql } from "drizzle-orm";
 
 const PHYSICIAN = schema.externalPhysicians;

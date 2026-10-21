@@ -1,8 +1,8 @@
-// @wardenx/fhir — the consumed reader-seam + domain-input contracts the R4 projections read (M28-T04).
+// @chartwarden/fhir — the consumed reader-seam + domain-input contracts the R4 projections read (M28-T04).
 //
 // M28 owns no clinical PHI (§1.2); every resource is composed at read time from an OWNER module's data.
-// The spec (§4.11.2) types the DiagnosticReport projector against `@wardenx/orders/seams`,
-// `@wardenx/external-interfaces/seams`, etc. — but M28 stays a headless PURE core until T06 wires the
+// The spec (§4.11.2) types the DiagnosticReport projector against `@chartwarden/orders/seams`,
+// `@chartwarden/external-interfaces/seams`, etc. — but M28 stays a headless PURE core until T06 wires the
 // real `SeamRegistry`, so like the T03 auth cores we keep these shapes LOCAL here (the M13 witness-token
 // / M12 webhook idiom): the MINIMAL row/reader contracts the projections need, deps INJECTED, no cross-
 // package import and no `dependsOn` edge added ahead of the T06 seam bind. T06 supplies real adapters

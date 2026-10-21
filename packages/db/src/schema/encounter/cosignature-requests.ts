@@ -1,4 +1,4 @@
-// @wardenx/db — `cosignature_request` (M8 §3.3). The D3 cosignature workflow row: one per encounter that
+// @chartwarden/db — `cosignature_request` (M8 §3.3). The D3 cosignature workflow row: one per encounter that
 // requires a cosignature (e.g. LPN visit), tracking routing → acknowledge → escalate → 48h hard cap →
 // supervisor release. PHI-bearing → three-column tenancy rule (denormalized from the parent encounter).
 // One request per encounter (unique). RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).

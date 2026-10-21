@@ -1,4 +1,4 @@
-// @wardenx/billing — which wage index prices which level of care (pure).
+// @chartwarden/billing — which wage index prices which level of care (pure).
 //
 // The Medicare Pricer wage-adjusts a hospice claim with the CBSA the claim REPORTS, not the hospice's own location:
 // CMS Pub. 100-04 ch. 11 §30.3 ("Value Codes and Amounts") defines value code 61 as the MSA/CBSA (or rural State

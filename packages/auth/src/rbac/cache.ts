@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac — the effective-permission cache (M3 — Authorization, M3-T06;
+// @chartwarden/auth · rbac — the effective-permission cache (M3 — Authorization, M3-T06;
 // spec §3.1 layout `rbac/cache.ts`, §2.5 side effects).
 //
 // The §2.2 pipeline resolves an actor's effective permission set on every request, so the

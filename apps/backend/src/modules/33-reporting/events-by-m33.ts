@@ -14,7 +14,7 @@
 // transaction as the mutation (M1 §25.5/§25.6). The matching M36 alert payloads ship in
 // packages/reporting/src/alerts.ts (§4.9).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

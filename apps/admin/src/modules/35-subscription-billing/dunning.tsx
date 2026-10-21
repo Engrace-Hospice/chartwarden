@@ -1,5 +1,5 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
 // (M35A-T03, the screen's only data source), filterable by stage. Per-subscription overrides — skip_stage /

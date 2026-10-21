@@ -4,8 +4,8 @@
 // `./cron-store`, runs the PURE `planReviewClockSweep` (`./index`), and publishes every escalation to the
 // TRANSACTIONAL OUTBOX inside that SAME tx (a thrown outbox validation error rolls back the whole org's
 // tick — a partial escalation burst never partially commits).
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";

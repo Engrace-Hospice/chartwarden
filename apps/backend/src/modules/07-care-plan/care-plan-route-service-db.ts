@@ -18,8 +18,8 @@ import { randomUUID } from "node:crypto";
 // interface does not thread the acting user, writes envelope `withOrgContext` with `userId:""` (the
 // read convention): the M4 write-audit trigger still fires — the audit row records a NULL actor (a
 // follow-up threads the membership when the interface carries it).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type CarePlanSignerRole,
   type GoalSource,
@@ -27,7 +27,7 @@ import {
   NotFoundError,
   type ProblemKind,
   type RequiredSignerSet,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   type AuthoringDisciplineScope,

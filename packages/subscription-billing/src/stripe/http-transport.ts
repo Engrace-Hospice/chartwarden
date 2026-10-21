@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — GAP-058 the live Stripe HTTP transport (SDK-free, fetch-backed).
+// @chartwarden/subscription-billing — GAP-058 the live Stripe HTTP transport (SDK-free, fetch-backed).
 //
 // The composition root constructs this ONLY when `STRIPE_SECRET_KEY` is configured; otherwise the
 // fail-closed port (client.ts) stays bound. It implements the small operation set M35 actually drives

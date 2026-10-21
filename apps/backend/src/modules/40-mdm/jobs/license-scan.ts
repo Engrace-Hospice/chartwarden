@@ -1,17 +1,17 @@
 // apps/backend/src/modules/40-mdm/jobs/license-scan.ts — M40 §4.3 `mdm.license_expiration_scan` cron body
-// (GAP-173). The pure planner (`planLicenseExpiryAlerts`, @wardenx/mdm) decides which 90/30/0-day alerts are due
+// (GAP-173). The pure planner (`planLicenseExpiryAlerts`, @chartwarden/mdm) decides which 90/30/0-day alerts are due
 // over the Phase-1 manual entries in `mdm_license_record`; this is the I/O shell, shaped exactly like the BAA scan
 // (`./baa-scan.ts`): org-explicit RLS-scoped read per org, alerts through the M36 AlertEmitter (idempotent on
 // `(org, correlationId)`), one org's failure never blocks the rest and every failure is re-thrown afterwards.
 // Payload follows spec §4.4 `mdm.license_expiring`: `{ physicianId, state, daysUntilExpiry }` (+ kind/id/window
 // so a non-physician entity is identifiable).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   BAA_SCAN_LOOKAHEAD_DAYS,
   type LicenseScanRecord,
   planLicenseExpiryAlerts,
-} from "@wardenx/mdm";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/mdm";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, lte } from "drizzle-orm";
 import type { M40ActiveOrgPort, M40AlertPort } from "../outbox-consumers/nppes-consumer-ports";
 

@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.6 / §2.7 IDG decision recording, quorum, and adjournment emission (M14-T03). Pure.
+// @chartwarden/idg — §2.6 / §2.7 IDG decision recording, quorum, and adjournment emission (M14-T03). Pure.
 //
 // The decision aggregate is the canonical write-out to the rest of the system (§1.1). A decision is
 // RECORDED while the meeting is `live` (status `open`, quorum stamped), EMITTED at adjournment (status
@@ -9,7 +9,7 @@
 // Authorization note: per-decision quorum BLOCKING (`quorate_decision` ABAC, `QUORUM_NOT_MET`) lands in
 // M14-T05. Here we compute + stamp the snapshot the meeting may be held without quorum (§1.1) and surface
 // the pure `decisionMeetsQuorum` predicate the ABAC layer wraps.
-import type { IdgDecisionKind, IdgDecisionStatus, QuorumSnapshot } from "@wardenx/types";
+import type { IdgDecisionKind, IdgDecisionStatus, QuorumSnapshot } from "@chartwarden/types";
 import { IDG_REQUIRED_QUORUM } from "../policy";
 import type { IdgSideEffect } from "./effects";
 import { require_ } from "./errors";

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const captured: { where: SQL | null } = { where: null };
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => unknown) => {
     const chain = {
       from: () => chain,

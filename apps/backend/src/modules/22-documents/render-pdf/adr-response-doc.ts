@@ -6,7 +6,7 @@
 // What it carries: the cover sheet (MAC, ADR reference, the due date, when and how it was filed, the proof
 // reference, whether it was late) and the enclosure index. The enclosures are NAMED (title, date, kind); the
 // documents themselves are delivered separately and are never merged in here.
-import { type AdrPacketRenderPayload, assertAdrPacketRenderPayload } from "@wardenx/types";
+import { type AdrPacketRenderPayload, assertAdrPacketRenderPayload } from "@chartwarden/types";
 import type { Block, DocModel } from "./doc-model";
 import { fmtDate, fmtInstant, humanize, shortId } from "./shared";
 

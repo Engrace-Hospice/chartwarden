@@ -6,8 +6,8 @@
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { Modal as SharedModal, StatusPill, t } from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { RISK_TIER_GLYPH, RISK_TIER_TONE, humanize, toneOf } from "./bereavement-status";
 
@@ -361,7 +361,7 @@ export function CheckboxField({
 }
 
 /** The §5.1 modal shell — backdrop + dialog + footer actions. Every M16 ceremony reuses it. Delegates
- * to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
+ * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
  * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
 export function Modal({
   title,

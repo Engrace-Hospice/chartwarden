@@ -1,5 +1,5 @@
 import { MedicaidAdapterError } from "../errors";
-// @wardenx/medicaid-adapters — the Oregon reference adapter (D14). Engrace Hospice (Pendleton OR, CCN
+// @chartwarden/medicaid-adapters — the Oregon reference adapter (D14). Engrace Hospice (Pendleton OR, CCN
 // 381588) is the founding customer; Oregon Health Plan (OHP) via OHA DMAP + CCO routing is the Phase-1
 // production target. This adapter ships the REAL declarative metadata + the pure helpers (TOB mapping, the
 // OHP Member ID mod-10 format check).

@@ -1,6 +1,6 @@
 // ADR-0086 D5 — which messages an M4 legal hold's criteria hold. Pure; the SQL mirror in the backend scan is
 // proven against this function by the live suite.
-import { type MessageHoldFacts, messageHeldBy } from "@wardenx/messaging";
+import { type MessageHoldFacts, messageHeldBy } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 
 const P = "11111111-1111-4111-8111-111111111111";

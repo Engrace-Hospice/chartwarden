@@ -40,8 +40,8 @@
 // link, the live-grant pre-check excludes an account whose grant is already `bereaved_family` (flip already
 // ran), and revoke/insert execute inside one transaction — a redelivery after a successful flip finds no
 // non-bereaved live grant left to flip and no-ops, never a duplicate insert or a second revoke.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { type M31EventEmitter, emitGrantGranted, emitGrantsRevoked } from "../events";

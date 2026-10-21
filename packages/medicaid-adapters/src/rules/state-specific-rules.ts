@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — §4.6 state-specific modifier + documentation rules (adapter-published).
+// @chartwarden/medicaid-adapters — §4.6 state-specific modifier + documentation rules (adapter-published).
 // PURE: read ctx only. The adapter publishes the requirement set; the service layer reduces it to a
 // boolean the rule reads. A `null` flag means the adapter declares no requirement → SKIP not_applicable.
 import { fail, pass, skip } from "./types";

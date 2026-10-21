@@ -1,6 +1,6 @@
 // GAP-b11-fix — M6 org-explicit seam envelopes must record the NULL system actor, never an inherited
 // request actor. A blank `userId` alone inherits the ambient request user (GAP-111); `systemActor: true` pins NULL.
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { describe, expect, it } from "vitest";
 import {
   admissionIsActiveForOrg,

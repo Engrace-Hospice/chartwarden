@@ -11,7 +11,7 @@
 // at the moment of the write. The catalog is not documentation; it is the thing that makes the transition
 // commit.
 //
-// THE SHAPES MIRROR the §4.10 payload interfaces frozen in `@wardenx/types` (packages/types/src/safety.ts,
+// THE SHAPES MIRROR the §4.10 payload interfaces frozen in `@chartwarden/types` (packages/types/src/safety.ts,
 // M20-T01), which are the contract M17/M22/M30/M33/M36 type-check against; this file is their runtime
 // validator. The envelope carries `organizationId`, and every payload repeats it as `orgId` because
 // `M20SafetyEventBase` does — a consumer holding the payload alone (M36's alert router) needs it.
@@ -26,13 +26,13 @@
 //
 // ── THE TWO COMPOSITE IDEMPOTENCY KEYS ARE NOT REPEATED HERE ───────────────────────────────────────
 //
-// `M20_EVENT_IDEMPOTENCY_KEYS` (@wardenx/types) pins `check_in_escalated` to `[scheduleId, tier]` and
+// `M20_EVENT_IDEMPOTENCY_KEYS` (@chartwarden/types) pins `check_in_escalated` to `[scheduleId, tier]` and
 // `sos_terminus_reached` to `[sosAlertId, loopIteration]`, because each fires REPEATEDLY by design (one
 // per D4 rung; one per terminus loop). The catalog's job is payload validity, so both discriminators —
 // `tier` and `loopIteration` — are REQUIRED fields below: a payload that omitted them would be
 // unkeyable, and a conforming consumer would collapse the very repetition the design requires.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdOrNull = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

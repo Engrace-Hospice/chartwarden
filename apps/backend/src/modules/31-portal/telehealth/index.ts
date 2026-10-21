@@ -3,7 +3,7 @@
 // Tier-3 fallback planner, and the D9 two-party recording-consent gate over the §3.8 state matrix.
 //
 // Everything here is PURE — injected facts in, a next state / plan / verdict out. The live Daily.co adapter it
-// pairs with lives in `@wardenx/telehealth-client` (M31-T05); the route + webhook wiring that executes these
+// pairs with lives in `@chartwarden/telehealth-client` (M31-T05); the route + webhook wiring that executes these
 // decisions inside a transaction lands in M31-T06/T07.
 export * from "./errors";
 export * from "./state-matrix";

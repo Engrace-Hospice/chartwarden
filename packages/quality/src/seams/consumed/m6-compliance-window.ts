@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M6's compliance-window aggregate (F-178, #248). PRESENT producer.
+// @chartwarden/quality — consumed-seam view of M6's compliance-window aggregate (F-178, #248). PRESENT producer.
 //
 // M6's own spec (§7.5, W-OVR-02) and M30's own spec are both decisive M30 is a real consumer of M6's
 // `compliance_window` F2F-window state — the M30 dashboard's on-time rate and Overrides count — but the
@@ -9,7 +9,7 @@
 // `m6.compliance.window.*` / `m6.f2f.window_*` outbox events — see `events-by-m6.ts` for the corresponding
 // `seamConsumers` correction on those six catalog entries. Bound to the live M6 provider via `getSeam`
 // (`ComplianceWindowCountsProvider`, opaque in the M1 registry — `unknown` — per the `ClaimLineReader` /
-// `PatientDaysProvider` precedent: interface lives here on the consumer side, not in `@wardenx/types`).
+// `PatientDaysProvider` precedent: interface lives here on the consumer side, not in `@chartwarden/types`).
 //
 // NOTE (F-178b): `m6.f2f.window_missed` now HAS a real producer (`runF2fWindowMissedScanCron`,
 // `apps/backend/src/modules/06-admission/jobs/cron-workers.ts`, built the same round as this seam) — it

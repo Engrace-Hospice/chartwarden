@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T04 unit tests for the §2.2 D2 ipu_admission lifecycle machine.
+// @chartwarden/inpatient — M37-T04 unit tests for the §2.2 D2 ipu_admission lifecycle machine.
 import { describe, expect, it } from "vitest";
 import { IpuStateError } from "../src/errors";
 import {

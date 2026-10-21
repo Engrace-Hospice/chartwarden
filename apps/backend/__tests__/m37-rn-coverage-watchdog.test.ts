@@ -3,7 +3,7 @@
 // `ipu_rn_coverage_window` is a MATERIALIZED invariant that four M37 write paths read, each treating an
 // absent row as uncovered. Nothing ever wrote a row: the `rn-coverage-watchdog` worker §2.3 D3 defines
 // was never built, even though the pure grid builder it was meant to call has been written and
-// unit-tested in `@wardenx/inpatient` since M37-T07. `planOpenAdmission` refuses every non-`arranged`
+// unit-tested in `@chartwarden/inpatient` since M37-T07. `planOpenAdmission` refuses every non-`arranged`
 // admission on that flag, so **no GIP and no inpatient-respite admission could be opened on any
 // deployment** — the only IPU care the platform could record was `arranged` remote inpatient care.
 //

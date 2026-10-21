@@ -1,5 +1,5 @@
 // apps/backend/src/modules/13-emar/administration-safety-gates.ts -- GAP-020/021: the order-context safety
-// gates the production administration write path composes from the PURE `@wardenx/emar` deciders
+// gates the production administration write path composes from the PURE `@chartwarden/emar` deciders
 // (§5.11 five-rights, §2.9 BCMA order/patient context).
 //
 // Every fact here comes from the M12 ORDER (through `EmarMedicationOrderPort`), never from the request body:
@@ -13,14 +13,14 @@ import {
   type FiveRightsOrderContext,
   type FiveRightsRequest,
   assertFiveRights,
-} from "@wardenx/emar";
+} from "@chartwarden/emar";
 import {
   type ErrorDetailType,
   type PatientWristbandVerifier,
-  WardenXError,
+  ChartWardenError,
   type WristbandVerdict,
   type WristbandVerdictStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The slice of the M12 order identity the gates read (all optional: an unbound port states nothing). */
 export interface OrderSafetyFacts {
@@ -181,7 +181,7 @@ export async function verifyBedsideWristband(args: {
       mode: args.mode,
     });
   } catch {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "WRISTBAND_VERIFIER_UNAVAILABLE",
       "the patient wristband could not be verified right now; the scan was not accepted",
       503,

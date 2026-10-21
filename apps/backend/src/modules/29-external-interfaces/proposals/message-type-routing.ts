@@ -2,7 +2,7 @@
 // T-29.06 §3). The SINGLE source of truth for which downstream owner module (M5 demographics vs M6 admission)
 // an inbound ADT trigger applies through, and whether a no-match should propose a new patient or drop with
 // audit (§2.1 of T-29.06: A01/A04/A08 → propose new_patient; A03/A11 → cannot act on an unknown patient).
-import type { Hl7InboundProposalKind, Hl7ProposalOwnerModule } from "@wardenx/types";
+import type { Hl7InboundProposalKind, Hl7ProposalOwnerModule } from "@chartwarden/types";
 
 /** The five ADT trigger events the Phase-1 inbound flow supports (§2.2 / T-29.06 §2.2). */
 export type AdtMessageType = "ADT^A01" | "ADT^A03" | "ADT^A04" | "ADT^A08" | "ADT^A11";

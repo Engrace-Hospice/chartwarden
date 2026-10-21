@@ -7,7 +7,7 @@ import {
   WorkQueueLayout,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the 5% VOLUNTEER TIME-COST RATIO (§5.1 #12, Track B).
 // Spec: docs/design/screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md — Hours & 5% Ratio.
 //

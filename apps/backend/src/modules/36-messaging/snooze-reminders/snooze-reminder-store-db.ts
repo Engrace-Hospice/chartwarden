@@ -2,9 +2,9 @@
 // Every statement runs under withOrgContext with the CALLER as the context user, so RLS (migration 1125) pins rows to organisation AND
 // owner, and each query also names the owner. The sweep's store lists due rows through the narrow SECURITY DEFINER lister
 // (`message_reminder_due`) and acts on each row under its owner's context.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ACK_OPEN_STATUSES } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ACK_OPEN_STATUSES } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import type { Actor, ReminderRow, SnoozeReminderStore } from "./snooze-reminder-service";

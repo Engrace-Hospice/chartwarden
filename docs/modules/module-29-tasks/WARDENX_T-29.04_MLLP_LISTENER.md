@@ -126,13 +126,13 @@ The boundary cruiser rules from T-29.01 + T-29.03 already cover the listener dir
 ```ts
 // apps/backend/src/modules/29-external-interfaces/listener/supervisor.ts
 import type { Logger } from 'pino'
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { NotificationDispatcher } from '@wardenx/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { NotificationDispatcher } from '@chartwarden/foundation/seams'
 import { eq, and } from 'drizzle-orm'
-import { externalFeed, type ExternalFeed } from '@wardenx/db/schema/external-interfaces'
-import { withPlatformContext, withOrgContext } from '@wardenx/tenancy'
-import type { MdmBaaStatusProvider } from '@wardenx/foundation/seams'
-import type { KmsEnvelopeEncryptor } from '@wardenx/foundation/seams'
+import { externalFeed, type ExternalFeed } from '@chartwarden/db/schema/external-interfaces'
+import { withPlatformContext, withOrgContext } from '@chartwarden/tenancy'
+import type { MdmBaaStatusProvider } from '@chartwarden/foundation/seams'
+import type { KmsEnvelopeEncryptor } from '@chartwarden/foundation/seams'
 import { PerFeedListener } from './per-feed-listener'
 import { HealthProbe } from './health-probe'
 import { RevocationList } from './revocation-list'
@@ -140,7 +140,7 @@ import { InflightTracker } from './inflight-tracker'
 
 export interface SupervisorDeps {
   readonly logger: Logger
-  readonly db: typeof import('@wardenx/db').db
+  readonly db: typeof import('@chartwarden/db').db
   readonly outbox: Outbox
   readonly alerts: NotificationDispatcher
   readonly mdm: MdmBaaStatusProvider
@@ -349,10 +349,10 @@ export class SupervisorImpl {
 ```ts
 // apps/backend/src/modules/29-external-interfaces/listener/per-feed-listener.ts
 import * as tls from 'node:tls'
-import type { ExternalFeed, ExternalFeedCredential } from '@wardenx/db/schema/external-interfaces'
-import { externalFeedCredential } from '@wardenx/db/schema/external-interfaces'
+import type { ExternalFeed, ExternalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
+import { externalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
 import { eq, and } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 import { FrameHandler } from './frame-handler'
 import type { SupervisorDeps } from './supervisor'
 import type { RevocationList } from './revocation-list'
@@ -647,7 +647,7 @@ The `isIpAllowed` helper:
 ```ts
 // apps/backend/src/modules/29-external-interfaces/listener/allowlist.ts
 import { isIPv4, isIPv6 } from 'node:net'
-import type { ExternalFeed } from '@wardenx/db/schema/external-interfaces'
+import type { ExternalFeed } from '@chartwarden/db/schema/external-interfaces'
 
 export function isIpAllowed(feed: ExternalFeed, peerAddr: string): boolean {
   // sending_facility_allowlist is stored as JSONB string[] of CIDRs or bare IPs
@@ -700,10 +700,10 @@ function matchIpv6Cidr(_base: string, _prefix: number, _peer: string): boolean {
 // apps/backend/src/modules/29-external-interfaces/listener/frame-handler.ts
 import * as crypto from 'node:crypto'
 import { ulid } from 'ulid'
-import type { ExternalFeed } from '@wardenx/db/schema/external-interfaces'
-import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
+import type { ExternalFeed } from '@chartwarden/db/schema/external-interfaces'
+import { hl7MessageInbound } from '@chartwarden/db/schema/external-interfaces'
 import { eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import type { PerFeedListenerDeps } from './per-feed-listener'
 
 export class FrameHandler {
@@ -899,8 +899,8 @@ function mintAck(code: 'AA' | 'AE' | 'AR', mcid: string, sendingFacility: string
 // apps/backend/src/modules/29-external-interfaces/listener/health-probe.ts
 import type { SupervisorDeps } from './supervisor'
 import type { PerFeedListener } from './per-feed-listener'
-import { externalFeedHealth } from '@wardenx/db/schema/external-interfaces'
-import { withOrgContext } from '@wardenx/tenancy'
+import { externalFeedHealth } from '@chartwarden/db/schema/external-interfaces'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 const LISTENER_DOWN_THRESHOLD_MS = 5 * 60 * 1000  // 5min platform-floor (D17)
 
@@ -1048,9 +1048,9 @@ export class HealthProbe {
 ```ts
 // apps/backend/src/modules/29-external-interfaces/listener/revocation-list.ts
 import type { Logger } from 'pino'
-import { externalFeedCredential } from '@wardenx/db/schema/external-interfaces'
+import { externalFeedCredential } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withPlatformContext } from '@wardenx/tenancy'
+import { withPlatformContext } from '@chartwarden/tenancy'
 
 export class RevocationList {
   // Set of revoked-credential cert SHA-256 fingerprints (e.g. "AB:CD:EF:...").
@@ -1068,7 +1068,7 @@ export class RevocationList {
     return this.revoked.has(this.normalize(fingerprint))
   }
 
-  async warmFromDb(db: typeof import('@wardenx/db').db): Promise<void> {
+  async warmFromDb(db: typeof import('@chartwarden/db').db): Promise<void> {
     const rows = await withPlatformContext(db, async (tx) =>
       tx
         .select({ id: externalFeedCredential.id, fingerprint: externalFeedCredential.fingerprint })
@@ -1148,11 +1148,11 @@ export class InflightTracker {
 // or in production via the platform image's CMD that starts both Fastify and this process
 // under a supervisord-style runtime.
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { mkOutbox } from '@wardenx/foundation/outbox'
-import { mkAlertsClient } from '@wardenx/foundation/seams/alerts'
-import { mkMdmClient } from '@wardenx/foundation/seams/mdm'
-import { mkKmsEnvelope } from '@wardenx/foundation/seams/kms'
+import { db } from '@chartwarden/db'
+import { mkOutbox } from '@chartwarden/foundation/outbox'
+import { mkAlertsClient } from '@chartwarden/foundation/seams/alerts'
+import { mkMdmClient } from '@chartwarden/foundation/seams/mdm'
+import { mkKmsEnvelope } from '@chartwarden/foundation/seams/kms'
 import { Queue } from 'bullmq'
 import { SupervisorImpl } from './supervisor'
 
@@ -1212,13 +1212,13 @@ The worker consumes the BullMQ jobs the listener enqueues. T-29.04's scope ends 
 // apps/backend/src/modules/29-external-interfaces/workers/hl7-inbound-parse.worker.ts
 import { Worker, type Job } from 'bullmq'
 import { pino } from 'pino'
-import { db } from '@wardenx/db'
-import { hl7MessageInbound } from '@wardenx/db/schema/external-interfaces'
+import { db } from '@chartwarden/db'
+import { hl7MessageInbound } from '@chartwarden/db/schema/external-interfaces'
 import { eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { createSidecarClient } from '@wardenx/hl7-worker'
-import { mkKmsEnvelope } from '@wardenx/foundation/seams/kms'
-import { mkOutbox } from '@wardenx/foundation/seams/outbox'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { createSidecarClient } from '@chartwarden/hl7-worker'
+import { mkKmsEnvelope } from '@chartwarden/foundation/seams/kms'
+import { mkOutbox } from '@chartwarden/foundation/seams/outbox'
 
 interface ParseJobData {
   readonly messageId: string

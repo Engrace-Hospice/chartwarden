@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §4.13/§4.16 deterministic Stripe idempotency-key derivation (M35-T04).
+// @chartwarden/subscription-billing — §4.13/§4.16 deterministic Stripe idempotency-key derivation (M35-T04).
 //
 // The outbound idempotency key is derived purely from `(operation, businessKey, attemptIndex)` — never from
 // wall-clock or a random — so the SAME dispatch attempt always produces the SAME key. §4.13 pre-checks the

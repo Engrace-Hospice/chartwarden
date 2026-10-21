@@ -13,14 +13,14 @@
 // as the read, so a disclosure that cannot be audited returns nothing. Reads run under `withOrgContext` as the system actor
 // (RLS scopes them to the org the caller names — a seam has no request context).
 import { randomUUID } from "node:crypto";
-import { audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type EligibilitySubscriberIdentity,
   MBI_DISCLOSURE_PURPOSES,
   type MbiUnlockReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const day = (d: Date | string | null): string | null => {

@@ -1,4 +1,4 @@
-// @wardenx/ui web — the React DOM rendering layer (ADR-0035): presentational components and
+// @chartwarden/ui web — the React DOM rendering layer (ADR-0035): presentational components and
 // the layout kit. May import `../core`; `../core` may never import here (dependency-cruiser
 // `ui-core-renderer-free`). A React Native consumer would replace this layer, not reuse it.
 

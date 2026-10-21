@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: opioid-on-admission rate. Pure. No IO.
+// @chartwarden/quality — operational measure: opioid-on-admission rate. Pure. No IO.
 // Rate of admissions with an active opioid order at admission. This is an INFORMATIONAL surveillance
 // measure (neither inherently good nor bad); the threshold/direction is supplied by the caller so the
 // banding reflects the agency's tracked target. Source: M12 `getOpioidOnAdmissionStats`.

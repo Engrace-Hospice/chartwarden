@@ -3,7 +3,7 @@
 // M21's subscribers to Module 11's supply cascade — the handshake that CLOSES M11's Wave-E supply
 // deny-stub. M11 owns the RULE that a signed `dme` / `supply` / `comfort_kit` order wants fulfilling; M21
 // owns the fulfillment. Neither imports the other: the whole contract is three outbox event names, read
-// here off `M21_SUBSCRIBED_EVENT_NAMES` in `@wardenx/types` (the shared source of truth, so an upstream
+// here off `M21_SUBSCRIBED_EVENT_NAMES` in `@chartwarden/types` (the shared source of truth, so an upstream
 // rename breaks the build instead of orphaning a handler).
 //
 // PHASE-1 PURE DECISION CORE — the M7 `apply-idg-decision` / M16 `m6-eligibility` precedent. What ships
@@ -28,7 +28,7 @@
 //     the delivery would leave M11's order waiting on a fulfillment that will never arrive.
 //   • death-vs-live-discharge indeterminate → the row still cancels; only the REASON degrades. A wrong
 //     cancellation reason is a reporting nuisance; a missing cancellation is a stranded order.
-import { canTransition, isTerminalSupplyStatus } from "@wardenx/supplies";
+import { canTransition, isTerminalSupplyStatus } from "@chartwarden/supplies";
 import type {
   AdmissionId,
   AdmissionStatusValue,
@@ -43,7 +43,7 @@ import type {
   SupplyRequestId,
   SupplyRequestKind,
   SupplyRequestStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { SupplyStateError } from "../lifecycle/index";
 
 // ── the three subscribed M11 event names + their payloads (§4.5.1) ───────────────────────────────────
@@ -72,7 +72,7 @@ export type M11SupplyOrderKind = "dme" | "supply" | "comfort_kit";
 
 /** The `m11.order.supply_fulfillment_requested` payload (apps/backend/src/modules/11-orders/
  *  events-by-m11.ts). `supplyDetail` is structurally open — M11 owns its per-kind shape, and M21 validates
- *  it against the matching D1 TypeBox in `@wardenx/supplies` before writing `supply_request.data`. */
+ *  it against the matching D1 TypeBox in `@chartwarden/supplies` before writing `supply_request.data`. */
 export interface M11SupplyFulfillmentRequestedPayload {
   readonly orderId: OrderRecordId;
   readonly kind: M11SupplyOrderKind;

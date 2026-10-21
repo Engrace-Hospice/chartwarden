@@ -1,7 +1,7 @@
 // Finding 13 — a lab order that could not be sent only because no lab interface is configured is shown as
 // information, not as a failed transmission; a genuine send failure keeps the failed pill.
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

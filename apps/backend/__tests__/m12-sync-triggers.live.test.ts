@@ -23,9 +23,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { isDegradedError } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { isDegradedError } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
@@ -324,7 +324,7 @@ describe.skipIf(!DB_URL)(
     it("isDegradedError narrows the real client's rejection (the worker's own retry/fail branch)", async () => {
       // A direct, lower-level proof of the exact narrowing the worker's catch block performs, independent
       // of the DB — the honest "not configured" contract INT-009 promises.
-      const { createUnboundDoseSpotClient } = await import("@wardenx/dosespot");
+      const { createUnboundDoseSpotClient } = await import("@chartwarden/dosespot");
       const client = createUnboundDoseSpotClient();
       await expect(client.upsertPatient("org", {} as never, "key")).rejects.toSatisfy(
         (e: unknown) => {

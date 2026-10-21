@@ -8,7 +8,7 @@
 //
 // Pure helpers and the §6 predicate factory are exercised directly; the discipline/SUD enforcement is
 // also proved through the in-memory CarePlanRouteService (the slice the routes compose over).
-import type { AbacContext, AbacTarget } from "@wardenx/auth";
+import type { AbacContext, AbacTarget } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   type CarePlanAbacDeps,

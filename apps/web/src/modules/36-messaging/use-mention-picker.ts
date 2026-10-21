@@ -1,6 +1,6 @@
 // The composer's @-mention state in one place: the active query, its suggestions (members first, then people outside the
 // conversation, WP 2.3), the pending "add to conversation?" choice, and choosing a suggestion into the draft.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { insertMention } from "./mention-utils";

@@ -9,7 +9,7 @@
 //
 // FAIL CLOSED: with no object store configured (`MINIO_*` unset) the upload service answers a typed 503 and nothing
 // is stored — the portal then keeps the caregiver's staged bytes for a retry.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { getSeam } from "../../bootstrap/index";
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import { createServerUploadService } from "./routes/server-upload";

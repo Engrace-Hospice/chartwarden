@@ -1,11 +1,11 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/24-billing-medicaid/routes/read-service-drizzle.ts — the Drizzle-backed M24 READ
 // service. Every method opens `withOrgContext(db, {organizationId, userId}, tx => …)` so Postgres RLS scopes
 // each statement to the acting org. Claim list paging is keyset over (created_at DESC, id DESC). The
 // rule-config read overlays the per-tenant config rows onto the §4.6 platform-default registry. Secrets and
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
-import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { isUsableCipher } from "../credential-crypto";
 import { type CursorPage, decodeCursor, toPage } from "./concurrency";

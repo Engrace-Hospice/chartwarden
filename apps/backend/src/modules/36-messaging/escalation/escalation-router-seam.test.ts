@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { createInMemoryEscalationRouter } from "@wardenx/messaging/testing/in-memory-escalation-router";
+import { createInMemoryEscalationRouter } from "@chartwarden/messaging/testing/in-memory-escalation-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam, validateSeams } from "../../../bootstrap/index";
 import { getEscalationRouter } from "../seams";

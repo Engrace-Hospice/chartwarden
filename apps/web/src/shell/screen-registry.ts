@@ -1,5 +1,5 @@
-import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@wardenx/types";
-// apps/web/src/shell — concrete React binding of the @wardenx/types screen registry (M1, ADR-0030).
+import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@chartwarden/types";
+// apps/web/src/shell — concrete React binding of the @chartwarden/types screen registry (M1, ADR-0030).
 import type { ComponentType, LazyExoticComponent } from "react";
 
 /**

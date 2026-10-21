@@ -9,7 +9,7 @@ import {
   StatusPill,
   type StatusTone,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/37-ipu — the IPU bedside pane (§5; #91). `/ipu/admissions/:id`.
 //
 // One admission, and everything about it that a shift working the unit has to act on: the restraints

@@ -22,7 +22,7 @@
 -- (M5), source_consent_record_id (M39), m17_visit_id (M17), assigned_membership_id / granted_by /
 -- revoked_by_membership_id (M2 membership) and linked_encounter_id (M8) are LOGICAL uuid, validated at the
 -- write boundary. `revoke_cascade_source`, `scheduled_visit_setting` and `end_reason` are text validated
--- against the @wardenx/types unions (PortalGrantRevokeCascadeSource / TelehealthScheduledVisitSetting /
+-- against the @chartwarden/types unions (PortalGrantRevokeCascadeSource / TelehealthScheduledVisitSetting /
 -- TelehealthEndReason), not pinned as pgEnums (§3.3).
 CREATE TYPE "public"."portal_account_relationship" AS ENUM('patient_self', 'family_caregiver', 'dpoa_healthcare_agent', 'personal_representative_post_death', 'bereaved_family_member');--> statement-breakpoint
 CREATE TYPE "public"."portal_account_status" AS ENUM('invited', 'active', 'suspended', 'revoked', 'bereaved');--> statement-breakpoint

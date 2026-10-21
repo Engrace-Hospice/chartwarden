@@ -28,8 +28,8 @@
 // The envelope cipher is an injected port; until the KMS-backed key ring binds it, POST /provider-entities
 // refuses with 503 `TAX_ID_CIPHER_UNBOUND` (the M8/M20/M32 `*_CIPHER_UNBOUND` posture) — everything else works.
 import { randomUUID } from "node:crypto";
-import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@wardenx/auth";
-import { WardenXError } from "@wardenx/types";
+import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditLocationCreated,
@@ -88,7 +88,7 @@ const IMMUTABLE_PE_FIELDS = ["ccn", "npi", "taxId", "fiscalYearEnd", "organizati
 const isPlatformOperator = (request: FastifyRequest): boolean =>
   request.context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
 
-const conflict = (code: string, message: string) => new WardenXError(code, message, 409);
+const conflict = (code: string, message: string) => new ChartWardenError(code, message, 409);
 
 function rejectImmutable(body: Record<string, unknown>, fields: readonly string[]): void {
   const present = fields.filter((f) => body[f] !== undefined);
@@ -174,7 +174,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     if (legalName !== undefined) {
       // The legal name is what claims and contracts carry: a tenant administrator edits the display name only.
       if (!platform)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "FORBIDDEN",
           "only a platform operator can change the legal name",
           403,
@@ -197,7 +197,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
   // ── provider entities ─────────────────────────────────────────────────────────────────────────
   const orgOf = (request: FastifyRequest): string => {
     const org = request.context.organizationId;
-    if (!org) throw new WardenXError("FORBIDDEN", "an org-bound session is required", 403);
+    if (!org) throw new ChartWardenError("FORBIDDEN", "an org-bound session is required", 403);
     return org;
   };
 
@@ -228,7 +228,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       iqiesFacilityId: optionalString(body, "iqiesFacilityId", 50) || null,
     };
     if (!deps.taxIdCipher)
-      throw new WardenXError(
+      throw new ChartWardenError(
         "TAX_ID_CIPHER_UNBOUND",
         "the tax-id envelope cipher (KMS-backed key ring) is not bound; a provider entity cannot be created until it is",
         503,
@@ -241,7 +241,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       .encrypt({ organizationId: orgId, providerEntityId: id, plaintext: taxId as string })
       .catch((cause: unknown) => {
         request.log.error({ err: cause, organizationId: orgId }, "tax-id encryption failed");
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TAX_ID_KEY_UNAVAILABLE",
           "the tenant encryption key is unavailable; contact platform support",
           503,

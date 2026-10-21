@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — EVV Event Ledger (M18 §5.1 `/app/evv/events`, Track B / ADR-0030).
 // A searchable, caseload-scoped capture ledger. Coordinates are NEVER shown here (D10 — evv.read_coords
 // is a separate path). Server query params keep clinician / patient / visit narrowing authoritative.

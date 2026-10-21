@@ -1,7 +1,7 @@
 // apps/web/src/modules/09-assessments — shared assessment presentation helpers (R1, Lantern).
 // The assessment / significant-change / scale-license enums each map to the §6.6 badge taxonomy tone
-// (grounded in the @wardenx/types unions) so every M9 surface renders the same StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+// (grounded in the @chartwarden/types unions) so every M9 surface renders the same StatusPill for a state.
+import type { StatusTone } from "@chartwarden/ui";
 
 // AssessmentStatus = "active" | "superseded" (§ correction-supersede).
 export const ASSESSMENT_TONE: Record<string, StatusTone> = {

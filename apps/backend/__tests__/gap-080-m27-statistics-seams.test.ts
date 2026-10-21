@@ -3,7 +3,7 @@
  * `gap-080-m27-statistics-refresh.live.test.ts`): month splitting, level-of-care lookup, the aggregate folding, FTE
  * derivation and the discipline normaliser; and the assembled seams over fake ports.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import { programOfCoverageKind } from "../src/modules/05-patient/seams/payer-programs-for-patients";
 import {

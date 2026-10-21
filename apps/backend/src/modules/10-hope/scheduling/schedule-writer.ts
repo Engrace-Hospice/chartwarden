@@ -17,7 +17,7 @@
 // FAILS CLOSED — an admission the M6 seam cannot project, or one still missing its provider entity /
 // location, throws. `hope_timepoint_schedule.provider_entity_id` / `.location_id` are NOT NULL precisely
 // so a schedule cannot be sited at a guessed place; the consumer dead-letters and the route 422s.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_ORG_TIME_ZONE,
   HopeStateError,
@@ -25,9 +25,9 @@ import {
   orgLocalDate,
   planAdmissionTimepoints,
   planDischargeTimepoint,
-} from "@wardenx/hope";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { HopeRfaKind, LocalDate } from "@wardenx/types";
+} from "@chartwarden/hope";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { HopeRfaKind, LocalDate } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { HopeWriteOutboxPort } from "../outbox-port";

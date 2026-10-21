@@ -1,4 +1,4 @@
-import { isSupportedScope } from "@wardenx/fhir";
+import { isSupportedScope } from "@chartwarden/fhir";
 // apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts — §4.1 R1-R22: the FHIR-spec HTTP surface.
 //
 // These routes authenticate with a SMART bearer token (NOT a WardenX session), so they do NOT compose the
@@ -9,7 +9,7 @@ import { isSupportedScope } from "@wardenx/fhir";
 // ── POSTURE (read-only US Core R4, `fhir.write` OFF) ────────────────────────────────────────────────
 //
 //   · The projection pipeline is `./projection.ts`: every served resource is composed at read time from
-//     an owner module's data through the M1 seam registry, shaped by a pure `@wardenx/fhir` mapper, and
+//     an owner module's data through the M1 seam registry, shaped by a pure `@chartwarden/fhir` mapper, and
 //     put through the D3 egress consent gate before it reaches the wire. `SERVED_RESOURCES` is the single
 //     source of truth for what this gateway can answer, and BOTH the CapabilityStatement (R1) and the
 //     router read it — so the conformance claim and the behaviour cannot drift apart.
@@ -26,12 +26,12 @@ import { isSupportedScope } from "@wardenx/fhir";
 //   · EVERY served read writes a 45 CFR §164.528 accounting row through `store.recordDisclosure`, AFTER
 //     the body is assembled, so `resultCount` is what actually crossed. A read that 403s or 404s
 //     disclosed nothing and is deliberately not accounted for.
-import type { OperationOutcome } from "@wardenx/fhir";
+import type { OperationOutcome } from "@chartwarden/fhir";
 import {
   FHIR_FORWARD_SEAM_RESOURCES,
   FHIR_SESSION_TTL_MINUTES,
   type FhirReadDisclosureEnvelope,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { BulkExportEnqueuePort, FhirExportObjectStore } from "../jobs/ports";

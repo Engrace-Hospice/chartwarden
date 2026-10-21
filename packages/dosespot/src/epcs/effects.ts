@@ -1,4 +1,4 @@
-// @wardenx/dosespot — EPCS signing-attempt side-effect descriptors (§2.4 §1311.205, M12-T05).
+// @chartwarden/dosespot — EPCS signing-attempt side-effect descriptors (§2.4 §1311.205, M12-T05).
 //
 // The M12 lifecycle/refill pattern carried forward (`lifecycle/effects.ts`, `refill/effects.ts`): every EPCS
 // signing-session transition carries an explicit, in-transaction side-effect list, and the COMMIT binds the
@@ -13,7 +13,7 @@ import type {
   EpcsSigningAttemptOutcome,
   M12AlertPayload,
   M12EventName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §4.9 — the discriminating `eventType` of a typed M36 alert M12 dispatches (no outbox wire name). Not
  * re-exported (the package root already surfaces it from `lifecycle/effects`); local to the EPCS effects. */

@@ -5,7 +5,7 @@ import {
   SelectField,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import {
   useCallback,
   useEffect,

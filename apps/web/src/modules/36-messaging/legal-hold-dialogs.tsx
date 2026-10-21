@@ -6,8 +6,8 @@ import {
   type ApplyMessageLegalHoldRequest,
   MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
   type MessageLegalHoldDto,
-} from "@wardenx/types";
-import { Button, Modal, TextAreaField, TextField } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { Button, Modal, TextAreaField, TextField } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

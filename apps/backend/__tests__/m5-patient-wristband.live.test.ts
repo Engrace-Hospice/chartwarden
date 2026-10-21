@@ -25,10 +25,10 @@ import {
   registerPredicateIdempotent,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { OFFLINE_WRISTBAND_MAX_AGE_MS } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { OFFLINE_WRISTBAND_MAX_AGE_MS } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

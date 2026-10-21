@@ -1,9 +1,9 @@
-import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Organization Select (M2 Auth, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Organization select" (/login/organization).
 // A multi-org user picks the org that binds the session (one-time). Backed by the real M2 routes
 // GET /api/v1/auth/memberships + POST /api/v1/auth/select-organization via the generated client.
-// Imports only leaves (@wardenx/ui) + react-router — never the backend or the shell internals.
+// Imports only leaves (@chartwarden/ui) + react-router — never the backend or the shell internals.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { takePendingNotificationLink } from "../../shell/pending-deep-link";
@@ -110,7 +110,7 @@ export function OrganizationSelect(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
+    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
       <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Select organization</h1>
       {state.kind === "loading" ? <LoadingSpinner /> : null}
       {state.kind === "error" ? (

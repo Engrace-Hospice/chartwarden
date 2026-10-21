@@ -4,7 +4,7 @@ import {
   computeTwilioSignature,
   verifyPostmarkWebhook,
   verifyTwilioSignature,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // M36-T08 — webhook two-layer defense (M36 spec §4.9 / §4.9.1 / §4.9.2; SD-056 / INT-016).
 //
 // Accept: the replay window rejects missing/invalid/expired timestamps and admits fresh ones; the

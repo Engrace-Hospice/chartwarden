@@ -2,7 +2,7 @@
 //
 // The data surface the §4.1 routes compose over. Drizzle in prod (./store-drizzle.ts, org-scoped through
 // `withOrgContext`); this in-memory implementation serves the §7 tests (W-FHIR-01/02/12) and any db-less
-// boot. Both share the §2.2 FSM cores from `@wardenx/fhir` (`fhirClientTransition`,
+// boot. Both share the §2.2 FSM cores from `@chartwarden/fhir` (`fhirClientTransition`,
 // `fhirDualApprovalSatisfied`, `FHIR_CLIENT_CASCADE_ON_ENTRY`) so the in-memory path and the real path
 // enforce the SAME dual-approval and cascade rules — a test that passes here is testing the rule, not a
 // second spelling of it.
@@ -15,7 +15,7 @@ import {
   fhirInboundOwnerModuleFor,
   fhirInboundSubjectPatientId,
   inboundPayloadSha256,
-} from "@wardenx/fhir";
+} from "@chartwarden/fhir";
 import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
   FHIR_SESSION_TTL_MINUTES,
@@ -27,8 +27,8 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
   type FhirReadDisclosureEnvelope,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 
 import {
   type FhirRevocationCascadePort,
@@ -302,11 +302,11 @@ export interface FhirGatewayStore {
 }
 
 /**
- * A store error carrying an HTTP status + a WardenX error code. Extends `WardenXError` so the composition
+ * A store error carrying an HTTP status + a WardenX error code. Extends `ChartWardenError` so the composition
  * root's error handler renders it as the standard WardenX envelope with no per-route mapping (the admin
  * surface, §4.1 R23-R39, uses that envelope; the FHIR-spec surface catches it and renders OperationOutcome).
  */
-export class FhirStoreError extends WardenXError {
+export class FhirStoreError extends ChartWardenError {
   constructor(httpStatus: number, code: string, message: string) {
     super(code, message, httpStatus);
     this.name = "FhirStoreError";

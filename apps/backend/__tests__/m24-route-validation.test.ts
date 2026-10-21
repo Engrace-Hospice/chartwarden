@@ -1,4 +1,4 @@
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/__tests__/m24-route-validation.test.ts — M24 (§4.2) request-validation conformance.
 //
 // The M24 routes bind the `m24-typebox` schemas through `parse(...)` at the route boundary, so a malformed

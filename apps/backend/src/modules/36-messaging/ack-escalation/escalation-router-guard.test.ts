@@ -1,4 +1,4 @@
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { EscalationRouterAnswerError, guardEscalationRouter } from "./escalation-router-guard";
 

@@ -1,4 +1,4 @@
-// @wardenx/messaging — the fan-out planner (M36-T04, spec §2.1, §2.4.4, §2.5, §2.6).
+// @chartwarden/messaging — the fan-out planner (M36-T04, spec §2.1, §2.4.4, §2.5, §2.6).
 //
 // Given an alert (category, severity), the firing rule's optional channel override, and the
 // resolved recipients' preferences, compute the `notification_delivery` plan: one row per

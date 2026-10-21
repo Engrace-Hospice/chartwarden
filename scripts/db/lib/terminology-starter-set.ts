@@ -14,7 +14,7 @@
 // this merges. No agent attests to a licence; remove the LOINC block if the owner says no.
 //
 // SNOMED CT is deliberately absent (affiliate licence; the golden path does not need it).
-import { PLATFORM_CODE_SYSTEMS } from "@wardenx/terminology";
+import { PLATFORM_CODE_SYSTEMS } from "@chartwarden/terminology";
 
 function licenseOf(id: "icd10cm" | "loinc"): string {
   const row = PLATFORM_CODE_SYSTEMS.find((s) => s.id === id);

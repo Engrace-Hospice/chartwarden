@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 HQRP & Quality package entrypoint (public barrel).
+// @chartwarden/quality — M30 HQRP & Quality package entrypoint (public barrel).
 //
 // M30 is the hospice Quality plane: the HQRP measure-calculator suite (HCI / HVLDL / HOPE-derived /
 // operational), the CAHPS vendor-adapter contract + sampling/ingest pipelines, and the operator
@@ -81,5 +81,5 @@ export * from "./alert-defs";
 // (measure_recompute / cahps_export / outbreak_detection / risk_register_refresh) + four crons (nightly
 // recompute / cahps monthly sample / risk refresh / sra reminders), plus the queue/DLQ/cron/idempotency-key
 // catalog. Job LOGIC only; the live BullMQ `Worker`/`Queue` construction binds at app boot in the backend
-// `jobs/m30-jobs.ts` adapter (the M33 `@wardenx/reporting/refresh` precedent — nothing here opens Valkey).
+// `jobs/m30-jobs.ts` adapter (the M33 `@chartwarden/reporting/refresh` precedent — nothing here opens Valkey).
 export * from "./workers/index";

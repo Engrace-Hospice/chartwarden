@@ -1,4 +1,4 @@
-// @wardenx/cost-report — Worksheet B (Cost Allocation — Step-Down) TypeBox schema (Form CMS-1984-14, Pub 15-2
+// @chartwarden/cost-report — Worksheet B (Cost Allocation — Step-Down) TypeBox schema (Form CMS-1984-14, Pub 15-2
 // §4320). B is a DERIVED worksheet: the step-down allocates the general-service (overhead) cost centers across
 // the four direct level-of-care centers (CHC/RHC/IRC/GIP, lines 50–53) using the statistical basis recorded on
 // Worksheet B-1, producing a fully-allocated cost per center. The math is the deterministic `decimal.js`
@@ -7,7 +7,7 @@
 // (§4320), not here. B col. 18 (lines 50–53) transfers to Worksheet C. All money is INTEGER CENTS; no PHI (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4320 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** One step-down pass: a general-service cost center and the total pool it allocated (the result; the basis

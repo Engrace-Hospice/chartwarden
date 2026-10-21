@@ -117,7 +117,7 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
   "x-dosespot-signature": {
     classification: "verified",
     reason:
-      "HMAC-SHA256 of the raw body, constant-time compared against the tenant's webhook secret before the payload is believed (M12 webhooks/ingest.ts -> @wardenx/dosespot verifyWebhookEnvelope). Scheme per M12 spec 7.4; NOT yet checked against a real DoseSpot delivery (F-230).",
+      "HMAC-SHA256 of the raw body, constant-time compared against the tenant's webhook secret before the payload is believed (M12 webhooks/ingest.ts -> @chartwarden/dosespot verifyWebhookEnvelope). Scheme per M12 spec 7.4; NOT yet checked against a real DoseSpot delivery (F-230).",
   },
   "x-dosespot-timestamp": {
     classification: "not-authorization",

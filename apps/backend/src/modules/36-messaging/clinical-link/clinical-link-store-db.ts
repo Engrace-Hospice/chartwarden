@@ -3,9 +3,9 @@
 // Writes run INSIDE the message write transaction (the caller passes its `tx`), so a link row and its message commit or
 // roll back together. The table has no UPDATE grant: edits reconcile by deleting the dropped links and inserting the new
 // ones. Every statement names the organization, on top of RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { ClinicalLinkKind } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { ClinicalLinkKind } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import type { ValidatedClinicalLink } from "./clinical-link-service";

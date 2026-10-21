@@ -1,4 +1,4 @@
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — the claim editor's rail panels for how the stay ended: the guided
 // "missing discharge details" panel and the Type of Bill panel with its remedy action (re-run validation for an
 // unsubmitted claim; open the TOB-817 replacement ceremony for an accepted / paid one). Split from claim-editor.tsx

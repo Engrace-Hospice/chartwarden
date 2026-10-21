@@ -10,7 +10,7 @@ import {
   humanizeIdentifier,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 payment methods (§5.1 `/billing/payment_methods`).
 // The stored payment methods over GET /api/v1/payment_methods, with "Set default"/"Detach" affordances
 // and the "Add card" CTA. Card entry itself is the Stripe Payment Element (the only iframe-mounted,
@@ -135,7 +135,7 @@ export function PaymentMethods(): JSX.Element {
                 the visible copy. The previous wording described card entry as if it worked. */}
               <span>
                 Card entry is handled by the Stripe payment element, so raw card data stays off
-                WardenX. Adding a card is not enabled yet — contact support to add or replace one.
+                ChartWarden. Adding a card is not enabled yet — contact support to add or replace one.
                 Existing cards can still be set as default or detached below.
               </span>
             </div>

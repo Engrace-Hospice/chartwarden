@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_assessment` (M10 §3.3, D11). One row per HOPE timepoint capture across all five
+// @chartwarden/db — `hope_assessment` (M10 §3.3, D11). One row per HOPE timepoint capture across all five
 // RFAs (Admission / HUV1 / HUV2 / SFV / Discharge): the per-section CMS HOPE payload in the `data`
 // jsonb, the server-authoritative J2051 trigger result, the PPS/ESAS-r clinical-context snapshot at
 // sign (D8), and the draft→signed→superseded lifecycle (§2.2.2). PHI-bearing → org-scoped RLS; provider

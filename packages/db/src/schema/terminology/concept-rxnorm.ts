@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_rxnorm` (M38 Terminology §3.4). One of the four Phase-1
+// @chartwarden/db — `concept_rxnorm` (M38 Terminology §3.4). One of the four Phase-1
 // per-system concept tables (§2.3). RxNorm-specific columns: tty (term type — IN/SCD/
 // SBD/BN/…), ingredient_rxcui, and the associated-NDCs array at this version. Composite
 // PK (code, version_id) keeps versions coexisting (§7.2). Platform-shared reference

@@ -1,4 +1,4 @@
-// @wardenx/db — `vendor_invoice_line` (M27, F-207 #248; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `vendor_invoice_line` (M27, F-207 #248; non-partitioned; retention class `compliance`).
 // The M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis precedence tier additive
 // to D17's M13 administration -> M12 ordered -> manual entry chain: a vendor invoice for a supply_request
 // (DME/comfort-kit/general supply) M21 accrued or reconciled, resolved to the cost_report whose fiscal

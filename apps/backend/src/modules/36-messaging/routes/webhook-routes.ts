@@ -20,7 +20,7 @@ import {
   assertReplayWindow,
   verifyPostmarkWebhook,
   verifyTwilioSignature,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 /** A vendor delivery callback reconciled against `notification_delivery` (§4.4 delivery_reconcile). */

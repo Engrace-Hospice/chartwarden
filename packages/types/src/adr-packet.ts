@@ -1,4 +1,4 @@
-// @wardenx/types — the typed render payload M25 hands M22 to render the cover sheet and enclosure index of a
+// @chartwarden/types — the typed render payload M25 hands M22 to render the cover sheet and enclosure index of a
 // filed ADR response (hospice ADR/TPE/QIC PRD, milestone 2b). M25 builds it at filing from the case and its
 // frozen manifest (server side; nothing here comes from the request except the filing facts the person recorded);
 // M22 validates it at the render boundary so a malformed packet fails the render (retry -> DLQ) instead of

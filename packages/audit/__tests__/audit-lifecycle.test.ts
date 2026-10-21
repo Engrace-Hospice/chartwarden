@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T08 unit tests (M4 spec §6, §10.5–10.6; W-M4-08, W-M4-09).
+// @chartwarden/audit — M4-T08 unit tests (M4 spec §6, §10.5–10.6; W-M4-08, W-M4-09).
 //
 // The retention-driven destruction path: the eraser enforcing legal-hold supremacy + Part 2
 // lifetime retention, and the destruction-certificate workflow that runs an approved certificate.

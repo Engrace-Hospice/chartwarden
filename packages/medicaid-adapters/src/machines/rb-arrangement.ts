@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 `rb_arrangement` lifecycle reducer (§2.2). Pure hand-rolled transition
+// @chartwarden/medicaid-adapters — M24 `rb_arrangement` lifecycle reducer (§2.2). Pure hand-rolled transition
 // table (the M23 exemplar). DRAFT → ACTIVE (on contract sign + M22 upload) → EXPIRED | TERMINATED |
 // SUPERSEDED (all terminal; chain preserved via supersedes_arrangement_id). PURE DOMAIN: no I/O, no PHI.
 import type { RbArrangementState } from "../contracts";

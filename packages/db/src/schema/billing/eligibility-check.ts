@@ -1,4 +1,4 @@
-// @wardenx/db — `eligibility_check` (M23 Billing-Medicare §3.3, D13; non-partitioned; retention class
+// @chartwarden/db — `eligibility_check` (M23 Billing-Medicare §3.3, D13; non-partitioned; retention class
 // `operational`). Append-only: one row per HETS 270/271 eligibility round-trip. The §11.A
 // eligibility-freshness rule reads the most-recent active/inactive check per patient (≤30 days old via
 // stale_at = checked_at + 30d). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
@@ -19,7 +19,7 @@ import { m23EligibilityOutcome } from "./types";
 
 // MISSING-FROM-KERNEL helper type — declared locally pending the integrate phase hoisting it into
 // types.ts as `EligibilityCheckParsedPayload` (the parsed HETS 271 response; opaque at the DB layer,
-// typed precisely at the service layer in @wardenx/billing P2; MBI is NEVER a field here):
+// typed precisely at the service layer in @chartwarden/billing P2; MBI is NEVER a field here):
 //   { partAActive: boolean; planEffective?: string; planEnd?: string; otherCoverages?: unknown[]; raw271Ref?: string }
 interface EligibilityCheckParsedPayload {
   [key: string]: unknown;

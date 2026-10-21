@@ -7,10 +7,10 @@
 //
 // Resolving through `getSeam` is why M20's manifest `dependsOn` carries M1 (the registry lives in
 // `apps/backend/src/bootstrap`, which is M1 code); M17 is already an M20 dependency per the manifest, and
-// M5 / M18 / M19 need NO edge — the CONTRACT types are leaf `@wardenx/types` (ADR-0005 D1/D2) and the
+// M5 / M18 / M19 need NO edge — the CONTRACT types are leaf `@chartwarden/types` (ADR-0005 D1/D2) and the
 // binding is runtime. This is the same shape M15-T03 / M16-T03 / M19-T04 / M21-T04 each use.
 //
-// THREE OF §4.4's METHOD NAMES DO NOT EXIST ON THE PUBLISHED CONTRACTS. @wardenx/types already recorded
+// THREE OF §4.4's METHOD NAMES DO NOT EXIST ON THE PUBLISHED CONTRACTS. @chartwarden/types already recorded
 // them at M20-T01; this file is where each is RESOLVED, because a re-declared seam is a permanently
 // unbound one (the M15/M17 `VolunteerComplianceProvider` precedent):
 //
@@ -39,7 +39,7 @@ import type {
   PortalVisitReader,
   VisitAssignmentReader,
   VisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**

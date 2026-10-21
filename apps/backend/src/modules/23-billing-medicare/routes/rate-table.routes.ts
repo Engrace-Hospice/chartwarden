@@ -7,7 +7,7 @@
 // `provider_entity_billing_scope` predicate over the ProviderEntity (query/body — the by-id routes carry it too and the
 // service 404s a mismatch) + the §D13 AI-block + `Idempotency-Key` on mutations. NO PHI. Org/actor/membership binding is
 // ALWAYS server-side.
-import { nationalRateReferenceFor } from "@wardenx/billing";
+import { nationalRateReferenceFor } from "@chartwarden/billing";
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

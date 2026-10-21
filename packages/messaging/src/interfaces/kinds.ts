@@ -1,4 +1,4 @@
-// @wardenx/messaging — channel kind discriminator + the messaging type surface.
+// @chartwarden/messaging — channel kind discriminator + the messaging type surface.
 //
 // M36-T01 (spec §2.3, §3.1, §3.2). This file is the TYPE-LEVEL home for the messaging
 // enums and, above all, the `channel_kind` discriminator that drives a channel's

@@ -1,10 +1,10 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/16-bereavement — M16 Bereavement screen registration (Track B / ADR-0030, §5.1).
 // The read + write surface over the live /api/v1/bereavement backend (33 routes, M16-T06).
 //
 // Each `requiredPermission` is the REAL §4.7 M16 key the matching route gates on
 // (apps/backend/src/modules/16-bereavement/permission-keys.ts → `M16_CONTRIBUTED_PERMISSIONS` in
-// @wardenx/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and an
+// @chartwarden/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and an
 // off-caseload plan is a non-leaking 404 from the server, never a frontend hide. A 404 there is deliberate:
 // "this plan 403s" would tell an unauthorized caller that a particular patient died.
 //

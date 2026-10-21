@@ -1,4 +1,4 @@
-// @wardenx/fhir — `fhir_client_session` mint + bearer-verification decision (§2.2 / §2.4, M28-T03).
+// @chartwarden/fhir — `fhir_client_session` mint + bearer-verification decision (§2.2 / §2.4, M28-T03).
 //
 // Once EITHER auth path succeeds (`backend-services.ts` client-assertion or `api-key.ts`), the token
 // route (M28-T08) mints a bearer session: a 15-minute `fhir_client_session` row keyed by the `jti`. The
@@ -18,7 +18,7 @@ import {
   FHIR_SESSION_TTL_MINUTES,
   type FhirClientId,
   type FhirClientSessionJti,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { scopesExceedingGrant } from "./scopes";
 

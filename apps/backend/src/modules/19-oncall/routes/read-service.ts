@@ -38,7 +38,7 @@ import type {
   TriageProtocolAnswerType,
   TriageRedFlagMatch,
   TriageRiskBand,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { TriageMedicationContext } from "../clinical/medication-context";
 import type { SelectableDisposition } from "../lifecycle/disposition";
 import type { M19ReadActor } from "./actor";
@@ -159,7 +159,7 @@ export interface TriageCallDetail extends TriageCallListItem {
  * Structurally incapable of carrying the caller's phone, the caller quote, the transcript, the free-text
  * chief complaint, the caregiver identity or the AI advisories. The patient anchor is present because a
  * vendor operator must be able to work the call; what they get ABOUT the patient comes from
- * `@wardenx/triage-vendors`' `minimizeForVendor`, and this DTO carries only the triage-call facts.
+ * `@chartwarden/triage-vendors`' `minimizeForVendor`, and this DTO carries only the triage-call facts.
  */
 export interface VendorTriageCallView {
   readonly id: string;

@@ -6,8 +6,8 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund queue (`/admin/refunds`, refund.read). The
 // cross-tenant refund roster over GET /api/admin/refunds, filtered by state (requested/approved/executed/
 // failed) client-side, with the org DISPLAY NAME (M35A-T03 seam) per row. Redesign list + right drawer: a row

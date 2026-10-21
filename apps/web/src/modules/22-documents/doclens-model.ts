@@ -12,7 +12,7 @@ import type { Bbox, Candidate, SudStatus, WorkspacePage } from "./doclens-api";
 
 // ── labels ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Field-path leaf → reviewer copy. Covers the v1 registry (`@wardenx/intake-extraction` schemas). */
+/** Field-path leaf → reviewer copy. Covers the v1 registry (`@chartwarden/intake-extraction` schemas). */
 const FIELD_LABEL: Record<string, string> = {
   "patient.legalFirstName": "Legal first name",
   "patient.legalLastName": "Legal last name",

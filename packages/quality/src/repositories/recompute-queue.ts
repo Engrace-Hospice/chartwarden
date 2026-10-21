@@ -1,10 +1,10 @@
-// @wardenx/quality · repositories — the debounced measure-recompute work list:
+// @chartwarden/quality · repositories — the debounced measure-recompute work list:
 // `measure_recompute_queue` (one PENDING row per (measure, provider_entity, period) — a triggering
 // domain event / cron flips `requires_recompute=true`; the recompute worker clears it) (M30 §3.3).
 // ORG-SCOPED; the outbox consumer that enqueues + the worker that drains wrap these in `withOrgContext`.
 // The V `uq_measure_recompute_pending` partial-unique (WHERE requires_recompute=true) collapses repeated
 // triggers into the one pending row (debounce).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

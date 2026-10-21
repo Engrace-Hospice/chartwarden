@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — Palmetto Jurisdiction J MAC portal client (DENY-STUB; not yet operational).
+// @chartwarden/x12-837-client — Palmetto Jurisdiction J MAC portal client (DENY-STUB; not yet operational).
 //
 // Lights up when a tenant lands in Palmetto JJ. Adding the real body is a code-change-and-test, not an
 // M23-surface change (spec §8.5): replace the throws with the real file-drop + status-poll, then the

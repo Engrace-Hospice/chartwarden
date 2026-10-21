@@ -1,5 +1,5 @@
-import { WardenXError } from "@wardenx/types";
-// @wardenx/messaging — message body envelope crypto (M36 §3.4 / FB-T05).
+import { ChartWardenError } from "@chartwarden/types";
+// @chartwarden/messaging — message body envelope crypto (M36 §3.4 / FB-T05).
 import { describe, expect, it } from "vitest";
 import {
   deriveOrgDek,
@@ -20,7 +20,7 @@ describe("message body crypto (FB-T05)", () => {
     expect(() => loadMessagingKek(Buffer.alloc(16).toString("base64"))).toThrow(/unavailable/);
   });
 
-  it("throws a typed 503 WardenXError (not a bare Error) when the key is missing or malformed", () => {
+  it("throws a typed 503 ChartWardenError (not a bare Error) when the key is missing or malformed", () => {
     for (const raw of [undefined, Buffer.alloc(16).toString("base64")]) {
       let thrown: unknown;
       try {
@@ -28,7 +28,7 @@ describe("message body crypto (FB-T05)", () => {
       } catch (error) {
         thrown = error;
       }
-      expect(thrown).toBeInstanceOf(WardenXError);
+      expect(thrown).toBeInstanceOf(ChartWardenError);
       expect(thrown).toMatchObject({ code: "MESSAGING_ENCRYPTION_UNAVAILABLE", statusCode: 503 });
     }
   });

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/06-admission/seams/readers.ts — M6-T05 the §4.7 reader-seam
 // implementations: pure orchestration over an injected {@link AdmissionReaderStore}. Each factory
-// returns the leaf-typed seam interface (@wardenx/types) the M1 registry validates and downstream
+// returns the leaf-typed seam interface (@chartwarden/types) the M1 registry validates and downstream
 // modules resolve. The readers add NO tenant logic — RLS scopes every store read by the consumer's
 // `app.org_id`; they only project store DTOs and compute the derived facts (LOC-day counts, the
 // signed/attested booleans, current-LOC selection) so each rule has one home.
@@ -18,7 +18,7 @@ import type {
   LevelOfCarePeriodSummary,
   LevelOfCareReader,
   LocalDate,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { daysBetween } from "../state-machines/index";
 import {
   type AdmissionReaderStore,

@@ -11,7 +11,7 @@
 // than from typing, and the sig must land under `data.sigStructured`, which is the ONLY part of the
 // opaque `data` payload M12's seam store projects into the DTO M13 reads before every administration.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

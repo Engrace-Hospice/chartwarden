@@ -1,4 +1,4 @@
-// @wardenx/x12-835-client — the wire→typed mapper for the sidecar's /parse277ca JSON response. PURE: no
+// @chartwarden/x12-835-client — the wire→typed mapper for the sidecar's /parse277ca JSON response. PURE: no
 // IO. M25 consumes the M23-published `m23.claim.rejected` (sourced from M23's own 277CA parse) for the
 // pre-835 denial seed; this mapper exists so the package owns a symmetric typed surface and so a future
 // M25 self-pull of a 277CA roster has a parser. Imports ONLY ./types (the no-circular rule).

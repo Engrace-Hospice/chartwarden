@@ -7,9 +7,9 @@
 // `withPlatformContext` entry (the active-org-enumerator precedent — every entry writes a
 // `platform.bypass_invoked` row or refuses). M34's tenant shred resolves its identity-eraser subjects
 // through this same resolver (under its own job id), so both erasers apply one D9 rule.
-import { type DbClient, schema } from "@wardenx/db";
-import type { PlatformBypassAuditor } from "@wardenx/tenancy";
-import { withPlatformContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { PlatformBypassAuditor } from "@chartwarden/tenancy";
+import { withPlatformContext } from "@chartwarden/tenancy";
 import { and, eq, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 

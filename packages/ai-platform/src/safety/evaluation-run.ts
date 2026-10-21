@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §3.2.11 / D10 / W6 evaluation runs, the pure half (M32-T05).
+// @chartwarden/ai-platform — §3.2.11 / D10 / W6 evaluation runs, the pure half (M32-T05).
 //
 // An `ai_evaluation_run` row is the EVIDENCE a §2.2 lifecycle gate cites: D10 makes an evaluation run
 // mandatory on the Stage-3, Stage-4 and re-approval edges, and `ai_capability_lifecycle_event`
@@ -28,7 +28,7 @@ import type {
   AiEvaluationRunStage,
   AiEvaluationRunStatus,
   AiLifecycleApprovalKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 

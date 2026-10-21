@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextAreaField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextAreaField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/07-care-plan — the §2 version-lifecycle ceremonies (#91).
 //
 // A care plan is not a document you edit forever; it is a chain of VERSIONS, each finalized and then

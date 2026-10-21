@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — Geofence Policy (M18 §5.1 `/app/evv/geofence-policy`, Track B / ADR-0030).
 // Tenant tighten-only defaults sit above the 200m / 50m platform floor; per-address overrides stay
 // coordinate-free.

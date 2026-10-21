@@ -4,8 +4,8 @@
 // Every DTO here is the WIRE shape the M16-T07 screens and the generated client consume. Two rules the
 // shapes encode rather than merely document:
 //
-//   • Every enum-valued field is typed against the frozen `@wardenx/types` union (which mirrors the
-//     `@wardenx/db` pgEnum), NEVER a bare `string`. A wire enum published as a string is a silent lie the
+//   • Every enum-valued field is typed against the frozen `@chartwarden/types` union (which mirrors the
+//     `@chartwarden/db` pgEnum), NEVER a bare `string`. A wire enum published as a string is a silent lie the
 //     next consumer inherits.
 //   • The risk fields are OPTIONAL on every DTO, because the D10 volunteer scope and the §7.13 Part 2 gate
 //     genuinely remove them. `currentRiskTier: null` would say "no tier has been computed"; ABSENT says
@@ -37,7 +37,7 @@ import type {
   MembershipId,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { M16ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import type { BereavementRedactedCategory } from "./disclosure";

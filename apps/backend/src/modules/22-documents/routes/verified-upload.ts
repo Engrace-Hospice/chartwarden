@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/types";
-import { DegradedError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
+import { DegradedError, ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
@@ -65,28 +65,28 @@ export interface VerifiedUploadService {
 
 function validateInput(input: InitiateVerifiedUploadInput): void {
   if ((input.mode === "new_version") !== Boolean(input.targetDocumentId)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VALIDATION_FAILED",
       "targetDocumentId is required only when mode is 'new_version'",
       422,
     );
   }
   if (!MIME_TYPES.has(input.mimeType)) {
-    throw new WardenXError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
+    throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
   }
   if (
     !Number.isSafeInteger(input.byteSize) ||
     input.byteSize < 1 ||
     input.byteSize > MAX_DOCUMENT_UPLOAD_BYTES
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOAD_SIZE_INVALID",
       `document byteSize must be between 1 and ${MAX_DOCUMENT_UPLOAD_BYTES}`,
       422,
     );
   }
   if (!/^[0-9a-f]{64}$/.test(input.sha256Hex)) {
-    throw new WardenXError("VALIDATION_FAILED", "sha256Hex must be lowercase SHA-256 hex", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "sha256Hex must be lowercase SHA-256 hex", 422);
   }
 }
 
@@ -124,7 +124,7 @@ export function createVerifiedUploadService(deps: {
   ) {
     if (input.aggregateType !== "referral") return;
     if (!input.aggregateId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         "aggregateId is required for referral documents",
         422,
@@ -178,7 +178,7 @@ export function createVerifiedUploadService(deps: {
             .limit(1);
           if (!doc) throw new NotFoundError("document");
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
               "document cannot accept a new version",
               409,
@@ -260,13 +260,13 @@ export function createVerifiedUploadService(deps: {
         };
       }
       if (upload.status !== "pending") {
-        throw new WardenXError("UPLOAD_NOT_COMPLETABLE", `upload is ${upload.status}`, 409);
+        throw new ChartWardenError("UPLOAD_NOT_COMPLETABLE", `upload is ${upload.status}`, 409);
       }
       if (upload.expiresAt.getTime() <= now().getTime()) {
         await inOrg(organizationId, userId, async (tx) => {
           await tx.update(U).set({ status: "expired", updatedAt: now() }).where(eq(U.id, uploadId));
         });
-        throw new WardenXError("UPLOAD_EXPIRED", "document upload has expired", 410);
+        throw new ChartWardenError("UPLOAD_EXPIRED", "document upload has expired", 410);
       }
 
       const object = await objects.inspectObject({
@@ -274,7 +274,7 @@ export function createVerifiedUploadService(deps: {
         objectKey: upload.objectKey,
       });
       if (!object)
-        throw new WardenXError("UPLOAD_INCOMPLETE", "uploaded object is not available", 409);
+        throw new ChartWardenError("UPLOAD_INCOMPLETE", "uploaded object is not available", 409);
       const integrityMatches =
         object.byteSize === Number(upload.expectedByteSize) &&
         object.mimeType === upload.mimeType &&
@@ -288,7 +288,7 @@ export function createVerifiedUploadService(deps: {
           objectKey: upload.objectKey,
           organizationId,
         });
-        throw new WardenXError(
+        throw new ChartWardenError(
           "UPLOAD_INTEGRITY_MISMATCH",
           "uploaded object does not match the declared checksum, size, and MIME type",
           422,
@@ -315,7 +315,7 @@ export function createVerifiedUploadService(deps: {
           };
         }
         if (current.status !== "pending") {
-          throw new WardenXError("UPLOAD_NOT_COMPLETABLE", `upload is ${current.status}`, 409);
+          throw new ChartWardenError("UPLOAD_NOT_COMPLETABLE", `upload is ${current.status}`, 409);
         }
 
         let documentId = current.targetDocumentId;
@@ -330,7 +330,7 @@ export function createVerifiedUploadService(deps: {
             .limit(1);
           if (!doc) throw new NotFoundError("document");
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
               "document cannot accept a new version",
               409,
@@ -408,7 +408,7 @@ export function createVerifiedUploadService(deps: {
         if (!row) throw new NotFoundError("document upload");
         if (row.createdByMembershipId !== membershipId) throw new ForbiddenError();
         if (row.status === "completed") {
-          throw new WardenXError("UPLOAD_NOT_ABORTABLE", "completed upload cannot be aborted", 409);
+          throw new ChartWardenError("UPLOAD_NOT_ABORTABLE", "completed upload cannot be aborted", 409);
         }
         await tx.update(U).set({ status: "aborted", updatedAt: now() }).where(eq(U.id, uploadId));
         return row;

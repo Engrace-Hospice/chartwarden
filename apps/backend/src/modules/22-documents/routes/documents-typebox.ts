@@ -7,8 +7,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
-import type { ExtractionReviewStatus } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
+import type { ExtractionReviewStatus } from "@chartwarden/types";
 import type { CursorPage as ServiceCursorPage } from "./concurrency";
 import type {
   DocumentView as ServiceDocumentView,
@@ -32,7 +32,7 @@ if (!FormatRegistry.Has("uri")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// §3.2 vocab mirrors (string-literal unions; the canonical types live in @wardenx/types).
+// §3.2 vocab mirrors (string-literal unions; the canonical types live in @chartwarden/types).
 const RETENTION_CLASS = [
   "compliance",
   "clinical_record",
@@ -396,7 +396,7 @@ export const TemplateListQuerySchema = Type.Object(PageQuery);
 // (or a wire-enum widened to a bare `string`) breaks `bun run build` rather than silently drifting from the
 // client. Wire enums are published as literal unions (never `Type.String()`), matching the service unions.
 
-/** §3.2 wire-enum mirrors used by the read DTOs (canonical unions live in @wardenx/types). */
+/** §3.2 wire-enum mirrors used by the read DTOs (canonical unions live in @chartwarden/types). */
 const DOCUMENT_STATUS = ["active", "superseded", "legal_hold", "destroyed_tombstone"] as const;
 const INTAKE_BATCH_STATUS = [
   "uploaded",

@@ -14,7 +14,7 @@ import type {
   PortalAccountRelationship,
   PortalAccountStatus,
   PortalSessionClass,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { PortalStateError } from "../lifecycle/errors";
 import { grantKindForRelationship } from "../lifecycle/invitation";
 import { portalSessionClass } from "../lifecycle/portal-access-gate";

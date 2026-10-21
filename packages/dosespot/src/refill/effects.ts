@@ -1,4 +1,4 @@
-// @wardenx/dosespot — refill-inbox side-effect descriptors (§2.7 D9, M12-T04).
+// @chartwarden/dosespot — refill-inbox side-effect descriptors (§2.7 D9, M12-T04).
 //
 // The M12 medication-order-lifecycle pattern carried forward (`lifecycle/effects.ts`): every refill-inbox
 // transition carries an explicit, in-transaction side-effect list (audit + outbox + the DoseSpot-adapter
@@ -13,7 +13,7 @@ import type {
   RefillRequestId,
   RefillRequestStatus,
   RefillResponseChannel,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §4.9 — the discriminating `eventType` of a typed M36 alert M12 dispatches (no outbox wire name). Not
  * re-exported (the package root already surfaces it from `lifecycle/effects`); local to the refill effects. */

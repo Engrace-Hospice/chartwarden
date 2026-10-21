@@ -6,9 +6,9 @@
 // `POST/GET/DELETE /api/v1/orgs/:id/step-up-overrides`, plus the pure validation both the route and the tests
 // use. TIGHTEN-ONLY is enforced twice: {@link validateOverrideInput} refuses a loosening with a precise 422, and
 // `trg_tenant_step_up_tighten_only` (migration 0211) refuses it at rest against a direct SQL write.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { STEP_UP_POLICY, type StepUpFactor, ValidationError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { STEP_UP_POLICY, type StepUpFactor, ValidationError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
 
 export interface StepUpOverrideAdminRecord {

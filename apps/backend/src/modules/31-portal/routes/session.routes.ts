@@ -7,7 +7,7 @@
 // the owned `portal_access_grant` for scope and hand the binding to M2 — the response is the context the
 // portal SPA renders, not a new persisted row here.
 import { createHash } from "node:crypto";
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { scopeSetContains } from "../lifecycle/scope-set";

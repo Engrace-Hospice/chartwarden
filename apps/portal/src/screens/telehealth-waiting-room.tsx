@@ -4,8 +4,8 @@ import {
   InlineAlert,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
-// @wardenx/portal — §5.1 Telehealth waiting room (`/p/:patientId/visits/:visitId/telehealth`). Pre-visit
+} from "@chartwarden/ui";
+// @chartwarden/portal — §5.1 Telehealth waiting room (`/p/:patientId/visits/:visitId/telehealth`). Pre-visit
 // checklist (consent reaffirm, audio test), then "Join" calls POST /portal/telehealth/visits/:id/join, which
 // the backend telehealth adapter (M31-T05) answers with a short-lived vendor token + join URL. Two-party
 // recording consent is surfaced before the token is used; the audio-only fallback (Tier-3, §7.3) is always

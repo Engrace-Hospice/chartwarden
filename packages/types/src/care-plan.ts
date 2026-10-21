@@ -1,4 +1,4 @@
-// @wardenx/types — Module 7 (Care Plan / IPOC) leaf contracts (M7-T01).
+// @chartwarden/types — Module 7 (Care Plan / IPOC) leaf contracts (M7-T01).
 //
 // Per ADR-0005 D1 the cross-module CONTRACTS live in this leaf package (the M7 spec's references to
 // `packages/domain/care-plan/*` resolve here — there is no domain/foundation package on the
@@ -9,7 +9,7 @@
 // `CarePlanReader` seam M8/M14/M15 consume (§7.8). The seam IMPLEMENTATION + its M1-registry wiring
 // land in M7-T04; routes in M7-T05; the full outbox publication in M7-T07.
 
-// ── Leaf-safe id + value aliases (mirror the §3.2 pgEnums; packages/types cannot import @wardenx/db) ─
+// ── Leaf-safe id + value aliases (mirror the §3.2 pgEnums; packages/types cannot import @chartwarden/db) ─
 
 // The shared tenancy/patient/admission id aliases are owned by `./admission` (single definition site);
 // import for internal use here (not re-exported) so the package surface stays unambiguous.
@@ -287,8 +287,8 @@ export interface CarePlanOverdueStatus {
  * Compliance Officer *which codes* need remediation and *how many* records use each, so the code +
  * a record id for drill-down is the whole minimum-necessary payload — no description, no patient id.
  *
- * `systemId` is a plain string, not `CodeSystemId`: @wardenx/types is a LEAF and may not import
- * @wardenx/terminology (`leaves-stay-leaves`). M38 narrows it on receipt; an unrecognised system id
+ * `systemId` is a plain string, not `CodeSystemId`: @chartwarden/types is a LEAF and may not import
+ * @chartwarden/terminology (`leaves-stay-leaves`). M38 narrows it on receipt; an unrecognised system id
  * simply matches no deprecation mapping.
  */
 export interface CarePlanCodeUsageRecord {

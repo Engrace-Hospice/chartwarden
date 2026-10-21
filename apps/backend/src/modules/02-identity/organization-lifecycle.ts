@@ -18,10 +18,10 @@
 // (routes/identity-routes.ts) additionally refuses to bind a FRESH session to a non-`active` org via
 // the injected `OrganizationStatusReader` (identity-ports.ts) — closing the direction session revocation
 // alone cannot: a suspended org's user retrying sign-in afterward.
-import type { AuditContext } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import type { AuditContext } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { auditOrganizationTransition } from "./audit/identity-audit";
 
@@ -55,7 +55,7 @@ const nextOrganizationStatus = (
   event: OrganizationLifecycleEvent,
 ): OrganizationLifecycleStatus => {
   if (!ORGANIZATION_LIFECYCLE_GRAPH[from].includes(event)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ILLEGAL_ORGANIZATION_TRANSITION",
       `organization cannot '${event}' from '${from}'`,
       409,

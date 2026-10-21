@@ -16,8 +16,8 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -567,7 +567,7 @@ describe("M2-T06 identity route inventory", () => {
     it("GAP-008 an invitation proposing roles runs the guard with the INVITER and stores nothing when refused", async () => {
       const refusing: NonNullable<IdentityRouteDeps["proposedRoleGuard"]> = {
         async assertProposable() {
-          throw new WardenXError("ESCALATION_BLOCKED", "no", 403);
+          throw new ChartWardenError("ESCALATION_BLOCKED", "no", 403);
         },
       };
       const { app, invitations } = makeServer({ proposedRoleGuard: refusing });

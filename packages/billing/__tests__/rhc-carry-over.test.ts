@@ -5,8 +5,8 @@ import {
   addDaysIso,
   calculatePerDiemClass,
   computeRhcCarryOver,
-} from "@wardenx/billing";
-// @wardenx/billing — the two-tier RHC carry-over across stays (ours + other hospices' per HETS). Pure.
+} from "@chartwarden/billing";
+// @chartwarden/billing — the two-tier RHC carry-over across stays (ours + other hospices' per HETS). Pure.
 // CMS: Claims Processing Manual ch. 11 §30.2 + CR 9201 / R3326CP (see rhc-carry-over.ts header).
 import { describe, expect, it } from "vitest";
 

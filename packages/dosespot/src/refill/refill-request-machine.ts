@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.7 D9 refill-inbox workflow state machine (M12-T04). Pure, IO-free.
+// @chartwarden/dosespot — §2.7 D9 refill-inbox workflow state machine (M12-T04). Pure, IO-free.
 //
 // The §2.7 refill-inbox lifecycle: a pharmacy-initiated refill arrives as a DoseSpot `RefillRequest` webhook
 // → the typed handler writes a `refill_request` row (`status='pending'`) → the prescriber approves or denies
@@ -22,7 +22,7 @@ import type {
   RefillRequestId,
   RefillRequestStatus,
   RefillResponseChannel,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { assertRefillAuthorizedCount } from "./controlled-substance-refill-rules";
 import { type RefillSideEffect, type RefillTransitionResult, refillResult } from "./effects";
 import { RefillStateError, requireRefill } from "./errors";

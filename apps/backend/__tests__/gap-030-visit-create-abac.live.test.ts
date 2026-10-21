@@ -34,8 +34,8 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";

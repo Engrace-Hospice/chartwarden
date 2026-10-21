@@ -11,7 +11,7 @@ import {
   REVIEW_STATES,
   TASK_CLOSE_REASONS,
   TASK_REASSIGN_SOURCES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

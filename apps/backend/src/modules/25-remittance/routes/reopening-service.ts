@@ -6,9 +6,9 @@
 // reopening against an ADR in assembly or review moves that ADR to `denied_no_response` in the SAME transaction,
 // so the two records never disagree. There are no outbox events yet (nothing consumes them); the reopening_case
 // write-audit trigger and the reopening_case_event history are the trail. A filed reopening is frozen by trigger.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AdrState,
@@ -162,7 +162,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
     eventPayload?: Record<string, unknown>,
   ) {
     if (!canTransitionReopening(cur.state as ReopeningState, to)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "INVALID_TRANSITION",
         `cannot transition from '${cur.state}' to '${to}'`,
         409,
@@ -199,7 +199,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         const denial = denialRows[0];
         if (!denial) throw new NotFoundError("denial case");
         if (!denial.claimId) {
-          throw new WardenXError("INVALID_STATE", "the denial has no claim to reopen", 409);
+          throw new ChartWardenError("INVALID_STATE", "the denial has no claim to reopen", 409);
         }
         // An ADR must be visible to THIS org under RLS, inside the actor's scope, and on the same claim.
         let adr: typeof ADR.$inferSelect | undefined;
@@ -227,7 +227,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
           }
         }
         const macName = (adr?.macName ?? input.macName ?? "").trim();
-        if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+        if (!macName) throw new ChartWardenError("INVALID_MAC", "the MAC name is required", 422);
         // Only a denial the routing rules send to a reopening may open one: an appealable denial belongs in the
         // appeal chain, and a second path for it would let the wrong clock run.
         // The MAC that picks a MAC-specific rule comes only from an ADR (the chosen one, else the denial's own
@@ -239,7 +239,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
           adr?.macName ?? null,
         );
         if (route.route !== "reopening") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ROUTE_NOT_REOPENING",
             "the routing rules do not send this denial to a reopening; record the MAC reason code (for example 56900) or add a routing rule first",
             409,
@@ -250,7 +250,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
           .from(RC)
           .where(eq(RC.denialCaseId, input.denialCaseId));
         if (existing.some((r) => LIVE_STATES.includes(r.state))) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "REOPENING_EXISTS",
             "this denial already has a reopening in progress",
             409,
@@ -263,7 +263,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
           .from(AP)
           .where(eq(AP.denialCaseId, input.denialCaseId));
         if (appeals.some((a) => ["draft", "submitted", "under_review"].includes(a.state))) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "APPEAL_IN_PROGRESS",
             "this denial already has an appeal in progress; withdraw or finish it before opening a reopening",
             409,
@@ -285,7 +285,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         } catch (e) {
           // Two creates raced past the check above; the live-per-denial index is the backstop.
           if (isUniqueViolation(e)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "REOPENING_EXISTS",
               "this denial already has a reopening in progress",
               409,
@@ -368,12 +368,12 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
     async setDue(actor, id, dueAt, ifMatch) {
       const due = dueAt === null ? null : new Date(dueAt);
       if (due !== null && Number.isNaN(due.getTime())) {
-        throw new WardenXError("INVALID_DUE_DATE", "the deadline is not a real date and time", 422);
+        throw new ChartWardenError("INVALID_DUE_DATE", "the deadline is not a real date and time", 422);
       }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
         if (cur.state !== "draft" && cur.state !== "submitted") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_STATE",
             `a deadline cannot be changed on a ${cur.state} reopening`,
             409,
@@ -398,7 +398,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
     async submitReopening(actor, id, input, ifMatch) {
       const filedAt = new Date(input.filedAt);
       if (Number.isNaN(filedAt.getTime())) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_FILED_AT",
           "the filing time is not a real date and time",
           422,
@@ -411,7 +411,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         filedAt,
         now: new Date(),
       });
-      if (refusal) throw new WardenXError(refusal, FILING_MESSAGES[refusal], 422);
+      if (refusal) throw new ChartWardenError(refusal, FILING_MESSAGES[refusal], 422);
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
         const result = await advance(tx, actor, cur, "submitted", ifMatch, {

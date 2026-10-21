@@ -1,4 +1,4 @@
-// @wardenx/hope — the HOPE author-discipline rule (M10-T03; §2.3, §4.7, the "RN/NP-only author rule").
+// @chartwarden/hope — the HOPE author-discipline rule (M10-T03; §2.3, §4.7, the "RN/NP-only author rule").
 // PURE, IO-free. CMS HOPE manual restricts WHO may complete a HOPE assessment, and restricts the SFV
 // author further:
 //   • Any HOPE timepoint (Admission / HUV1 / HUV2 / Discharge) → discipline ∈ {RN, NP, MD}
@@ -10,7 +10,7 @@
 // authorization-independence requirement: a discipline-elevation attempt is denied at the service even if
 // a route check is bypassed). The acting discipline is resolved from M40's `mdm.discipline_taxonomy`
 // (injected as a plain string fact — M10 never imports M40 schema).
-import type { HopeRfaKind } from "@wardenx/types";
+import type { HopeRfaKind } from "@chartwarden/types";
 import { require_ } from "../errors";
 
 /** §4.7 — disciplines permitted to author any HOPE timepoint (CMS HOPE manual). */

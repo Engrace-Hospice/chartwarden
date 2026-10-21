@@ -5,8 +5,8 @@
 // the tenant pool without an org context. Rather than widen the platform login role's grants, the active ORG list comes
 // from the allowlisted platform enumerator (`M29_PLATFORM_JOB_ID`) and each org's feeds are then read on the TENANT pool
 // inside that org's own `withOrgContext` — the same shape the outbound retry-sweep fan-out uses.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { type SupervisorFeedDescriptor, feedBindsInboundListener } from "./supervisor";

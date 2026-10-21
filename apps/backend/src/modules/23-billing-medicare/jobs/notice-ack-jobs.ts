@@ -24,7 +24,7 @@ import {
   notrMachine,
   repositories,
   resolvePayerStatusDate,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 
 type BillingDb = repositories.BillingDb;
 

@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.5 D7 clinician_availability validation (M17-T03). Pure, IO-free.
+// @chartwarden/scheduling — §2.2.5 D7 clinician_availability validation (M17-T03). Pure, IO-free.
 //
 // `clinician_availability` is a weekly recurring pattern, not a lifecycle aggregate: one row per
 // `(membership_id, day_of_week)` with a `start_time`/`end_time` window and optimistic `version`. It has no

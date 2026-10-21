@@ -1,4 +1,4 @@
-// @wardenx/db — `form_template` (M22 §3.3 / §4.5). The platform-published form-template library
+// @chartwarden/db — `form_template` (M22 §3.3 / §4.5). The platform-published form-template library
 // catalog (one row per template key — election statement, CTI, NOMNC, ABN, …). Platform-shared
 // reference data: NO organization_id BY DESIGN (the same template definition for every tenant; per-
 // tenant branding is layered via `tenant_template_overlay`). Listed in check-tenancy NON_ORG_SCOPED;

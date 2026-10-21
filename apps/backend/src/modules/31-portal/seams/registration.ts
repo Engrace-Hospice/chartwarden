@@ -20,7 +20,7 @@ import type {
   PortalSessionMinter,
   TelehealthMetricsProvider,
   TelehealthVisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   createPortalAccessGrantReader,
   createPortalAccountReader,

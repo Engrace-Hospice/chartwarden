@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.7 / §1.4 controlled-substance refill rules (M12-T04). Pure, IO-free.
+// @chartwarden/dosespot — §2.7 / §1.4 controlled-substance refill rules (M12-T04). Pure, IO-free.
 //
 // The DEA / state-board platform floor for how many refills a controlled-substance prescription may carry:
 // Schedule II is *non-refillable* (a new prescription is always required); Schedule III/IV/V allow at most
@@ -6,8 +6,8 @@
 // *tighten* this matrix (e.g. a state board that caps Schedule IV at 3) but never loosen it above the
 // platform floor — the M11 D-Verbal / M40 D6 tighten-only precedent. The state-board adapter registry is
 // reserved for Phase 2; Phase 1 ships the platform-floor matrix only. Every fact (the schedule, the
-// requested count, the tenant override) is injected as data — `@wardenx/types` + the sibling errors only.
-import type { DeaSchedule } from "@wardenx/types";
+// requested count, the tenant override) is injected as data — `@chartwarden/types` + the sibling errors only.
+import type { DeaSchedule } from "@chartwarden/types";
 import { requireRefill } from "./errors";
 
 /**

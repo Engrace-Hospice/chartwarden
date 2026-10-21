@@ -4,9 +4,9 @@
 // physician membership comes from M5's owner-side care-team reader. The candidate list reads M1/M3 identity
 // facts (membership / membership_role / role / user — the CROSS_MODULE_SCHEMA_READ_EXEMPT identity tables).
 // Each read opens its own `withOrgContext`, so callers resolve facts BEFORE their write transaction.
-import { roleConfersKey } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { roleConfersKey } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { buildF2fClinicianRoleReader } from "../../bootstrap/f2f-clinician-roles";
 import { buildCareTeamPhysicianReader } from "../05-patient/care-team-physician-reader";

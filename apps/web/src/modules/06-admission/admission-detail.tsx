@@ -17,7 +17,7 @@
 // `activationGate.ready` the server enforces is true (route 14 now calls the identical
 // `computeActivationGate` before transitioning — see admission-route-service-db.ts), so the button can
 // never promise something the server would then refuse.
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   type ApiClient,
   CeremonyModal,
@@ -36,7 +36,7 @@ import {
   type StatusTone,
   formatDateOnly,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -1782,7 +1782,7 @@ export function AdmissionDetail({
             <RequirementMethodPicker
               options={[
                 {
-                  title: "Record in WardenX",
+                  title: "Record in ChartWarden",
                   description: "Enter acknowledgment information manually.",
                   onChoose: () => setCeremony("nor-record"),
                 },
@@ -1807,7 +1807,7 @@ export function AdmissionDetail({
             <RequirementMethodPicker
               options={[
                 {
-                  title: "Create in WardenX",
+                  title: "Create in ChartWarden",
                   description: "Prepare the Election Statement here, then collect signature.",
                   onChoose: () => setCeremony("election-create"),
                 },
@@ -1832,7 +1832,7 @@ export function AdmissionDetail({
             <RequirementMethodPicker
               options={[
                 {
-                  title: "Sign in WardenX",
+                  title: "Sign in ChartWarden",
                   description: "Capture the signer attestation electronically.",
                   onChoose: () => setCeremony("election-sign-record"),
                 },
@@ -1870,7 +1870,7 @@ export function AdmissionDetail({
                 <RequirementMethodPicker
                   options={[
                     {
-                      title: "Create in WardenX",
+                      title: "Create in ChartWarden",
                       description: "Enter CTI clinical information here.",
                       onChoose: () => setCeremony("cti-create"),
                     },
@@ -2812,7 +2812,7 @@ function PrivacyReviewDialog({
         ) : batches.length === 0 ? (
           <p style={hintTextStyle} data-testid="privacy-intake-none">
             No intake document for this patient is waiting on this review, so it can't be resolved
-            from intake review. This restriction can't be cleared in WardenX yet — escalate to your
+            from intake review. This restriction can't be cleared in ChartWarden yet — escalate to your
             privacy officer.
           </p>
         ) : (
@@ -2867,7 +2867,7 @@ function PrivacyReviewDialog({
     body = (
       <p style={admissionDetailsModalDescriptionStyle}>
         {message ?? "A patient restriction requires authorized review."} This kind of restriction
-        can't be reviewed or cleared in WardenX yet — escalate to your privacy officer.
+        can't be reviewed or cleared in ChartWarden yet — escalate to your privacy officer.
       </p>
     );
   }

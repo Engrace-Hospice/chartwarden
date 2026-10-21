@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import type { DoseSpotWriteOutboxPort } from "../src/modules/12-dosespot/dosespot-route-service-db";

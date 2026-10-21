@@ -6,7 +6,7 @@
 // are loaded through the injected {@link ReadingM23AbacResolver} (org-scoped, RLS-backstopped). The
 // re-used M3 base predicate `inOrg` and the M5 `caseload_or_scope` predicate every M23 route also composes
 // are owned + registered by their modules and are NOT re-registered here. The four names below are
-// M23-owned (the `@wardenx/billing` `M23_ABAC_PREDICATES` catalog):
+// M23-owned (the `@chartwarden/billing` `M23_ABAC_PREDICATES` catalog):
 //
 //   provider_entity_billing_scope      — the actor's membership is scoped to the resource's ProviderEntity
 //                                        (or holds org-wide billing scope, or is a system principal for
@@ -26,24 +26,24 @@
 // validation_result); the actor's provider scope comes from the SERVER-assembled `context.providerEntityIds`
 // (the M40 `provider_entity_scope` source the routes already trust) and the caseload check delegates to the
 // M5 `CaseloadProvider` seam (ADR-0005 D1 — seam consumption needs no dependsOn edge). The override-role +
-// regulatory-protection facts come from the code-side `@wardenx/billing` DEFAULT_BILLING_RULES registry.
+// regulatory-protection facts come from the code-side `@chartwarden/billing` DEFAULT_BILLING_RULES registry.
 //
 // Default-deny throughout: a missing / cross-tenant fact row, an actor with no resolvable provider scope,
 // an out-of-scope provider, an unknown override role, or an un-suppliable target id all resolve to deny.
 // M23 billing rows carry ids + financial facts + a patient FK (no MBI, no free-text PHI in the facts read).
 //
-// AI-BLOCK (D13): no `@wardenx/ai-platform` import here (the dependency-cruiser boundary enforces it); the
+// AI-BLOCK (D13): no `@chartwarden/ai-platform` import here (the dependency-cruiser boundary enforces it); the
 // per-route `actor_kind='ai_*'` reject lives at the route layer.
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has` (the M27 `registerM27AbacPredicates` precedent). Never fails open.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import {
   type BillingDb,
   DEFAULT_BILLING_RULES,
   type OverrideRole,
   canonicalRuleKey,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 // The Drizzle fact loader + the resolver fact types live in `./abac-resolver-drizzle` (it carries the
 // central-schema import; this file names `context.roles`, so keeping the two apart clears the table-ownership
 // scanner — see that file's header). Re-exported below so consumers still resolve them from this module.
@@ -65,7 +65,7 @@ export {
 // IMPORT-BOUNDARY NOTE (differs from M27): M23 `dependsOn = [6,8,22,38,40]` does NOT include M1, so the
 // M1-owned `apps/backend/src/bootstrap` seam registry (`getSeam`) is forbidden by `module-23-boundary` (and
 // `dependsOn` may not be widened). `registerPredicate` / `abacRegistry` are FINE — they live in
-// `@wardenx/auth`, a foundation-helper package every module may import. The M5 `CaseloadProvider` seam is
+// `@chartwarden/auth`, a foundation-helper package every module may import. The M5 `CaseloadProvider` seam is
 // therefore reached NOT via `getSeam` here but through an INJECTED `isInCaseload` the composition root binds
 // to `getSeam("CaseloadProvider").isInCaseload` (the app root may import bootstrap). Absent injection the
 // caseload axis defaults to a fail-closed deny — boot stays green and scoped reads deny until wired.
@@ -101,7 +101,7 @@ export const ORG_WIDE_BILLING_SCOPE_ROLES: readonly string[] = [
 
 /**
  * The code-side rule registry the override-role + regulatory-protection predicates read (D5). Built ONCE
- * at module load from `@wardenx/billing` DEFAULT_BILLING_RULES — the platform-floor set is immutable, so a
+ * at module load from `@chartwarden/billing` DEFAULT_BILLING_RULES — the platform-floor set is immutable, so a
  * static map is the source of truth for `overrideRoleRequired` + `regulatoryRequired` per rule key. A
  * tenant-custom (DSL-overlay) rule key absent from this map is, by construction, NOT a regulatory rule.
  */

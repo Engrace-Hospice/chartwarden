@@ -4,7 +4,7 @@
  * the real seams + RLS are proven live in m14-packet-build.live.test.ts. Fail-honest throughout: an unbound /
  * throwing / malformed source contributes nothing, never a guess, never a thrown error.
  */
-import { applySudRedaction, buildPacketSnapshot } from "@wardenx/idg";
+import { applySudRedaction, buildPacketSnapshot } from "@chartwarden/idg";
 import { describe, expect, it, vi } from "vitest";
 import { projectHospitalEvent } from "../src/modules/06-admission/seams/idg-hospital-events-for-org";
 import { missedDoseSeverity } from "../src/modules/13-emar/seams/idg-missed-doses-for-org";

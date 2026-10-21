@@ -2,8 +2,8 @@
 // (GAP-018 / GAP-019 / GAP-012). Every method runs under `withOrgContext` (RLS scopes by app.org_id), and
 // every write publishes its spec'd `m5.patient.*` event through the m5 outbox port ON THE SAME
 // TRANSACTION, so a rejected publish rolls the write back.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type M5OutboxPort, recordDeathFromDischarge } from "./deceased-db";
 import {

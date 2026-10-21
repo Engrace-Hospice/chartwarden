@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: PRN effectiveness documented rate. Pure. No IO.
+// @chartwarden/quality — operational measure: PRN effectiveness documented rate. Pure. No IO.
 // Rate of PRN administrations with a follow-up effectiveness assessment documented (higher is better).
 // Source: M13 `MedicationAdministrationProvider.getPrnEffectivenessRate`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

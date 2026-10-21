@@ -1,7 +1,7 @@
 // GAP-089 — unit tests for M30's `m6.discharge.death` (mortality half) consumer binding. No DB: the facts
 // seam and the ports' insert are exercised live in gap-089-090-m30-worker-inputs.live.test.ts.
-import type { DbClient } from "@wardenx/db";
-import * as quality from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import * as quality from "@chartwarden/quality";
 import { describe, expect, it, vi } from "vitest";
 import { buildM30DischargeDeathConsumer } from "../src/modules/30-quality/outbox-consumers/m6-discharge-death";
 

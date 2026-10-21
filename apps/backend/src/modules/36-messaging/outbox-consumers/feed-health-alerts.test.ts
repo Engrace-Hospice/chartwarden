@@ -1,6 +1,6 @@
 // GAP-043 - M36's consumer of the listener-health events: one page per OUTAGE, a paired recovered notice, no host/port/cert
 // in the alert, and a malformed event throws (relay retry -> DLQ) instead of dropping the page.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildM36FeedHealthAlertConsumer, planFeedHealthAlert } from "./feed-health-alerts";

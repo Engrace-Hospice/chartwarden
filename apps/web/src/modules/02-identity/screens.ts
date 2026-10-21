@@ -39,9 +39,9 @@
 // Auth plugin is configured and the step-up route accepts the factor, so this is a missing SCREEN, not
 // a missing mechanism — but until it exists, `/security/passkeys` is the platform's only path to a
 // second factor, and a browser or device without WebAuthn has none.
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/02-identity — M2 screen registration (Track A, ADR-0030).
-// Declares this module's screens for the M1 shell registry. Typed against the @wardenx/types
+// Declares this module's screens for the M1 shell registry. Typed against the @chartwarden/types
 // contract (no shell import); the composition root (apps/web/src/main.tsx) registers it.
 import { lazy } from "react";
 import type { ComponentType } from "react";

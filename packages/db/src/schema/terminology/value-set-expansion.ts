@@ -1,4 +1,4 @@
-// @wardenx/db — `value_set_expansion` (M38 Terminology §3.5). The materialized, hot read
+// @chartwarden/db — `value_set_expansion` (M38 Terminology §3.5). The materialized, hot read
 // path: every (value_set, system, code) flattened with an as-of validity window, rebuilt
 // at version load. `isMemberOf` is a single B-tree lookup against this table (M38-T04,
 // §7.5); the as-of index serves freshness-correct expansion. Platform-shared reference

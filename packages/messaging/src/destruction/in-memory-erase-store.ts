@@ -1,4 +1,4 @@
-// @wardenx/messaging — in-memory MessagingEraseStore for the M36-T10 D9 eraser slice/tests.
+// @chartwarden/messaging — in-memory MessagingEraseStore for the M36-T10 D9 eraser slice/tests.
 //
 // Models just enough of the production shape to prove the §7.8 contract WITHOUT a live DB or the M1
 // key vault: a per-tenant DEK guarding a set of `message` rows (`body_cipher`), org-scoped structural

@@ -8,7 +8,7 @@
 //
 // Resolving through `getSeam` is why M21's manifest `dependsOn` gains M1 (the registry lives in
 // `apps/backend/src/bootstrap`, which is M1 code). It does NOT gain 5 or 6: the CONTRACT types are leaf
-// `@wardenx/types` (ADR-0005 D1/D2) and the binding is runtime, exactly the shape M15-T03 and M16-T03 use.
+// `@chartwarden/types` (ADR-0005 D1/D2) and the binding is runtime, exactly the shape M15-T03 and M16-T03 use.
 //
 // The seams M21 PUBLISHES (§4.8 `SupplyFulfillmentProvider`, `ComfortKitInventoryReader`, …) land in
 // M21-T05.
@@ -17,7 +17,7 @@ import type {
   DeathDischargeReader,
   OrderProvider,
   PatientAddressReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**

@@ -1,4 +1,4 @@
-// @wardenx/db — `dde_work_event` (M23 Billing-Medicare; ADR-0052 D4/D8; non-partitioned; retention class
+// @chartwarden/db — `dde_work_event` (M23 Billing-Medicare; ADR-0052 D4/D8; non-partitioned; retention class
 // `compliance`). The APPEND-ONLY history of a `dde_work_item`: one row per transition (or reassignment), written
 // in the same transaction as the item change. UPDATE and DELETE are refused by a trigger (only the destruction
 // role may erase). `detail` is PHI-free by contract: codes, ids and dates only — never notes or names.

@@ -14,7 +14,7 @@ import {
   StatusPill,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { stateLabel } from "./admission-status";

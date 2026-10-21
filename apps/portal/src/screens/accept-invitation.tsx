@@ -1,4 +1,4 @@
-import { CenteredCardLayout, InlineAlert, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, InlineAlert, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

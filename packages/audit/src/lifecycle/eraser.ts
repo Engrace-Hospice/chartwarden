@@ -1,4 +1,4 @@
-// @wardenx/audit — Eraser semantics for retention-driven destruction (M4-T08, M4 spec §6, §10.6).
+// @chartwarden/audit — Eraser semantics for retention-driven destruction (M4-T08, M4 spec §6, §10.6).
 //
 // A destruction certificate may approve erasing a tenant's expired audit data, but TWO rules
 // override the certificate row-by-row and must be enforced where the erasure actually happens —

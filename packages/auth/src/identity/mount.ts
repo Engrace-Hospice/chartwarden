@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — mount Better Auth on Fastify (M2, AUTH-T02, ADR-0033).
+// @chartwarden/auth · identity — mount Better Auth on Fastify (M2, AUTH-T02, ADR-0033).
 //
 // Bridges Fastify's request/reply to Better Auth's web-standard `handler(request: Request)`. We use the
 // web handler (not toNodeHandler) so the bridge stays scoped to the /api/auth/* route — no global
@@ -53,7 +53,7 @@ export interface RegisterIdentityAuthOptions {
   onAuditError?: (err: unknown, event: AuthAuditEvent) => void;
   /**
    * GAP-005 - runs BEFORE the handler for the endpoints that act on an existing session (`needsActor` paths) with the
-   * resolved actor (null when anonymous). Throw a `WardenXError` to refuse - e.g. `two-factor/disable` for a role
+   * resolved actor (null when anonymous). Throw a `ChartWardenError` to refuse - e.g. `two-factor/disable` for a role
    * whose MFA matrix requires a second factor. Absent means no pre-handler policy.
    */
   guard?: (input: { relativePath: string; actor: AuthAuditActor | null }) => Promise<void>;

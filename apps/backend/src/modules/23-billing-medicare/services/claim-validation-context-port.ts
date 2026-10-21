@@ -15,7 +15,7 @@ import {
   type NoeStatusSnapshot,
   medicareReceiptDay,
   repositories,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import type { ClaimAssemblySeams } from "./claim-assembly";
 import {
   computeClaimPerDiemClass,

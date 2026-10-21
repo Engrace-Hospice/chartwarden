@@ -1,4 +1,4 @@
-import type { MedicationOrderDto, RefillRequestDto } from "@wardenx/types";
+import type { MedicationOrderDto, RefillRequestDto } from "@chartwarden/types";
 // apps/backend/__tests__/dosespot-seams.test.ts — M12-T07 (§2.10 D17 MedicationOrderProvider +
 // RefillInboxProvider). Both seams are pure READ-only orchestration over an injected DoseSpotSeamStore; these
 // cover the medication-order read narrowing (active / since / by-admission / by-id), the M13 administration-

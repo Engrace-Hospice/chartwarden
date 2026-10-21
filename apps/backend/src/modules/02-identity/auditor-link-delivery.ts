@@ -49,7 +49,7 @@ export function createAuditorLinkEmailDelivery(input: {
       const url = buildAuditorRedeemUrl(input.baseUrl, link.organizationId, link.token);
       await input.transport.send({
         to: link.auditorEmail,
-        subject: "Your WardenX auditor access link",
+        subject: "Your ChartWarden auditor access link",
         text: [
           `Hello ${link.auditorName},`,
           "",

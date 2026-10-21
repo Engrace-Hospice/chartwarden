@@ -1,4 +1,4 @@
-// @wardenx/db — OrganizationSettingsReader (M1 Foundation §3.15).
+// @chartwarden/db — OrganizationSettingsReader (M1 Foundation §3.15).
 //
 // The typed reader over an `organization.settings` JSONB object. It exposes ONLY
 // registered keys (registry-discipline, D6): reading an unregistered key throws,

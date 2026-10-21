@@ -1,4 +1,4 @@
-// @wardenx/shared — the shared penny-exact money KERNEL (ARCH-021). The single arithmetic primitive
+// @chartwarden/shared — the shared penny-exact money KERNEL (ARCH-021). The single arithmetic primitive
 // every regulatory-math package converges on: M23 billing (HIPPS per-diem / SIA / sequestration / wage
 // index), M27 cost-report (worksheet allocation / step-down apportionment / settlement), and M26
 // cap-management (per-beneficiary accrual rounding). This math is REGULATORY math — a cent off is a real
@@ -10,7 +10,7 @@
 // input total, so apportioning a total across line items / cost centers / beneficiaries never drifts a
 // cent. No PHI — aggregate financial values only.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. Types, pure
 // functions, constants only. `decimal.js` is the sole dependency and is used internally-only.
 //
 // Previously this kernel (toDecimal/fromDecimal/sumCents/ratio/allocateProportional) was copied verbatim

@@ -1,10 +1,10 @@
-// @wardenx/inpatient — M37-T09, §2.11 D12. The post-mortem body-release coordination machine. An
+// @chartwarden/inpatient — M37-T09, §2.11 D12. The post-mortem body-release coordination machine. An
 // `ipu_body_release` row auto-opens on `m6.discharge.death` for an IPU patient (§2.2 recordDeath); this
 // machine drives pending → funeral_home_identified → released → closed, wiring M40's FuneralHomeReader and
 // M22's body_release_authorization render + magic-link session. Critically, the source bed does NOT go
 // `discharged_dirty` until release COMPLETES (the body stays in the room until the funeral home arrives) —
 // so `releaseBody` carries the deferred bed-cleaning transition (§2.12). Pure & IO-free.
-import type { IpuBodyReleaseState } from "@wardenx/types";
+import type { IpuBodyReleaseState } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../errors";
 import type { BedCleaningEvent } from "./ipu-bed";
 

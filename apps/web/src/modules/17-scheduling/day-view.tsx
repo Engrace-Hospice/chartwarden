@@ -1,11 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — Day View (M17 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
 // selected service date with its lifecycle chip + scheduled window. The drag-drop reschedule / publish-all
 // write surfaces fill in as those write paths harden; the SERVER owns the §2.2.1 lifecycle + the §4.7 pre-
 // schedule ABAC (ADR-0030 — no frontend authz; out-of-scope resources 404, never 403). The clinician is taken
 // from `?membership=`, the date from `?date=` (defaults to today). Reads GET /api/v1/day-view via the typed
-// client. Leaves only (@wardenx/ui).
+// client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

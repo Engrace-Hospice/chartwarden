@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts — the §2.6/D8
 // comfort-kit return-reconciliation close-out, live for the first time (F-166, #248).
 //
-// `reconcileKitReturnLine` (`@wardenx/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure,
+// `reconcileKitReturnLine` (`@chartwarden/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure,
 // unit-tested core since M13-T05. `m21.comfort_kit.return_reconciliation` was NOT on
 // `M13_OUTBOX_SUBSCRIPTIONS` at all (only `.deployed_at_patient` and `.returned` were listed — corrected
 // in the same change that adds this file) despite the event's OWN catalog description in
@@ -14,7 +14,7 @@
 // in the kit and what the returning supply-team member PHYSICALLY COUNTED at return. `reconcileKitReturnLine`
 // computes `deltaQuantity`/`deltaPercent` from exactly that comparison — a genuinely different question
 // from M21's own dispatched-vs-returned-vs-disposed check (`computeReturnReconciliation`,
-// `@wardenx/supplies`), which is why both events exist and both need a consumer.
+// `@chartwarden/supplies`), which is why both events exist and both need a consumer.
 //
 // `actualRemainingQuantity` — WHAT M21'S PAYLOAD ACTUALLY MEANS BY IT. `ComfortKitReturnedContentPayload`
 // carries `quantityReturned` + `quantityDisposedAtHome`, never a single "remaining at return" figure.
@@ -46,10 +46,10 @@
 // `final_remaining_quantity_at_return IS NULL`, so a redelivery after the first commit matches zero rows
 // per line — a silent no-op, not a double-write. The deployment's `disposal_reconciliation_status` UPDATE
 // conditions on `IS DISTINCT FROM 'pending'` being false (i.e. still unset/pending), the same guard shape.
-import { type DbClient, schema } from "@wardenx/db";
-import { reconcileKitReturnLine } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { M21ComfortKitReturnReconciliationPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { reconcileKitReturnLine } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { M21ComfortKitReturnReconciliationPayload } from "@chartwarden/types";
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 

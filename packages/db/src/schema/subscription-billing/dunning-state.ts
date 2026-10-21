@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `dunning_state` (M35 §3.3, §4.15). TENANT-SCOPED, RLS on app.org_id (0143). The §4.15
+// @chartwarden/db — `dunning_state` (M35 §3.3, §4.15). TENANT-SCOPED, RLS on app.org_id (0143). The §4.15
 // dunning state machine (D7) row per subscription-in-dunning. `organization_id` is a logical uuid
 // (M35-F04); `subscription_id` is a REAL FK. Exported as `dunningStateRow` (the enum `dunningStage`
 // already owns the `dunningState`-ish name space in the central enums surface).

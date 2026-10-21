@@ -1,4 +1,4 @@
-// @wardenx/messaging - GAP-040: the `permission_holders` recipient resolver. A cap alert's audience is "whoever
+// @chartwarden/messaging - GAP-040: the `permission_holders` recipient resolver. A cap alert's audience is "whoever
 // holds the permission", not a role-key list a tenant must have hand-created (the old seed named `cfo` /
 // `billing_manager`, neither of which is a role template, so a fresh tenant paged nobody).
 import { describe, expect, it, vi } from "vitest";

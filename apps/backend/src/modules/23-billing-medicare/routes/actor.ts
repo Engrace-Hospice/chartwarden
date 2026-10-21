@@ -11,10 +11,10 @@
 // AI-BLOCK (D13): Module 32 cannot create/modify/witness/resolve any M23 row. The per-route
 // `actor_kind='ai_*'` reject guard ({@link rejectAiActor}) is composed on every MUTATING route alongside
 // the §4.6 permission + §4.7 ABAC gates, so an AI principal can never reach a write handler.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**

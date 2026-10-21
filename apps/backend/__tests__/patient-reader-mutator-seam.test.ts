@@ -2,7 +2,7 @@
 // PatientMutator (§4.9) seams. Proves M5 closes the other two boot-gate deny-stubs (validateSeams
 // passes), PatientReader resolves merge-redirect transparently (W-M5-18), and PatientMutator strips
 // the D12 forbidden identifiers (W-M5-17) while applying the demographic patch + emitting patient.updated.
-import type { PatientIdentity } from "@wardenx/types";
+import type { PatientIdentity } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

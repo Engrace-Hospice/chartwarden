@@ -1,6 +1,6 @@
-// @wardenx/terminology-loader — the shapes every parser, the stage-and-diff step and the orchestrator share
+// @chartwarden/terminology-loader — the shapes every parser, the stage-and-diff step and the orchestrator share
 // (M38 §3.1 `packages/terminology-loader`, §4.3 `terminology.load_version`).
-import type { CodeSystemId } from "@wardenx/terminology";
+import type { CodeSystemId } from "@chartwarden/terminology";
 
 /** Systems the loader can ingest: every catalog system except `cms_hope` (an instrument roster with no release file). */
 export type LoadableSystemId = Exclude<CodeSystemId, "cms_hope">;

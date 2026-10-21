@@ -16,14 +16,14 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   NotFoundError,
   RateLimitedError,
   type UrgentMessageOptions,
   type UrgentMessageResponse,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -259,7 +259,7 @@ describe("POST /channels/:id/urgent-messages", () => {
       "URGENT_RECIPIENT_INVALID",
       "CLINICAL_LINK_NOT_AVAILABLE",
     ]) {
-      failWith = new WardenXError(code, "x", 422);
+      failWith = new ChartWardenError(code, "x", 422);
       const res = await post(app, "nurse", sendUrl(), body());
       expect(res.statusCode).toBe(422);
       expect(res.json().error?.code ?? res.json().code).toBe(code);

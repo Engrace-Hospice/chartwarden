@@ -564,7 +564,7 @@
   yet"). Built the real pipeline in two service methods
   (`apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts`):
   `receiveAdvice` derives the ISA13/ST02 dedup key via a new local, pure, real X12 envelope-header
-  parser (`@wardenx/x12-835-client`'s `parseX12EnvelopeHeader` — fixed-width ISA segment + terminator-
+  parser (`@chartwarden/x12-835-client`'s `parseX12EnvelopeHeader` — fixed-width ISA segment + terminator-
   delimited ST segment, no sidecar round-trip needed just for the header), inserts the
   `remittance_advice` row with `onConflictDoNothing` on the existing `ux_remittance_envelope_dedupe`
   index (a caught conflict resolves to the EXISTING row id, never a second row, never a thrown/poisoned
@@ -617,7 +617,7 @@
   (`ingest/claim-match-adapter.ts`) that degrades to empty/null on ANY failure (the M30
   `consumed-seam-adapters.ts` `degradeToSuppressed` precedent), bound at both `index.ts` construction
   sites in place of `NO_CLAIM_MATCH_CANDIDATES`. Along the way found a SECOND, unused, more elaborate
-  seam-declaration system (`@wardenx/billing/seam-registration.ts`) that already had an almost-identical
+  seam-declaration system (`@chartwarden/billing/seam-registration.ts`) that already had an almost-identical
   `ClaimSubmissionReader` design but is never wired into the real registry — reused its name, not its
   dead wiring. New live test (`m23-m25-claim-match-seam.live.test.ts`, 4 tests) proves the pre-bind
   degrade, the post-bind real match + real patient id + RLS isolation, and a full 835 auto-matching to a
@@ -677,7 +677,7 @@
   Explicitly OUT of this slice (deny-stub, not fabricated): the M1 per-tenant DEK envelope-encrypt (no
   platform-wide live KMS provider exists yet; only needed for the live Xero/Gusto payload cipher, which
   the proven manual-import path never touches); the live Xero/Gusto OAuth pull itself (the
-  `@wardenx/xero-client`/`@wardenx/gusto-client` packages are real but binding a live pull needs M34
+  `@chartwarden/xero-client`/`@chartwarden/gusto-client` packages are real but binding a live pull needs M34
   tenant-onboarding OAuth-token storage that does not exist — a separate, larger project); the M6/M8
   statistics aggregate seams (`LevelOfCarePeriodReader`/`EncounterStatisticsProvider` do not exist as
   M1-registered seams at all — new seam surface, not just an unbind; the allocation chain does not
@@ -1194,7 +1194,7 @@
 - Phase: 6/8
 - Objective: Review launch screens, consolidate dialog behavior, restrict source maps, and gate bundle/runtime performance.
 - Evidence: UI-001/UI-002/PERF-001.
-- Files/modules affected: Frame registry, `@wardenx/ui`, dialog call sites, Vite configs, performance CI.
+- Files/modules affected: Frame registry, `@chartwarden/ui`, dialog call sites, Vite configs, performance CI.
 - Dependencies: Stable launch workflows.
 - Implementation steps: Map screens; capture states/viewports; migrate dialogs; private maps; route budgets; load/Web Vitals checks.
 - Tests: Visual/axe/keyboard/zoom/bundle/mobile-load.
@@ -1332,7 +1332,7 @@
   and `materialized_view_metadata`'s gaps, and a `report_writer`-owned (or a new dedicated
   `wardenx_platform_writer`-style role) SECURITY DEFINER function for `audit_event`'s
   `platform.bypass_invoked` write would close this finding's own root cause. NOT attempted here: this is
-  a foundational M1 (`@wardenx/tenancy`) + M4 (`audit_event`) change with a blast radius spanning the
+  a foundational M1 (`@chartwarden/tenancy`) + M4 (`audit_event`) change with a blast radius spanning the
   whole codebase, well beyond one task's charter — it needs its own scoped pass, ideally with a
   companion live-RLS test (`SET ROLE wardenx_app`, NOBYPASSRLS) added to the existing
   `rls-isolation.live.test.ts` suite so this class of gap cannot silently regress again.

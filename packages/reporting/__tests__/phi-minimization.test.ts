@@ -1,4 +1,4 @@
-// @wardenx/reporting — PHI-MINIMIZATION UNIT TESTS (M33 D6 / §8.5, the §164.502(b) minimum-necessary rule).
+// @chartwarden/reporting — PHI-MINIMIZATION UNIT TESTS (M33 D6 / §8.5, the §164.502(b) minimum-necessary rule).
 //
 // The architectural crown jewel of M33: NO row-level PHI ever leaves M33's own SQL. This suite drives the
 // REAL code paths — the translator (`src/translator/*`), the CSV streamer (`src/export/csv-stream.ts`), and the
@@ -15,7 +15,7 @@
 //
 // These suites are pure — they NEVER touch a DB; effects (cursor source, response sink, DEK, audit append,
 // outbox) are injected fakes.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   type DrilldownAuditInput,

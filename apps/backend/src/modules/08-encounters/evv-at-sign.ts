@@ -9,7 +9,7 @@
 // seam by the encounter's visit) reifies `evv_present` and is PERSISTED with its authoritative event ids and
 // instants (D9: clinician-entered times never override EVV); anything else is `evv_missing_documented`.
 // Never `evv_present` without a bracket — EVV-verified is a claim only M18's events can back.
-import type { EvvBracketResolution, EvvBracketState } from "@wardenx/types";
+import type { EvvBracketResolution, EvvBracketState } from "@chartwarden/types";
 
 /** The column values to write onto the encounter when sign resolved a bracket the row did not yet carry. */
 export interface EvvBracketPersistence {

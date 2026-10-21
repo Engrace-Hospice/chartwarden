@@ -8,7 +8,7 @@
 //
 // These tests pin the derivation, not a literal. Asserting the four names would recreate the thing that
 // failed: a hand-maintained list that agrees with the floors until someone edits one of them.
-import { SYSTEM_LOCKED_FLOORS } from "@wardenx/auth";
+import { SYSTEM_LOCKED_FLOORS } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "../src/roles/org-wide-scope";
 

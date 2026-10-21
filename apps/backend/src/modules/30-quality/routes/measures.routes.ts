@@ -12,7 +12,7 @@
 // `(orgId, scope, priority)`); R-05 and the GET reads are idempotency-exempt. Org/actor binding is ALWAYS
 // server-side (request.context, never the body): reads bind the read actor, R-04 the write actor (+ its
 // active membership id). Mirrors the M33 routes/bases-metrics.routes.ts + exports.routes.ts shape.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

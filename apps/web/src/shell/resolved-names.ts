@@ -5,8 +5,8 @@
 // The cache is a WeakMap keyed by the client instance, so it never outlives or crosses a session's client.
 // A lookup that settles (even to `null`, "not readable") is cached; one that THROWS or times out is dropped
 // from the cache, shown as unavailable, and retried once after NAME_RETRY_MS.
-import type { ApiClient } from "@wardenx/ui";
-import { useApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 
 export const NAME_LOOKUP_CONCURRENCY = 6;

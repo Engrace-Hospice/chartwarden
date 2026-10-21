@@ -15,13 +15,13 @@
 // A session for a user with NO membership row in this org (a platform-ops session, a stale/edge-case
 // delivery) is a documented no-op — the `membershipUserIdForOrg` "nothing to resolve, skip" precedent —
 // never a fabricated membership id.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PseudonymKeyProvider,
   computeBillingPseudonym,
   toBillingYearMonth,
-} from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { createDrizzleActivePeriodStore } from "../active-period-store-drizzle";
 

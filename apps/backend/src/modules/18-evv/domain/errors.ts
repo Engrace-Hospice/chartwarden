@@ -3,7 +3,7 @@
 // Every guard / validation failure in the pure EVV event-lifecycle domain (the §2.2.1 append-only event
 // recorder, the §2.3 validation rules, the §7.5 advisory geofence-breach attest path, the §7.7
 // correction-of-record) raises an `EvvStateError` carrying the machine-readable code below. The error
-// extends the M1 `WardenXError` envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so
+// extends the M1 `ChartWardenError` envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so
 // the M1 Fastify error handler renders it with the precise code + HTTP status with no cross-module import
 // edge (the M6 `AdmissionStateError` / M17 `SchedulingStateError` convention). Nothing transitions on a
 // string match — each code is an enumerated constant; the §2.3 / §3.x DB CHECK + partial-unique backstops
@@ -13,7 +13,7 @@
 // Scope note: M18-T03 added the event recorder + geofence policy/evaluation codes; M18-T04 appends the
 // `evv_missing_resolution` D6 close-transition codes (≥40/≥60 reason floors, 24h/7d windows, system-actor
 // guards) below. The aggregator-submission codes land in M18-T06. All share one `EvvStateError` envelope.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.2.1 / §2.3 / §7.5 / §7.7 EVV event-lifecycle + geofence failure-code catalog → HTTP status. */
 export const M18_ERROR_STATUS = {
@@ -105,7 +105,7 @@ export type M18ErrorCode = keyof typeof M18_ERROR_STATUS;
  * the UI renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2
  * every guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class EvvStateError extends WardenXError {
+export class EvvStateError extends ChartWardenError {
   constructor(code: M18ErrorCode, message: string) {
     super(code, message, M18_ERROR_STATUS[code]);
     this.name = "EvvStateError";

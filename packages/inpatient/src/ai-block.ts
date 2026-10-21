@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T11 the D16 AI-prohibited-zone boot validator (§8.6, mirrors M28's
+// @chartwarden/inpatient — M37-T11 the D16 AI-prohibited-zone boot validator (§8.6, mirrors M28's
 // packages/fhir/src/ai-block.ts).
 //
 // D16: Module 32's LLM may not create, modify, attest, or witness any of M37's safety/attestation zones —
@@ -12,7 +12,7 @@
 // The real M32 registry (`AIPromptRegistry`) exposes the D18 TABLE-ONLY query `getActivePromptsTargeting`,
 // which "answers from the table alone and never returns [] because a lookup failed" — strictly stronger than
 // a regex over a template body, which a paraphrase defeats. The registry is injected as a LOCAL port (no
-// @wardenx/ai-platform import / no dependsOn edge); the composition root binds the real seam.
+// @chartwarden/ai-platform import / no dependsOn edge); the composition root binds the real seam.
 
 /** Thrown when an active M32 prompt targets an M37 output-entity zone. Aborts M37 boot (D16). */
 export class IpuAIBlockViolation extends Error {
@@ -24,7 +24,7 @@ export class IpuAIBlockViolation extends Error {
 
 /** The M37 output-entity zones an M32 prompt template may NEVER target (D16). Prefix-matched against each
  *  active template's `output_entity_target_prefix`; each is a specific M37 mutation surface (a blanket
- *  `ipu_` would wrongly block the permitted read-only narration). Mirrored in @wardenx/ai-platform's
+ *  `ipu_` would wrongly block the permitted read-only narration). Mirrored in @chartwarden/ai-platform's
  *  central `AI_PROHIBITED_ZONES` table (the R30 registration-time guard). */
 export const IPU_PROHIBITED_OUTPUT_ENTITY_PREFIXES: readonly string[] = [
   "gip_criteria_",

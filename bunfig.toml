@@ -1,5 +1,5 @@
 # WardenX — Bun config.
-# Use the HOISTED linker so workspace packages (@wardenx/*) symlink into the top-level
+# Use the HOISTED linker so workspace packages (@chartwarden/*) symlink into the top-level
 # node_modules. This matches how TypeScript (moduleResolution: Bundler) and
 # dependency-cruiser resolve cross-package imports from the repo root, keeping the
 # fitness boundary graph and `tsc -b` resolution consistent. (Bun 1.3 defaults to the

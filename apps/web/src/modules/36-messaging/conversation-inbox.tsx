@@ -1,4 +1,4 @@
-import { Button, EmptyState, Glyph } from "@wardenx/ui";
+import { Button, EmptyState, Glyph } from "@chartwarden/ui";
 import type { JSX, KeyboardEvent, RefObject } from "react";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel, initialsOf, relativeTime } from "./messaging-utils";

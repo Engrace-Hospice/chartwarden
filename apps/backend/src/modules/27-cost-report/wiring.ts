@@ -1,5 +1,5 @@
-import { registerPlatformJob } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
+import { registerPlatformJob } from "@chartwarden/tenancy";
+import { DegradedError } from "@chartwarden/types";
 // apps/backend/src/modules/27-cost-report/wiring.ts — M27 composition glue (WX-PR-013: the launch-defined
 // cost-report workflow slice). Mirrors the M25/M30/M33/M34 wiring.ts precedent: the platform-tenancy
 // registration for the §4.8 cron fan-out, PLUS the real `RecomputeEnqueuePort` BullMQ producer the
@@ -32,7 +32,7 @@ import type { RecomputeEnqueuePort } from "./routes/write-service";
 
 /**
  * The platform job id M27's §4.8 `filing-deadline-scan` cron enters `withPlatformContext` under to enumerate
- * active orgs (the cron fan-out source). Registered on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST
+ * active orgs (the cron fan-out source). Registered on the `@chartwarden/tenancy` PLATFORM_CONTEXT_ALLOWLIST
  * (starts empty → fail-closed) by {@link wireM27Tenancy} at boot. The M25/M30/M33/M34 precedent.
  */
 export const M27_PLATFORM_JOB_ID = "m27.platform_crons";

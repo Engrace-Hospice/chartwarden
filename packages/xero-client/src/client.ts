@@ -1,4 +1,4 @@
-// @wardenx/xero-client — the per-tenant LiveXeroClient SHAPE (mirrors the M30 cahps-vendors `ShpClient`).
+// @chartwarden/xero-client — the per-tenant LiveXeroClient SHAPE (mirrors the M30 cahps-vendors `ShpClient`).
 //
 // Implements the published {@link XeroClient} contract over the injected raw transport ({@link XeroHttpPort})
 // + token store, with refresh-on-401 (oauth.ts). It performs NO direct network I/O and imports no SDK;

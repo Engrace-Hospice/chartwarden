@@ -9,7 +9,7 @@
 // The scope keys are the T01 leaf `PortalDataCategory` union — the committed contract; §6.2's finer
 // `care_plan_read`/`document_upload` tokens are the route-permission layer, resolved in M31-T07 against a
 // category being readable here. The route/DB binding (persisting `scope_set_jsonb`) lands in M31-T07.
-import type { PortalAccessGrantKind, PortalDataCategory, PortalScopeSet } from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalDataCategory, PortalScopeSet } from "@chartwarden/types";
 import { PortalStateError } from "./errors";
 
 /** Every data category, in canonical order (the §6.4 floor is expressed as an allow/deny over this set). */

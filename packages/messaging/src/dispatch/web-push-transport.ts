@@ -1,4 +1,4 @@
-// @wardenx/messaging — Web Push transport (M36 GAP-062, spec §4.4 / §4.7), RFC 8030 + RFC 8291 + RFC 8292.
+// @chartwarden/messaging — Web Push transport (M36 GAP-062, spec §4.4 / §4.7), RFC 8030 + RFC 8291 + RFC 8292.
 //
 // Implemented on node:crypto alone (no `web-push` dependency): VAPID (ES256 JWT) authorizes the sender to the
 // push service, and the sanitized payload is encrypted for the browser with aes128gcm content coding. Web Push

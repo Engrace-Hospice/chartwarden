@@ -7,7 +7,7 @@ import {
   TextField,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/07-care-plan — the §2 problem / goal / intervention authoring ceremonies (#91).
 //
 // The IPOC is a document made of three element kinds, and the module could display all three and author

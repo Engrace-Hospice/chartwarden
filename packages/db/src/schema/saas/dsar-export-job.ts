@@ -1,4 +1,4 @@
-// @wardenx/db — `dsar_export_job` (M34 SaaS Tenant Platform §3.7). The DSAR (data-subject access
+// @chartwarden/db — `dsar_export_job` (M34 SaaS Tenant Platform §3.7). The DSAR (data-subject access
 // request) export job: one row per patient-scoped disclosure request, driving the §7.3 / §8.2
 // DSAR Bundle (FHIR R4 + rendered chart) honoring M5/M39 Part 2 redaction-by-default.
 //

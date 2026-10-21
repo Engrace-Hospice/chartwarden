@@ -1,4 +1,4 @@
-// @wardenx/billing — the wage index that prices each level of care: the beneficiary's area for home care, the
+// @chartwarden/billing — the wage index that prices each level of care: the beneficiary's area for home care, the
 // facility's area for inpatient care, never the provider's own unless no geography is bound.
 import {
   type PerDiemRateCalculationInput,
@@ -6,7 +6,7 @@ import {
   WageIndexAreaError,
   calculatePerDiemClass,
   wageIndexFactorForLevelOfCare,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const areas = { residence: "0.8000", facility: "1.2000" };

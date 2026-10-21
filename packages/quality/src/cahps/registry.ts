@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §4.5 per-org CAHPS adapter registry (pure, in-memory).
+// @chartwarden/quality — M30 §4.5 per-org CAHPS adapter registry (pure, in-memory).
 //
 // At org boot the M30 service reads the active `cahps_vendor_binding` row, maps its `vendor_adapter_id`
 // to an adapter CLASS, instantiates it with the decrypted config, calls `validateConfig`, and registers
@@ -7,20 +7,20 @@
 // tenant input). Vendor rotation (R-11) hot-reloads by re-registering the org's instance.
 //
 // P2a scope: this is the PURE in-memory map plus the resolution-map TYPES. The concrete vendor classes
-// live in `@wardenx/cahps-vendors`; the actual map of factories is INJECTED at the composition root in a
+// live in `@chartwarden/cahps-vendors`; the actual map of factories is INJECTED at the composition root in a
 // later phase (quality must not import cahps-vendors — that would invert the dependency edge). No I/O.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { CahpsVendorAdapter, CahpsVendorAdapterId } from "./adapter";
 
 /**
  * A factory that instantiates a vendor adapter from its decrypted org-level binding config (§4.5: the
- * service "instantiates with the decrypted config"). Concrete factories live in `@wardenx/cahps-vendors`.
+ * service "instantiates with the decrypted config"). Concrete factories live in `@chartwarden/cahps-vendors`.
  */
 export type CahpsAdapterFactory = (config: Record<string, unknown>) => CahpsVendorAdapter;
 
 /**
  * The `vendor_adapter_id → factory` resolution map (§4.5). Injected at the composition root from
- * `@wardenx/cahps-vendors`; total over {@link CahpsVendorAdapterId} so every persistable binding resolves.
+ * `@chartwarden/cahps-vendors`; total over {@link CahpsVendorAdapterId} so every persistable binding resolves.
  */
 export type CahpsAdapterResolutionMap = Readonly<Record<CahpsVendorAdapterId, CahpsAdapterFactory>>;
 
@@ -36,7 +36,7 @@ export function instantiateAdapter(
 ): CahpsVendorAdapter {
   const factory = resolutionMap[vendorAdapterId];
   if (factory === undefined) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "CAHPS_VENDOR_UNKNOWN",
       `no CAHPS adapter factory registered for vendor '${vendorAdapterId}'`,
       500,
@@ -74,7 +74,7 @@ export class CahpsAdapterRegistry {
   resolve(orgId: string): CahpsVendorAdapter {
     const adapter = this.byOrg.get(orgId);
     if (adapter === undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_ADAPTER_UNCONFIGURED",
         `no active CAHPS vendor adapter is registered for org '${orgId}'`,
         503,

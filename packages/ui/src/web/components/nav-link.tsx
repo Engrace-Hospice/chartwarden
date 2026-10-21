@@ -1,4 +1,4 @@
-// @wardenx/ui — NavLink + navGroup sections (UI-001).
+// @chartwarden/ui — NavLink + navGroup sections (UI-001).
 import React, { useId, useState, useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { NavLink as RouterNavLink, useLocation } from "react-router-dom";

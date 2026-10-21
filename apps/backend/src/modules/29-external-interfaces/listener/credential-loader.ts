@@ -12,8 +12,8 @@
 // plain TCP or to an unpinned listener.
 import { X509Certificate, createPrivateKey } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
 
 import { type InboundCipher, isSealedEnvelope } from "../inbound/inbound-crypto";

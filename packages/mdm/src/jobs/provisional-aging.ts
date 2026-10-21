@@ -1,4 +1,4 @@
-// @wardenx/mdm — the pure §4.3 `mdm.provisional_aging_scan` planner (GAP-173, spec §4.3).
+// @chartwarden/mdm — the pure §4.3 `mdm.provisional_aging_scan` planner (GAP-173, spec §4.3).
 //
 // "Scheduled weekly: provisional rows pending > 14 days → escalate to platform-ops." A tenant stages a provisional
 // entity when `getOrCreate` finds no identifier match (§2.4.3); only platform-ops can promote or merge it, so one

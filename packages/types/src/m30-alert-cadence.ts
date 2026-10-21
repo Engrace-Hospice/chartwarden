@@ -1,4 +1,4 @@
-// @wardenx/types - the M30 §4.9 REPEAT cadences, in one table (GAP-049).
+// @chartwarden/types - the M30 §4.9 REPEAT cadences, in one table (GAP-049).
 //
 // The first page of a quality alert is raised by M36's `quality-alerts` outbox consumer when the M30 event is
 // published. The spec then promises a repeat ("immediate, then every 4h until triaged"): that is raised by the

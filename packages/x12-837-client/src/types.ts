@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — shared adapter CONTRACT types (no IO, no SDK, no pyx12 shim here).
+// @chartwarden/x12-837-client — shared adapter CONTRACT types (no IO, no SDK, no pyx12 shim here).
 //
 // Extracted into their own leaf so client.ts / mac-portal/*.ts / index.ts all import them WITHOUT
 // closing an index↔client import cycle (the no-circular fitness rule; this was an M27 gotcha).
@@ -85,10 +85,10 @@ export interface SubmitterContext {
 export interface Generate837iRequest {
   readonly submitter: SubmitterContext;
   readonly claimId: string;
-  /** Deterministic control number minted by @wardenx/billing; the sidecar echoes it for idempotency. */
+  /** Deterministic control number minted by @chartwarden/billing; the sidecar echoes it for idempotency. */
   readonly claimControlNumber: string;
   /**
-   * Opaque claim document assembled by @wardenx/billing (TOB-typed). Shape firmed in Phase 2. Each line
+   * Opaque claim document assembled by @chartwarden/billing (TOB-typed). Shape firmed in Phase 2. Each line
    * carries `revenueCode`, dated `serviceDateFrom`, and an optional `hcpcsCode`: a line WITH a HCPCS (FY2027,
    * CR 14495: G0679 on revenue code 0657 for a telehealth recert face-to-face) must be emitted as its own
    * separately dated SV2 with that HCPCS in place of the site-of-service Q-code.

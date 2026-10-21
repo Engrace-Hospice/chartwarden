@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the per-tenant DoseSpot configuration source (M12 §2.5 D5, GAP-037 close-out).
+// @chartwarden/dosespot — the per-tenant DoseSpot configuration source (M12 §2.5 D5, GAP-037 close-out).
 //
 // THE ADAPTER IS UNBOUND UNLESS A TENANT HAS A COMPLETE CONFIG. The only production source shipped is
 // environment-backed (the secrets manager injects it, like `DOSESPOT_WEBHOOK_SECRETS`): a JSON map

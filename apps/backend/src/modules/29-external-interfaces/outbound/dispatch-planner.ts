@@ -1,4 +1,4 @@
-import type { NewHl7MessageOutboundRow } from "@wardenx/db/schema";
+import type { NewHl7MessageOutboundRow } from "@chartwarden/db/schema";
 // apps/backend/src/modules/29-external-interfaces/outbound — outbound ORM dispatch planning (M29-T06,
 // §4.12.1, W-XI-07/08). PURE. The pinch-point core: it turns a resolved `m11.order.hl7_orm_requested`
 // request + the D16 M40 BAA decision into either
@@ -14,8 +14,8 @@ import type { NewHl7MessageOutboundRow } from "@wardenx/db/schema";
 // `queuedAt` and the already-resolved `BaaGateDecision` (from `decideBaaGate` over the live seam result), so
 // the result is a pure function of its inputs. The T08 worker mints the ids + clock, resolves the BAA seam,
 // envelope-encrypts the wire into `payload_cipher`, does the insert, and dispatches over MLLP.
-import type { OrmRequestedPayload } from "@wardenx/types";
-import type { Hl7OutboundSourceKind } from "@wardenx/types";
+import type { OrmRequestedPayload } from "@chartwarden/types";
+import type { Hl7OutboundSourceKind } from "@chartwarden/types";
 import type { BaaGateDecision, BaaGateRefuseReason } from "../feed/baa-gate";
 import { sha256Hex } from "../listener/mllp-framing";
 import { type OrmEndpoint, buildOrmO01, summarizeSegments } from "./orm-o01";

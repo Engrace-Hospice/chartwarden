@@ -1,8 +1,8 @@
 // apps/web/src/modules/11-orders — shared order presentation helpers (R1, Lantern).
 // The order / priority / standing-order / transmission / results / cosign enums each map to the §6.6
-// badge taxonomy tone (grounded in the @wardenx/types unions) so every M11 surface renders the same
+// badge taxonomy tone (grounded in the @chartwarden/types unions) so every M11 surface renders the same
 // StatusPill for a state.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // OrderStatus = draft | pending_signature | verbal_pending | active | completed | discontinued | expired_unsigned.
 export const ORDER_TONE: Record<string, StatusTone> = {

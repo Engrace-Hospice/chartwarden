@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/13-emar — M13 eMAR screen registration (Track B, ADR-0030, M13-T10).
 // The §6.1 administration (eMAR) screens: the Patient eMAR (§6.1 #1, the bedside MAR-grid projection), the
 // Administration Detail (§6.1 #11), the IV Continuous Session (§6.1 #5), the patient Missed-Dose inbox

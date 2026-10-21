@@ -23,7 +23,7 @@
 // consumer for every alert event below (the alert-rule engine fans out to the registered
 // `compliance_officer_for_tenant` / `platform_security_owner` resolvers per §4.8).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

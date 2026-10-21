@@ -1,4 +1,4 @@
-// @wardenx/db — `order_signature` (M11 §3.3 / §2.5). The polymorphic signature ledger (D4): one row per
+// @chartwarden/db — `order_signature` (M11 §3.3 / §2.5). The polymorphic signature ledger (D4): one row per
 // signature / cosignature / verbal_attestation against either an `order_record` or an M12
 // `medication_order` (the `target_kind` discriminator routes the app layer; it is NOT a security boundary
 // — both targets live under the same org RLS scope, §3.6). There is NO SQL FK across the discriminator;

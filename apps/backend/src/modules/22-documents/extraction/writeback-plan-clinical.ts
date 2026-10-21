@@ -27,7 +27,7 @@
 //   duplicate_in_batch       a second approved candidate with the same dedupe key in this review — the
 //                            first is planned, the repeat is not (one fax page listing a drug twice is
 //                            one line on the chart)
-import { lineNamesSudTreatmentMedication } from "@wardenx/intake-extraction";
+import { lineNamesSudTreatmentMedication } from "@chartwarden/intake-extraction";
 import {
   DOCLENS_ALLERGY_FIELD_PATH,
   DOCLENS_CLINICAL_LINE_MAX_LENGTH,
@@ -37,7 +37,7 @@ import {
   doclensClinicalLineKey,
   doclensFieldPathIndex,
   doclensGenericFieldPath,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export type ClinicalWritebackExclusionReason =
   | "risk_not_high"

@@ -1,6 +1,6 @@
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
-// @wardenx/auth · identity — DB-backed SessionContextStore (M2, AUTH-T05b, ADR-0033).
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
+// @chartwarden/auth · identity — DB-backed SessionContextStore (M2, AUTH-T05b, ADR-0033).
 //
 // Reads the M1 `session` table (where Better Auth writes the session + its additionalFields:
 // activeOrganizationId, lastStepUpAt/Factor) so the SessionContextResolver resolves REAL sessions in
@@ -14,7 +14,7 @@ import type {
   ActorEnrichmentReader,
   OrgScope,
   StepUpFactor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import {
   SESSION_CLASSES,

@@ -1,4 +1,4 @@
-// @wardenx/db — `administration_record` (M13 §3.3). The central PHI table: one row per recorded
+// @chartwarden/db — `administration_record` (M13 §3.3). The central PHI table: one row per recorded
 // medication administration (the §2.1 six modes via the discriminated `mode` + per-mode TypeBox-validated
 // `data`; the §2.2 D6 committed→{pending_caregiver_review}→superseded/voided lifecycle). All clinician
 // free-text either lives in a denylisted top-level column (notes / refusal_reason / caregiver_attestation_text

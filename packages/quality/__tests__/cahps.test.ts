@@ -10,7 +10,7 @@ import {
   ShpCahpsAdapter,
   renderCsv,
   shpExportFilename,
-} from "@wardenx/cahps-vendors";
+} from "@chartwarden/cahps-vendors";
 import {
   type CahpsDecedentSampleRow,
   type CahpsSampleCandidate,
@@ -18,18 +18,18 @@ import {
   type ParsedCahpsResultRow,
   applyMinimumCellSuppression,
   sampleDecedents,
-} from "@wardenx/quality";
-import { WardenXError } from "@wardenx/types";
-// @wardenx/quality — M30 §4.5 / §4.13 / §7.2 CAHPS unit tests (PURE; no DB).
+} from "@chartwarden/quality";
+import { ChartWardenError } from "@chartwarden/types";
+// @chartwarden/quality — M30 §4.5 / §4.13 / §7.2 CAHPS unit tests (PURE; no DB).
 //
 // Covers the platform-side CAHPS pipeline + the pluggable vendor adapters:
 //   (a) the decedent SAMPLER (WF-04): CMS exclusion priority, the monthly window guard, and the §4.13
 //       `deathSource` marker that is carried platform-side but NEVER forwarded to a vendor;
 //   (b) the result-INGEST min-cell suppression (WF-06): the CMS ≤30-respondent small-cell protection;
-//   (c) the @wardenx/cahps-vendors SHP + manual adapters (renderExport CSV shape, manual `no_push`,
+//   (c) the @chartwarden/cahps-vendors SHP + manual adapters (renderExport CSV shape, manual `no_push`,
 //       parseResultIngest) and the three Phase-2 stub adapters' fail-closed NOT_YET_IMPLEMENTED behavior.
 //
-// Both packages are M30 codePaths (intra-module edge), so importing @wardenx/cahps-vendors from this
+// Both packages are M30 codePaths (intra-module edge), so importing @chartwarden/cahps-vendors from this
 // quality test is an allowed boundary. The PURE design (no I/O) is asserted by injecting plain values.
 import { describe, expect, it } from "vitest";
 
@@ -147,7 +147,7 @@ describe("CAHPS decedent sampler — eligibility + §4.13 source marking", () =>
 
     expect(() =>
       sampleDecedents([eligibleCandidate({ deathDate: "2025-02-01" })], JAN_2025),
-    ).toThrowError(WardenXError);
+    ).toThrowError(ChartWardenError);
   });
 
   it("rejects an inverted stay interval (death before admission)", () => {
@@ -225,7 +225,7 @@ describe("CAHPS result-ingest minimum-cell-size suppression (CMS ≤30 small-cel
   });
 
   it("fails closed on a non-positive minimum cell size and on impossible counts", () => {
-    expect(() => applyMinimumCellSuppression([parsedRow()], 0)).toThrowError(WardenXError);
+    expect(() => applyMinimumCellSuppression([parsedRow()], 0)).toThrowError(ChartWardenError);
     expect(() => applyMinimumCellSuppression([parsedRow()], 2.5)).toThrowError(/positive integer/);
     expect(() =>
       applyMinimumCellSuppression([parsedRow({ responseCount: 60, attemptedSampleCount: 50 })], 30),
@@ -313,7 +313,7 @@ describe("SHP CAHPS adapter (§4.5 platform default)", () => {
 
   it("pushExport fails closed (422) when the binding config lacks apiKey/apiSecret", async () => {
     const file = { filename: "f.csv", mimeType: "text/csv", bytes: Buffer.from("x") };
-    await expect(adapter.pushExport("org-1", file, {})).rejects.toThrowError(WardenXError);
+    await expect(adapter.pushExport("org-1", file, {})).rejects.toThrowError(ChartWardenError);
   });
 });
 
@@ -401,9 +401,9 @@ describe("Phase-2 CAHPS stub adapters fail closed (NOT_YET_IMPLEMENTED)", () => 
         } catch (err) {
           thrown = err;
         }
-        expect(thrown).toBeInstanceOf(WardenXError);
-        expect((thrown as WardenXError).code).toBe("vendor_adapter_not_implemented");
-        expect((thrown as WardenXError).statusCode).toBe(503);
+        expect(thrown).toBeInstanceOf(ChartWardenError);
+        expect((thrown as ChartWardenError).code).toBe("vendor_adapter_not_implemented");
+        expect((thrown as ChartWardenError).statusCode).toBe(503);
       }
     });
   }

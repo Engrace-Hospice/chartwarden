@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_protocol_question` (M19 §3.3). One row per question of a protocol's ordered
+// @chartwarden/db — `triage_protocol_question` (M19 §3.3). One row per question of a protocol's ordered
 // question set. D5 lives here: `red_flag_match` is the SERVER-side predicate the answer is evaluated
 // against — the client never asserts a red flag, it answers a question and the server decides.
 //

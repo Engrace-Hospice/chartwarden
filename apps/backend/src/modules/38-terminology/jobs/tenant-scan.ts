@@ -11,8 +11,8 @@
 // BOUNDED + IDEMPOTENT + ISOLATED. Deprecated codes go to a producer in fixed-size slices; each org is processed
 // independently (one org's failure never stops the rest); completed orgs are recorded in the job's progress, so a
 // retry (BullMQ attempts) skips them and no tenant is alerted twice. A tenant with no exposure is not paged.
-import { runTenantDeprecationScan } from "@wardenx/terminology";
-import type { CodeSystemId, RemediationReport, TenantCodeRecord } from "@wardenx/terminology";
+import { runTenantDeprecationScan } from "@chartwarden/terminology";
+import type { CodeSystemId, RemediationReport, TenantCodeRecord } from "@chartwarden/terminology";
 import type { TerminologyOpsStore } from "../ops-store";
 import type { CodeUsageProducer } from "../remediation-service";
 import { SCAN_CODES_PER_PRODUCER_CALL, type TenantScanJobData } from "./queues";

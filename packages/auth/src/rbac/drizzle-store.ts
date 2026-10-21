@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac — the PRODUCTION EffectivePermissionStore (M3 §2.2).
+// @chartwarden/auth · rbac — the PRODUCTION EffectivePermissionStore (M3 §2.2).
 //
 // The RBAC engine (resolve.ts) resolves an actor's effective permissions through an injected
 // `EffectivePermissionStore` PORT; that file is deliberately db-free. THIS file is the live store the
@@ -13,15 +13,15 @@
 // and the engine's `resolveEffectivePermissions` drops disabled roles + time-bound grants past their
 // window (§7.2), capping the cache TTL by the soonest expiry. Keeping the store a thin reader keeps that
 // §7.2 rule in one place.
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   ActorEnrichment,
   ActorEnrichmentReader,
   AdminMembershipReader,
   OrgScope,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { effectiveReachWithDiagnostics } from "../roles/grant-scope";
 import { roleConfersKey } from "../roles/platform-reserved";

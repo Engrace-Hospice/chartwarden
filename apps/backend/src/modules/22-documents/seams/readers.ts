@@ -1,7 +1,7 @@
-import { getRequestContext } from "@wardenx/tenancy";
+import { getRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/22-documents/seams/readers.ts — M22-T05 the five §4.3 PUBLISHED reader seam impls:
 // pure orchestration over an injected {@link DocumentReaderStore} (+ the object-store + consent ports for the
-// portal mint). Each returns the leaf-typed seam interface (@wardenx/types) the M1 registry validates and the
+// portal mint). Each returns the leaf-typed seam interface (@chartwarden/types) the M1 registry validates and the
 // downstream module resolves. The readers add NO tenant logic — RLS scopes every store read by the consumer's
 // `app.org_id` (§4.3). All five are READ-only — M22 owns the document lifecycle internally and never mutates
 // through a published seam. Mirrors the M17 read-seam provider precedent (one store, many readers).
@@ -21,7 +21,7 @@ import type {
   PortalDocumentDigest,
   PortalDocumentReader,
   RenderedDocumentProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { DocumentReaderStore, PortalAccessLogPort, PortalConsentPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";

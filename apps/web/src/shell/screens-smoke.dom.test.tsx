@@ -8,8 +8,8 @@ import { render, waitFor } from "@testing-library/react";
 // without tripping the top-level ErrorBoundary — not that its data renders correctly. Component
 // rendering was previously untestable at all (vitest.config.ts had no jsdom project) — see
 // docs/audits/wardenx-production-readiness/11-test-and-quality-report.md TEST-004.
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { createApiClient } from "@wardenx/ui";
+import type { ScreenRegistryModule } from "@chartwarden/types";
+import { createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app";
 import { createScreenRegistry } from "./screen-registry";
@@ -67,7 +67,7 @@ async function stubFetch(): Promise<Response> {
 
 beforeEach(() => {
   // Better Auth's client (authClient.getSession()/passkey.* — several identity/messaging/search
-  // screens use it directly, not through @wardenx/ui's typed client) calls the global fetch itself.
+  // screens use it directly, not through @chartwarden/ui's typed client) calls the global fetch itself.
   // jsdom ships its own AbortController/AbortSignal (for DOM event aborting) that is a DIFFERENT
   // class than the one Node's real undici-backed fetch expects on RequestInit.signal, so letting
   // Better Auth's client reach the real fetch throws "RequestInit: Expected signal to be an

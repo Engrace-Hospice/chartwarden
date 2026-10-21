@@ -11,9 +11,9 @@ import {
   ageYears,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 
-import type { DataTableColumn } from "@wardenx/ui";
+import type { DataTableColumn } from "@chartwarden/ui";
 
 // apps/web/src/modules/08-encounters — patient encounters / visits (M8 §5.2, Track B / ADR-0030).
 

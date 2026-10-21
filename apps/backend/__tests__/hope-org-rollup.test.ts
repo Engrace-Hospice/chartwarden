@@ -1,4 +1,4 @@
-import type { HopeRollupPeriod, J2051Severity } from "@wardenx/types";
+import type { HopeRollupPeriod, J2051Severity } from "@chartwarden/types";
 // apps/backend/__tests__/hope-org-rollup.test.ts — M10 ORG-LEVEL HopeOrgRollupProvider (#107). The seam is
 // pure reduction over an injected HopeOrgRollupStore; these cover the four HOPE-family rollups + the
 // point-in-time open-SFV count, the correctness-critical PAIN vs NON-PAIN J2051 split (an assessment with a

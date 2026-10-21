@@ -1,5 +1,5 @@
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { and, eq, ne } from "drizzle-orm";
 
 /** Resolve the active co-signer identity without exposing the M1 membership table to M34. */

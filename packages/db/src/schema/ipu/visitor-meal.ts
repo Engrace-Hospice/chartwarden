@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 visitor tracking + meal service (§2.7/§2.8, §3.3): ipu_visitor (MONTHLY-PARTITIONED
+// @chartwarden/db — M37 visitor tracking + meal service (§2.7/§2.8, §3.3): ipu_visitor (MONTHLY-PARTITIONED
 // by checked_in_at, composite PK `(id, checked_in_at)` in SQL 0149), ipu_visitor_restriction (unit- or
 // patient-scoped), ipu_meal_service (MONTHLY-PARTITIONED by service_date). TENANT-SCOPED, RLS on
 // app.org_id. visitor_name / relationship_other_text / restriction_applied_text / rationale /

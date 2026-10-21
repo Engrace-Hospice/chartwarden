@@ -4,7 +4,7 @@
 // The acting membership is server-derived (the session's membership, never a body/query value). A caller may
 // act on another membership's availability / PTO only with a spec §4.6 widening key:
 // `availability.edit_any`, `time_off.read_team` or `time_off.approve`.
-import { ConflictError, ForbiddenError } from "@wardenx/types";
+import { ConflictError, ForbiddenError } from "@chartwarden/types";
 
 /** The widening keys the caller holds, resolved server-side from the RBAC engine at the route. */
 export interface CallerAuthority {

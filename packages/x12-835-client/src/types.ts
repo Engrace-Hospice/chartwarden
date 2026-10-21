@@ -1,4 +1,4 @@
-// @wardenx/x12-835-client — shared adapter CONTRACT types (no IO, no SDK, no pyx12 shim here).
+// @chartwarden/x12-835-client — shared adapter CONTRACT types (no IO, no SDK, no pyx12 shim here).
 //
 // Extracted into their own leaf so client.ts / parse-*.ts / index.ts import them WITHOUT closing an
 // index↔client import cycle (the no-circular fitness rule; an M27/M23 gotcha). This package is the
@@ -136,7 +136,7 @@ export interface Parsed277ca {
 }
 
 // ─── Fail-closed result envelope (INT-009, spec M25-F14) ───────────────────────────────────────────
-// Mirrors the @wardenx/x12-837-client posture: the sidecar call returns a degraded ENVELOPE rather than
+// Mirrors the @chartwarden/x12-837-client posture: the sidecar call returns a degraded ENVELOPE rather than
 // throwing, so the M25 ingest/parse worker can fail closed (move the advice to parse_status = 'failed'
 // with a PHI-free reason) instead of crashing. The five descriptive fields (code, reason, integration,
 // operation, retryable) are the INT-009 degraded contract; PHI-free by construction.

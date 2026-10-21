@@ -34,7 +34,7 @@ import type {
   MembershipId,
   SafetyPolicyEffectiveDto,
   SafetyPolicyVersionId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { withAudit } from "../lifecycle/effects";
 import {
   type SafetyConsumerDecision,

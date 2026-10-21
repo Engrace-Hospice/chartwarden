@@ -7,8 +7,8 @@
 // `CapAccrualReader` (M27 cost-report cap calc) + `CapProjectionProvider` (M23 §11.A pre-submission cap
 // rules) are registered here. M26's other published seams (InpatientCapProvider / CapSettlementProvider /
 // CapAlertSubscriberProvider / CapMetricsProvider) stay reachable via outbox events until their consumers bind.
-import type { DbClient } from "@wardenx/db";
-import { registerPlatformJob } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 import { registerSeam } from "../../bootstrap/index";
 import { buildDrizzleM26ReadService } from "./routes/read-service-drizzle";
 import { buildM26SeamImpls } from "./seam-impls";
@@ -24,7 +24,7 @@ export function registerM26PublishedSeams(db: DbClient | undefined): void {
 /**
  * The platform job id M26's §4.8 platform-scoped crons (nightly projection, cap-year auto-close, PS&R
  * watchdog) enter `withPlatformContext` under to enumerate active orgs. Registered on the
- * `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST (empty → fail-closed) by {@link wireM26Tenancy}.
+ * `@chartwarden/tenancy` PLATFORM_CONTEXT_ALLOWLIST (empty → fail-closed) by {@link wireM26Tenancy}.
  */
 export const M26_PLATFORM_JOB_ID = "m26.platform_crons";
 

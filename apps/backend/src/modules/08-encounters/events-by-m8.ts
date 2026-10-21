@@ -7,12 +7,12 @@
 // performs at the boundary") every M8 event is outbox-only — M8 is not a Socket.IO producer (§4.3:
 // M36 fans out to channels off these events).
 //
-// The event NAMES mirror `M8_EVENT_NAMES` in @wardenx/types (the lifecycle/cosignature/late-entry side-
+// The event NAMES mirror `M8_EVENT_NAMES` in @chartwarden/types (the lifecycle/cosignature/late-entry side-
 // effect machines restrict their `outbox` effects to that closed set); this file adds the TypeBox
 // `payloadSchema` + declared consumers the dispatcher validates each publish against (§4.4 catalog).
 // `m8.encounter.signed` is the system's clinical-record nervous-system trigger — its payload is LOCKED.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** The fourteen §2.1 encounter types (mirrors `encounter_type`, §3.2). */
 const encounterType = Type.String({ minLength: 1 });

@@ -1,9 +1,9 @@
 // apps/backend/src/modules/36-messaging/sbar/sbar-policy-store-db.ts - WP 3.3: the tenant's SBAR policy row
 // (`tenant_sbar_policy`, one row per organisation, FORCE RLS). Org comes from the request context, never the client.
-import { type DbClient, schema } from "@wardenx/db";
-import type { StoredSbarPolicy } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { SBAR_SECTION_KEYS, type SbarSectionKey } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { StoredSbarPolicy } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { SBAR_SECTION_KEYS, type SbarSectionKey } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

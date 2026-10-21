@@ -12,8 +12,8 @@
 // timezone. ONE `withOrgContext` transaction and at most TWO queries for the whole call (never N+1). RLS
 // (`app.org_id`) is the wall; the explicit `organization.id` / `provider_entity.organization_id` predicates are
 // the belt behind it, so an unknown / cross-tenant location id is simply ABSENT from the result.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 const ORG = schema.organizations;

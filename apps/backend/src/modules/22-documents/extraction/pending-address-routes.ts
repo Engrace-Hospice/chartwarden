@@ -10,8 +10,8 @@ import { type Static, Type } from "@sinclair/typebox";
 // `/intake-summaries`) AND `intake.read`, since the answer says which intake batches exist for the patient
 // (the same permission the intake queue and the referral's Records tab need). A caller without `intake.read`
 // gets a plain 403 and the screen shows nothing.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import type { PendingAddressService } from "./pending-address-db";

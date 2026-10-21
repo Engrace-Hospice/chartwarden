@@ -18,7 +18,7 @@ import {
   type StatusTone,
   type operations,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import "./live-meeting.css";

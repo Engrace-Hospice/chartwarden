@@ -13,8 +13,8 @@ import { type Static, Type } from "@sinclair/typebox";
 // values or decides; the SUD resolution additionally needs the high-risk licence (the
 // `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. Every PHI read
 // carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor, requireIdempotencyKey } from "../routes/concurrency";
 import { parse } from "../routes/documents-typebox";

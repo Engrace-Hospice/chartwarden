@@ -1,4 +1,4 @@
-// @wardenx/forms — §4.5 the Form Template Library (D14, D16, D20, D21): template lookup + versioning +
+// @chartwarden/forms — §4.5 the Form Template Library (D14, D16, D20, D21): template lookup + versioning +
 // tenant-overlay resolution. The platform-floor template is the SOURCE OF TRUTH; a tenant overlay may
 // only TIGHTEN it (add branding, narrow a value space, customize prose) and may NEVER WEAKEN it (drop a
 // regulatory-required field, widen an enumeration, remove a watermark). This mirrors the M38 terminology
@@ -10,7 +10,7 @@
 // no DB, no react-pdf/puppeteer import. The backend wires the published-version lookup + the stored overlay
 // row to these functions (M22-T05 seams/library-store + the §4.5 admin routes in a later task).
 
-import type { DocumentRetentionClass } from "@wardenx/types";
+import type { DocumentRetentionClass } from "@chartwarden/types";
 import type { FormTemplateDescriptor } from "./interface";
 import { FORM_TEMPLATE_REGISTRY, findFormTemplate } from "./registry";
 

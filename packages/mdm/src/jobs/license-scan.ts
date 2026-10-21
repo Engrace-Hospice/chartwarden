@@ -1,4 +1,4 @@
-// @wardenx/mdm — the pure §4.3 `mdm.license_expiration_scan` planner (GAP-173, spec §4.3 / §4.4 `mdm.license_expiring`).
+// @chartwarden/mdm — the pure §4.3 `mdm.license_expiration_scan` planner (GAP-173, spec §4.3 / §4.4 `mdm.license_expiring`).
 //
 // Same 90 / 30 / 0-day ladder as the BAA scan (the helpers are shared so the two can never disagree on a window
 // boundary), over the Phase-1 MANUAL license entries (`mdm_license_record`, D6). Pure: no clock, no I/O. The

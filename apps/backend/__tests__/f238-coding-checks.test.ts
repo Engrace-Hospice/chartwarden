@@ -15,7 +15,7 @@ import {
   resolveCodeTokens,
   runCodingChecks,
   splitPacket,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import { describe, expect, it } from "vitest";
 import { fixtureTerminology as T } from "./fixtures/doclens-complex-packet/fixture-terminology";
 

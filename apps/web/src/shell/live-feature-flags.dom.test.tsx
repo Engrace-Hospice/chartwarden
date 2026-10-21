@@ -1,6 +1,6 @@
 // The shell loads the org's real flags so `useFeatureFlag` consumers (SBAR, clinical links, presence) are reachable.
 import { render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider, useFeatureFlag } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider, useFeatureFlag } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { LiveFeatureFlagProvider } from "./live-feature-flags";
 import { type Session, SessionProvider } from "./session";

@@ -3,10 +3,10 @@
 // Every guard / validation failure in the M15 discipline-plan domain raises a `DisciplinePlanStateError`
 // carrying the machine-readable code the §2.3 validation-rule table and the §4.2 route error blocks name
 // (`INSUFFICIENT_SIGNERS`, `INVALID_ENCOUNTER_REFERENCE`, `CORRECTIVE_ACTIONS_REQUIRED`, …). The error
-// extends the M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation) so the
+// extends the M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the
 // M1 Fastify error handler renders the exact code + status the UI keys its message off, with no
 // cross-module import edge. Mirrors the M7 `CarePlanStateError` precedent verbatim (§2.2.2 is M7 D1).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §4.2 machine-readable failure-code catalog → HTTP status. */
 export const M15_ERROR_STATUS = {
@@ -75,7 +75,7 @@ export type M15ErrorCode = keyof typeof M15_ERROR_STATUS;
  * UI renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2 every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class DisciplinePlanStateError extends WardenXError {
+export class DisciplinePlanStateError extends ChartWardenError {
   constructor(code: M15ErrorCode, message: string) {
     super(code, message, M15_ERROR_STATUS[code]);
     this.name = "DisciplinePlanStateError";

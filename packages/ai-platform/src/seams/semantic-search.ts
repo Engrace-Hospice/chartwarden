@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §4.2.6 `SemanticSearchProvider` (M32-T06).
+// @chartwarden/ai-platform — §4.2.6 `SemanticSearchProvider` (M32-T06).
 //
 // "SemanticSearchProvider + CopilotProvider follow same shape; full interfaces in
 // packages/ai-platform/src/seams/copilot.ts and semantic-search.ts" — §4.2.6 hands M32 the file and the

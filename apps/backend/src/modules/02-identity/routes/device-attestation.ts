@@ -22,9 +22,9 @@
 // complement to on-device detection ("unusual access patterns from clinical mobile may flag"), and a
 // device that repeatedly fails the posture check is precisely that signal. The row is written before
 // the 401 is sent.
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requirePermission, requireSession } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
+import { requirePermission, requireSession } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   auditDeviceAttestationFailed,
@@ -174,7 +174,7 @@ export function registerDeviceAttestationRoutes(
     // A session with no membership has no device to enrol against: the attestation is per-membership,
     // and a pre-org session has not chosen which org's fleet it belongs to yet.
     if (!session.membershipId || !session.organizationId) {
-      throw new WardenXError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
+      throw new ChartWardenError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
     }
     const challengeId = newChallengeId();
     const nonce = newNonce();
@@ -200,11 +200,11 @@ export function registerDeviceAttestationRoutes(
     // Single-use: `take` spends the challenge, so a captured assertion cannot be replayed.
     const challenge = await deps.challenges.take(challengeId);
     if (!challenge)
-      throw new WardenXError("CHALLENGE_EXPIRED_OR_INVALID", "challenge expired or invalid", 400);
+      throw new ChartWardenError("CHALLENGE_EXPIRED_OR_INVALID", "challenge expired or invalid", 400);
     // The challenge belongs to THIS session. Without this a caller could mint a challenge on their own
     // session and spend it on another, which is the whole point of binding it at mint time.
     if (challenge.sessionId !== session.sessionId) {
-      throw new WardenXError("CHALLENGE_SESSION_MISMATCH", "challenge session mismatch", 400);
+      throw new ChartWardenError("CHALLENGE_SESSION_MISMATCH", "challenge session mismatch", 400);
     }
 
     const verdict = await deps.verifier.verify({ challenge, assertion });
@@ -216,7 +216,7 @@ export function registerDeviceAttestationRoutes(
       // row is written. Recording one would put "this device is compromised" in the trail for a
       // deployment that simply has not installed the provider.
       if ("unavailable" in verdict) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ATTESTATION_PROVIDER_UNAVAILABLE",
           "attestation provider unavailable",
           501,
@@ -252,7 +252,7 @@ export function registerDeviceAttestationRoutes(
         aggregateKind: "device_attestation",
         aggregateId: failedRow.id,
       });
-      throw new WardenXError("ATTESTATION_FAILED", "attestation failed", 401, [
+      throw new ChartWardenError("ATTESTATION_FAILED", "attestation failed", 401, [
         { code: "ATTESTATION_FAILED", message: String(verdict.reason) },
       ]);
     }
@@ -301,7 +301,7 @@ export function registerDeviceAttestationRoutes(
     async (request, reply) => {
       const session = await resolveSessionOrThrow(request);
       if (!session.membershipId || !session.organizationId) {
-        throw new WardenXError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
+        throw new ChartWardenError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
       }
       const reason = (request.body as { reason?: unknown } | null)?.reason;
       // The 10-character floor mirrors the DB CHECK. Enforced here too so the caller gets a 422 naming
@@ -323,7 +323,7 @@ export function registerDeviceAttestationRoutes(
         reason: reason.trim(),
       });
       // Absent, cross-tenant and already-revoked all answer 404: the caller learns nothing about which.
-      if (!record) throw new WardenXError("ATTESTATION_NOT_FOUND", "attestation not found", 404);
+      if (!record) throw new ChartWardenError("ATTESTATION_NOT_FOUND", "attestation not found", 404);
       await auditDeviceAttestationRevoked(deps.audit, auditContextFor(request, session), {
         attestationId: record.id,
         membershipId: record.membershipId,
@@ -351,7 +351,7 @@ export function registerDeviceAttestationRoutes(
     async (request, reply) => {
       const session = await resolveSessionOrThrow(request);
       if (!session.membershipId || !session.organizationId) {
-        throw new WardenXError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
+        throw new ChartWardenError("ORGANIZATION_NOT_SELECTED", "organization not selected", 409);
       }
       const items = await deps.store.listForMembership({
         organizationId: session.organizationId,

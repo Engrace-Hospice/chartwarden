@@ -7,8 +7,8 @@
 // the date of death. Nothing else crosses - no MRN, no date of birth, no sex, no address, no race/ethnicity, no
 // clinical fact, no family contact. FAILS CLOSED: an unknown, cross-tenant, merged-away or not-(yet-)deceased
 // patient is `null`, so a link outliving its eligibility reads nothing.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const P = schema.patients;

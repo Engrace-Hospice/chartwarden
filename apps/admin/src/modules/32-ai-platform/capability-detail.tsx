@@ -7,8 +7,8 @@ import {
   TextField,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.2 capability detail
 // (`/admin/ai-platform/capabilities/:capabilityId`, `ai.capability.read`). Six tabs: Overview,
 // Lifecycle, Calibration, Prompts, Invocations, Drift.

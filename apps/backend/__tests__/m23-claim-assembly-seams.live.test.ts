@@ -17,7 +17,7 @@
  * fallback's empty default (the F-093/F-100/F-103 shape again). F-124 fixes an analogous gap one layer
  * down in M38: `CMS_HOSPICE_MODIFIER_VALUE_SET` (the one value set M23's rule registry references) had no
  * curated members anywhere — this suite seeds them directly (`value_set`/`value_set_member`), the same
- * two rows `@wardenx/terminology`'s own seed now curates.
+ * two rows `@chartwarden/terminology`'s own seed now curates.
  *
  * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123/F-124 (stated,
  * not implied): as of F-210 the wall at `referenceData.perDiemRateTable` is a typed, actionable
@@ -29,10 +29,10 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { CMS_HOSPICE_MODIFIER_VALUE_SET, icd10Sequencing } from "@wardenx/billing";
-import { type DbClient, createDbClient, schema } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, icd10Sequencing } from "@chartwarden/billing";
+import { type DbClient, createDbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -91,7 +91,7 @@ const testProviderCcnPort: ProviderCcnPort = {
         ),
       )
       .limit(1);
-    if (!provider) throw new WardenXError("NOT_FOUND", "provider CCN unavailable", 404);
+    if (!provider) throw new ChartWardenError("NOT_FOUND", "provider CCN unavailable", 404);
     return provider.ccn;
   },
 };

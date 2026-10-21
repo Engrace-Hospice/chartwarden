@@ -7,7 +7,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the §2.6 decision recorder (#91).
 //
 // This is the write the IDG exists to make. 42 CFR 418.56(b) puts the interdisciplinary group at the

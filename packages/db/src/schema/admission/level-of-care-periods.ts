@@ -1,4 +1,4 @@
-// @wardenx/db — `level_of_care_period` (M6 §3.3). The LOC ledger over an admission (routine home /
+// @chartwarden/db — `level_of_care_period` (M6 §3.3). The LOC ledger over an admission (routine home /
 // continuous home / inpatient respite / general inpatient), each row driving the `m6.loc.changed`
 // outbox and a Q-code (Q5001..Q5010, derived via M38). Org-scoped (no direct patient identifier;
 // tenancy via the admission FK). `assigned_by` is an M1 user (FK); `facility_id` (M40) +

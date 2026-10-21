@@ -9,7 +9,7 @@ import {
   type ChartPromotionStatus,
   type ChartPromotionTargetModule,
   isChartPromotionTarget,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export { CHART_PROMOTION_TARGETS, isChartPromotionTarget };
 

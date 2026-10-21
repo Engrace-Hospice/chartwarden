@@ -14,7 +14,7 @@ import {
   StatusPill,
   type StatusTone,
   TextAreaField,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useId, useState } from "react";
 import type { JSX } from "react";
 

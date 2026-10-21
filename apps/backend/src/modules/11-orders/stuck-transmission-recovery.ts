@@ -14,9 +14,9 @@
 // sweeper and an operator's click) serialize on the row lock and the loser reads `pending` and is refused, so a
 // concurrent double-dispatch is impossible by the SAME two guards a manual resend relies on. This file adds only WHEN to
 // call it and how many times.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ValidationError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getMdmEntityProvider } from "../40-mdm/seams";
 import {

@@ -11,7 +11,7 @@
 // redelivered refresh is a no-op), so no idempotency guard is layered. Org/actor binding is ALWAYS
 // server-side (request.context, never the body): R-95 binds the read actor, R-96 the write actor (+ its
 // active membership id). Mirrors the M33 routes/bases-metrics.routes.ts shape.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { RiskRegisterListQuerySchema, parse } from "./quality-typebox";

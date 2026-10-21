@@ -1,4 +1,4 @@
-// @wardenx/xero-client — per-tenant OAuth token-store PORT (M27 §6 `oauth/`, D6).
+// @chartwarden/xero-client — per-tenant OAuth token-store PORT (M27 §6 `oauth/`, D6).
 //
 // OAuth is per-tenant with isolated refresh (spec §41). The persistence + the real refresh round-trip
 // (Xero's identity `/connections` + token endpoint) land in M34 tenant-onboarding — see the

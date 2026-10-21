@@ -20,7 +20,7 @@ import {
   ackStateInvalid,
   defaultDeadline,
   derivePatient,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   ACK_CHANNEL_LIST_CAP,
   type AckChannelListResponse,
@@ -31,8 +31,8 @@ import {
   type AckSupervisorReassignResponse,
   ForbiddenError,
   NotFoundError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { toAckEventDto, toAckRequestDto } from "./ack-dto";
 import { escalationNotes } from "./ack-escalation-note";
@@ -136,8 +136,8 @@ export interface AckService {
 }
 
 const messageNotFound = (): NotFoundError => new NotFoundError("message");
-const unavailable = (): WardenXError =>
-  new WardenXError(
+const unavailable = (): ChartWardenError =>
+  new ChartWardenError(
     "ACK_UNAVAILABLE",
     "Response requests are unavailable right now. Try again.",
     503,
@@ -172,17 +172,17 @@ export function ackGuardName(err: unknown): string | null {
 const errorName = (err: unknown): string => (err instanceof Error ? err.name : "unknown");
 
 /** Who may reassign: the current assignee; the requester only until the request is taken. Null when allowed. */
-function reassignDenied(actorId: string, row: AckRow): WardenXError | null {
+function reassignDenied(actorId: string, row: AckRow): ChartWardenError | null {
   if (actorId === row.assignedUserId) return null;
   if (actorId !== row.requesterUserId) {
-    return new WardenXError(
+    return new ChartWardenError(
       "ACK_NOT_PARTY",
       "Only the sender or the current assignee can reassign.",
       403,
     );
   }
   if (row.status === "acknowledged") {
-    return new WardenXError(
+    return new ChartWardenError(
       "ACK_NOT_ASSIGNEE",
       "Only the person who took responsibility can hand it on.",
       403,
@@ -230,7 +230,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
     const patientId =
       facts.kind === "care_team" ? derivePatient(facts.kind, facts.subjectId) : null;
     if (!patientId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ACK_NOT_PATIENT_CHANNEL",
         "A response request needs a patient conversation.",
         422,
@@ -342,7 +342,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
         throw messageNotFound();
       }
       if (message.authorUserId !== actor.userId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ACK_NOT_REQUESTER",
           "Only the author of a message can ask for a response to it.",
           403,
@@ -359,7 +359,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
         ) {
           return { ...unchanged(existing, actor.userId), created: false };
         }
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ACK_ALREADY_REQUESTED",
           "A response has already been requested for this message.",
           409,
@@ -401,7 +401,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
                 made.row.assignedUserId === input.assigneeUserId &&
                 made.row.requesterUserId === actor.userId;
               if (!same) {
-                throw new WardenXError(
+                throw new ChartWardenError(
                   "ACK_ALREADY_REQUESTED",
                   "A response has already been requested for this message.",
                   409,
@@ -475,7 +475,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
       }
       if (!isWaiting(seen.status)) throw ackStateInvalid();
       if (!(await deps.stillQualified(actor.orgId, actor.userId, seen.channelId))) {
-        throw new WardenXError("ACK_NOT_QUALIFIED", "Your role cannot take this message.", 403);
+        throw new ChartWardenError("ACK_NOT_QUALIFIED", "Your role cannot take this message.", 403);
       }
       const at = clock();
       return guarded(
@@ -530,7 +530,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
         throw isWaiting(seen.status) ? ackNotAcknowledged() : ackStateInvalid();
       }
       if (!(await deps.stillQualified(actor.orgId, actor.userId, seen.channelId))) {
-        throw new WardenXError("ACK_NOT_QUALIFIED", "Your role cannot close this message.", 403);
+        throw new ChartWardenError("ACK_NOT_QUALIFIED", "Your role cannot close this message.", 403);
       }
       const at = clock();
       return guarded(

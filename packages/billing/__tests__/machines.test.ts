@@ -1,4 +1,4 @@
-import type { ClaimState, ClaimTransitionEvent, NoticeState } from "@wardenx/billing";
+import type { ClaimState, ClaimTransitionEvent, NoticeState } from "@chartwarden/billing";
 import {
   CLAIM_TERMINAL_STATES,
   CLAIM_TRANSITIONS,
@@ -7,8 +7,8 @@ import {
   noeMachine,
   notrMachine,
   reduce,
-} from "@wardenx/billing";
-// @wardenx/billing — M23 §2.2 the three pure lifecycle reducers (claim / noe / notr) pure-domain unit
+} from "@chartwarden/billing";
+// @chartwarden/billing — M23 §2.2 the three pure lifecycle reducers (claim / noe / notr) pure-domain unit
 // tests. Mirrors the M27 `cost-report/__tests__/lifecycle.test.ts` shape: every legal edge in each flat
 // transition table must apply, every illegal (state, event) pair must fail CLOSED (the reducer returns the
 // UNCHANGED state with an `error` code and NEVER throws), the §2.3 blocking-failure submission guard must

@@ -1,6 +1,6 @@
 // apps/backend/__tests__/admission-onset-reader.test.ts — the M6 AdmissionOnsetReader Drizzle impl
 // (M30 opioid_on_admission_rate's denominator). Mirrors death-discharge-reader.test.ts's fake-db pattern.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createAdmissionOnsetReader } from "../src/modules/06-admission/index";
 

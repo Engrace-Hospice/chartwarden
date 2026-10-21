@@ -1561,7 +1561,7 @@ The two forward-seam deny-stubs ship at M35 lock as `NotImplementedError`-throwi
 
 ```typescript
 // packages/subscription-billing/src/boot/register-permissions.ts
-import { permissionRegistry } from '@wardenx/authorization'
+import { permissionRegistry } from '@chartwarden/authorization'
 
 const M35_PERMISSIONS = [
   // Tenant surface:
@@ -1607,7 +1607,7 @@ M35 introduces five new ABAC predicates registered into M3's named-predicate reg
 
 ```typescript
 // packages/subscription-billing/src/boot/register-predicates.ts
-import { predicateRegistry } from '@wardenx/authorization'
+import { predicateRegistry } from '@chartwarden/authorization'
 
 predicateRegistry.declare('billing_scope_matches_org', async (ctx, target) => {
   return ctx.organizationId === target.organizationId

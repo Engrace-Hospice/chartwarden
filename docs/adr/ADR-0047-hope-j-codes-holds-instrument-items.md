@@ -45,7 +45,7 @@ same defect class as F-029, F-042, F-051 and F-057 itself: a control that can on
 therefore tells nobody anything. A rule set is not improved by adding a rule that cannot fire.
 
 **The symptom codes are not terminology.** `HOPE_J2051_SYMPTOM_CODES` is a WardenX-internal
-vocabulary defined in `@wardenx/types`. Placing it in a terminology *service* value set would assert
+vocabulary defined in `@chartwarden/types`. Placing it in a terminology *service* value set would assert
 it is externally governed, invite a tenant extension to widen it (M38 permits tenants to ADD to a
 platform set), and split its authority across two modules. The instrument's item roster genuinely is
 externally governed: CMS publishes it and revises it annually.

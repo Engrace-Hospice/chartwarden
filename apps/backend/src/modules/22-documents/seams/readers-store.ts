@@ -18,7 +18,7 @@ import type {
   PatientId,
   PortalDocumentDigest,
   ProvenanceRecord,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
 
 /** The render-back-ref shape `RenderedDocumentProvider` returns (the active version per source aggregate). */

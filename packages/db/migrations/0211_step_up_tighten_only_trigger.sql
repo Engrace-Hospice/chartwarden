@@ -40,7 +40,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  -- The platform floor, mirroring STEP_UP_POLICY. Keep in step with @wardenx/types.
+  -- The platform floor, mirroring STEP_UP_POLICY. Keep in step with @chartwarden/types.
   floor_factors  text[] := ARRAY['webauthn','totp'];
   floor_max_age  integer := 300;
   extra_factors  text[];

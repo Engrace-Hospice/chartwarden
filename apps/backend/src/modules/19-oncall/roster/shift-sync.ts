@@ -43,7 +43,7 @@ import type {
   OncallModel,
   OncallShiftDiscipline,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { TriageStateError } from "../lifecycle/errors";
 import type { OnCallShiftFacts } from "./shift-machine";
 

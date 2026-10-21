@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T11 §7 Workflow Acceptance Criteria (the consolidated done-means suite).
+// @chartwarden/mdm — M40-T11 §7 Workflow Acceptance Criteria (the consolidated done-means suite).
 //
 // The §9 unit/integration coverage lives in the per-task suites (merge-redirect, baa-gate, nppes-
 // nightly, nppes-consumers, merge-service, destruction-cache, the route + seam integration tests);

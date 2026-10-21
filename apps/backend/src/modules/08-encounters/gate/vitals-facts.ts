@@ -4,7 +4,7 @@
 // two `EncounterGateFacts` sets the gate reads. An encounter can carry more than one `vitals` row ("most
 // encounters have one set; some have multiple over the visit" — §2.2), so this is a UNION across every
 // row, not a read of the latest one — a field captured on an earlier set in the same visit still counts.
-import type { VitalField } from "@wardenx/hearthnote";
+import type { VitalField } from "@chartwarden/hearthnote";
 
 /** One `vitals` row's fields, exactly as the service reads them off the table. */
 export interface VitalsRowFacts {

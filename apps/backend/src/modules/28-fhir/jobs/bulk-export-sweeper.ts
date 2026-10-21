@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/28-fhir/jobs/bulk-export-sweeper.ts — the `fhir.bulk-export-sweeper` cron (GAP-084,
 // §2.2, §4.8). Every 15 minutes, per org, bounded to {@link SWEEP_BATCH_LIMIT} jobs per category per tick:
 //
@@ -18,8 +18,8 @@ import type { DbClient } from "@wardenx/db";
 //
 // One org's failure must not stop the others: failures are collected per org and re-thrown as one
 // AggregateError after every org was swept, so the job still fails loudly (retry / DLQ).
-import { bulkExportCancelledEvent, bulkExportFailedEvent } from "@wardenx/fhir";
-import type { FhirBulkExportJobId, FhirClientId } from "@wardenx/types";
+import { bulkExportCancelledEvent, bulkExportFailedEvent } from "@chartwarden/fhir";
+import type { FhirBulkExportJobId, FhirClientId } from "@chartwarden/types";
 
 import {
   type ExportOutboxEvent,

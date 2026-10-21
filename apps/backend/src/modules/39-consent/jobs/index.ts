@@ -1,6 +1,6 @@
 // apps/backend/src/modules/39-consent/jobs/index.ts — M39's §4.9 cron tier as DATA (F-216; the
 // M14/M20 `jobs/index.ts` split: this file has no BullMQ import, `./cron-workers.ts` is the live
-// construction). The two queue NAMES are the `@wardenx/consent` `M39_QUEUES` catalog (single source);
+// construction). The two queue NAMES are the `@chartwarden/consent` `M39_QUEUES` catalog (single source);
 // schedules/params/bounds live here.
 //
 // TIER: these are the two M39 §4.9 queues that produce outbox events —
@@ -15,7 +15,7 @@
 //     unsigned drafts older than 30 days.
 // The two event queues are NOT built here (eval-audit-partition is redundant: the 0224 partition rotation
 // already covers it).
-import { M39_QUEUES } from "@wardenx/consent";
+import { M39_QUEUES } from "@chartwarden/consent";
 
 export { M39_QUEUES };
 

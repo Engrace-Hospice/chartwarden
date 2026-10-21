@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_integrity_run` (M4 Audit §4.4, migration 0510). One append-only row per sampled
+// @chartwarden/db — `audit_integrity_run` (M4 Audit §4.4, migration 0510). One append-only row per sampled
 // audit hash-chain verification (or seal run): when, what was checked, and the result. The record behind
 // `GET /api/v1/audit/integrity/report`'s `sealChain` / `integritySample` sections. Org-scoped, not PHI —
 // `detail` holds partition names, reasons and counts only.

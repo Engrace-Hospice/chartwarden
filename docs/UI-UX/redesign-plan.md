@@ -10,7 +10,7 @@ conçu intentionnellement.
 
 La première livraison ne cherchera donc pas à refaire toutes les pages. Elle livrera :
 
-1. un kit de composants et de règles documentées dans `@wardenx/ui` ;
+1. un kit de composants et de règles documentées dans `@chartwarden/ui` ;
 2. trois écrans pilotes représentatifs ;
 3. une recette visuelle, responsive, accessible et respectueuse de la confidentialité qui
    pourra être appliquée écran par écran sans recréer des composants locaux.
@@ -144,7 +144,7 @@ d’acceptation de chaque composant et aucune modification fonctionnelle appliqu
    inline locaux seulement après remplacement par une primitive.
 4. Vérifier clavier, focus, lecteurs d’écran, contraste light/dark et réduction des animations.
 
-**Sortie :** un kit publiable via `@wardenx/ui`, sans API métier ni couleur codée en dur dans
+**Sortie :** un kit publiable via `@chartwarden/ui`, sans API métier ni couleur codée en dur dans
 les nouveaux composants. Livré : `Button`/`IconButton`, `Card`, `TextField`, `SelectField` et
 `TextAreaField`, plus un token de focus adapté aux deux thèmes et une règle de mouvement réduit.
 Les composants existants `StatusPill`, `EmptyState`, `LoadingSpinner`, `Modal` et

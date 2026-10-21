@@ -1,4 +1,4 @@
-// @wardenx/shared — org-local-date (PARAM-004 follow-up). Server-side "what is today for this
+// @chartwarden/shared — org-local-date (PARAM-004 follow-up). Server-side "what is today for this
 // tenant" — the backend analogue of packages/ui/src/core/dates.ts's frontend fix. Several
 // call sites computed "today" by slicing a UTC instant's ISO string
 // (`new Date().toISOString().slice(0, 10)`), which reads the WRONG calendar day for a large

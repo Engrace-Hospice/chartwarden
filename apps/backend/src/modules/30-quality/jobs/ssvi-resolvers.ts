@@ -28,13 +28,13 @@ import {
   ssviThresholdsFor,
   ssviUnavailabilityFor,
   ssviWeekendRhcDaysWithSkilledVisit,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import type {
   DeathDischargeReader,
   DischargeReader,
   LevelOfCarePeriodReader,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The recompute request every resolver receives (the worker's `resolveInput` request shape). */
 export interface SsviResolveRequest {

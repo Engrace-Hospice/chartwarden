@@ -1,4 +1,4 @@
-import { InlineAlert, StatusPill, type StatusTone, useApiClient } from "@wardenx/ui";
+import { InlineAlert, StatusPill, type StatusTone, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — a transferred-in admission's Medicare transfer notice (TOB 8xC), as M23
 // reports it: GET /api/v1/billing/transfer-notices?admissionId=. Shows the latest notice's state and what holds
 // it (the transferring hospice's billing not yet confirmed, a continuity gap, …) with a link to the billing

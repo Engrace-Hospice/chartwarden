@@ -1,6 +1,6 @@
 // apps/backend/__tests__/m30-published-seams.test.ts — M30's §4.3 seams in the M1 registry.
 //
-// Before this wiring, `registerQualityPublishedSeams` existed in @wardenx/quality with NO caller in
+// Before this wiring, `registerQualityPublishedSeams` existed in @chartwarden/quality with NO caller in
 // apps/backend, and M30's five seam names were not members of the M1 `SeamContracts`/`REQUIRED_SEAMS` —
 // so M30 was reachable cross-module only through its §4.10 outbox events, and M22 / M28 / M33 / M34 had
 // no read path to the measure ledger, the incident register, QAPI, CoP status or the SRA posture.

@@ -2,7 +2,7 @@
 // The patient status enum (spec §"Statuses") maps to the §6.6 badge taxonomy tone so every M5
 // surface (census, chart banner, global-search hits) renders the same StatusPill for a status.
 
-import { ageYears } from "@wardenx/ui";
+import { ageYears } from "@chartwarden/ui";
 
 // The status → tone map and label now live with the shared chart banner in the shell.
 export {

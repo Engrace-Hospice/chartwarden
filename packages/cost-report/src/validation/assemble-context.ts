@@ -1,4 +1,4 @@
-// @wardenx/cost-report — the PURE ValidationContext assembler (§11.B). Composes M27's already-read DB state
+// @chartwarden/cost-report — the PURE ValidationContext assembler (§11.B). Composes M27's already-read DB state
 // (cost-report fields + per-worksheet `data` jsonb + statistics + mapping + trial-balance + bad-debt +
 // compliance window) plus the resolved cross-module facts (M26 cap, M40 MAC jurisdiction) into the
 // aggregate, PHI-free `ValidationContext` the rule library evaluates against. No DB / no clock-of-its-own

@@ -20,9 +20,9 @@
 // `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
 // narrows what a clinician sees; it never widens it. The consent round-trip is skipped entirely when
 // the plan carries no SUD-flagged problem (the verdict would be unobservable).
-import { type DbClient, schema } from "@wardenx/db";
-import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import type { CarePlanCodeUsageRecord } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
+import type { CarePlanCodeUsageRecord } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
@@ -54,7 +54,7 @@ const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() :
 /** Same, nullable. */
 const isoN = (d: Date | string | null): string | null => (d === null ? null : iso(d));
 
-/** The minimal M39 surface this store calls — structurally typed so M7 takes no `@wardenx/consent`
+/** The minimal M39 surface this store calls — structurally typed so M7 takes no `@chartwarden/consent`
  * import edge (the M16 `ConsentEvaluatorShape` precedent). */
 interface ConsentEvaluatorShape {
   evaluate(args: {
@@ -487,7 +487,7 @@ export type { ClaimDiagnosisRecord, ClaimDiagnosisResult };
 
 /**
  * F-214 (#251) — may a `sud_related` diagnosis code go on a Medicare claim? Decided by M39's
- * `ConsentEvaluator` (resolved opaquely through the M1 registry — M7 takes no `@wardenx/consent` edge, the
+ * `ConsentEvaluator` (resolved opaquely through the M1 registry — M7 takes no `@chartwarden/consent` edge, the
  * `part2ReleaseAllowed` / M22 `resolveSudConsentPresent` shape), org-explicit (no request scope: the assembly
  * worker is not a request). The question asked: is a `42_cfr_part_2_release` consent active, effective,
  * unexpired, unrevoked (with at least one active named recipient, patient not deceased — all decided by the

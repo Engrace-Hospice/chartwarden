@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the DENIAL TAXONOMY overlay (R2, §5 / D5 / M25-F09). Look up a
 // CARC and see the merged view: the M38 platform floor (category + default plain-language — READ-ONLY, the
 // regulatory floor tenants can NEVER edit) plus the per-tenant overlay (plain-language override + suggested

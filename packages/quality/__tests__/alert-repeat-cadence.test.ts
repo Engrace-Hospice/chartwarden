@@ -1,6 +1,6 @@
 // GAP-049 - the M30 §4.9 repeat cadences: one table, origin-anchored bucket math, and the guard that the table and
 // the human-readable `cadence` strings in alert-defs.ts cannot drift apart.
-import { M30_REPEAT_CADENCES, qualityAlertCorrelationId, repeatBucket } from "@wardenx/types";
+import { M30_REPEAT_CADENCES, qualityAlertCorrelationId, repeatBucket } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M30_ALERTS, bandOf, decideThresholdBreach } from "../src";
 

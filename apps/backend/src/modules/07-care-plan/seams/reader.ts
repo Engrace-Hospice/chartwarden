@@ -1,6 +1,6 @@
 // apps/backend/src/modules/07-care-plan/seams/reader.ts — M7-T04 the §7.8 CarePlanReader implementation:
 // pure orchestration over an injected {@link CarePlanReaderStore}. Returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M8/M14/M15 resolve. The reader adds NO tenant logic —
+// (@chartwarden/types) the M1 registry validates and M8/M14/M15 resolve. The reader adds NO tenant logic —
 // RLS scopes every store read by the consumer's `app.org_id`; it only projects store DTOs and applies
 // the two derived rules with one home each: the §7.8 encounter-relevance filter and the §2.6 overdue
 // gate (delegated to the pure lifecycle/overdue-gate helper).
@@ -9,7 +9,7 @@ import type {
   InterventionDiscipline,
   PatientId,
   RelevantCarePlanElements,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { evaluateCarePlanOverdue } from "../lifecycle/index";
 import type { CarePlanReaderStore } from "./store";
 

@@ -8,7 +8,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

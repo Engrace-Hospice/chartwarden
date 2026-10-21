@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 
 /** M5-owned patient enumeration used only by the certified whole-tenant eraser fan-out. */

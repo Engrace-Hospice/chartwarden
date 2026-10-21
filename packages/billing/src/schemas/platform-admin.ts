@@ -1,4 +1,4 @@
-// @wardenx/billing — platform-admin schemas: route #41 `POST /api/v1/admin/billing/platform-rules`
+// @chartwarden/billing — platform-admin schemas: route #41 `POST /api/v1/admin/billing/platform-rules`
 // (register a new platform rule, with the `regulatory_required` tag) and route #42
 // `POST /api/v1/admin/billing/wage-index:load` (trigger the annual wage-index loader against a CMS file
 // URI) — §4.1. Platform-only; these write platform-shared reference data (no org scope, no PHI).

@@ -8,7 +8,7 @@
 // ./m16-document-rendered.live.test.ts. What is here is the pure decision core and every OFF-path, where
 // the correct behaviour is to open no transaction at all — both events fan out to many modules, so
 // "ignore what is not mine" is the routing mechanism, not defensive coding.
-import { M16_SUBSCRIBED_EVENT_NAMES } from "@wardenx/types";
+import { M16_SUBSCRIBED_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { SUBSCRIPTION_EXCEPTIONS } from "../../../scripts/outbox-subscription-exceptions";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/events-by-m8";

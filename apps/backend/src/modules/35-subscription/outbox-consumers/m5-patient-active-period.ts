@@ -20,12 +20,12 @@
 // `.deceased` ("Mark inactive with reason='died'", §4.12): stamps the CURRENT period's row with
 // `becameInactiveAt`/`inactivityReason='died'` via `markPatientInactiveForOrg` — see that function's own
 // header for why `wasActive` is deliberately untouched.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type PseudonymKeyProvider,
   computeBillingPseudonym,
   toBillingYearMonth,
-} from "@wardenx/subscription-billing";
+} from "@chartwarden/subscription-billing";
 import {
   createDrizzleActivePeriodStore,
   markPatientInactiveForOrg,

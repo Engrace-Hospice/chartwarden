@@ -13,7 +13,7 @@
 //   · OPAQUE rich-seams (M38/M39/M40 + M32's prompt registry) — their interfaces live in feature packages
 //     this app-module may not import, so each is resolved to M28's OWN minimal consumer VIEW (the M27/M30
 //     precedent) rather than importing the producer. The T05 egress gate + AI-block validator declared
-//     their ports LOCAL in `@wardenx/fhir` precisely so this task binds them here.
+//     their ports LOCAL in `@chartwarden/fhir` precisely so this task binds them here.
 //   · FORWARD-seams (M23 `ClaimReader`, M29 `LabObservationReader`) — required so a boot without the owner
 //     module fails CLOSED. Both stay on the M1 deny-stub the whole of Phase 1: the Claim/EOB routes
 //     short-circuit to 404 (§7.7, W-FHIR-07) before reaching `ClaimReader`, and the DiagnosticReport
@@ -22,7 +22,7 @@ import type {
   FhirAiPromptRegistryPort,
   FhirDisclosureConsentEvaluator,
   LabObservationReader as FhirLabObservationReaderView,
-} from "@wardenx/fhir";
+} from "@chartwarden/fhir";
 import type {
   BillableEncounterReader,
   CarePlanReader,
@@ -34,7 +34,7 @@ import type {
   PatientReader,
   ReconciliationProvider,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { getSeam } from "../../../bootstrap/index";
 
@@ -103,7 +103,7 @@ export function getFhirReconciliationProvider(): ReconciliationProvider {
 /**
  * §8.5 — the M38 `TerminologyProvider` slice M28's mappers use to validate a code before it enters a
  * `CodeableConcept`, and that R13 `CodeSystem/$validate-code` answers from. M38's rich interface lives in
- * `@wardenx/terminology` (not importable here); this is M28's minimal view.
+ * `@chartwarden/terminology` (not importable here); this is M28's minimal view.
  *
  * IT MUST MATCH THE REAL METHOD. This view used to declare `validateCode({ system, code })`, a method
  * `TerminologyProvider` has never had — the real one is `validate(system, code, asOf?)`. A structural view
@@ -123,7 +123,7 @@ export function getFhirTerminologyProvider(): FhirTerminologyView {
 
 /**
  * §4.11.2 — the M40 master-data slice a `Practitioner` / `PractitionerRole` / `Organization` reference is
- * resolved through. M40's rich `MdmEntityProvider` lives in `@wardenx/mdm`; this is M28's minimal view —
+ * resolved through. M40's rich `MdmEntityProvider` lives in `@chartwarden/mdm`; this is M28's minimal view —
  * "does this canonical entity exist for this tenant?", which is all a FHIR reference-target check needs.
  */
 export interface FhirMdmEntityView {
@@ -142,7 +142,7 @@ export function getFhirMdmEntityProvider(): FhirMdmEntityView {
 /**
  * §7.7 — the M40 BAA disclosure gate M28 consults, as-of the disclosure instant, before ANY PHI leaves
  * the perimeter (D3 companion to the SUD consent gate). M40's rich `BaaStatusProvider` lives in
- * `@wardenx/mdm`; this is M28's minimal "is a signed BAA in force right now?" view.
+ * `@chartwarden/mdm`; this is M28's minimal "is a signed BAA in force right now?" view.
  */
 export interface FhirBaaStatusView {
   isBaaActive(input: {
@@ -160,9 +160,9 @@ export function getFhirBaaStatusProvider(): FhirBaaStatusView {
 /**
  * The M39 `ConsentEvaluator` disclosure port the T05 egress gate consults per resource (W-FHIR-03/D3).
  *
- * The real M39 evaluator (`@wardenx/consent`) returns a SUPERSET (HIV/MH/genetic/family-violence flags too)
+ * The real M39 evaluator (`@chartwarden/consent`) returns a SUPERSET (HIV/MH/genetic/family-violence flags too)
  * and requires a `callerModule`; this adapter narrows it to the FHIR Phase-1 egress port
- * (`FhirDisclosureConsentEvaluator`, LOCAL in `@wardenx/fhir`), which governs only the 42 CFR Part 2 SUD
+ * (`FhirDisclosureConsentEvaluator`, LOCAL in `@chartwarden/fhir`), which governs only the 42 CFR Part 2 SUD
  * zone, and pins `callerModule: "m28"` so the §164.528 accounting on M39's side names the FHIR gateway.
  */
 interface M39ConsentDisclosurePort {
@@ -211,7 +211,7 @@ export function getFhirAiPromptRegistry(): FhirAiPromptRegistryPort {
  * §4.4 / §7.7 — the M23 Claim/ClaimResponse/EOB FHIR projection (W-FHIR-07). `fhir.write` is OFF, so the
  * Claim/EOB routes return 404 (§7.7) BEFORE reaching this seam; the accessor exists so the day M23's D1
  * unlock lands, the route body binds a live reader with no registration change. M28's minimal view is a
- * single-resource read; the real M23 reader (`@wardenx/billing`) is a superset.
+ * single-resource read; the real M23 reader (`@chartwarden/billing`) is a superset.
  */
 export interface FhirClaimReaderView {
   findClaim(organizationId: string, claimId: string): Promise<{ id: string } | null>;
@@ -226,7 +226,7 @@ export function getFhirClaimReader(): FhirClaimReaderView {
  * §4.11.4 — the M29 `LabObservationReader` the `DiagnosticReport` projection reads its result values from.
  * M29 is a Phase-1 placeholder, so this stays on the fail-closed deny-stub and the DiagnosticReport
  * projection refuses at egress until M29 registers the real reader. M28's expected shape is the LOCAL
- * `LabObservationReader` its T04 projector was typed against (`@wardenx/fhir`).
+ * `LabObservationReader` its T04 projector was typed against (`@chartwarden/fhir`).
  */
 export function getFhirLabObservationReader(): FhirLabObservationReaderView {
   return getSeam("LabObservationReader") as unknown as FhirLabObservationReaderView;

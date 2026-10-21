@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 measure-period boundary constants + period math (§4 D14). Pure, IO-free.
+// @chartwarden/quality — M30 measure-period boundary constants + period math (§4 D14). Pure, IO-free.
 //
 // CMS HQRP/HCI measures compute over a ROLLING 12-month window ending the last day of the prior completed
 // calendar quarter (D14). A few measures deviate (CAHPS samples on calendar quarters per CMS cycle) — the

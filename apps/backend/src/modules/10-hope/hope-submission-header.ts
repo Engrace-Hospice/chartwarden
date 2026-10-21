@@ -64,7 +64,7 @@ export function readHopeSoftwareVendor(env: EnvLike = process.env): HopeSoftware
   const vendorEmail = (env.WARDENX_SOFTWARE_VENDOR_EMAIL ?? "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vendorEmail) || vendorEmail.length > 50)
     problems.push("WARDENX_SOFTWARE_VENDOR_EMAIL (email, ≤ 50 characters)");
-  const productName = (env.WARDENX_SOFTWARE_PRODUCT_NAME ?? "WardenX").trim();
+  const productName = (env.WARDENX_SOFTWARE_PRODUCT_NAME ?? "ChartWarden").trim();
   if (!productName || productName.length > 50)
     problems.push("WARDENX_SOFTWARE_PRODUCT_NAME (1-50 characters)");
   const appVersion = env.APP_VERSION && env.APP_VERSION !== "dev" ? env.APP_VERSION : undefined;

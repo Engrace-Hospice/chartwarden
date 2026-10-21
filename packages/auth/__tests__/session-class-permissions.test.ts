@@ -1,4 +1,4 @@
-import type { HttpRequestContext } from "@wardenx/types";
+import type { HttpRequestContext } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M31_CONTRIBUTED_PERMISSIONS } from "../src/permissions/contributed";
 import {

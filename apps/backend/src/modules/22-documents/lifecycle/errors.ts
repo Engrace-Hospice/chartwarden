@@ -3,11 +3,11 @@
 // Every guard / validation failure in the M22 document-lifecycle domain raises a `DocumentStateError`
 // carrying the machine-readable code the spec's §2.2 / §2.3 rules enumerate (e.g.
 // `RETENTION_DOWNGRADE_FORBIDDEN`, `LEGAL_HOLD_BLOCKS_DESTRUCTION`, `VERSION_NUMBER_NOT_MONOTONIC`). The
-// error extends the M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation)
+// error extends the M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation)
 // so the M1 Fastify error handler renders it with the precise code + HTTP status, with no cross-module
 // import edge. The code→status mapping is the single source mirrored from §2.2/§2.3; nothing transitions
 // on a string match — each code is an enumerated constant (the M6 / M8 state-machine convention).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The full §2.2 / §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M22_LIFECYCLE_ERROR_STATUS = {
@@ -40,7 +40,7 @@ export type M22LifecycleErrorCode = keyof typeof M22_LIFECYCLE_ERROR_STATUS;
  * M6/M8 convention every guard failure surfaces as one of these — never a raw PG exception or a generic
  * `ConflictError`.
  */
-export class DocumentStateError extends WardenXError {
+export class DocumentStateError extends ChartWardenError {
   constructor(code: M22LifecycleErrorCode, message: string) {
     super(code, message, M22_LIFECYCLE_ERROR_STATUS[code]);
     this.name = "DocumentStateError";

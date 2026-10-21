@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — §1.1 / D8 the SUD-detection domain (42 CFR Part 2 §2.31).
+// @chartwarden/intake-extraction — §1.1 / D8 the SUD-detection domain (42 CFR Part 2 §2.31).
 //
 // The DocLens classifier/extractor flag SUD-related content; M22 emits `m22.intake.sud_detected` which M5
 // consumes to create an interim PrivacyFlag, and the SUD-flagged extraction is gated by

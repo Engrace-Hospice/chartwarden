@@ -1,4 +1,4 @@
-// @wardenx/assessments — §2.4 significant-change detector + D2 tenant-override floor enforcement (M9-T08,
+// @chartwarden/assessments — §2.4 significant-change detector + D2 tenant-override floor enforcement (M9-T08,
 // test plan §9.1: "per rule, fixed input pairs at the threshold boundary — just-below, at, just-above").
 import { describe, expect, it } from "vitest";
 import {

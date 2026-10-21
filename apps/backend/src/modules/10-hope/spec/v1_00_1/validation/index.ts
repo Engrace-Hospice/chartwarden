@@ -1,4 +1,4 @@
-import { ssnCmsProblem } from "@wardenx/types";
+import { ssnCmsProblem } from "@chartwarden/types";
 import {
   type HopeRuleFinding,
   type HopeValidationContext,
@@ -868,7 +868,7 @@ const recordConsistencyRule: HopeValidationRule = {
           findingKind: "record_consistency",
           itemCode: "A0050",
           section: "A",
-          message: "A0050 does not match the WardenX correction/add lifecycle.",
+          message: "A0050 does not match the ChartWarden correction/add lifecycle.",
           details: {
             correctsAssessmentId: ctx.assessment.correctsAssessmentId,
             a0050,

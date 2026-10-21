@@ -7,7 +7,7 @@
 // `app.org_id` (§3.6). Mirrors the M9/M10/M11/M12/M13/M14/M17 read-seam store precedents.
 //
 // All six M18 seams are READ-only (no mutate path — M18 owns the EVV lifecycle internally and never writes
-// through a seam). Reads project the read-only DTO shapes from @wardenx/types (never Drizzle rows). The GPS
+// through a seam). Reads project the read-only DTO shapes from @chartwarden/types (never Drizzle rows). The GPS
 // coordinate (D10, encrypted at rest) crosses ONLY the coordinate-bearing `EvvLocationProvider` projection
 // (`EvvLocationDto`); every other projection is coordinate-free — the portal verification surface is
 // timestamp-only and the compliance/aggregator/metrics projections carry no coordinates.
@@ -19,7 +19,7 @@ import type {
   IsoInstant,
   MembershipId,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The 4-state billing-compliance verdict `EvvComplianceReader.bracketStateForVisit` returns (§4.3): only
  * `unresolved_missing` blocks billing — `documented_missing` is allowed (in-encounter attestation) and EVV is

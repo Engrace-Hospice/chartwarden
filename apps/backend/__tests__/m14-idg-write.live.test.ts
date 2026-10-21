@@ -2,7 +2,7 @@
  * M14L — the Drizzle IDG write lifecycle, proven against real Postgres.
  *
  * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12/M13, M14 has NO state-transition triggers,
- * so the service does every transition itself (composing the pure `@wardenx/idg` machines): recurring-policy
+ * so the service does every transition itself (composing the pure `@chartwarden/idg` machines): recurring-policy
  * create/update · the meeting machine (buildPackets · start · adjourn with the step-up gate + the
  * `idg.decision_recorded` ADJOURN burst · cancel · reschedule) · attendance record/update/remove · agenda
  * add/remove · decision record/supersede (+ the MEETING_NOT_LIVE / INCLUSION_CRITERIA_FAILED guards) · action
@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

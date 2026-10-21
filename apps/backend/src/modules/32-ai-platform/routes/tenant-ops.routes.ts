@@ -22,7 +22,7 @@
 // "no breach projected" tile minted from a missing configuration is the failure mode this avoids.
 import type { FastifyInstance } from "fastify";
 
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 
 import type { AiRoutingOverrideStore } from "../invocation/store";
 import { actorOf, writeActorOf } from "./actor";

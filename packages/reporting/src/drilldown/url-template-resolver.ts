@@ -1,4 +1,4 @@
-// @wardenx/reporting · drilldown — the drilldown URL-template resolver (M33 §5.1.3 / W-R-05 / D16).
+// @chartwarden/reporting · drilldown — the drilldown URL-template resolver (M33 §5.1.3 / W-R-05 / D16).
 //
 // Step 1 of the drilldown emit: turn a base's `report_base_catalog.drilldown_url_template` plus the tile's
 // dimension context into a candidate navigation URL pointing at the owner module's surface (e.g. M8's late-entry

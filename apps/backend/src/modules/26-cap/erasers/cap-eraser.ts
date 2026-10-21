@@ -12,15 +12,15 @@ import {
   ERASED_PATIENT_SENTINEL,
   eraseCapTenant,
   redactCapPatient,
-} from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import type { DataClass, DataEraser } from "@wardenx/types";
+} from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 /** The M4 destruction-registry hook the composition root binds (its bootstrap `registerEraser`). */
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
-/** The M26 destruction data class (not yet a `@wardenx/types` DataClass member — cast, the M25/M27 posture). */
+/** The M26 destruction data class (not yet a `@chartwarden/types` DataClass member — cast, the M25/M27 posture). */
 export const CAP_DATA_CLASS = "cap" satisfies DataClass;
 
 /** Build the M26 `DataEraser`: the M4 cert workflow passes the org scope + the PATIENT subject id (D14 redaction). */

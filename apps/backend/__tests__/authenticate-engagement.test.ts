@@ -1,6 +1,6 @@
 // apps/backend/__tests__/authenticate-engagement.test.ts — GAP-093(c): the authenticate hook stamps
 // `attributes.engagementId` ONLY from the resolver's server-side session state, never from a header.
-import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
+import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";

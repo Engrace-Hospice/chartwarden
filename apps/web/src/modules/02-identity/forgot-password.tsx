@@ -1,4 +1,4 @@
-import { CenteredCardLayout } from "@wardenx/ui";
+import { CenteredCardLayout } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Forgot Password (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "password reset" (step 1, /forgot). Enter the account
 // email; Better Auth mints a single-use reset token and (via M36, a follow-up) emails the link, which
@@ -26,7 +26,7 @@ export function ForgotPassword(): JSX.Element {
 
   return (
     <CenteredCardLayout
-      brand={<strong>WardenX</strong>}
+      brand={<strong>ChartWarden</strong>}
       footer={<a href="/login">Back to sign in</a>}
     >
       {sent ? (

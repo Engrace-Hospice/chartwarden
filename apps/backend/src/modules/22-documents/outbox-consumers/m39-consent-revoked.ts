@@ -13,8 +13,8 @@
 // TENANT from the envelope, never the payload. IDEMPOTENT: the UPDATE only touches rows not yet restricted, so a
 // redelivery matches nothing, and the ACK is idempotent. The ACK runs AFTER the write commits; a throw fails the
 // delivery so the outbox retries (at-least-once, exactly the cascade's contract).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const DOC = schema.documents;

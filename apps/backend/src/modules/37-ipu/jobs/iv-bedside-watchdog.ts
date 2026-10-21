@@ -13,9 +13,9 @@
 // event by `lastCheckAt` + `missedIntervals`; a re-run of the same tick re-publishes at most the same keyed
 // alert, which M36's correlation id dedupes. A PAUSED or STOPPED infusion needs no bedside check and is skipped;
 // an order with no segment at all (`state: none`) has no infusion to check and is skipped.
-import { type DbClient, schema } from "@wardenx/db";
-import { planBedsideCheckReminder } from "@wardenx/inpatient";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { planBedsideCheckReminder } from "@chartwarden/inpatient";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gt, notInArray } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";

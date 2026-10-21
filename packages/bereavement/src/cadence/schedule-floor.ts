@@ -1,16 +1,16 @@
-// @wardenx/bereavement — D4 death-date-anchored cadence floor + the tenant-tighten validator (M16-T01).
+// @chartwarden/bereavement — D4 death-date-anchored cadence floor + the tenant-tighten validator (M16-T01).
 //
 // The CoP 418.64(d) platform floor is a MINIMUM: a tenant may add contacts, shift a floor contact EARLIER,
 // and convert a floor contact to a higher-touch modality. It may never drop a floor contact, push one past
 // its floor offset, or downgrade its modality. This module is the single source of truth for both halves —
 // the floor table the schedule generator materializes from, and the validator that proves a tenant policy
-// only tightened it. PURE DATA + pure functions — no IO, `@wardenx/types`-only.
+// only tightened it. PURE DATA + pure functions — no IO, `@chartwarden/types`-only.
 
 import type {
   BereavementAnniversaryMark,
   BereavementOutreachKind,
   BereavementRiskTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { isPermittedModalitySubstitution } from "../outreach-kinds";
 import { BEREAVEMENT_WINDOW_DAYS, OUTREACH_DUE_AT_CEILING_DAYS } from "../policy";
 

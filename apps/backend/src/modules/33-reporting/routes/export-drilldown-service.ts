@@ -13,7 +13,7 @@
 // The in-memory slice is deterministic (route/acceptance tests). PRODUCTION injects the Drizzle backend, which
 // reads under `withReportSession` (export tier) and is DENY-STUB-SAFE: unbound translator/executor/consent/DEK
 // ports degrade to the forward-seam empty stream or the fail-closed drilldown deny — never fail open (D6/D13).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   CSV_EXPORT_ROW_CAP,
   type CsvExportOutboxPort,
@@ -47,9 +47,9 @@ import {
   translateSpec,
   withReportSession,
   writeDrilldownAudit,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type ReportScopeResolverPort, narrowScope } from "./read-service-drizzle";
@@ -104,7 +104,7 @@ export interface DrilldownBulkExportInput {
 }
 
 /** Raised when a render handshake is requested but the M22 render outbox is not yet bound (fail-closed). */
-export class ExportRenderUnbound extends WardenXError {
+export class ExportRenderUnbound extends ChartWardenError {
   constructor() {
     super("EXPORT_RENDER_UNBOUND", "the M22 render-request outbox is not yet bound", 503);
     this.name = "ExportRenderUnbound";

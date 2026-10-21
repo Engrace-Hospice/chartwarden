@@ -1,10 +1,10 @@
-// @wardenx/db — M27 Cost Report: helper TS types for the module's jsonb columns (§3.3).
+// @chartwarden/db — M27 Cost Report: helper TS types for the module's jsonb columns (§3.3).
 // These back the Drizzle `.$type<...>()` generics so the column payloads are typed (no `any`).
 // Filename intentionally avoids the substring "schema" (table-ownership/tenancy heuristic gotcha).
 //
 // NB: the DEEP per-worksheet `data` shapes (Worksheet A/S-3/B/D/E-1/…) and the validation
-// `predicate_spec` are TypeBox-typed at the service layer in `@wardenx/cost-report` (P2). At the DB
-// layer the columns are typed loosely here so the schema package takes no `@wardenx/cost-report` edge.
+// `predicate_spec` are TypeBox-typed at the service layer in `@chartwarden/cost-report` (P2). At the DB
+// layer the columns are typed loosely here so the schema package takes no `@chartwarden/cost-report` edge.
 
 // cost_report_worksheet.data — TypeBox-validated per worksheet_code at the service layer (P2).
 export interface WorksheetData {

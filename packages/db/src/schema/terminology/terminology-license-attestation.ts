@@ -1,4 +1,4 @@
-// @wardenx/db — `terminology_license_attestation` (M38 licensing gate, GAP-108, migration 0364). A platform
+// @chartwarden/db — `terminology_license_attestation` (M38 licensing gate, GAP-108, migration 0364). A platform
 // operator's attestation that the licence behind a non-public code system (UMLS/SNOMED, Regenstrief/LOINC,
 // UMLS/RxNorm) is held. A load of such a system is refused without an active row; `attributionText` is the text
 // the licence requires to accompany the data and is exposed with it. Platform-shared (NON_ORG_SCOPED), read-all

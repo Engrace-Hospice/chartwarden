@@ -1,6 +1,6 @@
-import { Button, EmptyState, LoadingSpinner, Modal, SelectField, StatusPill, t } from "@wardenx/ui";
-import type { ApiClient, StatusTone } from "@wardenx/ui";
-import { useApiClient } from "@wardenx/ui";
+import { Button, EmptyState, LoadingSpinner, Modal, SelectField, StatusPill, t } from "@chartwarden/ui";
+import type { ApiClient, StatusTone } from "@chartwarden/ui";
+import { useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the referral page's "Records" tab (F-238). Intake starts with the
 // referral: the records a referral source faxes, emails or hands over on paper are filed AGAINST the
 // referral and read by DocLens (M22) — the batch takes the referral's patient once M6 has resolved one.

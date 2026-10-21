@@ -1,6 +1,6 @@
-import { ApiClientProvider, CorrelationIdProvider, ErrorBoundary } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
-// @wardenx/portal — the portal SPA shell (M31 §5.1, ADR-0030). Composes the cross-cutting providers around a
+import { ApiClientProvider, CorrelationIdProvider, ErrorBoundary } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
+// @chartwarden/portal — the portal SPA shell (M31 §5.1, ADR-0030). Composes the cross-cutting providers around a
 // react-router router built from the portal screen registry. Chromeless surfaces (the sign-in flow) are
 // top-level routes; every other §5.1 screen renders inside the portal frame (brand bar + reading column).
 // The shell reads the registry but imports no screen directly — screens register at composition (main.tsx),

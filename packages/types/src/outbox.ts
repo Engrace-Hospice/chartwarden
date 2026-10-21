@@ -1,4 +1,4 @@
-// @wardenx/types — Outbox event contracts (M1 Foundation §3.17; M1-T08).
+// @chartwarden/types — Outbox event contracts (M1 Foundation §3.17; M1-T08).
 //
 // Per ADR-0005 D1, consuming another module via an OUTBOX event needs NO dependsOn
 // edge: the event NAME + PAYLOAD type live here in a leaf, and delivery is runtime-
@@ -68,7 +68,7 @@ export type ModuleEventContribution = readonly OutboxEventEntry[];
 
 /**
  * Persisted projection of a catalog entry into the `outbox_event_catalog` row shape.
- * Structural (no `@wardenx/db` import) so packages/shared stays a leaf — the M1 boot
+ * Structural (no `@chartwarden/db` import) so packages/shared stays a leaf — the M1 boot
  * sequence (M1-T09/T10) feeds these rows to an injected Drizzle UPSERTer.
  */
 export interface OutboxEventCatalogRow {

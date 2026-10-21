@@ -1,4 +1,4 @@
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import {
   M36_URGENT_NOTIFICATION_CONSUMER,

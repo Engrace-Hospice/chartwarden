@@ -1,4 +1,4 @@
-// @wardenx/db — `auditor_engagement` (M3 Authorization §3.5). A time-bound, least-privilege,
+// @chartwarden/db — `auditor_engagement` (M3 Authorization §3.5). A time-bound, least-privilege,
 // accountable window during which an external auditor (CMS/state survey, TPE, UPIC, financial
 // audit, …) may read a defined slice of tenant data. Org-scoped on organization_id; the
 // in-scope rows an auditor session may read are narrowed by the `engagement_scope` ABAC

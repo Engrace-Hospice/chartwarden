@@ -3,7 +3,7 @@
 //
 // Pure functions, no I/O. The input is PHI: nothing here logs it, and a rejection names the FIELD and a
 // CODE only — never the value — so a 422 body or a stack trace cannot become a second copy of the SSN.
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const SSN_DIGITS = 9;
 const TAIL_DIGITS = 4;

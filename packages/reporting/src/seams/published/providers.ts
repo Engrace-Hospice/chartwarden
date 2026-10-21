@@ -1,4 +1,4 @@
-// @wardenx/reporting — concrete implementations of the three PUBLISHED seams (M33 §4.3).
+// @chartwarden/reporting — concrete implementations of the three PUBLISHED seams (M33 §4.3).
 //
 // The seam INTERFACES live beside this file (`metrics-provider.ts` / `dashboard-catalog-provider.ts` /
 // `scheduled-report-provider.ts`); these are the live classes the composition root binds into the M1

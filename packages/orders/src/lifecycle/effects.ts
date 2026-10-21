@@ -1,4 +1,4 @@
-// @wardenx/orders — order-lifecycle side-effect descriptors (§2.2 / §2.6 D13, M11-T03).
+// @chartwarden/orders — order-lifecycle side-effect descriptors (§2.2 / §2.6 D13, M11-T03).
 //
 // The M8/M6 §2.8 pattern: every transition carries an explicit, in-transaction side-effect list (audit +
 // outbox + child-row ops), and the COMMIT binds the order row, the audit row, the child rows (signature /
@@ -12,7 +12,7 @@ import type {
   OrderDiscontinuationReason,
   OrderSignatureKind,
   VerbalOrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.2 / §2.6). The service layer is the only place

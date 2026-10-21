@@ -4,7 +4,7 @@
 //   · Accounting of disclosures (§164.528): GET /api/v1/audit/patients/:patientId/accounting.
 //   · Access report ("who touched this chart"): GET /api/v1/audit/patients/:patientId/access.
 // The pending-amendments list is `GET /api/v1/amendments?status=pending` (M5, patient.amend_review).
-import { EmptyState, PageHeader, WorkQueueLayout } from "@wardenx/ui";
+import { EmptyState, PageHeader, WorkQueueLayout } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";

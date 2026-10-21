@@ -18,9 +18,9 @@ import {
   buildPerDiemInput,
   calculatePerDiem,
   stepDownAllocate,
-} from "@wardenx/cost-report";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/cost-report";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildM27AllocationInputs } from "../src/modules/27-cost-report/jobs/allocation-input-builder";

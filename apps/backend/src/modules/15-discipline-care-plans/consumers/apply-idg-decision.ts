@@ -24,7 +24,7 @@
 // SUD. The consumer is a system actor holding no `sud_disclosure_allowed`. It therefore never touches a goal
 // flagged `sud_related` (revise/meet/discontinue it) and never links a new intervention to one: changing or
 // referencing Part 2 content without the disclosure predicate is exactly the read M15 §7.8 redacts.
-import type { DisciplineGoalSource } from "@wardenx/types";
+import type { DisciplineGoalSource } from "@chartwarden/types";
 import {
   type DisciplineGoalEvent,
   type DisciplineGoalLifecycleState,

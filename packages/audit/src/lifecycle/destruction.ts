@@ -1,4 +1,4 @@
-// @wardenx/audit — Destruction-certificate workflow (M4-T08, M4 spec §6, §10.5, §10.6; W-M4-09).
+// @chartwarden/audit — Destruction-certificate workflow (M4-T08, M4 spec §6, §10.5, §10.6; W-M4-09).
 //
 // A retention scan flags expired partitions and opens a `destruction_certificate`; Compliance
 // approves it with re-auth, and the run erases the approved rows and files a signed certificate

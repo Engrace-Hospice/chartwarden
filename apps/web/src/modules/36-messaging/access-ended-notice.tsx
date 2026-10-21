@@ -1,7 +1,7 @@
 // WP 2.11 forbidden / access-ended state (06-ux-design §4): static copy, never the title or any preview. Revocation
 // unmounts the focused thread, so the notice takes focus and is a status region; otherwise keyboard and screen-reader
 // users are dropped on <body> with no announcement.
-import { EmptyState, Glyph } from "@wardenx/ui";
+import { EmptyState, Glyph } from "@chartwarden/ui";
 import { useEffect, useRef } from "react";
 import type { JSX } from "react";
 

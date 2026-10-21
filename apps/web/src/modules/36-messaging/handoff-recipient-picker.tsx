@@ -1,6 +1,6 @@
 // M36 WP 3.5 - choose who a handoff is for. Same staff lookup as the new-conversation dialog (no new endpoint); the
 // server decides whether the person may receive it and answers one uniform refusal, so nothing is pre-checked here.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 

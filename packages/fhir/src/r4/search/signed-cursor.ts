@@ -1,4 +1,4 @@
-// @wardenx/fhir — HMAC-SHA256-signed opaque search cursor (§4.5 D13, W-FHIR-10, M28-T07).
+// @chartwarden/fhir — HMAC-SHA256-signed opaque search cursor (§4.5 D13, W-FHIR-10, M28-T07).
 //
 // T04 shipped the OPAQUE ENCODING (`encodeCursor`/`decodeCursor`). D13 mandates the wire cursor also be
 // HMAC-SHA256-SIGNED with the PER-TENANT `cursor_signing_key` (decrypted from

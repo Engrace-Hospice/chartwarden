@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.3 D2 scheduled-dose materializer + frequency parser — M13-T03.
+// @chartwarden/emar — §2.3 D2 scheduled-dose materializer + frequency parser — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
   FrequencyParseError,

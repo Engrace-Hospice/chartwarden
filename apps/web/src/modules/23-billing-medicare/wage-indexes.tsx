@@ -13,7 +13,7 @@ import {
   t,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — HOSPICE WAGE INDEX (M23 F-211; GAP-125). The tenant-entered CMS hospice
 // wage index `POST /claims/assemble` prices from, per CCN + federal fiscal year. Built on the Hospice Rates screen's
 // layout (rate-tables.tsx: the billing tab bar, a filter panel, KPI tiles, the flat list table and the right-hand

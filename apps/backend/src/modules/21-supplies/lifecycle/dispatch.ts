@@ -24,7 +24,7 @@ import {
   CONTROLLED_EXPIRATION_MIN_DAYS_DEFAULT,
   isControlledExpirationAcceptable,
   missingFloorMedications,
-} from "@wardenx/supplies";
+} from "@chartwarden/supplies";
 import type {
   ComfortKitDispatchSource,
   ComfortKitDispatchStatus,
@@ -34,7 +34,7 @@ import type {
   LocalDate,
   MembershipId,
   PharmacyDispatchMode,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type SupplySideEffect, type SupplyTransitionResult, result, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
 

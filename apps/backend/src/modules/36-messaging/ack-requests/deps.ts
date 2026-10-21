@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/ack-requests/deps.ts - WP 4.2: the composition-root factory the boot calls once. It supplies
 // what the binding leaves to the caller (the Drizzle store, channel facts, the active-user check and the Part 2 gate), reusing the
 // WP 4.1 database lookups.
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { createDbChannelFactsLookup } from "../medication-questions/deps";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";

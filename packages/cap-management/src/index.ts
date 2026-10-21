@@ -1,4 +1,4 @@
-// @wardenx/cap-management — M26 Cap Management package entrypoint (public barrel).
+// @chartwarden/cap-management — M26 Cap Management package entrypoint (public barrel).
 //
 // M26 is the deterministic, ledger-grade accounting of every Medicare hospice cap obligation under
 // 42 CFR §418.308: the per-tenant cap_period lifecycle, the per-beneficiary + inpatient (20%) accrual

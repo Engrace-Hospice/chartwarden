@@ -1,4 +1,4 @@
-// @wardenx/billing — the hospice CBSA for a claim's value codes (CMS Pub. 100-04 ch. 11 s30.3): value code 61 is
+// @chartwarden/billing — the hospice CBSA for a claim's value codes (CMS Pub. 100-04 ch. 11 s30.3): value code 61 is
 // the CBSA (or rural 999NN / transition 5000N code) of the beneficiary's residence at the end of the billing period
 // (home levels of care, revenue 0651/0652); value code G8 is the code of the LATEST INPATIENT FACILITY (0655/0656).
 // The pricer wage-adjusts with these. Geography data: migration 1058 (sources in

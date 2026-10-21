@@ -1,5 +1,5 @@
-import { SESSION_POLICY } from "@wardenx/types";
-import { Modal } from "@wardenx/ui";
+import { SESSION_POLICY } from "@chartwarden/types";
+import { Modal } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).
@@ -124,7 +124,7 @@ export function ScreenLock(): JSX.Element | null {
     // invariant blocker, not a dismissible dialog — the only way out is unlocking or signing out.
     <Modal open role="alertdialog" ariaLabel="Screen locked" width="22rem">
       <form onSubmit={unlock} style={card}>
-        <strong style={{ fontSize: "1rem" }}>WardenX</strong>
+        <strong style={{ fontSize: "1rem" }}>ChartWarden</strong>
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           Your screen locked after inactivity.{" "}

@@ -1,4 +1,4 @@
-// @wardenx/audit — retention-class registry (M1 spec §8.1, ADR-0004 / M4 D1).
+// @chartwarden/audit — retention-class registry (M1 spec §8.1, ADR-0004 / M4 D1).
 //
 // Every audit event is filed under a retention class that decides how long its monthly
 // partition is kept before cold-archive + drop:

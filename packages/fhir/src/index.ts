@@ -1,9 +1,9 @@
-// @wardenx/fhir — FHIR Gateway domain core (M28).
+// @chartwarden/fhir — FHIR Gateway domain core (M28).
 //
 // M28-T01 ships the §2 domain: the three §2.2 state machines (client onboarding, bulk export, inbound
 // proposal) as pure functions, the §2.3 SMART scope set + subset matcher, and the §2.3 rate-limit /
 // CIDR validation. The type-level surface (enum mirrors, table descriptors, disclosure envelope, the
-// W-FHIR-07 forward-seam vocabulary) lives in `@wardenx/types` `fhir.ts` so consumers reach it without a
+// W-FHIR-07 forward-seam vocabulary) lives in `@chartwarden/types` `fhir.ts` so consumers reach it without a
 // dependsOn edge.
 //
 // M28-T03 adds the CLIENT-LIFECYCLE cores over T01's FSMs: the two Phase-1 auth paths (SMART Backend
@@ -22,7 +22,7 @@
 // cursor.
 //
 // M28-T05 adds the two egress-boundary enforcers, both PURE with their cross-module port INJECTED (no
-// `@wardenx/consent`/`@wardenx/ai-platform` import, no `dependsOn` edge ahead of the T06 seam bind): the
+// `@chartwarden/consent`/`@chartwarden/ai-platform` import, no `dependsOn` edge ahead of the T06 seam bind): the
 // 42 CFR Part 2 SUD egress consent gate (`egress/consent-gate`, §8.2/D3/W-FHIR-03) that consults M39's
 // `evaluateForDisclosure` per resource to include/redact/filter and folds an `OperationOutcome` warning
 // into the Bundle; and the D14 AI-prohibited-zone boot validator (`ai-block`, §8.6/W-FHIR-11) that

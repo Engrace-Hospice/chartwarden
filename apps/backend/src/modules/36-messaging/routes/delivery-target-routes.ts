@@ -6,7 +6,7 @@
 // The id in `{origin}/n/{id}` is not an access grant. A missing, malformed, someone else's, other-tenant, no-longer-visible or
 // deleted target is ONE 404 with one body (the id is never echoed). Read-only: opening a link never acknowledges anything. The
 // response is three ids; it names no patient and no text. Read-audited against the delivery id.
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { DeliveryTargetService } from "../delivery-target/delivery-target-service";
 import { DeliveryTargetResponseSchema } from "./delivery-target-typebox";

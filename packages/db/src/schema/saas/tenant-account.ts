@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_account` (M34 §3.3). The platform's per-tenant control record: 1:1 with the
+// @chartwarden/db — `tenant_account` (M34 §3.3). The platform's per-tenant control record: 1:1 with the
 // M1 organization (the `tenant_account_org_unique` UNIQUE enforces D1; multi-CCN tenants reference
 // multiple provider_entity rows under this one organization, D20). Carries the lifecycle `status`
 // (signup_intent → … → destroyed), the plan label (M35 owns entitlement enforcement; M34 carries the

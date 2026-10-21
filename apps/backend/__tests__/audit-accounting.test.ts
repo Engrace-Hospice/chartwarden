@@ -4,12 +4,12 @@
 // Exercises `GET /api/v1/audit/patients/:patientId/accounting` through the FULL M1 middleware
 // chain via Fastify `inject` with no live infra: buildServer() mounts the host,
 // registerPatientAccountingRoute() mounts the route against the in-memory `AuditQuery`
-// (@wardenx/audit) seeded with the disclosure/read rows a PHI route would have produced. The REAL
+// (@chartwarden/audit) seeded with the disclosure/read rows a PHI route would have produced. The REAL
 // Authorization Contract gates the route: `requirePermission('audit.disclosure_report')` plus the
 // `audit_accounting_scope_allowed` ABAC predicate M4 registers into M3's registry (the `?scope=all`
 // escalation). A header-auth shim populates request.context.
-import { createInMemoryAuditQuery } from "@wardenx/audit";
-import type { AuditEventRecord } from "@wardenx/audit";
+import { createInMemoryAuditQuery } from "@chartwarden/audit";
+import type { AuditEventRecord } from "@chartwarden/audit";
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -18,7 +18,7 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

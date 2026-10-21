@@ -9,7 +9,7 @@
 // `platform_security_owner`) are registered onto the emitter's resolver registry at boot (see
 // ./alert-resolver-ports.ts and apps/backend/src/index.ts), so no rule names an unregistered resolver and
 // `skipped` is 0. The skip accounting stays so a future rule naming an unregistered resolver is reported.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import { M34_ALERT_RULES, seedableM34AlertRules } from "./alert-rules";
 

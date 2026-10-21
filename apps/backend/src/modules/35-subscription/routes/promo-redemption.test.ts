@@ -1,7 +1,7 @@
 // M35 (GAP-099) — promo redemption: window + cap enforced, count incremented in the same tx, 23505 -> 409.
 // The tx is a recording fake of the drizzle chain: it proves ORDER (lock first, insert, then increment)
 // and which statements run; the live proof of the row lock itself belongs to the central DB pass.
-import { ConflictError, NotFoundError, type WardenXError } from "@wardenx/types";
+import { ConflictError, NotFoundError, type ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { assertPromoRedeemable, redeemPromoInTx } from "./promo-redemption";
 
@@ -82,8 +82,8 @@ describe("assertPromoRedeemable (GAP-099)", () => {
       assertPromoRedeemable(promo({ validTo: new Date(NOW.getTime() - 1) }), NOW);
       expect.unreachable();
     } catch (e) {
-      expect((e as WardenXError).statusCode).toBe(422);
-      expect((e as WardenXError).code).toBe("PROMO_EXPIRED");
+      expect((e as ChartWardenError).statusCode).toBe(422);
+      expect((e as ChartWardenError).code).toBe("PROMO_EXPIRED");
     }
   });
   it("refuses a not-yet-valid promo", () => {
@@ -96,8 +96,8 @@ describe("assertPromoRedeemable (GAP-099)", () => {
       assertPromoRedeemable(promo({ maxRedemptions: 3, redemptionCount: 3 }), NOW);
       expect.unreachable();
     } catch (e) {
-      expect((e as WardenXError).statusCode).toBe(409);
-      expect((e as WardenXError).code).toBe("PROMO_REDEMPTION_CAP_REACHED");
+      expect((e as ChartWardenError).statusCode).toBe(409);
+      expect((e as ChartWardenError).code).toBe("PROMO_REDEMPTION_CAP_REACHED");
     }
   });
   it("treats a null cap as unlimited and zero cap as exhausted", () => {

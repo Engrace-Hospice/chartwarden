@@ -4,7 +4,7 @@
 // ABOVE the signature (418.22(b)(3)), the signature with printed name, date/time and meaning (21 CFR 11.50;
 // 418.104(b) authorship), and the certification period. The cited paragraph numbers other than (b)(3) and
 // (b)(4) await compliance's line-by-line confirmation against the repo rules file (design section 5).
-import { assertCtiRenderPayload } from "@wardenx/types";
+import { assertCtiRenderPayload } from "@chartwarden/types";
 import { defineForm } from "./compile";
 
 export const CTI_TEXT = {

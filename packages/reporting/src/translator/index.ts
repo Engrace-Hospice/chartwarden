@@ -1,4 +1,4 @@
-// @wardenx/reporting — the report-builder translator barrel (M33 §4, D4 + D6).
+// @chartwarden/reporting — the report-builder translator barrel (M33 §4, D4 + D6).
 //
 // The spec→SQL pipeline that gives M33 its "no raw-SQL surface" guarantee: a tenant authors a typed
 // `ReportDefinitionSpec` against a platform-shipped base; this pipeline compiles it into a single

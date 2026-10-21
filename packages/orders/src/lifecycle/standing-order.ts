@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.4 D5 standing-order template + spawn engine (M11-T04). PURE, IO-free.
+// @chartwarden/orders — §2.4 D5 standing-order template + spawn engine (M11-T04). PURE, IO-free.
 //
 // A standing order is a TEMPLATE + SPAWNED-INSTANCE model (D5): the `standing_order` row is the signature
 // anchor (the medical director signs it once, CMS 418.106), and each spawn clones `template_data` into a
@@ -17,7 +17,7 @@ import type {
   OrderKind,
   StandingOrderCadence,
   StandingOrderSpawnedBy,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { KIND_CATALOG, STANDING_ELIGIBLE_KINDS } from "../catalog";
 import type { OrderSideEffect } from "./effects";
 import { require_ } from "./errors";

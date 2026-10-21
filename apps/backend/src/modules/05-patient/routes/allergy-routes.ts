@@ -14,10 +14,10 @@
 // implicitly — they need a human membership on the request context (the actor whose name the row records).
 // Writes run under `withOrgContext` as the acting user, so RLS scopes them and the M4 trigger attributes
 // them; a row of another patient or another tenant is a 404.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -44,7 +44,7 @@ const chartScope = (action: string): PreHandler =>
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit");
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 function actorOf(request: FastifyRequest): {
   organizationId: string;
@@ -145,7 +145,7 @@ export function registerPatientAllergyRoutes(
         const tx = txRaw as DbClient;
         const row = await loadForUpdate(tx, id, allergyId);
         if (row.verificationStatus !== "unverified") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ALLERGY_NOT_UNVERIFIED",
             `allergy is ${row.verificationStatus}; only an unverified allergy can be verified`,
             409,
@@ -182,7 +182,7 @@ export function registerPatientAllergyRoutes(
         const tx = txRaw as DbClient;
         const row = await loadForUpdate(tx, id, allergyId);
         if (row.verificationStatus === "entered_in_error") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ALLERGY_ALREADY_ENTERED_IN_ERROR",
             "allergy is already marked entered-in-error",
             409,

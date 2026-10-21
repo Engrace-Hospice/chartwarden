@@ -3,7 +3,7 @@
 // The surface is ON only when BOTH tenant flags are on: `messaging.idg` (this feature) and `messaging.clinical_links`
 // (an IDG discussion is anchored by an `idg_meeting` clinical link, so without links there is nothing to list). Absent =
 // off, a kill switch = off, a throw reads as off (fail closed). Cached a few seconds per org like presence.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { CLINICAL_LINKS_FLAG_KEY } from "../clinical-link/clinical-link-service";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { cacheFlagRead } from "../presence/binding";

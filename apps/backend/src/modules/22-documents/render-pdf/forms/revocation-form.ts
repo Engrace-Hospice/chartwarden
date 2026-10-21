@@ -1,7 +1,7 @@
 // apps/backend/src/modules/22-documents/render-pdf/forms/revocation-form.ts - the `revocation` template: the
 // signed statement revoking the hospice election (42 CFR 418.28). It states the revocation, the date it takes
 // effect, and carries the beneficiary's (or representative's) signature and date.
-import { assertRevocationRenderPayload } from "@wardenx/types";
+import { assertRevocationRenderPayload } from "@chartwarden/types";
 import { fmtDate, humanize } from "../shared";
 import { defineForm } from "./compile";
 

@@ -4,7 +4,7 @@
 //
 //   SAMPLE (cron):   death census (M6 port) → caregiver contact (M5 port) → pure CMS classifier → sealed insert
 //                    into `cahps_decedent_sample` (tenant-DEK envelope, AAD-bound) → `m30.cahps.sample_ready`.
-//   EXPORT (worker): active binding + sealed vendor config → adapter from `@wardenx/cahps-vendors` → decrypt the
+//   EXPORT (worker): active binding + sealed vendor config → adapter from `@chartwarden/cahps-vendors` → decrypt the
 //                    sample rows to the in-flight vendor shape → render → STORE the sealed artifact on the
 //                    `cahps_export_job` row → push (SHP) / no_push (manual) → stamp rows → `export_completed`.
 //
@@ -12,7 +12,7 @@
 // M30 reads no M5/M6 table and gains no manifest edge (the F-160 `CapConsumerStore` shape). Every statement runs
 // in `withOrgContext` on the row's own org (RLS) with the system actor ('' → NULL in the M4 trigger).
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   CahpsAdapterResolutionMap,
   CahpsAdapterResolvePort,
@@ -29,9 +29,9 @@ import type {
   CahpsVendorAdapterId,
   DecedentCandidateReadPort,
   DecedentDeathSource,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { buildCahpsExportJobPort } from "./export-job-store";
 import type { CahpsPhiCipher } from "./phi-cipher";
@@ -78,7 +78,7 @@ export interface CahpsDeathFacts {
 export interface CahpsPipelineDeps {
   readonly db: DbClient;
   readonly cipher: CahpsPhiCipher;
-  /** `@wardenx/cahps-vendors`' `CAHPS_ADAPTER_FACTORIES` — injected so M30 jobs import no vendor class. */
+  /** `@chartwarden/cahps-vendors`' `CAHPS_ADAPTER_FACTORIES` — injected so M30 jobs import no vendor class. */
   readonly adapterFactories: CahpsAdapterResolutionMap;
   /** M6 — deaths in `[from, to)` with stay facts (`cahpsDeathCandidatesForOrg`). */
   readonly deathsForOrg: (
@@ -190,7 +190,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
     );
     const parsed: unknown = JSON.parse(plain.toString("utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_ADAPTER_UNCONFIGURED",
         "the CAHPS vendor configuration is not a JSON object",
         503,
@@ -208,7 +208,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
   ): Promise<void> => {
     const publisher = deps.outboxPublisher;
     if (!publisher) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CAHPS_OUTBOX_UNBOUND",
         `no outbox publisher is bound — cannot emit ${eventName}`,
         503,
@@ -268,7 +268,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       const key = deathKey(orgId, sampled.deceasedAdmissionId);
       const deathDate = deathDates.get(key);
       if (deathDate === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_SAMPLE_STATE",
           "a sampled decedent has no remembered death date (insertSampled before listPriorMonthDecedents)",
           500,
@@ -322,7 +322,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
     async resolve(orgId): Promise<CahpsVendorAdapter> {
       const binding = await loadActiveBinding(orgId);
       if (binding === null) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           `no active CAHPS vendor binding for org '${orgId}'`,
           503,
@@ -330,7 +330,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       }
       const factory = deps.adapterFactories[binding.vendorAdapterId as CahpsVendorAdapterId];
       if (factory === undefined) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_VENDOR_UNKNOWN",
           `no CAHPS adapter factory for vendor '${binding.vendorAdapterId}'`,
           500,
@@ -340,7 +340,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
       const adapter = factory(config);
       const verdict = await adapter.validateConfig(config);
       if (!verdict.ok) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           `the CAHPS vendor configuration is invalid: ${verdict.errors
             .map((e) => `${e.field}: ${e.reason}`)
@@ -383,7 +383,7 @@ export function buildCahpsPipelinePorts(deps: CahpsPipelineDeps): {
         return row ?? null;
       });
       if (binding === null) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_ADAPTER_UNCONFIGURED",
           "the CAHPS vendor binding is gone",
           503,

@@ -29,8 +29,8 @@
  * DATABASE_ADMIN_URL set (the idempotency reads + step-up nudge). Run afterwards `db:idg:packet-build` on an upcoming meeting to see it.
  * Run: DATABASE_ADMIN_URL=... BETTER_AUTH_URL=http://localhost:3000 bun run db:seed:scenario-idg-clinical
  */
-import { resolveTemplate } from "@wardenx/hearthnote";
-import { VOCABULARY } from "@wardenx/narrative-vocab";
+import { resolveTemplate } from "@chartwarden/hearthnote";
+import { VOCABULARY } from "@chartwarden/narrative-vocab";
 import { Client } from "pg";
 import { ScenarioLog, type WxSession, findPatientIdByLastName, signIn } from "./lib/api-session";
 import { stepUpSession } from "./lib/step-up";

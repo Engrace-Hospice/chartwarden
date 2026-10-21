@@ -1,4 +1,4 @@
-import type { RichBody } from "@wardenx/types";
+import type { RichBody } from "@chartwarden/types";
 import type { MessageReferenceInput } from "./messaging-types";
 
 export function referenceInput(reference: MessageReferenceInput) {

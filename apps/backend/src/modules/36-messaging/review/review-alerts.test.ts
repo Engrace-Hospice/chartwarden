@@ -1,6 +1,6 @@
 // WP 3.8 - the shared "review queued" alert helpers (reused by WP 3.9): fixed PHI-free text, hashed correlation ids that
 // dedupe across redeliveries, a logged warning (hash only) when no supervisor resolves, one alert per distinct assignee.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import {
   REVIEW_ALERT_TEXT,

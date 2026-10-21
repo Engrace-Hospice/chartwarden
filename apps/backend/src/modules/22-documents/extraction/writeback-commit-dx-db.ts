@@ -16,13 +16,13 @@
 // discriminator, but on the outbox every declared consumer receives every row — M5's consumer fail-closes
 // (DLQ) on a non-M5 payload, and each target would have to ack the others' commits. One event per target
 // keeps each consumer's contract exact; the payload still carries `targetModule` as D5 asks.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DegradedError,
   type ExtractionDiagnosisCommitRequestedPayload,
   M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull, like, ne, or } from "drizzle-orm";
 import type { ExtractionOutboxPort, ExtractionWritebackDeps } from "./writeback-commit-db";
 import {
@@ -163,7 +163,7 @@ export async function commitReviewDiagnosisWriteback(
   const versionByDoc = new Map(docs.map((d) => [d.id, d.activeVersionId]));
   for (const id of sourceDocumentIds) {
     if (!versionByDoc.get(id)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SOURCE_DOCUMENT_UNRESOLVED",
         "an approved field's source document has no filed version to cite as provenance; the review cannot be committed",
         409,

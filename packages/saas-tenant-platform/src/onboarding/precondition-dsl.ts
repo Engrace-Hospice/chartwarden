@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · onboarding — the typed precondition-DSL evaluator (M34 §2.3 / D3).
+// @chartwarden/saas-tenant-platform · onboarding — the typed precondition-DSL evaluator (M34 §2.3 / D3).
 //
 // The `precondition_dsl` column on `onboarding_task_template` (§3.4) holds a SMALL, NON-Turing-complete
 // boolean expression evaluated against the structured {@link OnboardingContext} at advance-attempt time.

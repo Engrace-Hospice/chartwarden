@@ -1,10 +1,10 @@
-// @wardenx/hope — the recording-boundary guards (M10-T03; §2.3, D2, D9, D12). PURE, IO-free: the
+// @chartwarden/hope — the recording-boundary guards (M10-T03; §2.3, D2, D9, D12). PURE, IO-free: the
 // cross-field/temporal checks the recording service (M10-T06) runs AFTER route-boundary TypeBox and the
 // discipline gate, BEFORE the `hope_assessment` insert. Each guard raises the precise §4.4 code. Facts
 // (admission-active, schedule window, schedule rfa_kind) are injected from M6 readers / the schedule row;
 // M10 never imports M6 schema. The CMS pre-submission rules (value-set membership, required-items matrix)
 // are NOT here — they land in the validation engine (M10-T04).
-import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@wardenx/types";
+import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@chartwarden/types";
 import { require_ } from "../errors";
 import { type TimepointWindow, classifyCapture } from "../scheduling/window-calculator";
 

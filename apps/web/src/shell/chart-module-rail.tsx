@@ -1,4 +1,4 @@
-import { PatientWorkspaceLayout } from "@wardenx/ui";
+import { PatientWorkspaceLayout } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PatientConversationLink, useOpenPatientConversation } from "./open-patient-conversation";

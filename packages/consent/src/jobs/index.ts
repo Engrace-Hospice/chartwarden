@@ -1,4 +1,4 @@
-// @wardenx/consent — the M39 BullMQ job-queue catalog + the pure reminder/expiration engines
+// @chartwarden/consent — the M39 BullMQ job-queue catalog + the pure reminder/expiration engines
 // (M39-T08, spec §4.9). The canonical queue names + cadences are DATA (no BullMQ import — the thin
 // Worker/Queue construction lives in the composition root once a Valkey connection + the M36 alert
 // emitter exist); M39 owns the policy + the pure decision engines the workers call. Same

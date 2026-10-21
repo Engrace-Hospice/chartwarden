@@ -2,7 +2,7 @@
 // "Upload document" ceremonies of the admission intake workspace, in the redesign's right-hand drawer
 // (scanned-upload.tsx) instead of a centered modal. Presentation only: admission-detail.tsx owns the state and
 // the request bodies (unchanged), this renders the fields with kit controls.
-import { Glyph, SelectField, TextField } from "@wardenx/ui";
+import { Glyph, SelectField, TextField } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { ScannedFileField, ScannedUploadDrawer, type ScannedUploadStage } from "./scanned-upload";
 

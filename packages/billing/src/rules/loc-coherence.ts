@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `level_of_care_coherence` (loc, error, regulatory). Every claim line's
+// @chartwarden/billing — §4.5 rule `level_of_care_coherence` (loc, error, regulatory). Every claim line's
 // revenue code + Q-code + level-of-care must align with the LOC period active on that service date; CHC
 // requires 8+ documented hours/day, GIP requires admission criteria documented (D7 / 42 CFR §418.302).
 // Reads the resolved `lines` + `levelOfCarePeriods` snapshots. PURE: reads ctx only.

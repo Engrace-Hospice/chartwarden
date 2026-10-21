@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 2: Percentage of RHC days provided in a nursing home or skilled nursing facility (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 2: Percentage of RHC days provided in a nursing home or skilled nursing facility (CMS-1851-F Table 9). Pure. No IO.
 //
 // Point at ≥ 40%. Rate = billed RHC days whose site of service is a nursing facility (Q5003) or SNF (Q5004) ÷
 // billed RHC days. Source: M23 `ClaimLineReader.claimLineRollupForPeriod` (MAC-accepted 0651 lines by Q-code) —

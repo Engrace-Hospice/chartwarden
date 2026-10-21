@@ -2,7 +2,7 @@
 
 ## Overall Assessment
 
-WardenX has a real design system (`@wardenx/ui`), shared tokens, a screen registry, route-level lazy loading in the staff SPA, utility states, permission guards, confirmation ceremonies, and a focus-trapped modal. It does not yet have evidence that 271 screens behave as one complete product. The frame register covers 17 screens, and 14 of those document functional substitutions or missing DTO/write paths.
+WardenX has a real design system (`@chartwarden/ui`), shared tokens, a screen registry, route-level lazy loading in the staff SPA, utility states, permission guards, confirmation ceremonies, and a focus-trapped modal. It does not yet have evidence that 271 screens behave as one complete product. The frame register covers 17 screens, and 14 of those document functional substitutions or missing DTO/write paths.
 
 ## UI-001 - Visual and behavioral fidelity is unknown for most screens
 
@@ -52,7 +52,7 @@ WardenX has a real design system (`@wardenx/ui`), shared tokens, a screen regist
 
 | Component/pattern | Existing implementations | Canonical version | Drift | Consolidation |
 |---|---|---|---|---|
-| Modal/confirmation | `@wardenx/ui` Modal and ConfirmDialog; local MAC/screen-lock overlays | Shared focus-trapped Modal/ceremony | Two bespoke overlays | UI-002 |
+| Modal/confirmation | `@chartwarden/ui` Modal and ConfirmDialog; local MAC/screen-lock overlays | Shared focus-trapped Modal/ceremony | Two bespoke overlays | UI-002 |
 | Work queue/table | Many module-local inline-style tables/worklists | Shared work-queue patterns/tokens | Behavior/state APIs vary | Extract only repeated behavior: loading, empty, selection, pagination, keyboard row |
 | System states | Shared 404/403/500/offline/maintenance/session states | `CenteredStatusLayout` | Matched frame | Preserve and test transitions |
 | Permission guard | Shell route guard + required permission registry | Shell guard | Structurally consistent | Add reason/recovery E2E |

@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_amendment_request` (M5 §3.5, §7.7). HIPAA §164.526 right-to-amend: a
+// @chartwarden/db — `patient_amendment_request` (M5 §3.5, §7.7). HIPAA §164.526 right-to-amend: a
 // patient/representative requests a demographic/clinical/narrative correction; the org decides within
 // 60 days (`sla_due_at` = received_at + 60d). A denial requires a reason; the requester may file a
 // statement of disagreement. PHI-bearing → three-column tenancy rule.

@@ -14,7 +14,7 @@ import type {
   IsoInstant,
   MembershipId,
   OrgId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** An append-only `document_access_log` row the service persists (§3.3). Mirrors the table columns; the
  * `correlationId` ties a signed-URL issue to its later consume. */

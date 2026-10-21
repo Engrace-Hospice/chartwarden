@@ -4,10 +4,10 @@
 // roles + the M2 membership id (the route layer binds the active membership into
 // `context.attributes.membershipId`, the same fact the §4.6 ABAC predicates read). Org binding is
 // SERVER-SIDE (`request.context`, never the body) — the M22 `actorOf` precedent.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface TenantActor {

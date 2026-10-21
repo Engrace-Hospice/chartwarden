@@ -53,8 +53,8 @@
 // This is the ONLY module of the query path that holds a `BodyReader`, and it opens bodies only after the authority call.
 // Fail closed: key derivation, the authority call, the transactions and the audit write all propagate as errors, never as a
 // prefilter-only, plaintext-scan or unaudited answer. No tag, term or query text is logged.
-import { type AuditContext, auditPhiRead } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
+import { type AuditContext, auditPhiRead } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
 import {
   CANDIDATE_CAP,
   DECRYPT_BUDGET,
@@ -67,10 +67,10 @@ import {
   type SearchKeyProvider,
   decodeSearchCursor,
   encodeSearchCursor,
-} from "@wardenx/messaging";
-import type { ChannelKind, ChannelMemberSource } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { ChannelKind, ChannelMemberSource } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import { searchTimeoutToError } from "../message-search-service-db";
 import { type HydrationContext, hydrateMessages } from "../messaging-message-hydration";
@@ -173,7 +173,7 @@ export interface GlobalSearchService {
 }
 
 const unavailable = () =>
-  new WardenXError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
+  new ChartWardenError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
 
 const REFINE: GlobalSearchResult = { results: [], scanned: 0, scanCapped: true, refine: true };
 const EMPTY: GlobalSearchResult = { results: [], scanned: 0, scanCapped: false, refine: false };
@@ -465,7 +465,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     const terms = parseQueryTerms(input.query);
     const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
     if (input.cursor && !cursor) {
-      throw new WardenXError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
+      throw new ChartWardenError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
     }
     return { terms, cursor, excluded };
   }

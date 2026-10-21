@@ -1,4 +1,4 @@
-// @wardenx/ui core — web adapters for the capability ports (ADR-0035). Browser-API backed
+// @chartwarden/ui core — web adapters for the capability ports (ADR-0035). Browser-API backed
 // where one exists, else a graceful "unavailable" fallback (mirroring the degraded-mode
 // pattern). The plain-web / PWA build uses these; the native build swaps in Capacitor adapters
 // at its entrypoint. No `@capacitor/*` and no `react-dom` here — this is the web side of the seam.

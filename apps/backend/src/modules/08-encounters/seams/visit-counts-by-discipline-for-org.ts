@@ -10,8 +10,8 @@
 //
 // Not a request: opens its own `withOrgContext` envelope (empty acting user, the seam-read convention) with an explicit
 // `organization_id` predicate behind RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 const ENC = schema.encounters;

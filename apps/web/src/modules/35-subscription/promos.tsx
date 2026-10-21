@@ -5,7 +5,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 promo codes (§5.1 `/billing/promos`).
 // Apply a publicly-visible promo code to the subscription (POST /api/v1/subscription/apply_promo) and
 // see the current plan context (GET /api/v1/subscription). The apply is a mutating action the server

@@ -17,7 +17,7 @@
 //   • "undeliverable-requests" — there is no `undeliverable` value in `m21_supply_request_status`. A failed
 //     delivery is recorded as the request staying `in_transit` with a courier note, so the honest surface
 //     is the age-in-status column on the queue, which is rendered.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

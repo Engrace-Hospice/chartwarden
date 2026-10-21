@@ -1,4 +1,4 @@
-// @wardenx/supplies — the §2.3 / D3 platform-floor comfort kit and its tenant-tighten-only validator.
+// @chartwarden/supplies — the §2.3 / D3 platform-floor comfort kit and its tenant-tighten-only validator.
 //
 // Mirrors the M9 D2 / M11 D3 / M15 D3 platform-floor-tighten-only pattern: a tenant may ADD medications,
 // REDUCE quantities within bounds, and RAISE replenishment thresholds — never remove a floor medication,
@@ -6,7 +6,7 @@
 // `0021_comfort_kit_platform_floor` are generated from this table, so the database and the validator cannot
 // drift. PURE — no IO.
 
-import type { ControlledSubstanceSchedule } from "@wardenx/types";
+import type { ControlledSubstanceSchedule } from "@chartwarden/types";
 
 import {
   REPLENISHMENT_THRESHOLD_PCT_DEFAULT,

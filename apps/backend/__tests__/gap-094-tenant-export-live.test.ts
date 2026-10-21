@@ -26,15 +26,15 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import {
   type TenantExportJobBody,
   type TenantExportShard,
   __resetModule34SeamsForTest,
   registerTenantExportShard,
   runTenantExportJob,
-} from "@wardenx/saas-tenant-platform";
-import { runWithRequestContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

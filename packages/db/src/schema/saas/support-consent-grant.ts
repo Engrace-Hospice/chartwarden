@@ -1,4 +1,4 @@
-// @wardenx/db — `support_consent_grant` (M34 §3.6). The tenant-issued, time-boxed grant that
+// @chartwarden/db — `support_consent_grant` (M34 §3.6). The tenant-issued, time-boxed grant that
 // authorizes a platform-ops support session into a tenant's data. Tenancy (§3.10 M34-F02 / ADR-0010):
 // ORG-SCOPED — carries its own `organization_id` NOT NULL so the canonical app.org_id RLS predicate
 // applies directly. `scope` selects organization- vs patient-scoped access; when patient-scoped,

@@ -15,12 +15,12 @@
 // Same `resource.action[_scope]` shape and DB-mirror contract as M3's own `PERMISSIONS`; kept in a
 // dedicated const so each module's contribution stays attributable (§3.3 ownership).
 //
-// REGISTRATION: this map is consumed by `@wardenx/auth`'s contributed-permission registry exactly
+// REGISTRATION: this map is consumed by `@chartwarden/auth`'s contributed-permission registry exactly
 // as the M34 `M34_CONTRIBUTED_PERMISSIONS` map is (packages/auth/src/permissions/contributed.ts —
 // `m33ContributedPermissionMirrorRows`). The companion mirror-row projector + `allPermissionMirrorRows`
 // wiring lives in that file (M3-owned catalog); this typed list is the M33-owned source of truth those
 // rows project from.
-import type { PermissionDef } from "@wardenx/auth";
+import type { PermissionDef } from "@chartwarden/auth";
 
 /**
  * The §4.6 permission keys M33 owns (registered into M3). Single-owner across the platform registry.

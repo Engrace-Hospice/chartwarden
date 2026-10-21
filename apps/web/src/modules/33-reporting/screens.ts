@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics screen registration (R2, ADR-0030).
 // The read surface (§5.1 screen inventory). Each `requiredPermission` is the REAL §4.6 M33 key the
 // matching list/read route gates on (apps/backend/src/modules/33-reporting/permission-keys.ts) — the

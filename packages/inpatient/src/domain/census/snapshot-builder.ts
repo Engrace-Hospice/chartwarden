@@ -1,8 +1,8 @@
-// @wardenx/inpatient — M37-T10, §2.13 D14. Builds the `m37.census.snapshot_taken` payload (one per
+// @chartwarden/inpatient — M37-T10, §2.13 D14. Builds the `m37.census.snapshot_taken` payload (one per
 // org × unit/remote-facility × date) from the day's admission facts + incident counts. Pure & IO-free —
 // the census-snapshot-builder cron loads the facts under RLS and injects them. The payload is consumed by
 // M23 (per-diem), M26 (inpatient cap), M27 (Worksheet S-3), M33 (MV refresh).
-import type { IpuCensusSnapshotPayload } from "@wardenx/types";
+import type { IpuCensusSnapshotPayload } from "@chartwarden/types";
 
 /** The level-of-care discriminator the census buckets by. */
 export type CensusLevel = "gip" | "irc";

@@ -3,7 +3,7 @@
 // server owns every rule and its refusal is shown verbatim; the escalation form survives step-up; a missing QIC
 // receipt date is a visible state, never a blank, and offers no escalation.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

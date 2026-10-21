@@ -11,7 +11,7 @@
 //                                          unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1, and refused outright when
 //                                          NODE_ENV=production; warns loudly at boot.
 //   (unset)                                no scanner: uploads work, every attachment stays pending, none is delivered
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import {
   type ObjectStorePort,
   createS3ObjectStore,

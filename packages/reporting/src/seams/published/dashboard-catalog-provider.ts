@@ -1,4 +1,4 @@
-// @wardenx/reporting — the `DashboardCatalogProvider` PUBLISHED seam (M33 §4.3).
+// @chartwarden/reporting — the `DashboardCatalogProvider` PUBLISHED seam (M33 §4.3).
 //
 // The dashboard-catalog read surface M34's tenant ops console consults to enumerate the dashboards
 // available in an org's scope. Aggregate metadata only (no tile results, no PHI). Registered into

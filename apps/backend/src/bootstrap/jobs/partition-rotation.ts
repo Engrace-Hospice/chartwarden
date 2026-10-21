@@ -1,9 +1,9 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,
   registerPlatformJob,
   withPlatformContext,
-} from "@wardenx/tenancy";
+} from "@chartwarden/tenancy";
 // apps/backend/src/bootstrap/jobs/partition-rotation.ts — the `partition.rotate` platform job (F-033 / #93).
 //
 // M1 owns `apps/backend/src/bootstrap` and `packages/db` (see architecture/module-manifest.ts), and
@@ -213,7 +213,7 @@ export async function runPartitionRotation(deps: {
 }
 
 /**
- * Register the job id on the `@wardenx/tenancy` platform-context allowlist. The allowlist starts EMPTY
+ * Register the job id on the `@chartwarden/tenancy` platform-context allowlist. The allowlist starts EMPTY
  * and `withPlatformContext` throws for an unregistered caller, so without this call rotation refuses
  * itself — which is the intended fail-closed shape, not an accident to route around.
  */

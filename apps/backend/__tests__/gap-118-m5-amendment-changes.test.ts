@@ -1,5 +1,5 @@
 // GAP-118 — an amendment request stores a structured change and an ACCEPTED demographic amendment applies it.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   AMENDABLE_DEMOGRAPHIC_FIELDS,

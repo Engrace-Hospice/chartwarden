@@ -15,7 +15,7 @@
 // a mocked client would still pass if the button were re-wired to a handler that never issues the
 // request, which is the exact failure being fixed.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentMethods } from "./payment-methods";
 

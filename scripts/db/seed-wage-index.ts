@@ -13,7 +13,7 @@
  *
  * Prereqs: backend running (bun run dev:backend), DB migrated, `db:seed:org-admin` run.
  */
-import { type HospiceAreaLookup, resolveHospiceArea, wageIndexSeedBody } from "@wardenx/billing";
+import { type HospiceAreaLookup, resolveHospiceArea, wageIndexSeedBody } from "@chartwarden/billing";
 import { Client } from "pg";
 import { type WxSession, signIn } from "./lib/api-session";
 import { stepUpSession } from "./lib/step-up";

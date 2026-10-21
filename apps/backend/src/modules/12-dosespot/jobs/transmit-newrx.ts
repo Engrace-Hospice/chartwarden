@@ -16,7 +16,7 @@
 //                       permanent vendor rejection or an unfixable order exhausts immediately.
 // Nothing here ever marks an order transmitted without a real `DoseSpotNewRxResponse`.
 import { createHash } from "node:crypto";
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   type DoseSpotNewRxPayload,
   RX_TRANSMISSION_MAX_RETRIES,
@@ -24,7 +24,7 @@ import {
   planTransmissionFailure,
   planTransmissionSuccess,
   transitionMedicationOrder,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { DosespotSyncQueueRepository } from "./repository";

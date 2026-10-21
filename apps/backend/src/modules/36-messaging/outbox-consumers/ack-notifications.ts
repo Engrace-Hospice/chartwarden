@@ -10,7 +10,7 @@
 // id-only warn-level skip; a lookup ERROR is rethrown so the outbox retries and dead-letters (an alert is never dropped on a blip).
 // The text is fixed and PROVISIONAL (clinical-lead sign-off pending): no name, no patient, no message text. This is an inbox entry,
 // NOT a page, NOT the emergency path, and it does not time anything (WP 4.3 - 4.5).
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

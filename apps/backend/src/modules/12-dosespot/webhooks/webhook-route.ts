@@ -11,8 +11,8 @@
 // RAW BODY: HMAC verification needs the exact bytes, so the route lives in an ENCAPSULATED scope whose JSON
 // parser hands the handler the unparsed string (re-serializing a parsed body breaks the signature). The
 // override is local to this scope; no other route's parsing changes.
-import { DOSESPOT_WIRE_MAPPING_VERIFIED } from "@wardenx/dosespot";
-import { WardenXError } from "@wardenx/types";
+import { DOSESPOT_WIRE_MAPPING_VERIFIED } from "@chartwarden/dosespot";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type DoseSpotWebhookIngestDeps, ingestDoseSpotWebhook } from "./ingest";
 
@@ -48,7 +48,7 @@ export function registerDoseSpotWebhookRoute(
     );
     scope.post(DOSESPOT_WEBHOOK_PATH, async (request, reply) => {
       if (!enabled) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DOSESPOT_WEBHOOK_UNCONFIGURED",
           "the DoseSpot webhook is not configured",
           503,
@@ -65,12 +65,12 @@ export function registerDoseSpotWebhookRoute(
       );
       switch (verdict.kind) {
         case "invalid_signature":
-          throw new WardenXError("INVALID_SIGNATURE", "invalid webhook signature", 401);
+          throw new ChartWardenError("INVALID_SIGNATURE", "invalid webhook signature", 401);
         case "stale":
-          throw new WardenXError("STALE_REQUEST", "stale webhook request", 400);
+          throw new ChartWardenError("STALE_REQUEST", "stale webhook request", 400);
         case "malformed_timestamp":
         case "malformed":
-          throw new WardenXError("MALFORMED_REQUEST", "malformed webhook request", 400);
+          throw new ChartWardenError("MALFORMED_REQUEST", "malformed webhook request", 400);
         default:
           // `duplicate` and `accepted` are both 200 (§7.4.4: a redelivery returns 200, no reprocessing).
           return reply.code(200).send({ received: true });

@@ -1,6 +1,6 @@
-// @wardenx/billing · repositories — `validation_rule_config` (the PER-TENANT overlay on the platform's
+// @chartwarden/billing · repositories — `validation_rule_config` (the PER-TENANT overlay on the platform's
 // billing-rule registry, §3.3, D5; retention class `operational`). The 18 default rules are CODE-side (the
-// §11.A registry in `@wardenx/billing`); only the tenant overlay (enable/disable, severity, override-role,
+// §11.A registry in `@chartwarden/billing`); only the tenant overlay (enable/disable, severity, override-role,
 // parameters, and any tenant-custom rule) is persisted here. Unlike the append-only validation tables this
 // is a CRUD root carrying a `version` column, so it follows the `ClaimRepository` exemplar for §2.5 If-Match
 // optimistic concurrency (`updateWithVersion` / `deleteWithVersion` → `VersionedUpdateResult`).
@@ -13,8 +13,8 @@
 //
 // ENUM BOUNDARY: `severity` (error/warn/info) and `override_role_required` (billing_manager/…) are DB-native
 // lowercase enums identical to the domain alphabet, so rows pass through un-mapped. No PHI (D18).
-import * as schema from "@wardenx/db/schema";
-import { WardenXError } from "@wardenx/types";
+import * as schema from "@chartwarden/db/schema";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type BillingDb,
@@ -67,7 +67,7 @@ export class ValidationRuleConfigRepository {
    */
   async create(values: schema.NewValidationRuleConfig): Promise<schema.ValidationRuleConfig> {
     if (values.regulatoryRequiredSnapshot === true) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "FORBIDDEN",
         "cannot create a tenant overlay for a regulatory-required billing rule (D5 platform floor)",
         403,

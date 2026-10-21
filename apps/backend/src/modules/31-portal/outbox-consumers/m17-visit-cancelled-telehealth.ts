@@ -8,7 +8,7 @@
 // was ever set on that visit).
 //
 // THE VENDOR HALF IS DELIBERATELY NOT ATTEMPTED, AND THAT IS A REPORTED GAP, NOT A SHORTCUT TAKEN HERE.
-// `TelehealthProvider.endRoom(vendorRoomId)` (`@wardenx/telehealth-client`) needs the DECRYPTED vendor room
+// `TelehealthProvider.endRoom(vendorRoomId)` (`@chartwarden/telehealth-client`) needs the DECRYPTED vendor room
 // id, but `telehealth_visit.vendor_room_id_cipher` has NO DECRYPT PATH ANYWHERE IN THIS CODEBASE —
 // `portal-crypto.ts`'s own header says so explicitly for its one cipher ("there is deliberately no decrypt
 // here... nothing reads the reason back yet"), and that file doesn't even cover this column (only
@@ -29,9 +29,9 @@
 // `m31.*` emission from a consumer whose job is to CONSUME, for an event this path was never documented to
 // trigger, would be exactly the "declared a relationship that was never decided" shape this whole build arc
 // exists to correct in the other direction.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { TelehealthLifecycleState } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { M31EventEmitter } from "../events";
 import { canTransitionTelehealth } from "../telehealth/visit-lifecycle";

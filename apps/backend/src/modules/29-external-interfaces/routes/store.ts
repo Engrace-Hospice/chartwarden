@@ -31,8 +31,8 @@ import {
   type LabAbnormalSummary,
   NotFoundError,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 
 import {
   canExternalFeedTransition,
@@ -485,7 +485,7 @@ export interface M29Store {
 }
 
 /** Thrown for a Phase-1-deferred surface — mapped to a 501 by the route (honest "not yet", not a 404). */
-export class M29StoreError extends WardenXError {
+export class M29StoreError extends ChartWardenError {
   constructor(message: string, statusCode = 501) {
     super("NOT_IMPLEMENTED", message, statusCode);
     this.name = "M29StoreError";

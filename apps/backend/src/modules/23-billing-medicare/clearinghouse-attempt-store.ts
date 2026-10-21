@@ -1,5 +1,5 @@
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/23-billing-medicare/clearinghouse-attempt-store.ts — the DURABLE `SubmissionAttemptStore`
 // (ADR-0053 D4) over `clearinghouse_submission_attempt`. Every call opens its own org context from the attempt's
 // organization id, so it works from any caller (a route, a relay tick, a worker) and RLS scopes it to one tenant.
@@ -16,7 +16,7 @@ import {
   PlatformControlNumberTaken,
   type SubmissionAttempt,
   type SubmissionAttemptStore,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 import { and, eq, lte, ne, or, sql } from "drizzle-orm";
 
 const T = schema.clearinghouseSubmissionAttempts;

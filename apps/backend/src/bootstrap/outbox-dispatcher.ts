@@ -25,9 +25,9 @@
 //     `pending` on a later tick — the attempt was already counted at claim.
 //   · Retention: `dispatched` rows older than the retention window are purged. `failed` rows are
 //     NEVER purged automatically (a dead letter is evidence), and `pending` rows are never touched.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { ModuleToken, OutboxEventEntry } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { ModuleToken, OutboxEventEntry } from "@chartwarden/types";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { ActiveOrgEnumerator } from "./active-org-enumerator";
 import { safeErrorMessage } from "./redact-database-error";
@@ -301,7 +301,7 @@ export function outboxBackoffMs(attempt: number, baseMs: number, capMs: number):
 /** The relay's actor id — dispatch runs on behalf of the platform, not a user (NULL audit actor). */
 const DISPATCHER_USER_ID = "";
 
-/** The @wardenx/tenancy platform-job id the relay's org enumeration is allowlisted under. */
+/** The @chartwarden/tenancy platform-job id the relay's org enumeration is allowlisted under. */
 export const M1_OUTBOX_DISPATCHER_JOB_ID = "m1-outbox-dispatcher";
 
 export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispatcher {

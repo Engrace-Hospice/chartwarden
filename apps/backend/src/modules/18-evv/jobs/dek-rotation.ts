@@ -27,8 +27,8 @@
 // LEGACY ROWS ('legacy-unencrypted', pre-GAP-133 base64) are NEVER re-sealed. They were never encrypted, the
 // reader deliberately refuses to decode them (coords.ts), and prod is demo data fixed by reseeding — sealing
 // them now would launder an unauthenticated value into a ciphertext the reader then trusts.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import {
   type EvvCoordsKeyProvider,

@@ -37,9 +37,9 @@
 // apply a real transition the moment that producer-side gap closes, but finds zero matching claims
 // today — a separate, precisely-scoped M24-internal gap, deliberately not built here: this task binds
 // the DECLARED consumer, it does not add a new producer-side trigger inside `assembleClaim`.
-import { type DbClient, schema } from "@wardenx/db";
-import { medicaidClaimMachine } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import type {
   DispatchableOutboxEvent,

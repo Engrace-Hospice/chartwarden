@@ -22,8 +22,8 @@
 // is `deathTransitionFrom` (./patient-status-transitions.ts): `active`/`on_hold`, plus a `prospective`/
 // `discharged` row that merely lagged M6's activation; a `merged` chart dead-letters for a human.
 // Every flip also emits `m5.patient.status_changed` (§4.6) with the real `fromStatus`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import { type DeceasedCascadePorts, recordDeath } from "./deceased";
 import { deathTransitionFrom } from "./patient-status-transitions";

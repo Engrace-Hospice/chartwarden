@@ -1,7 +1,7 @@
-// @wardenx/quality — the TWELVE §4.9 M36 alert DEFINITIONS M30 ships (severity / channel / recipients /
-// cadence / trigger), the exact mirror of @wardenx/reporting's `alert-defs.ts`.
+// @chartwarden/quality — the TWELVE §4.9 M36 alert DEFINITIONS M30 ships (severity / channel / recipients /
+// cadence / trigger), the exact mirror of @chartwarden/reporting's `alert-defs.ts`.
 //
-// M30 is the alert PRODUCER: its typed alert PAYLOADS already live in `@wardenx/types`
+// M30 is the alert PRODUCER: its typed alert PAYLOADS already live in `@chartwarden/types`
 // (`packages/types/src/alert-payloads.ts` — `M30_ALERT_PAYLOADS`, the `m30.alerts.*` TypeBox schemas +
 // the payload-catalog severity/channels). THIS file adds the §4.9 escalation METADATA M36's alert-rule
 // seed resolves on top of those payloads: the firing TRIGGER (the cron sweep or the `m30.*` outbox event
@@ -14,7 +14,7 @@
 // `M30_ALERT_PAYLOADS` payload-catalog ladder (info→INFO, warn→WARN, high→HIGH, critical→CRITICAL; M30
 // publishes no MEDIUM-floor alert). CHANNELS mirror each payload's `defaultChannels` (`inbox` /
 // `socket_push` / `email`) so the def + the payload catalog never drift.
-import type { M30AlertPayloadType } from "@wardenx/types";
+import type { M30AlertPayloadType } from "@chartwarden/types";
 
 /** The §4.9 four-level severity ladder (maps 1:1 onto the `AlertPayloadSeverity` payload-catalog floor). */
 export type QualityAlertSeverity = "info" | "warn" | "high" | "critical";

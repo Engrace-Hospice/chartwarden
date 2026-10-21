@@ -7,7 +7,7 @@ import {
   StatusPill,
   type StatusTone,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — the shared frame of the M6 end-of-episode workflows (discharge /
 // revocation / transfer-out, death & pronouncement, for-cause cosign, transfer-in), drawn in the 2026-09-25
 // redesign idiom the HOPE workspace established: the patient chart banner, a step navigator on the left

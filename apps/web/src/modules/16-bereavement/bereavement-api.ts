@@ -18,7 +18,7 @@
 // field on purpose: ABSENT means "the D10 volunteer scope or the §7.13 Part 2 gate withheld it", `null`
 // means "no tier has been computed yet", and a value is a value. Collapsing absent into null in the web
 // layer would tell a volunteer that a high-risk survivor is unscored.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
 

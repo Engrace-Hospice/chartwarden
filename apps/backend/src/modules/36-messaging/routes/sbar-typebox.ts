@@ -2,7 +2,7 @@
 // The floor is the service's (422 SBAR_POLICY_FLOOR_VIOLATION, naming the field), so `minChars` has no schema minimum:
 // a value below the floor must reach `prepareSbarPolicy` rather than fail as a generic parse error.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { SBAR_MIN_CHARS_CEILING } from "@wardenx/messaging";
+import { SBAR_MIN_CHARS_CEILING } from "@chartwarden/messaging";
 
 const MinChars = Type.Integer({ maximum: SBAR_MIN_CHARS_CEILING });
 // Transport cap only; the 200 character bound and the PHI lint are the service's.

@@ -1,4 +1,4 @@
-// @wardenx/db — `missed_dose` (M13 §3.3 / §2.5 D4). 1:1 with a `scheduled_dose` that lapsed its grace window
+// @chartwarden/db — `missed_dose` (M13 §3.3 / §2.5 D4). 1:1 with a `scheduled_dose` that lapsed its grace window
 // (detected by sweep) or was intentionally held / refused. PHI-bearing (patient_id) → the three-column tenancy
 // rule (provider_entity_id + location_id NOT NULL). Non-partitioned (§3.5). Cross-module refs (M5 patient, M6
 // admission, M12 medication_order) are plain uuid app-validated; `scheduled_dose_id` is M13-owned but kept loose

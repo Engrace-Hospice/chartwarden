@@ -1,4 +1,4 @@
-// @wardenx/db — `mdm_license_record` (M40 MDM §3.5, §4.1 `POST /mdm/license/manual`, D6). A tenant's manual
+// @chartwarden/db — `mdm_license_record` (M40 MDM §3.5, §4.1 `POST /mdm/license/manual`, D6). A tenant's manual
 // entry of a state license + expiration for a canonical entity (Phase 1: manual entry only — the per-state
 // medical-board adapters are Phase 2). ORG-SCOPED (each tenant records its own verification), keyed by
 // (org, entity_kind, canonical_id, license_state). Drives the §4.3 `mdm.license_expiration_scan` alerts.

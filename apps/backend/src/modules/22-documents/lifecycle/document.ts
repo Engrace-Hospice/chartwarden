@@ -8,7 +8,7 @@
 // the §2.3 / D12 guards (failures raise the precise code via DocumentStateError), and returns the new
 // state + the §2.4 in-transaction side-effect list the service executes. No IO; the MinIO destroy is a
 // descriptor (./effects), the real delete runs via the injected DocumentStorageProvider port.
-import type { DocumentStatus, IsoInstant } from "@wardenx/types";
+import type { DocumentStatus, IsoInstant } from "@chartwarden/types";
 import { type DocumentSideEffect, type DocumentTransitionResult, result } from "./effects";
 import { DocumentStateError, require_ } from "./errors";
 

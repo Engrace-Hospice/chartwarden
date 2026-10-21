@@ -1,4 +1,4 @@
-// @wardenx/scheduling — the §2.2.5 / §2.3 RRULE-subset grammar constants (M17-T01).
+// @chartwarden/scheduling — the §2.2.5 / §2.3 RRULE-subset grammar constants (M17-T01).
 //
 // M17 supports only the `FREQ ∈ {DAILY, WEEKLY}` subset of RFC 5545; `MONTHLY`/`YEARLY` are rejected with
 // `RECURRENCE_FREQUENCY_NOT_SUPPORTED`. The validated parser (`RRULE_GRAMMAR_v1`) that consumes these

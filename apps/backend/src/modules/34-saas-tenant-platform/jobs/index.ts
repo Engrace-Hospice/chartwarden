@@ -2,7 +2,7 @@
 // catalog (queue names / params / schedules / DLQ) + the pure processor functions that wrap each §2B
 // worker over its injected ports — pure data + thin closures, NO `bullmq` import (the live `Worker`/`Queue`
 // construction binds at app boot in `saas-jobs.ts`, the M4-T11 `audit-jobs.ts` pattern; mirrors
-// 07-care-plan/jobs/index.ts). The job LOGIC all lives in @wardenx/saas-tenant-platform (unit-tested against
+// 07-care-plan/jobs/index.ts). The job LOGIC all lives in @chartwarden/saas-tenant-platform (unit-tested against
 // in-memory ports); this file only NAMES the queues and adapts `(job.data, ports) → worker(job, ports)`.
 //
 // §4.3 queues (the spec table, verbatim wire names): tenant.provision · tenant.dek_rotate · tenant.shred ·
@@ -34,7 +34,7 @@ import type {
   TenantExportJobBody,
   TenantExportWorkerPorts,
   TenantExportWorkerResult,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 import {
   handleDekRotate,
   runBundleExpirySweep,
@@ -43,7 +43,7 @@ import {
   runTenantExportJob,
   runTenantProvision,
   runTenantShred,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 
 // ── §4.3 queue catalog (spec-literal `tenant.*`; the scheduler binds the cron repeatables at boot) ─────
 
@@ -260,7 +260,7 @@ export function dsarSlaEscalationSweepJobId(date: string): string {
 
 /**
  * The tenancy envelope a job runs inside. The live wiring resolves the scope from the job payload and
- * wraps the port-binding + the package-worker call in the matching @wardenx/tenancy context (F09):
+ * wraps the port-binding + the package-worker call in the matching @chartwarden/tenancy context (F09):
  *   - `org`      → `withOrgContext` (orgId, …) — the DSAR/export/onboarding/bundle-sweep jobs scope to the
  *                  REQUESTING tenant's RLS (never platform bypass; the §7.3 F09 guard).
  *   - `platform` → `withPlatformContext` — the provision/dek-rotate/shred/baa-sweep/support-sweep/

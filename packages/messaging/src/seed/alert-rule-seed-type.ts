@@ -1,4 +1,4 @@
-// @wardenx/messaging - the shape of one platform-default alert rule seed. Its own file so the seed data files
+// @chartwarden/messaging - the shape of one platform-default alert rule seed. Its own file so the seed data files
 // (alert-rules.ts and the per-domain rule files it splices in) can all import it without an import cycle.
 import type {
   AlertCategory,

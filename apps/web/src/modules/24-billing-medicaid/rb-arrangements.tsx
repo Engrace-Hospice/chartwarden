@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the R&B ARRANGEMENTS LIST (R2, §5.1 #11). Per-patient NF
 // Room & Board pass-through contracts: facility, effective window, the three per-diems, the pass-through /
 // retention split, and the arrangement state. Backed by GET /api/v1/rb-arrangements (+ GET /api/v1/rb-days

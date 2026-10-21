@@ -8,13 +8,13 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE submission worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Work Queue."
 // Submission batches per ProviderEntity, per-period: status, item/accepted/rejected counts, transmit time.
 // A row drills into the submission detail (per-item outcomes + retry). Reads GET /api/v1/hope/submissions
 // via the typed client; the server enforces every scope incl. PE scope (ADR-0030 — no authz on the
-// frontend). Leaves only (@wardenx/ui).
+// frontend). Leaves only (@chartwarden/ui).
 //
 // #91 / #150 — this screen offers NO write, and that is the finding rather than an omission. Both M10
 // submission routes are mounted and reachable, and neither does what its summary says: `assemble`

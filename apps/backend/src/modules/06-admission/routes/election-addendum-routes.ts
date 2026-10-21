@@ -12,8 +12,8 @@
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence  scanned signed paper copy
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/refusal/uploaded-evidence    scanned paper refusal
 //   POST   /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required  death / revocation / discharge
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ElectionAddendumService } from "../election-addendum/service";
 import { IdParamsSchema, parse } from "./admission-typebox";

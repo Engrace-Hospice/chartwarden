@@ -2,7 +2,7 @@
 // (location + live quorum in the header, agenda kinds, carry-forward compliance alert, packets-building
 // progress, empty state) render from the data the routes actually return.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

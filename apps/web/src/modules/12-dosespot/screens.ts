@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/12-dosespot — M12 screen registration (Track B, ADR-0030, M12-T09).
 // The §6.1 DoseSpot prescribing read screens that have a backing M12 read route on the generated client: the
 // patient chart Medication list (§6.1), the Medication Detail (§6.1 / the prescribe modal in sign-only mode),

@@ -1,4 +1,4 @@
-// @wardenx/db — `hearthnote_llm_modification` (M8 §3.3). The provenance row for a Layer-2 LLM call against
+// @chartwarden/db — `hearthnote_llm_modification` (M8 §3.3). The provenance row for a Layer-2 LLM call against
 // an assembled output: prompt/model identity, token + latency telemetry, the structured per-passage diff,
 // hard-block/soft-warn counts, and the clinician's per-passage accept/edit/reject decisions. PHI-bearing
 // → three-column tenancy rule (denormalized from the parent assembled output). RLS + the M4 write-audit

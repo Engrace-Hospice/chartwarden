@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T11 compliance-export renderer tests (M4 spec §4.3, §4.4; M04-F04).
+// @chartwarden/audit — M4-T11 compliance-export renderer tests (M4 spec §4.3, §4.4; M04-F04).
 //
 // Every format (csv/ndjson/pdf) carries the SEC-052 watermark, emits provenance metadata only
 // (never PHI values), and escapes correctly.

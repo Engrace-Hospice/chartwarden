@@ -1,4 +1,4 @@
-// @wardenx/reporting · refresh — the INCREMENTAL tier: the outbox-subscriber (M33 §4.5 / §2.6 / D15).
+// @chartwarden/reporting · refresh — the INCREMENTAL tier: the outbox-subscriber (M33 §4.5 / §2.6 / D15).
 //
 // The reactive half of the three-tier strategy. It subscribes to the ~60 upstream topics in the §4.5
 // OUTBOX_SUBSCRIPTION_MAP; each delivered event projects to its `mv_keys_invalidated[]`, and the subscriber

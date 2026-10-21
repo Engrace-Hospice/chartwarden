@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M28 (FHIR Gateway). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M28 (FHIR Gateway). ABSENT producer (§4.4).
 //
 // M28 is not yet implemented → forward-seam DENY-STUB. M28 registers the real `FhirGatewayMetricsProvider`
 // over this stub when it lands (P2C).

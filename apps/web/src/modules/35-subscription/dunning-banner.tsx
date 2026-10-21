@@ -1,4 +1,4 @@
-import { StatusPill } from "@wardenx/ui";
+import { StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — the shared §5.5 dunning banner.
 // Rendered on `/billing` (overview) and `/billing/dunning` when the org is in dunning. Per §5.5 the
 // banner uses role="alert" with aria-live="assertive" for the critical stages (day_28_suspend onward)

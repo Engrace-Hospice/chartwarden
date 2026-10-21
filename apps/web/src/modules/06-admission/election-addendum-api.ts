@@ -1,7 +1,7 @@
 // apps/web/src/modules/06-admission/election-addendum-api.ts — typed calls for the FY2027 election statement
 // addendum (42 CFR 418.24(c)/(d)). The server owns every state change and its guards (ADR-0030); a failed
 // call surfaces the server's message so the clinician sees why (e.g. the missing (c) elements on furnish).
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { type UploadStage, verifiedUpload } from "../../shell/document-workflows";
 
 export type AddendumStatus =

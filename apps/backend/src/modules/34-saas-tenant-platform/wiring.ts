@@ -8,7 +8,7 @@
 //   4. the §4.3 worker deps (the Valkey connection + the org/platform DB handles the live workers bind).
 //
 // BOUNDARY (M34 dependsOn [1,2,3,4,36] — no new edge): everything cross-module is reached through the
-// foundation helpers M1 owns (`@wardenx/tenancy` withOrgContext/withPlatformContext, `@wardenx/db`) or a
+// foundation helpers M1 owns (`@chartwarden/tenancy` withOrgContext/withPlatformContext, `@chartwarden/db`) or a
 // PORT this file binds to a typed-TODO until the owning module exposes a boot accessor. Nothing here adds
 // a direct M1/M2/M4/M22/M36 import beyond those foundation helpers.
 //
@@ -29,15 +29,15 @@
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 
-import type { DbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import {
   type PlatformBypassAuditor,
   registerPlatformJob,
   withOrgContext,
   withPlatformContext,
-} from "@wardenx/tenancy";
-import { DegradedError, type SignedUrlDescriptor } from "@wardenx/types";
+} from "@chartwarden/tenancy";
+import { DegradedError, type SignedUrlDescriptor } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import { ACTIVE_KEK_ENV } from "../../bootstrap/tenant-kek";
 
@@ -46,7 +46,7 @@ import { ACTIVE_KEK_ENV } from "../../bootstrap/tenant-kek";
  * (`apps/backend/src/modules/22-documents/lifecycle/storage.ts`) byte-for-byte — M22's own comment calls
  * that function "the only place this string is shaped", but M34's module folder cannot import M22's
  * implementation path (module-boundary discipline, ADR-0005 D1 — only `getSeam("DocumentStorageProvider")`
- * itself, a `@wardenx/types` leaf value, is reachable). Deliberately duplicated rather than promoted to a
+ * itself, a `@chartwarden/types` leaf value, is reachable). Deliberately duplicated rather than promoted to a
  * shared leaf package for one call site; if a second module needs this, promote it instead of triplicating.
  */
 function m34DsarDeriveTenantBucket(organizationId: string): string {
@@ -82,7 +82,7 @@ import {
 
 /**
  * The registered platform-job id M34's platform-ops route service + its platform-scoped workers enter
- * `withPlatformContext` under. Registered on the `@wardenx/tenancy` allowlist by {@link wireM34Tenancy}
+ * `withPlatformContext` under. Registered on the `@chartwarden/tenancy` allowlist by {@link wireM34Tenancy}
  * at boot — until then `withPlatformContext` REFUSES the caller (fail-closed; the allowlist starts empty).
  */
 export const M34_PLATFORM_JOB_ID = "m34.platform_ops";
@@ -114,7 +114,7 @@ export function assertM34JobCapability(queue: M34QueueName | string): void {
 // ── tenancy allowlist registration (must run before any withPlatformContext entry) ────────────────────
 
 /**
- * Register M34's platform job ids on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST so the platform-ops
+ * Register M34's platform job ids on the `@chartwarden/tenancy` PLATFORM_CONTEXT_ALLOWLIST so the platform-ops
  * route service + the platform-scoped workers (provision / dek-rotate / shred / the platform sweeps) may
  * enter `withPlatformContext` (the allowlist starts empty — fail-closed). Idempotent (`Set.add`).
  */

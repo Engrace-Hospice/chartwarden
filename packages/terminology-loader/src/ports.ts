@@ -1,5 +1,5 @@
 import type { LicenseAttestation } from "./license";
-// @wardenx/terminology-loader — the ports the orchestrators run over. The loader package imports no database
+// @chartwarden/terminology-loader — the ports the orchestrators run over. The loader package imports no database
 // driver, queue or object-store client: the backend binds these to the `terminology_loader` SECURITY DEFINER
 // functions (migration 0364), the platform MinIO bucket and BullMQ, and the unit tests bind them to in-memory
 // fakes. Keeping the orchestration pure is what lets "failed load leaves no residue" be asserted without infra.

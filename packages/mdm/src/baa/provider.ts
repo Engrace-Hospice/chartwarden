@@ -1,4 +1,4 @@
-// @wardenx/mdm — the REAL `BaaStatusProvider` (M40-T06, spec §4.6.2, §7.7).
+// @chartwarden/mdm — the REAL `BaaStatusProvider` (M40-T06, spec §4.6.2, §7.7).
 //
 // The implementation M40 registers into the M1 seam registry for the focused BAA gate. Pure
 // ORCHESTRATION over the injected {@link BaaStore}: resolve the entity (a facility by sending-code,

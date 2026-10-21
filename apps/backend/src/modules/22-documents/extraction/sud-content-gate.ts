@@ -17,7 +17,7 @@
 // default is DENY.
 //
 // Pure functions only — no DB, no seam — so the policy is unit-tested without a server.
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 
 /** The batch SUD detection state (owned here so this gate has no import back into the workspace builder). */
 export type SudStatus = "not_detected" | "detected" | "confirmed" | "rejected";

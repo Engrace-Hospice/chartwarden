@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 5: Burdensome Transitions Type 1 (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 5: Burdensome Transitions Type 1 (§1.1). Pure. No IO.
 //
 // CMS criterion: the rate of type-1 burdensome care transitions (live discharge → hospitalization →
 // hospice readmission pattern) is LOW (lower is better). Numerator = decedents with a type-1 burdensome

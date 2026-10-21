@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_return` (M21 §3.1.10). D8/§2.6: the chain-of-custody machine that runs from
+// @chartwarden/db — `comfort_kit_return` (M21 §3.1.10). D8/§2.6: the chain-of-custody machine that runs from
 // "this patient died, the kit must come back" to a reconciled, witnessed disposal record.
 // `requested → assigned → retrieving → retrieved → reconciled`, with `overdue` (30d) and `unreturnable`
 // (90d, assumption of loss) as the two escape states.

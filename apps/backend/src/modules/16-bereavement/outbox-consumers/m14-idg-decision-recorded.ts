@@ -1,7 +1,7 @@
 // M16's live M14 bereavement-risk consumer. The signal enters a durable counselor work queue;
 // it does not override M16's evidence-derived risk score or tier.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 
 const FLAG = schema.bereavementIdgRiskFlags;
 

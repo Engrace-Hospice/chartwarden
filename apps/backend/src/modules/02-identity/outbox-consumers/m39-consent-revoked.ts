@@ -70,7 +70,7 @@
 //
 // IDEMPOTENT BY CONSTRUCTION: a DELETE that matches zero rows (already deleted by an earlier
 // delivery, or never existed) is a no-op — no separate dedup bookkeeping needed.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, sql } from "drizzle-orm";
 
 const SESSION = schema.sessions;

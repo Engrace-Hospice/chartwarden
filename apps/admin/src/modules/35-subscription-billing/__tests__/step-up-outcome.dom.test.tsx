@@ -3,7 +3,7 @@
 // screens printed "re-verify and retry" with nowhere to re-verify — and read `.code` off the envelope's top level,
 // where the standard `{ error: { code } }` body never carries it, so even that message never showed.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { SubscriptionPause } from "../subscription-pause";

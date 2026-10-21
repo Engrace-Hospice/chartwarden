@@ -5,7 +5,7 @@
 // ("Home   phone:", "mae . doclens@example org", "0 .5 mg"), not idealised text.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { groundQuote } from "@wardenx/intake-extraction";
+import { groundQuote } from "@chartwarden/intake-extraction";
 import { describe, expect, it } from "vitest";
 import {
   DoclingParseError,

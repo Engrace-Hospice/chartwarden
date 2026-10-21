@@ -3,7 +3,7 @@
 //
 // These are M3's OWN routes — the role catalog + assignment surface, the break-glass console,
 // and the auditor-engagement console — each gated by a §6 META-permission through the REAL
-// Authorization Contract (`requirePermission` / `requireSession` from @wardenx/auth, M3-T05),
+// Authorization Contract (`requirePermission` / `requireSession` from @chartwarden/auth, M3-T05),
 // not a deny-stub: M3 is where the contract goes live. The §2.2 pipeline runs
 // authenticate → requirePermission (RBAC) → handler; the handler mutates M3's org-scoped
 // tables (in production, inside `withOrgContext` so RLS is the backstop) and audits the change
@@ -11,7 +11,7 @@
 //
 // Anti-escalation (§6, Security Hardening §6): an admin may not grant a permission they do not
 // themselves hold, nor strip a `system_locked` role below its CoP floor. Both are enforced
-// server-side here (the floor in the store via @wardenx/auth `floorViolations`, the
+// server-side here (the floor in the store via @chartwarden/auth `floorViolations`, the
 // privilege-escalation guard against the actor's own effective permission set).
 //
 // Every body + path param is validated at the boundary against `./authz-typebox` (the M24/M30
@@ -20,7 +20,7 @@
 // Validation is deliberately ordered AFTER the §6 meta-permission preHandler and after each
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
-import type { AuditContext } from "@wardenx/audit";
+import type { AuditContext } from "@chartwarden/audit";
 import {
   allPermissionMirrorRows,
   isSystemLocked,
@@ -28,14 +28,14 @@ import {
   requirePermission,
   requireSession,
   validateRoleGrant,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   ForbiddenError,
   type HttpRequestContext,
   UnauthorizedError,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditAuditorEnrolled,
@@ -77,7 +77,7 @@ import {
 
 const DEFAULT_BREAK_GLASS_TTL_SEC = 4 * 3600; // §3.5 D1 — default +4h time-box.
 
-/** A guard wrapper so a @wardenx/auth GuardHandler is a Fastify preHandler. */
+/** A guard wrapper so a @chartwarden/auth GuardHandler is a Fastify preHandler. */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** Build the audit context for an M3 event from the request + scope. */
@@ -101,13 +101,13 @@ function actorOf(ctx: HttpRequestContext): { organizationId: string; userId: str
 }
 
 /** Map a store-level RoleLockedError onto the spec's HTTP code (409). */
-function roleLockedToHttp(err: RoleLockedError): WardenXError {
-  return new WardenXError("ROLE_LOCKED", err.message, 409);
+function roleLockedToHttp(err: RoleLockedError): ChartWardenError {
+  return new ChartWardenError("ROLE_LOCKED", err.message, 409);
 }
 
 /** Map a refused break-glass co-signature onto 409 (§7.4), preserving which guard fired. */
-function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
-  return new WardenXError(
+function cosignRefusedToHttp(err: BreakGlassCosignError): ChartWardenError {
+  return new ChartWardenError(
     err.kind === "self_cosign" ? "BREAKGLASS_SELF_COSIGN" : "BREAKGLASS_NOT_PENDING",
     err.message,
     409,
@@ -115,21 +115,21 @@ function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
 }
 
 /** GAP-117 — a revoke of a break-glass event that is already settled (revoked / expired / denied). */
-function revokeRefusedToHttp(err: BreakGlassRevokeError): WardenXError {
-  return new WardenXError("BREAKGLASS_NOT_REVOCABLE", err.message, 409);
+function revokeRefusedToHttp(err: BreakGlassRevokeError): ChartWardenError {
+  return new ChartWardenError("BREAKGLASS_NOT_REVOCABLE", err.message, 409);
 }
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 /** GAP-003/GAP-096 — platform authority is neither mintable nor assignable through a tenant's role
  *  surface. Operators grant it out of band (`bun run db:platform-role`, OPS_RUNBOOK §16.5). */
 const lastRequiredRole = (roleKey: string) =>
-  new WardenXError(
+  new ChartWardenError(
     "LAST_REQUIRED_ROLE",
     `cannot remove the last holder of the CoP-required role '${roleKey}'; assign it to another member first`,
     409,
   );
 const reservedRole = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RESERVED_ROLE",
     "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
     422,
@@ -599,7 +599,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
             expiresAt: new Date(engagement.endAt),
           });
         } catch {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "AUDITOR_LINK_DELIVERY_FAILED",
             "the auditor link could not be delivered; the enrolment was not recorded",
             503,

@@ -1,4 +1,4 @@
-// @wardenx/quality — operational/HQRP measure: HOPE submission acceptance rate. Pure. No IO.
+// @chartwarden/quality — operational/HQRP measure: HOPE submission acceptance rate. Pure. No IO.
 // Rate of HOPE assessments accepted by iQIES on submission (higher is better). A quarterly rate < 90% is
 // the APU-penalty signal (§1.3). Source: M10 `HopeSubmissionProvider`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";
@@ -33,7 +33,7 @@ export interface HopeSubmissionAcceptanceRateInput extends ComputeMeasureInput {
  * the problem — nothing has ever been transmitted, so there is no acceptance to measure. Both collapse
  * to a null rate on the wire, and the quality hub labels every suppressed measure "Suppressed (low N)",
  * which for this one would tell a surveyor the agency is small when the truth is that this deployment
- * has no iQIES transport (`@wardenx/iqies-client` ships only its deny-stub adapter). Same distinction
+ * has no iQIES transport (`@chartwarden/iqies-client` ships only its deny-stub adapter). Same distinction
  * `HCI_UNAVAILABLE_INDICATORS` draws, and the same mechanism: the reason rides in the persisted
  * `computation_snapshot`, so the answer to "why is this blank?" is in the row itself.
  *

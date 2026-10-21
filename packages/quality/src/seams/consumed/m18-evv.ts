@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M18 (EVV). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M18 (EVV). PRESENT producer (§4.4).
 //
 // M30 consumes M18's `EvvMetricsProvider.getComplianceRate`, `getLateCheckoutRate`, and
 // `getGeofenceBreachRate` for the EVV quality measures (incl. the Cures Act §12006 self-reported

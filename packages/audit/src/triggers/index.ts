@@ -1,4 +1,4 @@
-// @wardenx/audit — capture path: PHI write-audit triggers (§2.1 "trigger write", §3.3, §5).
+// @chartwarden/audit — capture path: PHI write-audit triggers (§2.1 "trigger write", §3.3, §5).
 //
 // The canonical write-audit trigger *generator* (M4-T02, §3.3): `generate.ts` emits the per-table
 // `audit_phi_write_<table>` SECURITY DEFINER trigger DDL into audit_event, and `scrub.ts` resolves

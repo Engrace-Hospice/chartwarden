@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the ASC X12N 837I (005010X223A2) hospice claim, TOB 81x, frequencies 1/2/3/4 (original
+// @chartwarden/x12-837-client — the ASC X12N 837I (005010X223A2) hospice claim, TOB 81x, frequencies 1/2/3/4 (original
 // bills), 7 (replacement) and 8 (void). PURE string building (ADR-0037, ADR-0053 D9); no network, no clock.
 // Golden fixtures are the payloads the Stedi sandbox accepted on 2026-10-09. "Passed edits" is not payer acceptance.
 //
@@ -8,7 +8,7 @@
 //   • CL102 admission source is required; `DTP*096` (discharge hour) is the TM form;
 //   • frequency 7/8 carries `REF*F8` (payer claim control number) as the segment right after CL1.
 // Line modifiers (e.g. PM) are carried as data into SV2-02; deciding WHEN a modifier or a Q5006 weekly-reporting
-// line applies is claim assembly (`@wardenx/billing`), not this serializer.
+// line applies is claim assembly (`@chartwarden/billing`), not this serializer.
 import { type Parties837i, partySegments } from "../x12/parties";
 import {
   X12BuildError,
@@ -44,7 +44,7 @@ const MAX_HI_VALUES = 12;
 const HHMM = /^([01]\d|2[0-3])[0-5]\d$/;
 const MAX_TOTAL_CENTS = 9_999_999_999;
 // UB-04 FL 14 / CL101 and FL 15 / CL102 values valid on a hospice claim. Mirrors `ADMISSION_TYPE_CODES` and
-// `ADMISSION_SOURCE_CODES` in @wardenx/types; this package is a dependency-free leaf, so the sets are copied.
+// `ADMISSION_SOURCE_CODES` in @chartwarden/types; this package is a dependency-free leaf, so the sets are copied.
 const ADMISSION_TYPE_CODES: readonly string[] = ["1", "2", "3", "5", "9"];
 const ADMISSION_SOURCE_CODES: readonly string[] = ["1", "2", "4", "5", "6", "8", "9"];
 

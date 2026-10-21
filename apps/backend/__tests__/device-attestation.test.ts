@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
-import { liveDeviceAttestation } from "@wardenx/auth";
-import type { DeviceAttestationPosture } from "@wardenx/types";
+import { liveDeviceAttestation } from "@chartwarden/auth";
+import type { DeviceAttestationPosture } from "@chartwarden/types";
 // apps/backend/__tests__/device-attestation.test.ts — F-030 / ADR-0023 D2 / SecHardening §12.2/§12.4.
 //
 // THE DEFECT. M3's `device_attestation_valid` predicate reads `attributes.deviceAttestation` and denies

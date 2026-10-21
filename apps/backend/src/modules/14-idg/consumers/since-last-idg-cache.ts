@@ -59,13 +59,13 @@
 // Refreshed on every write (the whole object is re-SET with a fresh TTL), matching the
 // `m9-assessment-significant-change.ts` precedent — comfortably inside D2's 15-day cadence floor with
 // room for a skipped meeting.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   PacketAssessmentChangeDigest,
   PacketHopeTriggerDigest,
   PacketMedicationChangeDigest,
   PacketOrderChangeDigest,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type Redis from "ioredis";
 
 const KEY_PREFIX = "wardenx:m14:idg:since-last-idg";

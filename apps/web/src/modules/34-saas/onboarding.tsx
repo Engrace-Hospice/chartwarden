@@ -19,7 +19,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { ONBOARDING_TASK_TONE, statusLabel } from "./saas-status";
@@ -150,7 +150,7 @@ export function Onboarding(): JSX.Element {
         >
           <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Complete each step to finish provisioning your organization. Blocked steps are surfaced
-            first; resolve them with your WardenX implementation contact. Provider entity and
+            first; resolve them with your ChartWarden implementation contact. Provider entity and
             location steps are completed in <a href="/admin/setup">Agency setup</a>.
           </p>
         </PageHeader>

@@ -1,15 +1,15 @@
-// @wardenx/fhir — SMART/OAuth scope set + subset matcher (§2.3, M28-T01).
+// @chartwarden/fhir — SMART/OAuth scope set + subset matcher (§2.3, M28-T01).
 //
 // The AUTHORITATIVE closed set of scopes a `fhir_client.allowed_scopes[]` may draw from, and the two
 // pure checks the admin onboarding route (M28-T03) and the `/oauth2/token` mint (M28-T03) run against it:
 //   - registration:  `allowed_scopes ⊆ SUPPORTED_SCOPES`, else `INVALID_SCOPE` (§2.3).
 //   - token mint:     `scopes_requested ⊆ allowed_scopes`, else `400 invalid_scope` (§2.3).
 //
-// A new scope is a CODE-LEVEL addition here (and its leaf mirror in `@wardenx/types`), never a runtime
+// A new scope is a CODE-LEVEL addition here (and its leaf mirror in `@chartwarden/types`), never a runtime
 // configuration — §2.3's single-source-of-truth rule. Phase 1 is READ-ONLY US Core R4, so every scope is
 // a `.read`; the write scopes arrive with `fhir.write` in Phase 3.
 
-import { FHIR_SUPPORTED_SCOPES, type FhirSupportedScope } from "@wardenx/types";
+import { FHIR_SUPPORTED_SCOPES, type FhirSupportedScope } from "@chartwarden/types";
 
 /** The closed set, re-exported from the leaf mirror so this module is the single import site consumers
  *  reach for. The leaf copy exists so a TypeBox validator can reference it without importing the module;

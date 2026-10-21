@@ -1,4 +1,4 @@
-// @wardenx/emar — administration-lifecycle side-effect descriptors (§2.2 D6, M13-T03).
+// @chartwarden/emar — administration-lifecycle side-effect descriptors (§2.2 D6, M13-T03).
 //
 // The M11/M12 §2.8 pattern carried forward: every transition carries an explicit, in-transaction
 // side-effect list (audit + outbox + child-row ops + the M36 typed alerts), and the COMMIT binds the
@@ -8,7 +8,7 @@
 // layer (M13-T08) executes them inside the administration write transaction (M12 `getAdministrationContext`
 // consult → five-rights → witness check → insert row → write child rows → decrement kit → audit() →
 // outbox.publish()). Keeping them as data makes the machine deterministic and unit-testable with no DB.
-import type { M13AlertPayload, M13EventName } from "@wardenx/types";
+import type { M13AlertPayload, M13EventName } from "@chartwarden/types";
 
 /** §4.9 — the discriminating `alertKind` of a typed M36 alert M13 dispatches (no outbox wire name). */
 export type M13AlertKind = M13AlertPayload["alertKind"];

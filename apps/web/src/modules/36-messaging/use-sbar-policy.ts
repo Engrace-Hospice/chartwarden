@@ -1,6 +1,6 @@
 // M36 WP 3.3 - the organization's effective SBAR policy (platform floor already applied by the server), and the flag.
-import { SBAR_SECTION_KEYS, type SbarSectionKey } from "@wardenx/types";
-import { useApiClient, useFeatureFlag } from "@wardenx/ui";
+import { SBAR_SECTION_KEYS, type SbarSectionKey } from "@chartwarden/types";
+import { useApiClient, useFeatureFlag } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import { SBAR_FLAG_KEY } from "./sbar-utils";
 

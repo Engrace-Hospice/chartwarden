@@ -7,9 +7,9 @@
 //
 // The gate read is the one nullable-by-design method: an unreadable `volunteer_compliance_gate` set is
 // `null`, which §8.7 / M15-F11 turns into `isActive: false` — a booking is denied, never waved through.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, MembershipId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, MembershipId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { DisciplinePlanAbacResolver, DisciplinePlanScopeFacts } from "./abac-predicates";
 import type { VolunteerGateFacts } from "./volunteer/index";

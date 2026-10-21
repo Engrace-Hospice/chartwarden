@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `physician_credentials_active` (physician, error, regulatory). The
+// @chartwarden/billing — §4.5 rule `physician_credentials_active` (physician, error, regulatory). The
 // attending NPI and the hospice physician NPI must be valid + active in NPPES (M40), and the required
 // state license must be unexpired across the claim's service dates. Reads the resolved `mdm` snapshot;
 // SKIPs when the M40 resolver is unbound. PURE: reads ctx only.

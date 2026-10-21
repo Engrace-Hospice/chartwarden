@@ -1,5 +1,5 @@
 // GAP-148 — the M25 provider-entity read scope is fail-closed and never client-widened.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import { providerEntityScopeCondition } from "./scope";

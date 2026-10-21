@@ -12,9 +12,9 @@
 //   • revoke   — authz.close_engagements calls it when an engagement closes/cancels, so an unconsumed link
 //                dies with its engagement.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { AuditorMagicLinkIssuer } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { AuditorMagicLinkIssuer } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, isNull, lte } from "drizzle-orm";
 
 const LINK = schema.auditorMagicLinks;

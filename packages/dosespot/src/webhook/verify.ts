@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the inbound-webhook security envelope (M12-T06, spec §2.5 / §7.4 D7). `POST
+// @chartwarden/dosespot — the inbound-webhook security envelope (M12-T06, spec §2.5 / §7.4 D7). `POST
 // /webhooks/dosespot` is the only public-internet-facing route in M12; this module is the PURE crypto core
 // the route handler (M12-T08) calls before it touches the DB. The full §7.4 envelope, in order:
 //   (1) signature — HMAC-SHA256 of the RAW body with the per-tenant `webhookSecret`, constant-time compare

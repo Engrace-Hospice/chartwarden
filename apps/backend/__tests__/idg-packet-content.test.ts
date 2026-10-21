@@ -14,8 +14,8 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type PacketBuildInput, buildPacketSnapshot } from "@wardenx/idg";
+} from "@chartwarden/auth";
+import { type PacketBuildInput, buildPacketSnapshot } from "@chartwarden/idg";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

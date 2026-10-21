@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.3 D3 verbal-order workflow + 48h timer (M11-T04). PURE, IO-free.
+// @chartwarden/orders — §2.3 D3 verbal-order workflow + 48h timer (M11-T04). PURE, IO-free.
 //
 // CMS 42 CFR 418.104(b) makes the verbal-order signature window binding: a verbal order is clinically valid
 // pending signature but MUST be signed by the named practitioner within "a reasonable amount of time" — the
@@ -12,8 +12,8 @@
 //   • `planVerbalExpiry`           — the §2.2/§2.6 expiry side-effect plan (flip both rows + audit-symmetry
 //                                    discontinuation, reason `expired_verbal`).
 // Every fact (received instant, org timezone, holiday set, `now`) is injected as data — no `Date.now()`,
-// no DB, `@wardenx/types` + the sibling pure modules only.
-import type { IsoInstant, LocalDate, VerbalOrderStatus } from "@wardenx/types";
+// no DB, `@chartwarden/types` + the sibling pure modules only.
+import type { IsoInstant, LocalDate, VerbalOrderStatus } from "@chartwarden/types";
 import type { OrderSideEffect } from "./effects";
 import { OrderStateError, require_ } from "./errors";
 import { type OrderTransition, transitionOrder } from "./order-machine";

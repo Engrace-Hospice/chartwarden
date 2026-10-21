@@ -1,4 +1,4 @@
-// @wardenx/billing — NOE schemas: route #24 `GET /noe-records` (list), #25 `GET /noe-records/:id` (detail),
+// @chartwarden/billing — NOE schemas: route #24 `GET /noe-records` (list), #25 `GET /noe-records/:id` (detail),
 // #26 `POST /noe-records/:id:submit` (READY → SUBMITTED; emits `m23.noe.submit_requested`; step-up), and
 // #27 `POST /noe-records/:id:cancel` (DRAFT/READY → CANCELLED) — §4.1 / §4.2.
 import { type Static, Type } from "@sinclair/typebox";

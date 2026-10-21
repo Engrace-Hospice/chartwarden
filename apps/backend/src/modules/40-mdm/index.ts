@@ -74,7 +74,7 @@ export { M40_OUTBOX_EVENTS } from "./events-by-m40";
 // overlay/provisional/baa rows; canonical reference entities are never touched. The §5 screens DEFER
 // — the M40 manifest has no frontend codePath (the Wave-A deferral rule: a screen needs a manifest UI
 // codePath to land), so the entity-directory / merge-console / NPPES-console screens are tracked for
-// the follow-up that adds one. Cache grammar (§4.8) + audit catalog (§8.1, `m40.*` in @wardenx/audit)
+// the follow-up that adds one. Cache grammar (§4.8) + audit catalog (§8.1, `m40.*` in @chartwarden/audit)
 // ship with this task; DR Tier 4 (directory-style reference data; NPPES is the sole external feed).
 // TASK-003/ARCH-007: `createDrizzleMdmEraseStore` is the production store the composition root
 // injects via `deps.store` (note the mdm_provisional DELETE-grant caveat in its header).
@@ -100,8 +100,8 @@ export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./m
 // reader because `external_physician` is M40's table and `arch:tables` forbids M29 reading it directly.
 export { type NppesNpiSource, createDbNppesNpiSource } from "./nppes-npi-source";
 
-import type { DbClient } from "@wardenx/db";
-import { createMdmEntityProvider } from "@wardenx/mdm";
+import type { DbClient } from "@chartwarden/db";
+import { createMdmEntityProvider } from "@chartwarden/mdm";
 import type { FastifyInstance } from "fastify";
 import { createGriefResourceStore, registerGriefResourceRoutes } from "./grief-resources";
 import {

@@ -14,7 +14,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the MAC CREDENTIALS admin (R2, §5.1
 // admin / §4.1 #34-35, §3.6). The per-ProviderEntity MAC submitter-credential surface: a selectable
 // credential rail over a per-credential detail (matrix). The `client_secret_cipher` is NEVER projected —

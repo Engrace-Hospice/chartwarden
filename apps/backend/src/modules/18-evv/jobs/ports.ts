@@ -7,7 +7,7 @@ import type {
   EvvAggregatorAdapter,
   StateAggregatorConfig,
   StateAggregatorRegistry,
-} from "@wardenx/evv-aggregators";
+} from "@chartwarden/evv-aggregators";
 
 /** Org-explicit facts about a visit's submission that live outside M18. Every method opens its own tenant scope
  * (a worker is not a request). `null` means "not available" — never a guessed value. */

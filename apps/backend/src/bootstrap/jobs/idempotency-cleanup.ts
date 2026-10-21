@@ -7,9 +7,9 @@
 // Reentrant by construction (§4.8.1: "purge is reentrant"): the DELETE is a pure predicate on `expires_at`, a
 // replayed tick or a racing replica simply matches fewer rows. Batched, so one org with a large backlog cannot
 // hold a long transaction.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { registerPlatformJob, systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { registerPlatformJob, systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { inArray, lte } from "drizzle-orm";
 

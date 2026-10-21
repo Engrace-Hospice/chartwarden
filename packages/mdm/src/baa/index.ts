@@ -1,4 +1,4 @@
-// @wardenx/mdm — the BaaStatusProvider seam: §7.7 disclosure gate (M40-T06, §4.6).
+// @chartwarden/mdm — the BaaStatusProvider seam: §7.7 disclosure gate (M40-T06, §4.6).
 // The pure as-of decision engine + the focused provider + its `BaaStore` port and in-memory slice.
 // M40 registers `createBaaStatusProvider(store)` into the M1 registry at boot; T07 supplies the
 // Drizzle-backed store.

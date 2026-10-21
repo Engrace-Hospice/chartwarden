@@ -1,4 +1,4 @@
-// @wardenx/reporting · scheduled — the scheduled-report CRON EVALUATOR (M33 §2.3 / §2.5–§2.6 / §4.8 W-R-04).
+// @chartwarden/reporting · scheduled — the scheduled-report CRON EVALUATOR (M33 §2.3 / §2.5–§2.6 / §4.8 W-R-04).
 //
 // The tick brain for the `report.scheduled_run` queue. The boot scheduler fires this every cron cadence; the
 // handler walks the ACTIVE `report_schedule` rows whose `next_run_at <= now` (the §3.4
@@ -15,7 +15,7 @@
 // import here. Cron math is the injected {@link CronSchedulePort} (the boot binds `cron-parser` over the
 // tenant TZ); the due-set + enqueue + advance are injected ports. The {@link decideScheduleFire} +
 // {@link isCadenceTooFrequent} decision cores are total functions unit-asserted independently of I/O.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /** §2.3: the minimum gap a schedule's cron must leave between successive fires (5 min). */
 export const MIN_SCHEDULE_INTERVAL_MS = 5 * 60_000;

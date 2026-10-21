@@ -13,7 +13,7 @@
 // validates in the domain: getting `kind` or the nesting wrong comes back 422 in production and would
 // pass a shallow "did we POST" check.
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

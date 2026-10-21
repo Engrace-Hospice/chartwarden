@@ -8,9 +8,9 @@
 // accountability must never stall on a flag. Each handoff has its own transaction and takes the row FOR UPDATE, so an
 // accept racing the tick serialises: the loser sees a closed or changed row. Per-handoff failures are isolated, counted,
 // and rethrown after the loop so the queue retries; only the error class name is logged (a driver error can carry data).
-import type { DbClient } from "@wardenx/db";
-import { effectiveHandoffMinutes, isPastDeadline } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { effectiveHandoffMinutes, isPastDeadline } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { HandoffPolicyStore } from "./handoff-policy-store-db";

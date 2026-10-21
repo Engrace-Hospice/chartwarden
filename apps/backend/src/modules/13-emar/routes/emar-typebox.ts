@@ -10,8 +10,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { VOID_REASON_MIN_LENGTH } from "@wardenx/emar";
-import { ValidationError } from "@wardenx/types";
+import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
+import { ValidationError } from "@chartwarden/types";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,
@@ -166,7 +166,7 @@ const DEA_SCHEDULE = Type.Union([
   Type.Literal("V"),
 ]);
 /** §2.8 D17 — the real drug content a `carry_forward` (caregiver-reported line) / `new_order` decision
- *  must supply to mint an M12 draft (mirrors `@wardenx/emar`'s `ReconciliationMedicationDetails`). Never
+ *  must supply to mint an M12 draft (mirrors `@chartwarden/emar`'s `ReconciliationMedicationDetails`). Never
  *  fabricated server-side — see `packages/emar/src/reconciliation/reconciliation.ts`'s header. */
 const RECONCILIATION_MEDICATION_DETAILS = Type.Object({
   drugName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -276,7 +276,7 @@ export const DeploymentQuerySchema = Type.Object({
 // tier, and the §2.9 BCMA match result.
 const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
 
-// §3.2 pgEnum value mirrors (kept in lock-step with `@wardenx/types` / `@wardenx/emar`).
+// §3.2 pgEnum value mirrors (kept in lock-step with `@chartwarden/types` / `@chartwarden/emar`).
 const ADMINISTRATION_STATUS = lit([
   "committed",
   "pending_caregiver_review",

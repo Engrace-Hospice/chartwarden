@@ -12,7 +12,7 @@ import {
   type HospiceCoverage,
   type SupplyRequestKind,
   assertCoverageDetermination,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { SupplyStateError } from "./errors";
 
 /** The kinds a hospice coverage determination applies to. */

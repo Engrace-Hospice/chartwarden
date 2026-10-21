@@ -1,4 +1,4 @@
-// @wardenx/auth · permissions catalog (M3 — Authorization, M3-T01; spec §3.3).
+// @chartwarden/auth · permissions catalog (M3 — Authorization, M3-T01; spec §3.3).
 //
 // The permission catalog is **code** — the single source of truth — and a read-only
 // `permission` DB table mirrors it for admin-UI listing and `role_permission` FKs

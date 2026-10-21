@@ -7,7 +7,7 @@
 // a long string refuses the call, because the chart context is the one channel where a caller could hand
 // a vendor PHI the prompt itself does not need. (The document text DocLens sends IS the prompt — that is
 // the capability; the chart context around it carries ids and counts only.)
-import type { AiPhiMinimizationVerdict } from "@wardenx/ai-platform";
+import type { AiPhiMinimizationVerdict } from "@chartwarden/ai-platform";
 import { type AiChartContextValidator, createDenyingAiChartContextValidator } from "./service";
 
 const RULES: Readonly<Record<string, ReadonlySet<string>>> = {

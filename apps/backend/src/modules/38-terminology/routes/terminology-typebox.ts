@@ -12,7 +12,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { CODE_SYSTEM_IDS } from "@wardenx/terminology";
+import { CODE_SYSTEM_IDS } from "@chartwarden/terminology";
 import type {
   CodeSystemId,
   DeprecationMappingResponse as ServiceDeprecationMapping,
@@ -20,8 +20,8 @@ import type {
   MembershipResult as ServiceMembershipResult,
   ResolvedConcept as ServiceResolvedConcept,
   ValidateResult as ServiceValidateResult,
-} from "@wardenx/terminology";
-import { ValidationError } from "@wardenx/types";
+} from "@chartwarden/terminology";
+import { ValidationError } from "@chartwarden/types";
 import type {
   LicenseAttestationEntry as StoreAttestationEntry,
   TerminologyLoadHistoryEntry as StoreLoadHistoryEntry,

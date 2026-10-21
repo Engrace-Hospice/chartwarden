@@ -5,7 +5,7 @@
 //     encounter date) or "Write attestation" (≥ 100 characters).
 // Kit fields + Button only; the server enforces every rule — the client only shapes the request and
 // explains a refusal.
-import { Button, LoadingSpinner, SelectField, TextAreaField, TextField } from "@wardenx/ui";
+import { Button, LoadingSpinner, SelectField, TextAreaField, TextField } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { stateLabel } from "./admission-status";

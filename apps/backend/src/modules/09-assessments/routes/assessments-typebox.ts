@@ -8,12 +8,12 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
-import { SCALE_TYPES } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
+import { SCALE_TYPES } from "@chartwarden/types";
 import type {
   ScaleDelta as ServiceScaleDelta,
   ScaleSeries as ServiceScaleSeries,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   AssessmentDetailView as ServiceAssessmentDetailView,
   AssessmentView as ServiceAssessmentView,
@@ -35,7 +35,7 @@ if (!FormatRegistry.Has("date")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-/** The canonical scale-type union, mirrored from @wardenx/types `SCALE_TYPES` (single source). */
+/** The canonical scale-type union, mirrored from @chartwarden/types `SCALE_TYPES` (single source). */
 const SCALE_TYPE = lit(SCALE_TYPES);
 
 // ── Path params (slice ids are uuid-shaped; cross-module ids are validated uuids per §4.3) ────────────

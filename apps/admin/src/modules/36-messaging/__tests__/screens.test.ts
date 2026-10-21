@@ -1,4 +1,4 @@
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { type IntegrityEvent, summariseIntegrity } from "../integrity-status";
 import { messagingAdminScreens } from "../screens";

@@ -9,12 +9,12 @@ import {
   type BereavementExternalGateOverride,
   evaluateExternalSourceGate,
   isOutreachDueAtWithinCeiling,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavementExternalSourceMetadata,
   BereavementOutreachKind,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { BereavementStateError, require_ } from "./errors";
 
 /**
@@ -68,7 +68,7 @@ export function checkOutreachKindAllowed(
 
 /**
  * §2.5 / §4.3.2 / D18 — the counselor first-contact gate for an external-source plan. The DECISION is pure
- * policy in `@wardenx/bereavement`; this wrapper turns a denial into the §4.3.2 409 with the spec's exact
+ * policy in `@chartwarden/bereavement`; this wrapper turns a denial into the §4.3.2 409 with the spec's exact
  * machine-readable code. An internal-clinician-recorded death (`externalSource === null`) is never gated.
  */
 export function checkExternalSourceFirstContactGate(

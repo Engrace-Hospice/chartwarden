@@ -11,7 +11,7 @@
 // is UNIQUE on (organization_id, correlation_id), so a redelivery never pages twice. The payload carries ids and
 // figures only (the patient is an id pointer; the display name is resolved per recipient at render). A malformed
 // event, or a scope/band pair with no alert kind, THROWS (retry -> DLQ), never a silently dropped alert.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

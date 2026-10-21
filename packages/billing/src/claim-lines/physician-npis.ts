@@ -1,4 +1,4 @@
-// @wardenx/billing — the physician NPIs an 837I carries (UB-04 FL 76 attending, FL 78 certifying; CGS/FISS
+// @chartwarden/billing — the physician NPIs an 837I carries (UB-04 FL 76 attending, FL 78 certifying; CGS/FISS
 // "Hospice Medicare Billing Codes Sheet", footnote 6: the certifying physician is only completed when different
 // from the attending). Provider identifiers, not patient data. An unresolved or malformed NPI is `null`, never a
 // guess. PURE.

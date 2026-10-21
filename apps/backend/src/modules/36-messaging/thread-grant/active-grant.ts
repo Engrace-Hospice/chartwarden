@@ -1,8 +1,8 @@
 // M36 ADR-0085 (PROPOSED), slice G1 - "does this user hold a LIVE thread grant for this request?". Not wired anywhere until G2.
 // Per-tenant duration (`thread_access_grant_hours`, ADR-0085 decision 5) is NOT built: the home is the M1 organization-settings
 // registry (packages/db/src/organization-settings, one `settings-by-m36.ts` contribution beside settings-by-m3.ts); the bounds are open (Q2).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 const G = schema.messageThreadAccessGrants;

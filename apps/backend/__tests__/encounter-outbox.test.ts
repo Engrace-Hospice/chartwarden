@@ -5,7 +5,7 @@
 // decision core (idempotent skip, active-service guard, the seed happy path), and asserts the
 // `EvvBracketResolver` forward seam is registered fail-closed (denies until M18 lands in Wave F).
 import { Value } from "@sinclair/typebox/value";
-import { M8_EVENT_NAMES } from "@wardenx/types";
+import { M8_EVENT_NAMES } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {

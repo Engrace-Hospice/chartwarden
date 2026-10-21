@@ -1,4 +1,4 @@
-import { hasOrgWideScope } from "@wardenx/auth";
+import { hasOrgWideScope } from "@chartwarden/auth";
 // apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts — the Drizzle-backed
 // M15 WRITE service (§4.1 routes 6–18, 20–22, 24).
 //
@@ -13,9 +13,9 @@ import { hasOrgWideScope } from "@wardenx/auth";
 // `corrective_actions`, `discontinuation_reason`, `amendment_reason`, `revoked_reason`, `notes`,
 // `spiritual_care_declined`, the assessment `data` payload) are scrubbed at the trigger, which is why they
 // may be written here in full.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import type {
   DisciplineAssessmentKind,
   DisciplineAuthorRole,
@@ -26,7 +26,7 @@ import type {
   IsoInstant,
   MembershipId,
   VolunteerGateKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import {

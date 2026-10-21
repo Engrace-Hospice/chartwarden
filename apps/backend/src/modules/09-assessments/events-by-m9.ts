@@ -5,7 +5,7 @@
 // module ids). The named cross-module consumers (M7/M11/M14/M22/M28/M30/M33/M36) subscribe when they
 // land / are wired; M9 publishes the events now.
 //
-// The event NAMES mirror `M9_EVENT_NAMES` in @wardenx/types (the closed set the record path + the §4.8
+// The event NAMES mirror `M9_EVENT_NAMES` in @chartwarden/types (the closed set the record path + the §4.8
 // escalation/license workers may emit); this file adds the TypeBox `payloadSchema` + declared consumers
 // the dispatcher validates each publish against (§2.4 catalog). `m9.assessment.significant_change` is
 // the threshold-crossing trigger M36 fans out to the care-team channel + clinical-supervisor inbox
@@ -16,10 +16,10 @@
 // (`m9.assessment.recorded`, `m9.assessment.significant_change`) which M36/Socket.IO also pushes to the
 // patient room for the live chart refresh / alert banner (§4.4 table).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** A scale-type token (mirrors `scale_type`, §3.2) — kept as a constrained string so the catalog stays
- * decoupled from the per-scale discriminated union (§4.3 lives in @wardenx/assessments). */
+ * decoupled from the per-scale discriminated union (§4.3 lives in @chartwarden/assessments). */
 const scaleType = Type.String({ minLength: 1 });
 /** The §2.4 significant-change rule id (mirrors `significant_change_rule_id`, §3.2). */
 const ruleId = Type.String({ minLength: 1 });

@@ -1,11 +1,11 @@
-// @wardenx/assessments — SCALE_CATALOG: per-scale metadata (§3.1, §5.2 families, D3 licensing).
+// @chartwarden/assessments — SCALE_CATALOG: per-scale metadata (§3.1, §5.2 families, D3 licensing).
 //
 // The single source the record-modal scale picker (T07), the timeline color families (§5.2), and the
 // license-gate (D3) read. Per-scale SCORING/eligibility/thresholds live in `scales/<scale>/` (M9-T03);
 // this catalog is metadata only (pure data, no scoring) so it ships type-clean at T01.
 
-import { LICENSED_SCALE_TYPES, SCALE_TYPES } from "@wardenx/types";
-import type { LicensedScaleType, ScaleType } from "@wardenx/types";
+import { LICENSED_SCALE_TYPES, SCALE_TYPES } from "@chartwarden/types";
+import type { LicensedScaleType, ScaleType } from "@chartwarden/types";
 
 /** The §5.2 summary/timeline color family a scale belongs to (Performance / Symptoms / Risk / Cognitive). */
 export type ScaleFamily = "performance" | "symptoms" | "risk" | "cognitive";

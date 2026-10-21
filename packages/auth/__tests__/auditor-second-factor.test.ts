@@ -56,7 +56,7 @@ describe("createTotpEnrolment", () => {
     expect(parsed.protocol).toBe("otpauth:");
     expect(decodeURIComponent(parsed.pathname)).toContain("ada@survey.test");
     expect(parsed.searchParams.get("secret")).toBe(manualKey);
-    expect(parsed.searchParams.get("issuer")).toBe("WardenX");
+    expect(parsed.searchParams.get("issuer")).toBe("ChartWarden");
   });
 
   it("is a different secret every time", async () => {

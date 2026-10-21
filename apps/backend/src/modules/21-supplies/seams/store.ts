@@ -36,7 +36,7 @@ import type {
   RoutingRuleResolved,
   SupplyRequestId,
   SupplyRequestStatusView,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The per-kind cent totals + request counts the two `SupplyCostProvider` summaries divide nothing by. */
 export interface SupplyCostTotals {

@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — F-238 ICD-10-CM coding: the code scanner (codes come from the page, never the
+// @chartwarden/intake-extraction — F-238 ICD-10-CM coding: the code scanner (codes come from the page, never the
 // model) and the deterministic coding checks, over a terminology port the backend implements on M38.
 export {
   type CodeToken,

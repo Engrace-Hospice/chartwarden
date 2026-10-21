@@ -13,7 +13,7 @@ The hub plan (`03-phases-0-to-3.md`, WP 3.6) wants an IDG-linked patient discuss
 
 Facts that shape the design:
 
-- Meeting state is M14's. M36 depends on modules 1 to 4 only (`architecture/module-manifest.ts`); M14 depends on M36, not the reverse. M36 reaches M14 only through `@wardenx/types` seams and the outbox.
+- Meeting state is M14's. M36 depends on modules 1 to 4 only (`architecture/module-manifest.ts`); M14 depends on M36, not the reverse. M36 reaches M14 only through `@chartwarden/types` seams and the outbox.
 - M14 exposes read-only seams (`IdgScheduleProvider`, `IdgDecisionProvider`, `IdgPacketProvider`). None answers "which patients are on meeting M". The only patient-side listing is the route `GET /api/v1/patients/:patientId/idg-history`, which returns the meetings the patient has a packet in.
 - `idg.decision_recorded` is the command seam that M7, M11, M12, M15 and M16 consume to apply plan changes. M36 must never name it.
 - WP 3.2 already provides the `idg_meeting` clinical link (write needs `idg.read` plus the meeting scope) and a resolve route that returns the live status and time of the meeting or "unavailable".
@@ -78,7 +78,7 @@ Errors are typed (`arch:error-envelope`) and no request header is read.
 
 The acceptance line is proved two ways:
 
-- **Static test** (`m36-idg-no-foreign-writes.test.ts`): code under the IDG directory, the IDG route and the IDG web files import no other module (not `14-idg`, `@wardenx/idg` or M7), contain no insert, update or delete, call no `getSeam`, and use only `client.GET` on the web; no file under the M36 module or the messaging package contains the literal `idg.decision_recorded`, and no publish call names an `m14.`, `m7.` or `idg.` event; the manifest entry for module 36 lists neither 7 nor 14 in `dependsOn`.
+- **Static test** (`m36-idg-no-foreign-writes.test.ts`): code under the IDG directory, the IDG route and the IDG web files import no other module (not `14-idg`, `@chartwarden/idg` or M7), contain no insert, update or delete, call no `getSeam`, and use only `client.GET` on the web; no file under the M36 module or the messaging package contains the literal `idg.decision_recorded`, and no publish call names an `m14.`, `m7.` or `idg.` event; the manifest entry for module 36 lists neither 7 nor 14 in `dependsOn`.
 - **Live acceptance** (`m36-idg-coordination.live.test.ts`, the real `wardenx_app` role, the real catalog-validating publisher, a private container): Workflow C end to end (a live meeting with a packet, a root linking it, a reply from another care-team member, the reply converted to a task and completed, and, if 3.7 provides the M14 target, a promotion request). Before and after: the meeting row is byte-identical, the decision, action-item and agenda counts are unchanged, the care-plan rows are unchanged, and no new outbox row has an `m14.`, `idg.` or `m7.` event type. It also proves that the list returns roots only, the read audit lands, a non-member and a Part 2 refusal get the pins answer, and flag off gives `enabled:false`.
 - Route unit tests with a fake store: flag combinations, a non-care-team channel, limit bounds, guard order, the audit configuration, and no header read.
 - Fitness: `arch:adr-docs`, `arch:architecture-docs`, `arch:module-docs`, `arch:route-reachability`, `arch:error-envelope`, `arch:openapi-coverage`, `arch:live-suites`, `arch:fitness`.

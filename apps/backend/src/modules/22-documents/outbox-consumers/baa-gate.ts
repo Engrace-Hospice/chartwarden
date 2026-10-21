@@ -4,7 +4,7 @@
 // (a partner lab feed, a referral source, a payer, …), M22's signed-URL service consults M40's REAL
 // `BaaStatusProvider` seam with `asOf: new Date()` (the §7.10 time-travel guarantee: a BAA active when the
 // job was queued but expired at transmit-time gates CLOSED). M22 `dependsOn` is `[1, 5]` — it does NOT depend
-// on M40, so it MUST NOT import `@wardenx/mdm` (that would create a dependency-cruiser edge). It resolves the
+// on M40, so it MUST NOT import `@chartwarden/mdm` (that would create a dependency-cruiser edge). It resolves the
 // already-registered real seam OPAQUELY via `getSeam("BaaStatusProvider")` and casts to the locally-declared
 // structural minimum {@link BaaStatusProviderPort} (only the `baaStatusByMdmEntity` arm M22 needs).
 //
@@ -15,7 +15,7 @@ import { getSeam } from "../../../bootstrap/index";
 import type { ExternalRecipientRef } from "./decide-document-request";
 
 /** The M22-side structural projection of M40's `BaaStatusProvider.baaStatusByMdmEntity` (the only arm M22
- * consumes). The real contract lives in @wardenx/mdm; M22 reads it opaquely from the M1 registry. */
+ * consumes). The real contract lives in @chartwarden/mdm; M22 reads it opaquely from the M1 registry. */
 export interface BaaStatusProviderPort {
   baaStatusByMdmEntity(input: {
     orgId: string;

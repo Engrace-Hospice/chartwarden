@@ -3,7 +3,7 @@
 // consumer's execution of every {@link decideDocumentRequest} outcome. No DB — the seam store and the
 // renderer are the in-memory slices; the live end-to-end proof over real Postgres + the real dispatcher is
 // ./gap-023-024-038-render-handshake.live.test.ts.
-import { buildAppealPacketRenderPayload } from "@wardenx/types";
+import { buildAppealPacketRenderPayload } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";

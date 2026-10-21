@@ -18,7 +18,7 @@
 //
 // Runs on the cron's org-scoped tx (system actor, `source = 'watchdog'`, no membership). Payloads carry ids, type and
 // the deadline only.
-import { repositories } from "@wardenx/billing";
+import { repositories } from "@chartwarden/billing";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 /** Priority 1 (high): a notice already in its filing window outranks routine claim work. */

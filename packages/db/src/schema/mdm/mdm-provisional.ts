@@ -1,4 +1,4 @@
-// @wardenx/db — `mdm_provisional` (M40 MDM §3.5, §2.4.3). A tenant-proposed entity with no
+// @chartwarden/db — `mdm_provisional` (M40 MDM §3.5, §2.4.3). A tenant-proposed entity with no
 // identifier match yet — staged here, ORG-SCOPED, until an admin promotes it to a canonical
 // row or merges/rejects it (§2.4.3 lifecycle). Provisional is the one cross-cutting workflow
 // table that IS org-scoped by design (§2.5 NOT NULL): only canonical is org-less. The

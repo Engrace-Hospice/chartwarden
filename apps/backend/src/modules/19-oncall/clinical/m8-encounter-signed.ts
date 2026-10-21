@@ -25,7 +25,7 @@ import type {
   OrgId,
   PatientId,
   TriageCallId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type TriageCallFacts,
   type TriageCallTransition,

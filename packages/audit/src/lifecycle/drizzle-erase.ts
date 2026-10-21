@@ -1,4 +1,4 @@
-// @wardenx/audit — the PRODUCTION `performErasure` executor (M4 spec §6, §10.5; TASK-003
+// @chartwarden/audit — the PRODUCTION `performErasure` executor (M4 spec §6, §10.5; TASK-003
 // follow-up): the actual row destruction behind `eraseAuditRows`. It lives HERE because
 // `audit_event` is HELPER-ONLY (manifest HELPER_ONLY_TABLES) — packages/audit is the only
 // sanctioned code allowed to touch the table — and because the tenant role cannot do this at all:
@@ -30,8 +30,8 @@
 //     groups by selector) is bypassed or stale; the database trigger on `audit_event` is the second backstop.
 // The returned count is rows ACTUALLY destroyed (`.returning()` length) — never the requested
 // group size — so a certificate line can only certify what left the database.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import type { EraseInput, EraserPorts } from "./eraser";
 import { rowHeldByActiveLegalHold } from "./hold-overlay";

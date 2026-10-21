@@ -1,4 +1,4 @@
-// @wardenx/fhir — Patient mapper (us-core-patient, M5, M28-T04).
+// @chartwarden/fhir — Patient mapper (us-core-patient, M5, M28-T04).
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { FhirAddress, FhirContactPoint, FhirIdentifier, Patient } from "../types";

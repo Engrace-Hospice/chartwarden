@@ -21,8 +21,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { createDbClient } from "@chartwarden/db";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

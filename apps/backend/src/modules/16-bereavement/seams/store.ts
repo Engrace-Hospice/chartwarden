@@ -1,4 +1,4 @@
-import type { BereavementAugmentationColumns } from "@wardenx/bereavement";
+import type { BereavementAugmentationColumns } from "@chartwarden/bereavement";
 // apps/backend/src/modules/16-bereavement/seams/store.ts — M16-T05, the data PORT the seven §4.6 published
 // seams compose over, plus an in-memory slice for tests / boot-without-DB. The providers (./providers.ts) are
 // pure orchestration over this port; production injects a Drizzle-backed store reading M16's
@@ -10,7 +10,7 @@ import type { BereavementAugmentationColumns } from "@wardenx/bereavement";
 //
 //   • the port returns plan FACTS, not a `BereavementPlanView` — `windowEndsAt` is D4 arithmetic
 //     (`death_date + 396 days`), and a SQL adapter that computed it would be a second implementation of the
-//     13-month clock. `@wardenx/bereavement`'s `bereavementWindowEnd` is the only one; the provider projects.
+//     13-month clock. `@chartwarden/bereavement`'s `bereavementWindowEnd` is the only one; the provider projects.
 //   • the port returns the CoP numerator/denominator pair, never a rate — M30's CMS small-N suppression needs
 //     the denominator itself, and a store that pre-divided would strand it (the M15-T05 / M30 measure-input
 //     lesson, now written into the `BereavementCopComplianceCounts` contract itself).
@@ -51,7 +51,7 @@ import type {
   MembershipId,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The `bereavement_plan` columns every plan-shaped seam read projects from. Deliberately the ROW, not the

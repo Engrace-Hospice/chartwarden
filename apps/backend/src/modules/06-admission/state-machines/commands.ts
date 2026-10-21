@@ -6,7 +6,7 @@
 // election period, end the LCP, the `m6.*` outbox fan-out) the service runs in one transaction. The
 // admission-status flip itself is driven by `transitionAdmission(executeDischarge)` (§2.3.1) — these
 // commands describe the period/LCP/outbox cascade that rides the same transaction.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import type { SideEffect } from "./effects";
 import { require_ } from "./errors";
 import { checkDeathCertifier, daysBetween } from "./validation";

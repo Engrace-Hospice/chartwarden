@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T07, §2.3 D3. RN-coverage break-glass override semantics. A break-glass key
+// @chartwarden/inpatient — M37-T07, §2.3 D3. RN-coverage break-glass override semantics. A break-glass key
 // (`m37.rn_coverage.break_glass`, Org Admin / Compliance Officer / Medical Director only) admits a temporary
 // override window so care can proceed while coverage is restored; the override MUST be ended by a
 // non-break-glass actor, and it lapses automatically after the max window. Pure & IO-free; the M4

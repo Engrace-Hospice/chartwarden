@@ -18,9 +18,9 @@
 // NO AUTO-ESCALATE. The spec's "alert / auto-escalate" is read as the alert: an escalation row needs a named
 // recipient (§3.3 CHECK) and a system actor has no caller to fall back on, so inventing one would page the
 // wrong person. The `sla_breach` escalation trigger stays reserved for a human or a future ladder resolver.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import {
   NOT_YET_PAGED_THIS_WAIT,

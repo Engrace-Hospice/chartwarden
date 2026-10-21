@@ -2,14 +2,14 @@ import {
   type StoredConsent,
   createConsentEvaluator,
   createInMemoryConsentStore,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 // apps/backend/__tests__/consent-events.test.ts — M39-T08 outbox/alerts/consumers (§4.5/§4.6/§4.10).
 //
 // Covers: (1) the M5 privacy-flag-snapshot recompute integration — M39's signed/revoked Part 2
 // events drive M5's `applyConsentChanged` (the consumer M5 shipped inert in M5-T10), proving the
 // cross-module SUD chain end-to-end; (2) the §4.10 alert payloads validate against M36's Foundation
 // registry (collision-free, well-namespaced under m39.); (3) the D13 post-death expiry decision.
-import { createAlertPayloadRegistry } from "@wardenx/messaging";
+import { createAlertPayloadRegistry } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 // M5's privacy-flag recompute consumer + the §7.6 SUD read gate (M5-T10; inert until M39 — wired here).
 import {

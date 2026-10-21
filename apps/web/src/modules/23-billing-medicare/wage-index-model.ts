@@ -2,7 +2,7 @@
 // shapes (aliases into the generated client, never hand-copied), the client-side mirrors of the server's field
 // patterns (so a malformed value is explained before it is sent, never instead of the server's check), and the
 // standard error envelope → copy mapping.
-import type { operations } from "@wardenx/ui";
+import type { operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Ok200<Op> = Op extends { responses: { 200: infer R } } ? Json<R> : never;

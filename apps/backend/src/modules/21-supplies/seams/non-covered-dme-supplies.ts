@@ -13,9 +13,9 @@
 // `returned` (equipment left the home). `completed` STAYS listed: a delivered rental bed is still in the
 // home and still not covered. Only the `dme` / `supply` kinds can be not covered (CHECK
 // `m21_supply_request_coverage_kind`), so no kind filter is needed beyond the coverage predicate.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { NonCoveredItemSnapshot, NonCoveredItemsReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { NonCoveredItemSnapshot, NonCoveredItemsReader } from "@chartwarden/types";
 import { and, asc, eq, inArray, ne, notInArray } from "drizzle-orm";
 
 const REQUEST = schema.supplyRequest;

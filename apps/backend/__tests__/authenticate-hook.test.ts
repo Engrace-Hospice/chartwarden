@@ -2,7 +2,7 @@
 // Unit-tests the authenticate hook factory with a stub snapshot reader + stub SessionContextResolver
 // (no better-auth / no DB). The real session read + DB-backed resolver are verified in the AUTH-T06
 // live-PG lane; the DB-backed SessionContextStore reconciliation lands in AUTH-T05.
-import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
+import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";

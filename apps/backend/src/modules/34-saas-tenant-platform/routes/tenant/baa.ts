@@ -8,7 +8,7 @@
 // `tenant_platform_baa_compliance_officer` on ATTEST (actor holds the tenant's compliance_officer role);
 // ATTEST carries `passkey_recent_5min` step-up (§6/D10). The BAA register read surface is auditRead-declared
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";

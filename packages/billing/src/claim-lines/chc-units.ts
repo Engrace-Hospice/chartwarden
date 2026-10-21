@@ -1,4 +1,4 @@
-// @wardenx/billing — continuous home care (revenue code 0652) line units. CMS Pub. 100-04 ch. 11 §30.3: "report
+// @chartwarden/billing — continuous home care (revenue code 0652) line units. CMS Pub. 100-04 ch. 11 §30.3: "report
 // a separately dated line item for each day that continuous home care is provided, reporting the number of
 // hours, or parts of hours rounded to 15-minute increments"; units for 0652 are 15-minute increments (payment
 // needs 32 or more units in the day). The HIPPS calculator prices a CHC day as hours x the wage-adjusted HOURLY

@@ -1,7 +1,7 @@
 // apps/web/src/modules/06-admission — shared admission-domain status presentation helpers (R1, Lantern).
 // The admission, referral, and compliance-window state enums each map to the §6.6 badge taxonomy tone
 // so every M6 surface renders the same StatusPill for a given state.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // Admission lifecycle (M6 §5.2) → tone. Real DB enum (packages/db/src/schema/admission/admissions.ts):
 // referred, pending, notice_of_rights_acknowledged, active, on_hold, discharged, bereavement, closed.

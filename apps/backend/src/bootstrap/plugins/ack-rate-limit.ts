@@ -4,7 +4,7 @@
 // bucket FAILS CLOSED (a store outage is a 503, never an unlimited request). There is NO replay exemption: a repeat is cheap and a
 // refused request must still pay. PROVISIONAL numbers, pending the clinical lead. Acknowledge and resolve notify nobody and are
 // not limited.
-import { DegradedError, RateLimitedError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, RateLimitedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RateLimitStore } from "./rate-limit-store";
 import { type RouteRateLimit, createRouteRateLimit } from "./route-rate-limit";

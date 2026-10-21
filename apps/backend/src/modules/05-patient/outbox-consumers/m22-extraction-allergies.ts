@@ -17,8 +17,8 @@
 //
 // FAIL DIRECTIONS (the F-235 consumer's): malformed / cross-tenant / wrong-target payload, unknown patient,
 // or a MERGED patient THROW (retry → DLQ). ONE TRANSACTION with the reply.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ClinicalDraftCreatedFromExtractionPayload,
   type DocLensClinicalLineOutcome,
@@ -27,7 +27,7 @@ import {
   M22_EXTRACTION_ALLERGIES_REQUESTED_EVENT,
   doclensClinicalLineKey,
   parseDocLensClinicalCommit,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";
 

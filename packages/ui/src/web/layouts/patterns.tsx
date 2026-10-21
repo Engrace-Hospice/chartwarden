@@ -1,4 +1,4 @@
-// @wardenx/ui — foundational Tier-2 pattern layouts (F0-T04, ADR-0030).
+// @chartwarden/ui — foundational Tier-2 pattern layouts (F0-T04, ADR-0030).
 // Slot-based compositions of the Tier-1 regions (regions.tsx), one per foundational pattern in
 // WARDENX_UI_LAYOUT_PATTERNS.md with a near-term consumer. A screen "Use <Pattern>." renders the
 // matching layout and fills the slots. Domain/surface-specific patterns (MAR Grid, Bed Board,

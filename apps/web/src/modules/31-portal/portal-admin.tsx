@@ -6,7 +6,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/31-portal - M31 staff portal-admin pane (GAP-054, spec section 5.3): the roster of portal
 // accounts with suspend / reinstate, over GET /api/v1/admin/portal-accounts and the two step-up POSTs. A
 // suspend or reinstate carries the operator's reason (sealed server-side, never shown back) and rides the

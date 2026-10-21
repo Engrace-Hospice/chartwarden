@@ -12,7 +12,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   FeatureFlagView as ServiceFeatureFlagView,
@@ -40,7 +40,7 @@ if (!FormatRegistry.Has("email")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// §3.3 vocab mirrors (string-literal unions; the canonical types live in the seam / @wardenx/types).
+// §3.3 vocab mirrors (string-literal unions; the canonical types live in the seam / @chartwarden/types).
 // 'destroyed' is intentionally absent from the route-settable set (§4.2 — only the shred worker reaches it).
 const SETTABLE_STATUS = [
   "provisioning",
@@ -57,7 +57,7 @@ const SETTABLE_STATUS = [
 const PLAN_LABEL = ["starter", "standard", "enterprise"] as const;
 const EXPORT_PURPOSE = ["baa_termination", "migration"] as const;
 
-// §3.6/§3.8/§3.9 + M1 feature_flag vocab mirrors (the canonical enums live in @wardenx/db; M34 never
+// §3.6/§3.8/§3.9 + M1 feature_flag vocab mirrors (the canonical enums live in @chartwarden/db; M34 never
 // imports the M1 flag schema — these literal unions are local mirrors so no flag-schema edge is created).
 const SUPPORT_SESSION_STATUS = ["open", "expired", "closed"] as const;
 const SIGNUP_INTENT_STATUS = ["new", "qualified", "provisioned", "abandoned", "rejected"] as const;

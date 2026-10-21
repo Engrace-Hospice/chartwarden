@@ -1,4 +1,4 @@
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 // apps/admin/src/modules/23-billing-medicare — the M23 platform-admin screen registry (the same guard the M35 admin
 // slice carries): the screen binds a component, and its `requiredPermission` is a REAL packages/auth key — the one

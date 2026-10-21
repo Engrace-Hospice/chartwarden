@@ -1,4 +1,4 @@
-// @wardenx/cost-report · repositories barrel (M27 §3.3).
+// @chartwarden/cost-report · repositories barrel (M27 §3.3).
 //
 // Twelve Drizzle data ports over the fourteen M27-owned tables. Each repo is a thin reader/writer that
 // takes the Drizzle client (`CostReportDb` — the pooled client or a `withOrgContext` transaction handle)

@@ -21,9 +21,9 @@
 // WHAT IS BOUND HERE: the reader (every consumer), plus `list`, `upsert` and `setKillSwitch` on the admin
 // seam. `setKillSwitch` is the audited §4.7 emergency control: it needs the platform-context + outbox +
 // alert + audit ports (`FeatureFlagKillSwitchPorts`) and refuses (501) on a boot that has none.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, or } from "drizzle-orm";
 
 /** Reader port over `feature_flag` — the resolved boolean map for one org. M1 owns this shape; M22/M38/

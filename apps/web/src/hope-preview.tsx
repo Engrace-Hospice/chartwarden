@@ -1,7 +1,7 @@
 // Dev-only visual harness (mock ApiClient, no backend) for the HOPE workspace. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /hope-preview.html.
 import "@fontsource-variable/inter";
 import "./index.css";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { HopeAssessmentDetail } from "./modules/10-hope/hope-assessment-detail";

@@ -20,7 +20,7 @@
 // Whichever event arrives first opens the call; the second coalesces into it and says so.
 //
 // PHASE-1 PURE DECISION CORE (the M21-T04 shape) — payload type + decider; the live binding is M19-T07's.
-import type { IsoInstant, M19SubscribedEventName, OrgId } from "@wardenx/types";
+import type { IsoInstant, M19SubscribedEventName, OrgId } from "@chartwarden/types";
 import {
   type InboundTriggerAction,
   type InboundTriggerFacts,

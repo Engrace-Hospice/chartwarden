@@ -15,8 +15,8 @@
 //
 // The consumed event name is a STRING literal and no M15 schema is imported: M14 reads M15 solely through the
 // outbox, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 

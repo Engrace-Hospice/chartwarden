@@ -25,8 +25,8 @@ import {
   PLATFORM_DEFAULT_ALERT_RULES,
   createAlertEmitter,
   toNewAlertRuleRows,
-} from "@wardenx/messaging";
-import { REMINDER_MAX_PENDING, SNOOZE_REMINDER_FLAG_KEY } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { REMINDER_MAX_PENDING, SNOOZE_REMINDER_FLAG_KEY } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";

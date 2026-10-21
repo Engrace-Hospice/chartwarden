@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 measure-calculator subtree barrel (§3.1). Pure domain — no IO.
+// @chartwarden/quality — M30 measure-calculator subtree barrel (§3.1). Pure domain — no IO.
 //
 // The public surface of `measures/**`: the shared result/input kernel, the per-FY period boundaries +
 // period math, the measure registry/catalog, and the four calculator families (HCI, HVLDL, HOPE-derived,

@@ -91,7 +91,7 @@ This roadmap stops at implementation planning. No production code was changed du
 
 - Objective: Make launch workflows coherent, accessible, responsive, and visually reviewed.
 - Findings addressed: UI-001, UI-002, PERF-001.
-- Exact files/modules: `@wardenx/ui`, MAC drawer, screen lock, launch-critical frame registry, Vite configs.
+- Exact files/modules: `@chartwarden/ui`, MAC drawer, screen lock, launch-critical frame registry, Vite configs.
 - Dependencies: Stable workflow/data contracts.
 - Risks: Broad styling changes can regress dense clinical workflows; use incremental screen acceptance.
 - Tests required: Axe, keyboard/focus, 200% zoom, desktop/mobile screenshots, bundle budgets.

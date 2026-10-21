@@ -7,7 +7,7 @@
 // M36 alert). Routes gate on the §4.5 keys + the §4.6 ABAC predicate `onboarding_task_assignee_or_owner`
 // (the task's assignee OR org_admin). No step-up on this surface (§6/D10). The read surface is
 // auditRead-declared in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";

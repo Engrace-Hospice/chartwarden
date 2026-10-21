@@ -3,7 +3,7 @@
 // failed request — so it reflects "this device has no connection" rather than "one call 503'd".
 // Mounted once at the very top of AppShell (outside routing/session) so it's visible no matter what
 // screen is rendered underneath, including the chromeless auth flow and the system pages.
-import { t, webCapabilityPorts } from "@wardenx/ui";
+import { t, webCapabilityPorts } from "@chartwarden/ui";
 import { useSyncExternalStore } from "react";
 import type { JSX } from "react";
 

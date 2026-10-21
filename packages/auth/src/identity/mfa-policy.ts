@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the server-side MFA matrix (M2 §2.3 "MFA required", Security Hardening §5.1.2,
+// @chartwarden/auth · identity — the server-side MFA matrix (M2 §2.3 "MFA required", Security Hardening §5.1.2,
 // HIPAA 164.312(d); GAP-003 / GAP-005).
 //
 // WHAT WAS MISSING. Better Auth's `twoFactor()` plugin only CHALLENGES a user who has already enrolled; nothing

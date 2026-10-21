@@ -23,7 +23,7 @@ import type {
   MembershipId,
   PatientId,
   VisitId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── The visit-published payload M8 consumes (M17 owns the canonical wire shape) ───────────────────────
 

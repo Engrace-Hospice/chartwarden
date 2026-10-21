@@ -10,7 +10,7 @@
 //   3. In production NO feed — outbound sender (F-181) or inbound listener (F-182) — may be `mllp_plain`
 //      (cleartext PHI): refused on create AND on activate (a feed created before a deployment became production
 //      must not be activatable). The inbound listener repeats the check at bind time (`listener/protocol-policy`).
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 import { CertPinError, certPinFromPem } from "../feed/cert-pin";
 import { parseQuietWindows } from "../listener/quiet-window";

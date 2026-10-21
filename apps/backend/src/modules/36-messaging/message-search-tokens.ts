@@ -4,7 +4,7 @@
 // trigger of migration 1091 already removes a message's tokens when its status becomes 'deleted' or `body_sha256` changes.
 // It never consults the tenant flag (a message hidden while search is OFF must not be re-indexed later) and returns only a
 // count: it never reads, returns or logs a tag.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 import type { Tx } from "./messaging-write-core";
 

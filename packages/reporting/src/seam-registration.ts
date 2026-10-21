@@ -1,4 +1,4 @@
-// @wardenx/reporting — boot-time published-seam registration (M33 §4.3).
+// @chartwarden/reporting — boot-time published-seam registration (M33 §4.3).
 //
 // Mirrors M34's seam-registration shape, adapted to M33's M1-bootstrap-registry posture (the M22-style
 // path: the published-seam contracts are registered into the M1 SeamRegistry, the consumed seams are

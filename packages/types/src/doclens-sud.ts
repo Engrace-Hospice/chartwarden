@@ -1,4 +1,4 @@
-// @wardenx/types — the DocLens SUD-detection contract (F-237; M22 §7.4 W4 / D8, 42 CFR Part 2 §2.31).
+// @chartwarden/types — the DocLens SUD-detection contract (F-237; M22 §7.4 W4 / D8, 42 CFR Part 2 §2.31).
 //
 // M22 detects possible substance-use-disorder content in an intake batch and tells M5, which owns the
 // patient's privacy-flag snapshot (M5 D10). The reviewer then confirms or rejects the detection in the

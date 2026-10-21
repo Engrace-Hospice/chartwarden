@@ -32,15 +32,15 @@
 // PARTITIONED PARENT. `administration_record` is PARTITION BY RANGE (administered_at) monthly (mig 0133),
 // so an id-only lookup fans out across every partition — accepted, a seam consumer has an id and no window
 // (the M21/M12 trade); the patient/order/iv-session indexes carry the per-partition cost.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   AdministrationDto,
   PatientId,
   ReconciliationDecisionKind,
   ReconciliationWorksheetDto,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, gte, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { EmarSeamStore, IvContinuousSessionRow, PrnEffectivenessRow } from "./store";

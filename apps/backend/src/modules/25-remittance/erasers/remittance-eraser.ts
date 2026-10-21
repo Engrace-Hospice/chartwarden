@@ -7,15 +7,15 @@
 // store is injected by the composition root; this wrapper adapts it to the M1 `DataEraser` contract and
 // registers the REAL eraser over the Phase-0 deny-stub via the injected `registerEraser` hook (the M23
 // import-boundary posture — the bootstrap registry is not imported here).
-import { type DbClient, schema } from "@wardenx/db";
-import type { DataClass, DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 /** The M4 destruction-registry hook the composition root binds (its bootstrap `registerEraser`). */
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
 /**
- * The M25 destruction data class. NOT yet a member of the `@wardenx/types` `DataClass` union (M4-owned) —
+ * The M25 destruction data class. NOT yet a member of the `@chartwarden/types` `DataClass` union (M4-owned) —
  * cast here as the single string literal so the wiring lands in one place (the M23 `billing_record` /
  * M27 `cost_report_class` precedent). The Integrate phase adds `"remittance"` to that union + (optionally)
  * to `REQUIRED_ERASERS` so boot fails closed if M25's real eraser is never registered.

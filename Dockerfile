@@ -11,7 +11,7 @@ RUN apt-get update \
 # Runtime environment must be established before dependency installation.
 ENV NODE_ENV=production
 
-# The complete workspace source is needed because @wardenx/* workspace
+# The complete workspace source is needed because @chartwarden/* workspace
 # dependencies are linked from node_modules into workspace packages.
 COPY --chown=bun:bun . .
 

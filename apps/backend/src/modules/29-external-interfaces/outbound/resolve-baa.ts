@@ -7,7 +7,7 @@
 // module through a seam/outbox, never a compile-time feature-package import"), so this resolves the
 // ALREADY-REGISTERED real `"BaaStatusProvider"` seam OPAQUELY via `getSeam(...)` and casts it to
 // `feed/baa-gate.ts`'s own locally-declared `ExternalInterfaceBaaGate` structural interface — never imports
-// `@wardenx/mdm`. Per `feed/baa-gate.ts`'s own header, the OUTBOUND arm consults `baaStatusByMdmEntity`
+// `@chartwarden/mdm`. Per `feed/baa-gate.ts`'s own header, the OUTBOUND arm consults `baaStatusByMdmEntity`
 // ("a partner is a resolved M40 facility entity with asOf time-travel").
 //
 // Fail-CLOSED, exactly like M22's precedent: any seam error / unregistered seam resolves to a result

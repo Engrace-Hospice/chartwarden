@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.4 Phase-1 capability inventory (M32-T01).
+// @chartwarden/ai-platform — §2.4 Phase-1 capability inventory (M32-T01).
 //
 // The `ai_capability` rows registered at lock time (D2). PURE DATA — spec T55 is what INSERTs them.
 // The registry, not the code, is the source of truth at runtime; this file is the source of truth for
@@ -26,7 +26,7 @@ import type {
   AiCapabilityRiskTier,
   AiPhase1CapabilityRegistration,
   AiPhase1InventoryGap,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The seventeen capabilities registered at lock time.
@@ -144,7 +144,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     defaultBackendKey: "anthropic-claude-opus-4-7",
     consumerModules: ["m19"],
     governanceCatalogId: "protocol-suggestion-oncall",
-    note: "Phase-2 promotion target. M19-T01 already declared the ProtocolSuggestionProvider seam in @wardenx/types; M32 implements it as a deny-stub, it does not re-declare it.",
+    note: "Phase-2 promotion target. M19-T01 already declared the ProtocolSuggestionProvider seam in @chartwarden/types; M32 implements it as a deny-stub, it does not re-declare it.",
   },
   {
     capabilityKey: "hospitalization_risk_30d",

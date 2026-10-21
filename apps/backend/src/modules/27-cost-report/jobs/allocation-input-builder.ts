@@ -1,6 +1,6 @@
 // apps/backend/src/modules/27-cost-report/jobs/allocation-input-builder.ts — the LIVE M27
 // AllocationInputBuilder (Form CMS-1984-14 §4320/§4330, D8 `cost-allocation-recompute`). Reads M27's
-// materialized worksheet state + the monthly statistics census through the @wardenx/cost-report repos on the
+// materialized worksheet state + the monthly statistics census through the @chartwarden/cost-report repos on the
 // worker's org-scoped `tx` (the worker wraps the run in withOrgContext), and hands the raw facts to the PURE
 // `assembleAllocationInputs`. The hospice chain is A (+ A-1…A-4) → B step-down (on the B-1 statistical basis)
 // → C per-diem cost; there is no cap/settlement worksheet (that is M26's domain), so this builder takes no
@@ -10,8 +10,8 @@ import {
   CostReportWorksheetRepository,
   StatisticDataRepository,
   assembleAllocationInputs,
-} from "@wardenx/cost-report";
-import type { DbClient } from "@wardenx/db";
+} from "@chartwarden/cost-report";
+import type { DbClient } from "@chartwarden/db";
 import type { AllocationInputBuilder } from "./m27-jobs";
 
 /** Build the live AllocationInputBuilder. `build({ organizationId, costReportId, tx })` materializes the

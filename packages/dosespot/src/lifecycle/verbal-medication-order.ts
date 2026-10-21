@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.3 verbal-medication-order workflow (M12-T03). Pure, IO-free.
+// @chartwarden/dosespot — §2.3 verbal-medication-order workflow (M12-T03). Pure, IO-free.
 //
 // Per D3 the signature primitive — INCLUDING the verbal-order timer — is M11's responsibility. M12 has no
 // parallel timer (§2.3 "Why M12 has no parallel timer"): it *uses* M11's `OrderSignatureProvider` primitive
@@ -23,7 +23,7 @@ import type {
   MedClass,
   RecordVerbalOrderInput,
   SignOrderTargetInput,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 import { isEpcsRequired } from "./medication-order-machine";
 

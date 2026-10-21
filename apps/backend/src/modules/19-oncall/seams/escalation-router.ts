@@ -21,7 +21,7 @@
 // Shift windows are absolute instants (`on_call_shift.shift_starts_at/ends_at`), compared in epoch ms: start inclusive, end
 // exclusive, so back-to-back shifts neither gap nor overlap. `timeZone` is the provider entity's location zone and is information
 // only; it never moves a boundary. Pure read: no write, no outbox.
-import { isKnownTimeZone, parseStrictInstant } from "@wardenx/messaging";
+import { isKnownTimeZone, parseStrictInstant } from "@chartwarden/messaging";
 import {
   ESCALATION_MAX_TIER,
   type EscalationRank,
@@ -35,8 +35,8 @@ import {
   type OncallShiftDiscipline,
   type OrgId,
   type ProviderEntityId,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import {
   type OncallSeamOrgResolver,
   assertCallerOrg,
@@ -68,8 +68,8 @@ export interface EscalationRouterReads {
   timeZones(providerEntityId: ProviderEntityId): Promise<readonly string[]>;
 }
 
-function invalid(message: string): WardenXError {
-  return new WardenXError("ESCALATION_REQUEST_INVALID", message, 400);
+function invalid(message: string): ChartWardenError {
+  return new ChartWardenError("ESCALATION_REQUEST_INVALID", message, 400);
 }
 
 function parseRequest(request: EscalationRouteRequest): number {
@@ -150,7 +150,7 @@ export function createEscalationRouter(
     async resolveTier(orgId, request): Promise<EscalationRouteAnswer> {
       assertCallerOrg(orgOf, orgId as OrgId);
       if (orgOf() === "") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TRIAGE_SEAM_ORG_MISMATCH",
           "escalation routing requires an organization scope",
           403,

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/23-billing-medicare/services/claim-assembly-lines.ts — the claim-line construction the
 // assembly delegates (CMS Pub. 100-04 ch. 11 §30.3): the per-diem line amounts (CHC in 15-minute units) and the
-// per-visit lines. The pure derivations live in `@wardenx/billing` (`claim-lines/`); this file only maps their
+// per-visit lines. The pure derivations live in `@chartwarden/billing` (`claim-lines/`); this file only maps their
 // output onto `claim_line` insert rows. It is shared by the assembly and by re-validation
 // (`validation-context.ts`), so both see the same visits skipped and the same lines.
 import {
@@ -17,13 +17,13 @@ import {
   missingVisitCharges,
   type repositories,
   visitUnitChargeOn,
-} from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { ChartWardenError } from "@chartwarden/types";
 
 type NewClaimLineInput = repositories.NewClaimLineInput;
 
 /**
- * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table lives in `@wardenx/billing`'s
+ * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table lives in `@chartwarden/billing`'s
  * `place_of_service_consistency` rule; deriving from it rather than carrying a second, independently-authored
  * mapping is what makes it impossible for this function and that rule to disagree about which Q-code a given place
  * resolves to again (they used to, on three of nine places).
@@ -123,7 +123,7 @@ export function visitLineInputs(args: {
 }): NewClaimLineInput[] {
   const missing = missingVisitCharges(args.chargeVersions, args.result.lines);
   if (missing.length > 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "VISIT_CHARGE_MISSING",
       `the claim bills visits for ${[...missing].sort().join(", ")} but no visit charge is entered for that discipline on the visit date; enter the visit-charge schedule (POST /api/v1/billing/visit-charge-schedules, permission billing.visit_charge.admin) and retry`,
       422,
@@ -137,7 +137,7 @@ export function visitLineInputs(args: {
     );
     if (unitRateCents === null) {
       // `missingVisitCharges` above found a charge for every line, so this is a logic error — never bill it as free.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VISIT_CHARGE_MISSING",
         `no visit charge resolved for ${visit.discipline} on ${visit.serviceDate} after the schedule check passed`,
         422,

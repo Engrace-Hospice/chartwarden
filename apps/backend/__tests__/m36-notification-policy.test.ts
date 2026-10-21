@@ -1,15 +1,15 @@
 // WP 4.6 (ADR-0073) - the pieces that must agree across packages without a database: the designated event types in
-// @wardenx/messaging are the event constants the backend emits, the flag gate needs BOTH the policy flag and the event's family flag,
+// @chartwarden/messaging are the event constants the backend emits, the flag gate needs BOTH the policy flag and the event's family flag,
 // the seeded rules for the designated events stay in-app only (the out-of-band routes come from code, not data), and migration 1123 keeps
 // its structural promises (tenant-scoped through active membership, channel names only, owner and grants).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DESIGNATED_EVENT_TYPES, PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { DESIGNATED_EVENT_TYPES, PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import {
   ACK_REQUESTS_FLAG_KEY,
   NOTIFICATION_POLICY_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   M36_ACK_ESCALATED,

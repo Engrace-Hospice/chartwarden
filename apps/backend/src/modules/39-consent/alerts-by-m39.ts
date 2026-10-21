@@ -7,7 +7,7 @@
 // expiry (M39-F09) — only the 1-day window is CRITICAL; the voice/SOS escalation is removed (INT-031
 // voice = field-safety SOS only).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@wardenx/types";
+import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const consentRef = {
   organizationId: Type.String({ minLength: 1 }),

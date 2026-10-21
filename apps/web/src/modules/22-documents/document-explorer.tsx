@@ -6,7 +6,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — Documents explorer (M22, Track B / ADR-0030; 2026-09-25 redesign,
 // matching the patient Documents tab from mockup "Documents"). Every document in the organization the
 // actor can see: category tabs over the document type, a filter bar (type · retention · status · source),

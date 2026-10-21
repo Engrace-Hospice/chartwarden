@@ -1,7 +1,7 @@
-// @wardenx/db — `volunteer_assignment` (M15 §3.3). The many-to-many between a volunteer_plan and the
+// @chartwarden/db — `volunteer_assignment` (M15 §3.3). The many-to-many between a volunteer_plan and the
 // volunteers serving it (§2.2.5): a patient may have several volunteers, a volunteer several patients.
 // `activities` carries the assignment's activity subset (validated against the closed CoP 418.78
-// out-of-scope list in @wardenx/discipline-plans, M15-T01).
+// out-of-scope list in @chartwarden/discipline-plans, M15-T01).
 //
 // §7.5: when any blocking compliance gate expires the watcher stamps `inactivated_at` +
 // `inactivation_reason='gate_expired:<gate_kind>'` on every open row and emits

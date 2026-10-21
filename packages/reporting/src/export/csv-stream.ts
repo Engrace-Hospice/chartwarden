@@ -1,4 +1,4 @@
-// @wardenx/reporting · export — the direct chunked-response CSV streamer (M33 §4.8 `report.export.csv` /
+// @chartwarden/reporting · export — the direct chunked-response CSV streamer (M33 §4.8 `report.export.csv` /
 // W-R-08 / D10).
 //
 // CSV is the ONE export that takes NO M22 hop: M33 streams the resolved snapshot directly to the response as

@@ -1,4 +1,4 @@
-// @wardenx/terminology — value-set expansion engine (M38-T07, §7.5).
+// @chartwarden/terminology — value-set expansion engine (M38-T07, §7.5).
 // Materialized expansion + the B-tree membership lookup + the §2.5 freshness invariant.
 
 export {

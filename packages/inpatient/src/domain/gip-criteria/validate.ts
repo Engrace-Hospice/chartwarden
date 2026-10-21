@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05, §2.4 D4/D5. Pure validators for the GIP admission criteria + the
+// @chartwarden/inpatient — M37-T05, §2.4 D4/D5. Pure validators for the GIP admission criteria + the
 // per-encounter reassessment staleness clock. IO-free — the M8 `encounter.signed` consumer (M37-T10)
 // injects the timestamps; the route (M37-T11) validates the payload before persisting the row.
 import { Value } from "@sinclair/typebox/value";

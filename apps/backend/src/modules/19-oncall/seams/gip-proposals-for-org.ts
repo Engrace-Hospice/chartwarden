@@ -21,8 +21,8 @@
 // cron/worker with no request. PHI-MINIMAL: ids, enums and instants only — `gipCriteriaSummary` (clinical
 // free text), the caller's identity, answers, transcript and every cipher column NEVER cross this seam;
 // `preferredFacility` (a facility name the clinician typed) crosses only to M37 (operational), never to M14.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, isNotNull, min } from "drizzle-orm";
 
 const CALL = schema.triageCall;

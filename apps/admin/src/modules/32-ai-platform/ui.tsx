@@ -1,6 +1,6 @@
 // apps/admin/src/modules/32-ai-platform — shared presentational bits for the §5.1 AI Safety Owner
 // console (GAP-049), in the 2026-09-25 redesign's list chrome: the `wx-*` classes from
-// packages/ui/src/web/styles/list-chrome.css plus the @wardenx/ui kit — no inline styles, no raw colour.
+// packages/ui/src/web/styles/list-chrome.css plus the @chartwarden/ui kit — no inline styles, no raw colour.
 import {
   Button,
   Glyph,
@@ -8,8 +8,8 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
-} from "@wardenx/ui";
-import type { GlyphName } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GlyphName } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 /** The redesign's page title block (`wx-page-head`) with optional right-hand actions. */

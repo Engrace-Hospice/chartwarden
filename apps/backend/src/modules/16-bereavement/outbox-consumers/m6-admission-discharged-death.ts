@@ -29,9 +29,9 @@
 //
 // NON-DEATH DISCHARGES ARE A NO-OP BEFORE ANY SEAM READ. `reason !== 'death'` returns immediately — this
 // consumer never asks M6's death census about a discharge that was not one.
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionId } from "@wardenx/types";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import {
   type AdmissionAnchorResolver,

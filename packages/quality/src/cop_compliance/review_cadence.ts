@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §7.7 / D10: the 6-month CoP review-cadence logic (WF-17).
+// @chartwarden/quality — M30 §7.7 / D10: the 6-month CoP review-cadence logic (WF-17).
 //
 // Every `cop_compliance_status` row carries a `last_reviewed_at` attestation and a `next_review_due_at`
 // derived from it. CMS expects the Compliance Officer to re-attest each citation on a 6-month default
@@ -7,10 +7,10 @@
 // auto-transition out of `compliant` — only the attestation reset or a manual transition clears it).
 //
 // PURE DOMAIN (P2a): the cadence is a pure function of `(lastReviewedAt, now)`. No DB, no clock — the
-// caller injects `now`. Invalid timestamps throw a `WardenXError`. The recompute/alert worker (a LATER
+// caller injects `now`. Invalid timestamps throw a `ChartWardenError`. The recompute/alert worker (a LATER
 // phase) calls `computeNextReviewDueAt` to persist `next_review_due_at` on attestation, and
 // `evaluateReviewCadence` to decide whether the overdue alert fires.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The default CoP review cadence in days (6 months, WF-17). */
 export const COP_REVIEW_CADENCE_DAYS = 180;
@@ -35,11 +35,11 @@ export interface CopReviewCadence {
   readonly daysOverdue: number;
 }
 
-/** Parse an ISO-8601 instant (or `Date`) to epoch-ms, throwing `WardenXError` on an invalid value. */
+/** Parse an ISO-8601 instant (or `Date`) to epoch-ms, throwing `ChartWardenError` on an invalid value. */
 function toEpochMs(value: Date | string, field: string): number {
   const ms = value instanceof Date ? value.getTime() : Date.parse(value);
   if (Number.isNaN(ms)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "cop_review_invalid_timestamp",
       `${field} is not a valid ISO-8601 instant`,
       422,

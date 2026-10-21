@@ -1,4 +1,4 @@
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 
 export type ReferralStatus =
   | "received"

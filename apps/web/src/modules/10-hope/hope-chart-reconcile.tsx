@@ -12,8 +12,8 @@ import {
   isValidMedicareNumber,
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
-} from "@wardenx/types";
-import { Button, useApiClient } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { Button, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useState } from "react";
 import { Link } from "react-router-dom";

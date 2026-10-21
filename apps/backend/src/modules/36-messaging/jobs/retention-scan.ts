@@ -6,10 +6,10 @@
 // month, and (5) records one `m36.retention_scan.run` audit row (ids and counts only). ENFORCEMENT never depends on step 1: the exclusion
 // is the overlay (cheap) OR the live criteria predicate, so a message the overlay has not reached yet is still withheld.
 import { randomUUID } from "node:crypto";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { MESSAGE_RETENTION_CLASSES, type MessageRetentionClass } from "@wardenx/types";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { MESSAGE_RETENTION_CLASSES, type MessageRetentionClass } from "@chartwarden/types";
 import { type SQL, sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,

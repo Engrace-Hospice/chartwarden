@@ -10,8 +10,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

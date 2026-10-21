@@ -16,7 +16,7 @@
 // clinician covered twice is a configuration to review, not a bug this watchdog reports.
 //
 // THE ALERT IS SYSTEM-LOCKED AND CRITICAL (§4.9), SO THE REASON IS A CLOSED UNION. A free-text reason cannot
-// be triaged by the DON it wakes at 3 a.m.; `SafetyCoverageGapReason` (@wardenx/types) has exactly three
+// be triaged by the DON it wakes at 3 a.m.; `SafetyCoverageGapReason` (@chartwarden/types) has exactly three
 // members and each one implies a different fix:
 //   • `no_subscription`               — nobody ever subscribed. Add a row.
 //   • `all_subscriptions_deactivated` — somebody did, and every one of those rows is now deactivated or
@@ -33,7 +33,7 @@ import type {
   SafetyAlertKind,
   SafetyCoverageGapDto,
   SafetyCoverageGapReason,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** One `safety_supervisor_subscription` row as the watchdog sees it (active rows only — the caller's query
  *  already applies `superseded_at IS NULL AND deactivated_at IS NULL` through `sss_clinician_idx`). */

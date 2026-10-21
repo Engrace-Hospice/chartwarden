@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 3 (Authorization) action catalog (M4-T10; M4 spec §4.6.1 `m3.ts`).
+// @chartwarden/audit — Module 3 (Authorization) action catalog (M4-T10; M4 spec §4.6.1 `m3.ts`).
 //
 // The `m3.*` authorization-decision actions M3's route inventory emits through the audit() surface
 // (apps/backend/src/modules/03-authorization/audit/authz-audit.ts, §8.1). Role/break-glass/

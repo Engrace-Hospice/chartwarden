@@ -14,7 +14,7 @@
 //
 // Registration is idempotent (`registerPredicateIdempotent`) because the registry is shared and
 // no-clear: a test that reboots the module must not trip the cross-module collision guard.
-import { type AbacContext, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, registerPredicateIdempotent } from "@chartwarden/auth";
 
 /** The §4.4 predicate names M38 owns. Single-owner across the platform registry. */
 export const M38_ABAC_PREDICATES = ["terminology_admin_platform_ops"] as const;

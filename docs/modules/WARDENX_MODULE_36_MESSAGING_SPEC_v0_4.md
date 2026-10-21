@@ -952,7 +952,7 @@ Every M36 table installs the M4 `generateAuditTrigger`. Denylists scrub `message
 
 ```typescript
 // in 0036_messaging migration
-import { generateAuditTrigger } from '@wardenx/audit/triggers'
+import { generateAuditTrigger } from '@chartwarden/audit/triggers'
 
 const tables: Array<[string, string, string[], 'operational' | 'compliance']> = [
   ['channel',            'channel',           [],                       'compliance'],
@@ -1830,7 +1830,7 @@ Consumers import only the interfaces; per-table schemas are private. Example (th
 
 ```typescript
 // apps/backend/src/modules/10-hope/services/sfv-trigger.ts
-import type { AlertEmitter } from '@wardenx/messaging'
+import type { AlertEmitter } from '@chartwarden/messaging'
 
 async function onJ2051Severe(hope: HopeAssessment, alerts: AlertEmitter) {
   await alerts.emit(hope.organizationId, {
@@ -1849,7 +1849,7 @@ The `alerts.dispatch()` API carries catalog-driven validation: every dispatched 
 ```ts
 // packages/messaging/src/alerts.ts (dispatch)
 
-import { ALERT_PAYLOAD_CATALOG_MAP } from '@wardenx/foundation/alert-payloads'
+import { ALERT_PAYLOAD_CATALOG_MAP } from '@chartwarden/foundation/alert-payloads'
 import { TypeBoxValidator } from '@sinclair/typebox/value'
 
 export class AlertPayloadValidationError extends Error {

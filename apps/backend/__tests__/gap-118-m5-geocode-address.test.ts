@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 let addressRow: Record<string, unknown> | null = null;
 const writes: Array<Record<string, unknown>> = [];
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   systemOrgContext: (organizationId: string) => ({ organizationId, userId: "" }),
   withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => Promise<unknown>) =>
     fn({

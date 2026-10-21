@@ -12,7 +12,7 @@ import {
   runRefreshEmbeddings,
   runScheduledActivation,
   runScheduledSource,
-} from "@wardenx/terminology-loader";
+} from "@chartwarden/terminology-loader";
 // apps/backend/src/modules/38-terminology/jobs/workers.ts — BullMQ registration for the nine §4.3 workers
 // (GAP-108): load_version, refresh_expansions, refresh_embeddings, tenant_deprecation_scan and the five
 // scheduled_* source jobs, plus the repeatable schedules. The processors are the loader package's orchestrators

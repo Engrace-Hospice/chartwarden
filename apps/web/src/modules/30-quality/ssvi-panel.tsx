@@ -1,4 +1,4 @@
-import { Glyph, StatusPill } from "@wardenx/ui";
+import { Glyph, StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/30-quality — the SERVICE AND SPENDING VARIATION INDEX panel on the quality hub (FY2027,
 // CMS-1851-F §III.B.2). Mockup: the Home dashboard tiles (03_19_57) over a flat clinical section with the
 // per-metric drill-down as a list table — the same shape the hub gives HCI rows, folded into one view.

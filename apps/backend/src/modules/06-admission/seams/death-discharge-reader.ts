@@ -19,9 +19,9 @@
 // until the medical director attests (`cosigned` after). Internal deaths keep `source='internal_clinician_recorded'`
 // and an undefined `cosignStatus`. Consequence for M30: the HVLDL external-source subset is no longer always
 // empty and its pending-cosign Risk-Register flag can now fire.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DeathDischargeReader, DeathDischargeRow } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DeathDischargeReader, DeathDischargeRow } from "@chartwarden/types";
 import { and, eq, gte, lt } from "drizzle-orm";
 
 const DE = schema.dischargeEvents;

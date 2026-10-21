@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.1 / §4.7 `discipline_can_order` (M11-T03). Pure, IO-free.
+// @chartwarden/orders — §2.1 / §4.7 `discipline_can_order` (M11-T03). Pure, IO-free.
 //
 // Who may AUTHOR (draft + request signature for) a given order kind. Drafting is broader than signing: a
 // clinical discipline in the kind's signer matrix may always draft it, and an `lpn` may draft the clinical
@@ -6,7 +6,7 @@
 // carries an RN-cosign requirement before it can be signed (§2.5 axis 1, ./cosign-rules). The signing
 // gate itself is the stricter ./signer-eligible predicate. This decision reads the single-source
 // `KIND_CATALOG` (no inline re-derivation) and is consumed by the §4.7 ABAC predicate at the route.
-import type { OrderKind } from "@wardenx/types";
+import type { OrderKind } from "@chartwarden/types";
 import { KIND_CATALOG, type OrderSignerDiscipline } from "../catalog";
 import { require_ } from "./errors";
 

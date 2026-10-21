@@ -10,7 +10,7 @@ import {
   TASK_EVENT_TYPES,
   TASK_SOURCE_KINDS,
   TASK_STATUSES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

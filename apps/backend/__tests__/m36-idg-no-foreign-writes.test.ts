@@ -43,7 +43,7 @@ describe("WP 3.6 IDG discussions are read-only toward M14 and M7", () => {
     for (const spec of specs) {
       expect(spec).not.toMatch(/\/modules\/(?!36-messaging)\d{2}-/);
       expect(spec).not.toMatch(/\.\.\/\.\.\/(?!bootstrap)\d{2}-/);
-      expect(spec).not.toMatch(/^@wardenx\/idg(\/|$)/);
+      expect(spec).not.toMatch(/^@chartwarden\/idg(\/|$)/);
     }
   });
 

@@ -21,7 +21,7 @@
  *
  * Usage: bun run db:sync:permissions   (DATABASE_ADMIN_URL — needs write on `permission`)
  */
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
 
 /** Roles granted the ENTIRE catalog — kept in lockstep so `org_admin ⊇ administrator` always holds. */

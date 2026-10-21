@@ -1,4 +1,4 @@
-// @wardenx/audit - structural legal-hold matching (M4 spec §2.5 supremacy, §10.6; GAP-008).
+// @chartwarden/audit - structural legal-hold matching (M4 spec §2.5 supremacy, §10.6; GAP-008).
 //
 // WHAT WAS WRONG. The eraser's `legalHoldFor` serialized a hold's `criteria` jsonb and looked for the row-group's
 // resource id or patient id as a SUBSTRING. A hold whose only selectors were `dateRange` or `resourceKinds` (both
@@ -29,7 +29,7 @@ export interface LegalHoldCriteriaShape {
 }
 
 /** `criteria.origin` of a hold placed through M36's governance apply route (mirrors MESSAGING_GOVERNANCE_HOLD_ORIGIN in
- *  @wardenx/types, which this package cannot import; a backend test pins the two equal). */
+ *  @chartwarden/types, which this package cannot import; a backend test pins the two equal). */
 export const MESSAGING_GOVERNANCE_ORIGIN_MARKER = "messaging_governance";
 
 /** True when a hold protects messages only: it neither covers an audit row-group nor reads as org-wide to a non-messaging

@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the 837I party loops shared by every generator (notice, claim): submitter and
+// @chartwarden/x12-837-client — the 837I party loops shared by every generator (notice, claim): submitter and
 // receiver (1000A/B), billing provider (2000A/2010AA), subscriber = patient (2000B/2010BA) and payer (2010BB).
 // Errors name the FIELD only (PHI); callers wrap them in their own error type.
 import { MBI_PATTERN } from "../eligibility/build-270";

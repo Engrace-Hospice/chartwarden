@@ -14,7 +14,7 @@
 // never issues the request, which is the exact failure being fixed. (Same shape as
 // `11-orders/orders-writes.dom.test.tsx` and `13-emar/emar-writes.dom.test.tsx`.)
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

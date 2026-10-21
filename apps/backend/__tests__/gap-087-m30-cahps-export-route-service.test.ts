@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
  * R-14 persists a real job row and enqueues it onto `m30.cahps_export` (it used to return a random "queued" id
  * nothing could run); R-11 seals a supplied vendor configuration; R-15 reads the job back with a download path.
  */
-import { CAHPS_ADAPTER_FACTORIES } from "@wardenx/cahps-vendors";
+import { CAHPS_ADAPTER_FACTORIES } from "@chartwarden/cahps-vendors";
 import { describe, expect, it, vi } from "vitest";
 import { readExportFile } from "../src/modules/30-quality/cahps/export-job-store";
 import { createCahpsPhiCipher } from "../src/modules/30-quality/cahps/phi-cipher";

@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/18-evv — M18 EVV screen registration (Track B, ADR-0030, M18-T07).
 // The §5.1 EVV screens: the org-wide EVV Dashboard + Metrics (the EvvMetricsProvider seam), the
 // coordinate-free Event Ledger + single Event Detail, the Missing-EVV Resolution queue, the per-state

@@ -1,4 +1,4 @@
-// @wardenx/messaging - the pure rules of the acknowledgment-request aggregate (M36 WP 4.2, ADR-0069): the state machine, the
+// @chartwarden/messaging - the pure rules of the acknowledgment-request aggregate (M36 WP 4.2, ADR-0069): the state machine, the
 // deadline policy and the viewer hints. The SAME transition table is enforced by the database trigger in migration 1107 (a pin
 // test compares them), so a later writer (WP 4.4 timers) cannot step outside it. Nothing here reads message text.
 import {
@@ -7,8 +7,8 @@ import {
   type AckClass,
   type AckRequestDto,
   type AckStatus,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 
 /** Status changes that move to a DIFFERENT status. Terminal states (`resolved`, `cancelled`) have none. */
 export const ACK_TRANSITIONS: Readonly<Record<AckStatus, readonly AckStatus[]>> = {
@@ -31,9 +31,9 @@ export const ACK_SAME_STATUS_UPDATES: readonly AckStatus[] = ["pending", "escala
 
 export const ackStateInvalid = (
   message = "That request is not in a state that allows this.",
-): WardenXError => new WardenXError("ACK_STATE_INVALID", message, 409);
-export const ackNotAcknowledged = (): WardenXError =>
-  new WardenXError(
+): ChartWardenError => new ChartWardenError("ACK_STATE_INVALID", message, 409);
+export const ackNotAcknowledged = (): ChartWardenError =>
+  new ChartWardenError(
     "ACK_NOT_ACKNOWLEDGED",
     "A request is resolved only after it has been acknowledged.",
     409,

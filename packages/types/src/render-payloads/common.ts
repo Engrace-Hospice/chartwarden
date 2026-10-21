@@ -1,8 +1,8 @@
-// @wardenx/types - shared building blocks of the typed M22 render payloads (GAP-033). A source module builds one
+// @chartwarden/types - shared building blocks of the typed M22 render payloads (GAP-033). A source module builds one
 // of these AT THE PRODUCER, inside the signing transaction, from the rows it owns, and ships it on the
 // outbox event as `renderPayload`; M22 validates it at the render boundary and draws ONLY the declared fields
 // (an allow-list, so a plumbing key can never reach a legal document). Pure: no db / app import (leaf contract
-// surface). Lives here, not in @wardenx/forms, because M6 produces and M22 consumes and neither may import
+// surface). Lives here, not in @chartwarden/forms, because M6 produces and M22 consumes and neither may import
 // the other (ADR-0005).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";

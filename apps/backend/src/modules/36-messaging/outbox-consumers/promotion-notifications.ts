@@ -9,7 +9,7 @@
 //     m14 -> the permission holders of idg.coordinate (rule m36.promotion.idg_review_requested)
 //     nobody resolved -> the requester is told (m36.promotion.no_reviewer): the loud fallback, never a silent drop.
 // The requester's "decided" alert is sent by the outcome consumer (promotion-outcomes.ts), only when a decision is applied.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

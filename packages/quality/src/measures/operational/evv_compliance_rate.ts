@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: EVV compliance rate (Cures Act §12006). Pure. No IO.
+// @chartwarden/quality — operational measure: EVV compliance rate (Cures Act §12006). Pure. No IO.
 // Rate of EVV-required visits with a verified electronic visit record (higher is better). Source: M18
 // `EvvMetricsProvider.getComplianceRate`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

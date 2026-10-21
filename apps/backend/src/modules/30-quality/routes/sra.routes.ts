@@ -2,7 +2,7 @@
 //
 // The Security Risk Assessment surface: annual cycles, findings (NIST 800-66r2 control references with a
 // likelihood × impact risk score), and remediation plans. Every route is gated by the REAL Authorization
-// Contract (`requirePermission` from @wardenx/auth, M3) on the §4.6 `sra.*` keys. The cycle-scoped
+// Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.6 `sra.*` keys. The cycle-scoped
 // mutation R-43 (add finding) additionally layers the `ownsSraCycle` predicate M30 OWNS (§4.7 — cycle
 // owner OR `sra.admin`), resolved off the route's `:cycleId` param. R-44/R-45/R-46 carry the same
 // `inOrg + ownsSraCycle` ABAC intent, but their path keys a `:findingId` / `:remediationId` — the
@@ -13,7 +13,7 @@
 // R-47 (close a cycle) is the TWO-PERSON co-sign route (V-12): RBAC gates `sra.close`, the route ALSO
 // requires a recent M2 SESSION_POLICY step-up (W-M30-30) via `requireStepUp` (the M33 schedule
 // delete-runs precedent), and passes the cosigner + actor to the write service, where
-// `assertSraCloseSplitActor` (DELEGATING to the @wardenx/quality canonical guard) enforces the Security
+// `assertSraCloseSplitActor` (DELEGATING to the @chartwarden/quality canonical guard) enforces the Security
 // Officer ≠ Compliance Officer split. The `sraCloseAuthority` predicate keys on a `cosignerUserId` the
 // route cannot resolve from the body's membership ids, so the authoritative close-authority check is the
 // service's V-12 + the §3 DB check constraint (the route layer never trusts a body-supplied identity).
@@ -28,7 +28,7 @@
 // export (the M33 `mountM33ExportDrilldownRoutes` precedent — a distinct export route service, not the
 // read/write contract), with no method on `M30ReadRouteService` / `M30WriteRouteService`. It lands with
 // the M30 export service in P2c rather than being invented against an absent contract method.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";

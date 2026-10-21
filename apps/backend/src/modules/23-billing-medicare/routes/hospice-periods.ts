@@ -5,7 +5,7 @@
 // `eligibility_check.parsed_payload` (see `eligibilityParsedPayload` in jobs/m23-jobs.ts). The payload is
 // opaque jsonb at the DB layer, so every field is re-validated here; anything malformed reads as "no hospice
 // history returned" rather than throwing or guessing. Carries no MBI (the payload never held one).
-import type { EligibilityOutcome } from "@wardenx/billing";
+import type { EligibilityOutcome } from "@chartwarden/billing";
 import type { HospicePeriodView, HospicePeriodsView, NextPeriodBasis } from "./read-service";
 
 /** The slice of an `eligibility_check` row the projection needs (domain-cased outcome). */

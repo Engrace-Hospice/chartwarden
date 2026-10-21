@@ -1,5 +1,5 @@
-import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
-import { WardenXError } from "@wardenx/types";
+import { createDefaultBillingRegistry, type repositories } from "@chartwarden/billing";
+import { ChartWardenError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
 //
@@ -53,12 +53,12 @@ import { WardenXError } from "@wardenx/types";
 // the LOC facility, not the residence), or a range that spans a move — see `place-of-service-resolver.ts`.
 //
 // Binding the physician-identity half surfaced an independent, real Q-code defect (F-125, #251):
-// `qCodeForPlaceOfService` (below) and `@wardenx/billing`'s own `place_of_service_consistency` rule had
+// `qCodeForPlaceOfService` (below) and `@chartwarden/billing`'s own `place_of_service_consistency` rule had
 // each carried an independently-authored CMS Q5001-Q5010 mapping, and three of nine places disagreed
 // between them (`snf`, `ipu`, `hospital` each resolved to a DIFFERENT Q-code depending which side asked),
 // while an unrecognized place silently defaulted to Q5006 ("inpatient hospice facility") under a doc
 // comment that called it "unspecified" — CMS's real catch-all is Q5009 ("place N.O.S."). Fixed by making
-// `@wardenx/billing`'s `POS_BY_QCODE` the one authoritative table and deriving this file's Q-code lookup
+// `@chartwarden/billing`'s `POS_BY_QCODE` the one authoritative table and deriving this file's Q-code lookup
 // from it (inverted), so the two cannot disagree again; the unknown-place default is now the honest Q5009.
 //
 // `terminology` (M38) was investigated (#250/#251) as needing a BULK method M38 did not publish — false,
@@ -138,7 +138,7 @@ type BillingDb = repositories.BillingDb;
 
 /** Throw the typed fail-closed error every still-unbound assembly reader raises at call time (RULE 4). */
 function unbound(seam: string): never {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "SEAM_UNBOUND",
     `M23 claim-assembly seam '${seam}' is not bound at boot — see boot-assembly.ts's header for the exact, per-seam reason (a real new read-surface addition needed in the owning module, or genuinely absent CMS reference data)`,
     503,

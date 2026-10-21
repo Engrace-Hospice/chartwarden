@@ -5,9 +5,9 @@
 // Not a request: it opens its OWN org-scoped `withOrgContext` envelope (empty acting user, the seam-read
 // convention) with an explicit `organization_id` predicate behind RLS. An unknown or cross-tenant id is
 // `null`, never a throw.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { BereavementEncounterReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { BereavementEncounterReader } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const E = schema.encounters;

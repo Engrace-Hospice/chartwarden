@@ -11,9 +11,9 @@
 // Nothing happens while the platform kill switch or the tenant flag is OFF (an inert no-op that still completes the event). The same-transaction
 // delete hook in migration 1091 never consults a flag; `removeMessage` here is the unconditional repair path.
 // Key and tag-width errors THROW: the caller (outbox retry, maintenance tick) fails closed and tries again.
-import { type DbClient, schema } from "@wardenx/db";
-import { type SearchKeyProvider, buildMessageTags, deriveChannelKey } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type SearchKeyProvider, buildMessageTags, deriveChannelKey } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { deleteSearchTokens } from "../message-search-tokens";
 import { ensureIndexState } from "./index-state";

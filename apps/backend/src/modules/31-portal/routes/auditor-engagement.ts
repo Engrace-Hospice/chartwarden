@@ -5,7 +5,7 @@
 // exist. Here the engagement is resolved through M3's published `AuditorEngagementReader.engagementScope`
 // (which re-checks org / `active` / window itself) into the set of patients it covers, and ONLY those
 // patients' aggregates are read and summed. Nothing outside the engagement's coverage is ever queried.
-import type { EngagementCoverage } from "@wardenx/types";
+import type { EngagementCoverage } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import type { PortalStore } from "./store";
 

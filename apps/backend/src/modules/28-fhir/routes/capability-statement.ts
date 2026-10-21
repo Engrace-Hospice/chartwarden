@@ -2,8 +2,8 @@
 // `CapabilityStatement` is assembled (§D11). `GET /fhir/r4/metadata` serves it and the `fhir.capability-
 // snapshot-validator` job persists + signs the same bytes, so what the validator vouches for is exactly what
 // the endpoint advertises (two builders would let them drift apart silently).
-import { type FhirCapabilityStatement, buildCapabilityStatement } from "@wardenx/fhir";
-import { FHIR_PHASE_1_VERSION } from "@wardenx/types";
+import { type FhirCapabilityStatement, buildCapabilityStatement } from "@chartwarden/fhir";
+import { FHIR_PHASE_1_VERSION } from "@chartwarden/types";
 
 import { SERVED_RESOURCES } from "./projection";
 

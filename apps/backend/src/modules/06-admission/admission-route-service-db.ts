@@ -12,22 +12,22 @@
 // emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
 
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   type PatientAdmissionClearance,
   type PatientAdmissionClearanceReader,
   type PatientIntakeResolver,
   ValidationError,
-  WardenXError,
+  ChartWardenError,
   isValidMedicaidNumber,
   isValidMedicareNumber,
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
-} from "@wardenx/types";
-import type { LevelOfCare, LocalDate } from "@wardenx/types";
+} from "@chartwarden/types";
+import type { LevelOfCare, LocalDate } from "@chartwarden/types";
 import {
   type AnyColumn,
   type SQL,
@@ -324,7 +324,7 @@ type ReferralSourceChannel =
 /** First row of a `RETURNING`/`SELECT` under `noUncheckedIndexedAccess`, or a 404 (unreachable after a write). */
 function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   const r = rows[0];
-  if (!r) throw new WardenXError("NOT_FOUND", msg, 404);
+  if (!r) throw new ChartWardenError("NOT_FOUND", msg, 404);
   return r;
 }
 
@@ -585,7 +585,7 @@ function toReferralReadView(
   };
 }
 
-const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
+const conflict = (msg: string): ChartWardenError => new ChartWardenError("INVALID_STATE", msg, 409);
 /** Create-patient hit `patient_identifier_mbi_unique`: says nothing about WHO the existing patient is. */
 const duplicatePatientMbi = (): ConflictError =>
   new ConflictError(
@@ -738,7 +738,7 @@ export function createDbAdmissionRouteService(
     );
     if (requested) {
       if (!active.includes(requested)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
           `location ${requested} is not an active location of the admission's elected provider entity`,
           422,
@@ -748,13 +748,13 @@ export function createDbAdmissionRouteService(
     }
     if (active.length === 1) return active[0] as string;
     if (active.length === 0) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "M6_LOCATION_REQUIRED",
         "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
         422,
       );
     }
-    throw new WardenXError(
+    throw new ChartWardenError(
       "M6_LOCATION_REQUIRED",
       `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
       422,
@@ -3040,7 +3040,7 @@ export function createDbAdmissionRouteService(
           patientId,
         });
         if (!patient)
-          throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
+          throw new ChartWardenError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
         // The referral's Medicare number reaches the chart only if the chart has none (M5 decides).
         const medicareOnChart = cur.medicareNumberAtReceipt
           ? await patientResolver().recordMedicareNumberIfMissing({
@@ -3239,7 +3239,7 @@ export function createDbAdmissionRouteService(
           patientId,
         });
         if (!confirmed)
-          throw new WardenXError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
+          throw new ChartWardenError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
         // §2.3.1 no double-election: block if the patient already has an open admission.
         const [open] = await tx
           .select({ id: ADM.id })
@@ -3733,7 +3733,7 @@ export function createDbAdmissionRouteService(
         patientId: input.patientId,
       });
       if (!confirmed)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PATIENT_NOT_FOUND",
           "the patient does not exist in this organization",
           409,
@@ -4050,7 +4050,7 @@ export function createDbAdmissionRouteService(
           input.documentState === "signed" &&
           (!input.signerName || !input.signerRole || !input.signedAt)
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
             "Signer name, signer role, and signature date are required for a signed Election Statement.",
             400,
@@ -4101,14 +4101,14 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!es) throw new ResourceNotFoundError(electionStatementId);
         if (es.status === "signed") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ELECTION_ALREADY_SIGNED",
             "This Election Statement is already signed.",
             409,
           );
         }
         if (!input.signerName || !input.signerRole || !input.signedAt) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
             "Signer name, signer role, and signature date are required for a signed Election Statement.",
             400,
@@ -4172,14 +4172,14 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(period.admissionId);
         if (!adm.hospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
             "Select a Hospice Physician before creating the CTI.",
             400,
           );
         }
         if (input.documentState === "signed" && !input.signedAt) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "UPLOADED_CTI_SIGNATURE_DATE_REQUIRED",
             "Signature date is required for a signed CTI.",
             400,
@@ -4425,7 +4425,7 @@ export function createDbAdmissionRouteService(
         // The elected hospice must belong to THIS org before it is written to two tables — the FK
         // carries no organization, so nothing below the app stops a cross-tenant election.
         if (!providerEntityOrgCheck) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "PROVIDER_ENTITY_CHECK_UNBOUND",
             "cannot verify the elected provider entity belongs to this organization; refusing to " +
               "draft an election statement against an unverified hospice",
@@ -4683,7 +4683,7 @@ export function createDbAdmissionRouteService(
     async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const ep = await openNextElectionPeriodInTx(tx, { organizationId, admissionId });
-        if (!ep) throw new WardenXError("NOT_FOUND", "election period insert returned no row", 404);
+        if (!ep) throw new ChartWardenError("NOT_FOUND", "election period insert returned no row", 404);
         return { id: ep.id, state: ep.status, version: ep.version };
       });
     },
@@ -4726,7 +4726,7 @@ export function createDbAdmissionRouteService(
           .limit(1);
 
         if (existing[0]) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CTI_ALREADY_EXISTS",
             "An active Certification of Terminal Illness already exists for this election period.",
             409,
@@ -4748,14 +4748,14 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(period.admissionId);
         if (!adm.hospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
             "Select the admission hospice physician before drafting the CTI.",
             400,
           );
         }
         if (input.hospiceMedicalDirectorId !== adm.hospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CTI_HOSPICE_PHYSICIAN_MISMATCH",
             "CTI hospice physician must match the admission selected hospice physician.",
             400,
@@ -4865,14 +4865,14 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(period.admissionId);
         if (!adm.hospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
             "Select the admission hospice physician before signing the CTI.",
             400,
           );
         }
         if (cti.hospiceMdId !== adm.hospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CTI_HOSPICE_PHYSICIAN_MISMATCH",
             "CTI hospice physician must match the admission selected hospice physician.",
             400,
@@ -4892,7 +4892,7 @@ export function createDbAdmissionRouteService(
         const narrative = input.narrative?.trim() ? input.narrative : cti.narrative;
         const narrativeLength = narrative?.trim().length ?? 0;
         if (narrativeLength === 0 || (isRecert && narrativeLength < TEXT_MINIMUMS.ctiNarrative)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CTI_NARRATIVE_REQUIRED",
             `The certification narrative is required before signing: provide a physician narrative of at least ${TEXT_MINIMUMS.ctiNarrative} characters (42 CFR 418.22(b)(3)).`,
             422,
@@ -5116,7 +5116,7 @@ export function createDbAdmissionRouteService(
           );
         }
         if (!f2fClinicianRoles)
-          throw new WardenXError(
+          throw new ChartWardenError(
             "F2F_ROLE_SOURCE_UNAVAILABLE",
             "the clinician role source is not bound; refusing to trust a client-supplied performer role",
             503,
@@ -5304,7 +5304,7 @@ export function createDbAdmissionRouteService(
       let note: SignedNoteFacts | null = null;
       if (signedNoteEncounterId) {
         if (!f2fSignedNotes)
-          throw new WardenXError(
+          throw new ChartWardenError(
             "F2F_NOTE_SOURCE_UNAVAILABLE",
             "the clinical-note reader is not bound; refusing to accept an unverified note as the F2F attestation",
             503,
@@ -5466,7 +5466,7 @@ export function createDbAdmissionRouteService(
       reason = "",
     ): Promise<MutationResult> {
       if (!LEVELS_OF_CARE.includes(newLevel as LevelOfCare))
-        throw new WardenXError("VALIDATION_ERROR", `unknown level of care '${newLevel}'`, 422);
+        throw new ChartWardenError("VALIDATION_ERROR", `unknown level of care '${newLevel}'`, 422);
       const level = newLevel as LevelOfCare;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -5577,7 +5577,7 @@ export function createDbAdmissionRouteService(
         if (!cur) throw new ResourceNotFoundError(locPeriodId);
         assertVersion(locPeriodId, Number(cur.version), ifVersion);
         if (!ipuBedAssignmentReader) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "IPU_BED_ASSIGNMENT_READER_UNBOUND",
             "the M37 bed-assignment reader is not bound in this environment",
             503,
@@ -5869,7 +5869,7 @@ export function createDbAdmissionRouteService(
         }
         const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
         if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "CTI_HOSPICE_PHYSICIAN_MISMATCH",
             "Transfer-in CTI physician must match the admission selected hospice physician.",
             400,
@@ -6285,7 +6285,7 @@ export function createDbAdmissionRouteService(
         // GAP-121 — two-person control: the filer of a for-cause discharge cannot cosign it. (An external
         // death has no filer — `filed_by_user_id` is only ever set on the for-cause filing.)
         if (cur.filedByUserId !== null && cur.filedByUserId === actorUserId)
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DISCHARGE_COSIGNER_IS_FILER",
             "The person who filed a for-cause discharge cannot cosign it; another medical director must.",
             409,

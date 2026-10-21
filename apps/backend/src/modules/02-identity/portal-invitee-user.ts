@@ -7,8 +7,8 @@
 // Mirrors the M34 first-admin precedent: insert-on-conflict-do-nothing keyed on the unique email, then re-select.
 // An EXISTING user (a clinician who is also a family caregiver, or a second invitation to the same person) is reused
 // as-is — their name and verification state are never overwritten by an invitation.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const USERS = schema.users;

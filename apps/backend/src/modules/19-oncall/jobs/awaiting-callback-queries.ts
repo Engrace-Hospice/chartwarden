@@ -2,8 +2,8 @@
 // `awaiting-callback-timeout.cron` share. `triage_call` has no "entered awaiting_callback at" column (§3.3);
 // the instant is the latest `triage_call_state_history` row whose `to_state` is `awaiting_callback` — the
 // append-only record of every entry, so a call that resumed and waited again is judged from its LATEST wait.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { MAX_TRIAGE_ITEMS_PER_ORG_PER_TICK } from "./triage-cron-common";

@@ -10,7 +10,7 @@
 // encounter machine: legal-graph check + enumerated guards (each raises the §2.7/§2.4 code) + the §2.8
 // in-transaction side-effect list. The 12h/24h/48h clock math is ./sla-clock; this machine consumes its
 // stage decisions as injected events. No IO, no cross-module schema import.
-import type { CosignatureStatus, LocalDate, MembershipId } from "@wardenx/types";
+import type { CosignatureStatus, LocalDate, MembershipId } from "@chartwarden/types";
 import { type EncounterSideEffect, type TransitionResult, result } from "../lifecycle/effects";
 import { EncounterStateError, require_ } from "../lifecycle/errors";
 import { TEXT_MINIMUMS } from "../lifecycle/validation";

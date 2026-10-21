@@ -9,7 +9,7 @@
 //
 // M16-T04's two additions are READ-ONLY consumers of seams M9 and M15 already publish live (M9-T04,
 // M15-T05); no manifest edge is added, because the resolution goes through M1's registry and the CONTRACT
-// types are leaf `@wardenx/types` (ADR-0005 D1/D2) — exactly the shape the existing M6/M5 consumers use.
+// types are leaf `@chartwarden/types` (ADR-0005 D1/D2) — exactly the shape the existing M6/M5 consumers use.
 //
 // The seams M16 PUBLISHES (§4.6: `BereavementPlanProvider`, `BereavementOutreachProvider`,
 // `BereavementRiskTierProvider`, …) land in M16-T05.
@@ -21,7 +21,7 @@ import type {
   PatientReader,
   ScaleSeriesProvider,
   VolunteerComplianceProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /** M16 CONSUMES M6's §4.11 DeathDischargeReader — the death instant + the D16 `source`/`cosignStatus`

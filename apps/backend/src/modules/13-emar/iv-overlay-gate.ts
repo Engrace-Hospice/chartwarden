@@ -6,7 +6,7 @@
 // the drip, and the watchdog pages an overdue check).
 // M13 had no caller for `getOverlayForOrder`, so none of those four checks ran.
 //
-// M13 depends on M37 only through the `IpuIvSafetyOverlayProvider` seam interface (a `@wardenx/types` leaf,
+// M13 depends on M37 only through the `IpuIvSafetyOverlayProvider` seam interface (a `@chartwarden/types` leaf,
 // resolved per call by the composition root) — no compile edge, no schema import. The overlay's decision logic
 // is M37's (`evaluateIvPreAdministration`); this file only assembles the facts M13 owns (the session's
 // segments, the proposed rate) and turns a refusal into the §2.6 412 the caller sees.
@@ -19,8 +19,8 @@
 //
 // FAIL CLOSED: if the seam is unregistered/throws, the error propagates and the administration is NOT written —
 // an IV infusion is the last place to treat "could not check" as "checked".
-import { AdministrationStateError, type IvSegment } from "@wardenx/emar";
-import type { IpuIvPreAdministrationInput, IpuIvPreAdministrationVerdict } from "@wardenx/types";
+import { AdministrationStateError, type IvSegment } from "@chartwarden/emar";
+import type { IpuIvPreAdministrationInput, IpuIvPreAdministrationVerdict } from "@chartwarden/types";
 
 export type EmarIvOverlayPort = {
   evaluatePreAdministration(

@@ -1,4 +1,4 @@
-// @wardenx/db — `two_factor` (M2 Identity §3.3). A user's TOTP/SMS second-factor
+// @chartwarden/db — `two_factor` (M2 Identity §3.3). A user's TOTP/SMS second-factor
 // enrollment. Authentication factors are USER-level and shared across every
 // organization that user belongs to (M02-F01: one identity, many memberships), so this
 // table is user-owned and NON_ORG_SCOPED in check-tenancy.ts — protected by a

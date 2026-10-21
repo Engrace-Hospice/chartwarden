@@ -1,4 +1,4 @@
-import { Button, CenteredCardLayout, Glyph, useApiClient } from "@wardenx/ui";
+import { Button, CenteredCardLayout, Glyph, useApiClient } from "@chartwarden/ui";
 // Restricted funeral-home access: the server binds the session to one decedent. This screen
 // must not request or present any chart, contact details or additional clinical information.
 import { useEffect, useRef, useState } from "react";

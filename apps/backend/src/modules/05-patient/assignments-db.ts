@@ -15,8 +15,8 @@
 // CACHE: the durable caseload read (`createDrizzleCaseloadStore`) queries `patient_assignment` on every
 // call — there is no durable-set cache to invalidate. The only cache (M17's shift Valkey set) is a
 // separate additive union keyed by visit, not by this table.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import {
   type AssignClinicianInput,

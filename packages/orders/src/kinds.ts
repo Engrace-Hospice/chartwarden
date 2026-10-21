@@ -7,12 +7,12 @@
 
 import { FormatRegistry, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { OrderKind } from "@wardenx/types";
+import type { OrderKind } from "@chartwarden/types";
 
 // TypeBox's `Value` treats an UNREGISTERED format as a hard failure ("Unknown format 'uuid'"), so the
 // `uuid`/`date-time` fields below only validate when some other module happened to register the checkers
 // first (the process-global registry). F-232's `dme.v2`/`supply.v2` carry a `skuId` uuid, so register
-// idempotently here rather than depend on import order (the `@wardenx/supplies` `kinds/formats.ts` precedent;
+// idempotently here rather than depend on import order (the `@chartwarden/supplies` `kinds/formats.ts` precedent;
 // both definitions are the same RFC-4122 / `Date.parse` pair, and `Has` is checked before `Set`).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

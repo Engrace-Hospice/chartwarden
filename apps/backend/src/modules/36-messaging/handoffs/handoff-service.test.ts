@@ -1,6 +1,6 @@
 // WP 3.5 - the handoff policy on in-memory stores: offer (verification, replay, clashes), per-item accept/decline/cancel,
 // accountability, deadline and policy cap, task transfer, participant-only reads and the PHI-free events.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   ALICE,

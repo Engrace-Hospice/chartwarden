@@ -1,4 +1,4 @@
-// @wardenx/db — `collaborator_link` (M2 Identity, GAP-115 follow-up; migration 0521). The durable, hash-only,
+// @chartwarden/db — `collaborator_link` (M2 Identity, GAP-115 follow-up; migration 0521). The durable, hash-only,
 // bounded-use magic-link store behind the external-collaborator and funeral-home session classes. The token is
 // stored ONLY as a SHA-256 digest (`token_hash`); `max_uses`/`use_count` make a redemption a single conditional
 // UPDATE; `principal_user_id` is the synthetic credential-less M2 `user` the redeemed session row belongs to.

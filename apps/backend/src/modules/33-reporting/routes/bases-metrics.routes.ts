@@ -6,7 +6,7 @@
 // per-row ABAC (`abac:"none"` in M33_CONTRIBUTED_PERMISSIONS) — `requirePermission` on the §4.6 keys is
 // the full gate. Every read still runs through the injected service → `withReportSession` (§8.1.2 / D3).
 // Org/actor binding is ALWAYS server-side (request.context). Mirrors M34 routes/platform/tenants.ts.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";

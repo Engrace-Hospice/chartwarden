@@ -1,7 +1,7 @@
 // usePatientNames: names are never stranded by StrictMode's mount/unmount/mount, by a change of ids mid-fetch, or by a
 // failed lookup (retried on a later render).
 import { act, renderHook, waitFor } from "@testing-library/react";
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

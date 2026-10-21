@@ -4,7 +4,7 @@
 //
 // Everything fails CLOSED: an unknown status, an invalid clock, a malformed scope entry or a scope that names
 // only slices M3 cannot enumerate yields "not live" / "covers nothing", never a wider answer.
-import type { EngagementCoverage } from "@wardenx/types";
+import type { EngagementCoverage } from "@chartwarden/types";
 
 /** Server-owned key in `scope` counting enrolled auditors (no enrolment table exists); never client-writable. */
 export const ENROLLED_COUNT_KEY = "enrolledAuditorCount";

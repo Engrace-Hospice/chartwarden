@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — GAP-002: server-side session timeouts (M2 §2.2.4, D1; HIPAA
+// @chartwarden/auth · identity — GAP-002: server-side session timeouts (M2 §2.2.4, D1; HIPAA
 // §164.312(a)(2)(iii) automatic logoff).
 //
 // `SESSION_POLICY` declared every class's idle/absolute bound but nothing on the server read it — only
@@ -27,8 +27,8 @@
 // lifetime; with a 10-min idle the 72-h cap is reachable only by uninterrupted activity for three days;
 // and engagement access is per-session (a new magic-link sign-in inside the window starts a new session,
 // §7.7), so an engagement longer than 72 h is served by several sessions, never cut short of its window.
-import { type DbClient, schema } from "@wardenx/db";
-import { SESSION_POLICY, type SessionClassTimeout } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { SESSION_POLICY, type SessionClassTimeout } from "@chartwarden/types";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { SessionClass } from "./session-classes";
 

@@ -1,5 +1,5 @@
 // apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory (22 routes)
-// behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the
+// behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
 // §4.6 keys M10 registers into M3's catalog (M10_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected HopeRouteService (in-memory
 // slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -20,8 +20,8 @@
 // predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
 // /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
 // this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
-import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, ValidationError } from "@wardenx/types";
+import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -60,7 +60,7 @@ import {
 } from "./hope-typebox";
 import type { HopeRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface HopeRouteDeps {
@@ -590,7 +590,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // F-058 (#150) — this comment used to read "re-validates, re-assembles". It does neither: it flips
   // `status` from `rejected` to `queued` and re-emits `m10.hope.submission_queued`. Re-validation is
   // `iqies-submit-worker`'s job (`decideSubmitReadiness` → `hasBlockingError`), and that worker has no
-  // transport to be wired to — `@wardenx/iqies-client`'s only adapter is the deny-stub. Requeueing is
+  // transport to be wired to — `@chartwarden/iqies-client`'s only adapter is the deny-stub. Requeueing is
   // still the right transition to expose; describing it as work it does not do is not.
   app.post(
     "/api/v1/hope/submissions/:id/retry",

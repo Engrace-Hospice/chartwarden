@@ -1,4 +1,4 @@
-// @wardenx/mdm — the `MdmRouteService` + a shared in-memory backend (M40-T07, §4.1, §7.6).
+// @chartwarden/mdm — the `MdmRouteService` + a shared in-memory backend (M40-T07, §4.1, §7.6).
 //
 // The routes (apps/backend/src/modules/40-mdm/routes) read through the `MdmEntityProvider` seam
 // (T05) and call THIS service for the write/admin surface the read seam doesn't cover: overlay

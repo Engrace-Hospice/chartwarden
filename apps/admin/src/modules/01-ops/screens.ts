@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/01-ops — WX-PR-020 (OPS-004) operator recovery screens, registered into the
 // M34 admin shell (the same registration pattern as apps/admin/src/modules/35-subscription-billing).
 // `requiredPermission: "member.manage"` reuses the SAME admin-only bar Staff Management gates on — a

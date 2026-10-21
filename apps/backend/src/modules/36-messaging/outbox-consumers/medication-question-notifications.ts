@@ -3,7 +3,7 @@
 // never the payload. The text is PROVISIONAL (clinical-lead / pharmacy sign-off pending) and carries no name, patient or
 // question text: it is an inbox entry, never the emergency path. The correlation id is (channel, asker, 10-minute bucket of the event stamp), so a redelivery AND a burst of
 // unrouted asks by one person in one conversation converge on one alert (the emitter absorbs a repeat id); the event itself is still per send. The deep link re-checks access when opened.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

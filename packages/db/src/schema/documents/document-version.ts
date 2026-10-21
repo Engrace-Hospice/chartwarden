@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `document_version` (M22 §3.3 / §2.2.2). Append-only version ledger: one row per
+// @chartwarden/db — `document_version` (M22 §3.3 / §2.2.2). Append-only version ledger: one row per
 // rendered/uploaded byte payload of a document. "Superseding" never edits a version — it inserts a
 // new row and flips `document.active_version_id` (service-layer, F19/§2.2.2). No user soft-delete.
 //

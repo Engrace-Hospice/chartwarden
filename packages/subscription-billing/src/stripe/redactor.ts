@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §8.7 audit-envelope REDACTOR (pure core, M35-T04).
+// @chartwarden/subscription-billing — §8.7 audit-envelope REDACTOR (pure core, M35-T04).
 //
 // Every request/response envelope the dispatcher writes to `stripe_api_call_audit` passes through here
 // FIRST, so a Stripe secret key, a card PAN/CVC, a bank number, a bearer token, or a raw patient id can

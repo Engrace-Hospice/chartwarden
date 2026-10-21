@@ -13,7 +13,7 @@
 // This file holds the vocabulary, the store contract, the in-memory store (route tests) and the
 // orchestration; production binds the Drizzle store (./records-request-fax-db.ts) under RLS.
 import { randomUUID } from "node:crypto";
-import { DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { OutboundFaxTransport } from "../fax/outbound-fax";
 import type { RenderedCoverSheet } from "./cover-sheet";
 import type { RecordsRequestActor, RecordsRequestView } from "./records-request-service";
@@ -90,19 +90,19 @@ export const clampReason = (reason: string): string =>
   reason.trim().slice(0, 500) || "the fax provider refused the fax";
 
 export const faxNotOpen = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_NOT_OPEN",
     "only an open records request (not cancelled or already received) can be faxed",
     409,
   );
 export const faxAlreadySent = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_FAX_ALREADY_SENT",
     "this records request was already faxed to a different number",
     409,
   );
 export const faxInProgress = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_FAX_IN_PROGRESS",
     "this records request is being faxed right now",
     409,

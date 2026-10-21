@@ -1,4 +1,4 @@
-// @wardenx/auth · abac — the named-predicate registry (M3 — Authorization, M3-T07; spec §4.2).
+// @chartwarden/auth · abac — the named-predicate registry (M3 — Authorization, M3-T07; spec §4.2).
 //
 // `require-abac.ts` (M3-T05) ships `requireAbac(action, predicate)` as the contract: it
 // assembles the server-side `AbacContext`, extracts the target, and dispatches to the

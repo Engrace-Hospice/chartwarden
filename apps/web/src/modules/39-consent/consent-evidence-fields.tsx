@@ -1,4 +1,4 @@
-import { t } from "@wardenx/ui";
+import { t } from "@chartwarden/ui";
 // apps/web/src/modules/39-consent — shared capture-evidence sub-form (WX-PR-010). Every signature
 // ceremony (initial sign, supersede, renew) collects the SAME per-`captureMethod` evidence and is
 // gated by the SAME floor the backend enforces (`validateCaptureEvidence`,

@@ -24,7 +24,7 @@
 // on every step-up route would leave their 2xx path completely unexercised).
 //
 // The business RULES (the §2.1-§2.3 claim state machine, the §4.6 rule-engine outcomes, the §418.xx R&B
-// per-diem math) are NOT this file's job — they belong to the pure `@wardenx/medicaid-adapters` suites and
+// per-diem math) are NOT this file's job — they belong to the pure `@chartwarden/medicaid-adapters` suites and
 // the Drizzle live suite. This file's in-memory service intentionally skips that logic (no state-machine
 // validation, no rule execution) so it can focus on what only `inject()` can prove: every one of the
 // thirty-nine routes reaches its handler with the RIGHT permission key, the RIGHT ABAC composition, and a
@@ -38,8 +38,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the VALIDATION RULE CONFIG (R2, §5.1 #14). The compliance
 // officer's per-tenant overlay on the platform rule floor: each rule's enabled state, severity, override
 // role, and the applicable states from the platform default. A REGULATORY-REQUIRED rule shows a lock glyph

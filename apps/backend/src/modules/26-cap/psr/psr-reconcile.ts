@@ -19,9 +19,9 @@ import {
   reconcilePsr,
   reconcilePsrInpatientDays,
   summarizePsrQuarantine,
-} from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/write-service";
 

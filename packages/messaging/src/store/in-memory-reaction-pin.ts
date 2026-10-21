@@ -5,7 +5,7 @@ import {
   MESSAGE_REACTION_KEYS,
   type MessageReactionKey,
   type MessageReactionSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export interface ReactionPinState {
   setReaction(messageId: string, emoji: MessageReactionKey, userId: string, present: boolean): void;

@@ -10,9 +10,9 @@
 // in the deleted rows; the audit-of-audit trail survives per M4 (the destruction certificate records the
 // per-table affected-row counts). Aggregate census snapshots survive right-to-erasure (they carry no
 // patient_id — the D14 reproducibility rule, mirroring M26's `cap` posture).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { eq, inArray } from "drizzle-orm";
 
 import { registerEraser } from "../../bootstrap/index";

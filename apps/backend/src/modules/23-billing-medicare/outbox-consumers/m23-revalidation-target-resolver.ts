@@ -9,7 +9,7 @@
 // three the payload carries; every event `m23-revalidate-triggers.ts` binds carries exactly one. A payload
 // with none of the three resolves to an EMPTY target set (a caller bug this pass does not guess past —
 // `ClaimRepository.listRevalidationTargets`'s own doc comment states this precisely).
-import { repositories } from "@wardenx/billing";
+import { repositories } from "@chartwarden/billing";
 import type { RevalidationTargetResolverPort } from "../jobs/m23-jobs";
 
 function stringField(payload: Record<string, unknown>, key: string): string | undefined {

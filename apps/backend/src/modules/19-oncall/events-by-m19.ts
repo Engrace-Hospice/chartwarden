@@ -1,6 +1,6 @@
 // apps/backend/src/modules/19-oncall/events-by-m19.ts — Module 19's outbox-event catalog contribution,
 // the `m19.*` taxonomy `write-service-drizzle.ts` and the D10 inbound-trigger watchdog
-// (`consumers/inbound-trigger.ts`) publish/declare, closed over `M19_EVENT_NAMES` (@wardenx/types,
+// (`consumers/inbound-trigger.ts`) publish/declare, closed over `M19_EVENT_NAMES` (@chartwarden/types,
 // `packages/types/src/oncall.ts`) — the pre-existing source of truth every idempotency-key entry and
 // consumer wiring already referenced by name.
 //
@@ -26,7 +26,7 @@
 // render needs plus an allowlist of enumerated call facts — M22 renders it as `triage_summary_caregiver` /
 // `triage_summary_attending` (F-99/F-100/F-208 render-request pattern).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

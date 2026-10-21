@@ -1,7 +1,7 @@
 // M36 WP 3.8 - every word the lifecycle review queue shows, in one place. PROVISIONAL pending clinical-lead review (no
 // sign-off is recorded): change the text here, never the codes. No patient detail, no cause narrative, no paging language
 // beyond the notice that messaging does not page anyone.
-import type { ReviewCause, ReviewResolution, TaskCloseReason } from "@wardenx/types";
+import type { ReviewCause, ReviewResolution, TaskCloseReason } from "@chartwarden/types";
 
 export const REVIEW_TAB_LABEL = "Review";
 export const REVIEW_HEADING = "Lifecycle review";

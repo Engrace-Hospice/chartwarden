@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — the claim root, its service-date lines, and the
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — the claim root, its service-date lines, and the
 // line↔encounter join. medicaid_claim is PARTITION BY LIST(provider_entity_id) (per-CCN tenancy spine,
 // §3.3 tenancy note); medicaid_claim_line is PARTITION BY LIST(provider_entity_id) too — both carry a
 // composite PK (id, provider_entity_id) including the partition key, declared in SQL (0094). Drizzle here

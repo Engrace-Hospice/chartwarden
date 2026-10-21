@@ -1,4 +1,4 @@
-// @wardenx/audit — Compliance export renderers (M4-T11, M4 spec §3.5 audit_export, §4.3, §4.4).
+// @chartwarden/audit — Compliance export renderers (M4-T11, M4 spec §3.5 audit_export, §4.3, §4.4).
 //
 // The `audit.build_export` job renders a requested `audit_export` into a watermarked artifact
 // (csv / ndjson / pdf per the `audit_export_format` enum) destined for MinIO with a TTL. SEC-052 /
@@ -103,7 +103,7 @@ function renderNdjson(records: readonly AuditEventRecord[], watermark: string): 
 /** PDF — deterministic text layout with the watermark in the page header (binary render: follow-up). */
 function renderPdf(records: readonly AuditEventRecord[], watermark: string): string {
   const lines = [
-    "WardenX — Audit Compliance Export",
+    "ChartWarden — Audit Compliance Export",
     `WATERMARK: ${watermark}`,
     `RECORDS: ${records.length}`,
     "",

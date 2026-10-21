@@ -6,7 +6,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — the §2.2 prescribe surface (#91).
 //
 // Nothing in the staff app could write a prescription. In a hospice, symptom control IS medication —

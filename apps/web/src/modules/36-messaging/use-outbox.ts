@@ -10,7 +10,7 @@
 // React state ONLY, held per channel so switching channels never loses a queued message. Message bodies are PHI and must
 // not be persisted in the browser (no localStorage, sessionStorage or IndexedDB): closing or reloading the tab drops the
 // queue, by design, and a beforeunload warning says so while anything waits.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SendBody } from "./message-send-body";
 import { REQUEST_TIMEOUT_MS, apiErrorMessage } from "./messaging-utils";

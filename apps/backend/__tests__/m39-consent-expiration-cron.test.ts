@@ -4,7 +4,7 @@
 // (flip + same-tx publish + M5 snapshot + RLS) is the LIVE suite, `m39-consent-expiration-cron.live.test.ts`.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isPlatformJobRegistered } from "@wardenx/tenancy";
+import { isPlatformJobRegistered } from "@chartwarden/tenancy";
 import { describe, expect, it } from "vitest";
 import {
   M39_CRON_BOUNDS,

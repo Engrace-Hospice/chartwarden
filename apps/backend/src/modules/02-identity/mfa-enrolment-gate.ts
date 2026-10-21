@@ -1,5 +1,5 @@
 // apps/backend/src/modules/02-identity/mfa-enrolment-gate.ts — the server-side MFA matrix gate (M2 §2.3,
-// GAP-003 / GAP-005). Policy is the pure `evaluateMfa` in @wardenx/auth; this is its composition: which roles a
+// GAP-003 / GAP-005). Policy is the pure `evaluateMfa` in @chartwarden/auth; this is its composition: which roles a
 // user holds (M3's `membershipRoleKeysForOrg`, injected as a port - M2 may not read M3's tables) against which
 // factors they have enrolled (the M2 `MfaEnrollmentReader`).
 //
@@ -12,10 +12,10 @@
 // (`sessionProvedFactor`), else a passkey-only user would pass on a password-only session.
 // Disabled (`enforced: false`) it answers "satisfied" without reading anything: the dev/test default (see
 // `resolveMfaEnforcement`).
-import { type MfaVerdict, evaluateMfa } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { withUserContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { type MfaVerdict, evaluateMfa } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { withUserContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { MfaEnrollmentReader } from "./step-up-ports";
 
@@ -66,8 +66,8 @@ export interface MfaEnrolmentGate {
 }
 
 /** 403 raised when the matrix is unmet. The requirement is in the message so the UI can route to the right enrolment. */
-export const mfaEnrolmentRequired = (requirement: string, reason?: string): WardenXError =>
-  new WardenXError("MFA_ENROLMENT_REQUIRED", mfaDenialMessage(requirement, reason), 403);
+export const mfaEnrolmentRequired = (requirement: string, reason?: string): ChartWardenError =>
+  new ChartWardenError("MFA_ENROLMENT_REQUIRED", mfaDenialMessage(requirement, reason), 403);
 
 /** The user-facing sentence for a denial; shared with the authenticate-stage hold. */
 export function mfaDenialMessage(requirement: string, reason?: string): string {

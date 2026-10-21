@@ -1,6 +1,6 @@
 // WP 2.4: how the closed reaction palette (packages/types messaging-reactions.ts) looks and is announced. The server
 // stores the KEY; the glyph is artwork only (aria-hidden), the label is what a screen reader hears.
-import { MESSAGE_REACTION_KEYS, type MessageReactionKey } from "@wardenx/types";
+import { MESSAGE_REACTION_KEYS, type MessageReactionKey } from "@chartwarden/types";
 
 export interface ReactionPaletteEntry {
   readonly key: MessageReactionKey;

@@ -1,4 +1,4 @@
-// @wardenx/db — `election_addendum` (M6; ADR-0015 D1 amendment, FY2027). The 42 CFR 418.24(c) "Patient
+// @chartwarden/db — `election_addendum` (M6; ADR-0015 D1 amendment, FY2027). The 42 CFR 418.24(c) "Patient
 // Notification of Hospice Non-Covered Items, Services, and Drugs", mandatory for every election effective on
 // or after 2026-10-01 (CMS-1851-F). VERSIONED: version 1 is the initial addendum (due within 5 calendar days of
 // the election's effective date, 418.24(d)(1)); every plan-of-care change that affects the determinations adds

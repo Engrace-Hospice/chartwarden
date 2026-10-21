@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.2 IDG meeting lifecycle state machine — M14-T03.
+// @chartwarden/idg — §2.2 IDG meeting lifecycle state machine — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
   MEETING_GRAPH,

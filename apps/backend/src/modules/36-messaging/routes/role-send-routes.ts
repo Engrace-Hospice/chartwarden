@@ -10,15 +10,15 @@
 // and refuses (409) when the confirmed person no longer covers, and refuses (422) a gap or an unconnected roster with the telephone
 // procedure wording. The tenant flag `messaging.role_send` off is the uniform 404 (decided in the service, before any router call). The
 // resolution is never cached. Org and actor are always the request context.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import {
   NotFoundError,
   type OnCallDirectoryRole,
   ROLE_SEND_PERMISSION,
   URGENT_SEND_PERMISSION,
   UnauthorizedError,
-} from "@wardenx/types";
-import type { RichBody } from "@wardenx/types";
+} from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { RoleSendService } from "../oncall-directory/role-send-service";
 import type { ValidateLinks } from "../urgent/urgent-service";

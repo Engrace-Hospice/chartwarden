@@ -25,8 +25,8 @@
 // `sandbox` is refused when NODE_ENV=production — synthetic eligibility must never reach a real tenant.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { EligibilityOutcome } from "@wardenx/billing";
-import type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@wardenx/types";
+import type { EligibilityOutcome } from "@chartwarden/billing";
+import type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@chartwarden/types";
 import {
   HETS_271_SCENARIOS,
   type Hets271Outcome,
@@ -39,7 +39,7 @@ import {
   createSandboxHetsTransport,
   deriveHospiceHistory,
   parse271,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 import type { HetsEligibilityPort, HetsEligibilityResult } from "./m23-jobs";
 
 /** The disclosure purpose recorded on the MBI-unlock audit event for a HETS 270. */

@@ -17,9 +17,9 @@
 // The membership→user translation in `roleKeysOf` matters: M21's `*_membership_id` columns hold MEMBERSHIP
 // ids and M3's grant store is keyed on USER id, so looking a membership id up directly would silently
 // return zero grants — which denies, but for the wrong reason, and would deny every legitimate dispatcher.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MembershipId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MembershipId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type {
   ComfortKitReturnAbacFacts,

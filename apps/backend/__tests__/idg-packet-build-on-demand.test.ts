@@ -4,10 +4,10 @@
  * UPDATE ... WHERE status AND version RETURNING does (match on version, return the row) so the double-emit race
  * is observable; the real RLS/DB path is proven in m14-packet-build.live.test.ts.
  */
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@wardenx/tenancy", async (importOriginal) => ({
+vi.mock("@chartwarden/tenancy", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   withOrgContext: (db: unknown, _ctx: unknown, fn: (tx: unknown) => unknown) => fn(db),
 }));

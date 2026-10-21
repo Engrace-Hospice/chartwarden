@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `noe_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `noe_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). The Notice of Election: one regulatory NOE per admission/election period, with the
 // 5-day timely-filing window watched by the cron watchdog (`window_target_at` = election effective
 // date + 5 days). The NOE lifecycle (D4) lives in `state` (shares the NOE/NOTR 7-state shape).

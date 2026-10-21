@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `cbsa_value_codes_present` (wage, error, regulatory). A hospice claim reports value code
+// @chartwarden/billing — §4.5 rule `cbsa_value_codes_present` (wage, error, regulatory). A hospice claim reports value code
 // 61 (CBSA of the beneficiary's residence, home levels of care) and/or G8 (CBSA of the latest inpatient facility,
 // inpatient levels) — the pricer wage-adjusts with them (CMS Pub. 100-04 ch. 11 §30.3). The code comes from the
 // patient's / facility's ZIP via the platform geography tables and is never guessed: when a required code cannot be

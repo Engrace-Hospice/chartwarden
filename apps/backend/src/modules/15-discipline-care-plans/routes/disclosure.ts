@@ -24,12 +24,12 @@
 //
 // The seam is resolved through `getSeam` and cast to the minimal shape M15 calls (the M25 →
 // TerminologyProvider precedent): `ConsentEvaluator` is `unknown` in the leaf SeamContracts, and casting
-// structurally keeps M15 off a `@wardenx/consent` import edge it does not have.
-import { hasOrgWideScope } from "@wardenx/auth";
+// structurally keeps M15 off a `@chartwarden/consent` import edge it does not have.
+import { hasOrgWideScope } from "@chartwarden/auth";
 import { getSeam } from "../../../bootstrap/index";
 import type { M15ReadActor } from "./actor";
 
-/** The M39 surface M15 calls — structurally typed so no `@wardenx/consent` import edge is taken. */
+/** The M39 surface M15 calls — structurally typed so no `@chartwarden/consent` import edge is taken. */
 interface ConsentEvaluatorShape {
   evaluateForIngressRedaction(args: {
     organizationId: string;

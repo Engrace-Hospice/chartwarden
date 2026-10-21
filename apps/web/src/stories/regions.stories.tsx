@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-// Storybook (R0.5) — Tier-1 layout regions (@wardenx/ui). Visual reference for the shared zones
+// Storybook (R0.5) — Tier-1 layout regions (@chartwarden/ui). Visual reference for the shared zones
 // every screen composes: header, KPI strip, patient banner, filter bar, detail panel, footer.
 import {
   FilterBar,
@@ -9,7 +9,7 @@ import {
   PatientBanner,
   RightDetailPanel,
   StickyFooterActions,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import type { JSX } from "react";
 
 const meta: Meta = {

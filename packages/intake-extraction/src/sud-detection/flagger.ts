@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — the deterministic SUD pattern flagger (F-237; M22 §7.4 W4 / D8, 42 CFR Part 2).
+// @chartwarden/intake-extraction — the deterministic SUD pattern flagger (F-237; M22 §7.4 W4 / D8, 42 CFR Part 2).
 //
 // Runs over the Docling text blocks of every page of an intake batch and returns each indicator it finds,
 // with the page and the BLOCK's box, so the review UI can show the reviewer exactly why a page was flagged.

@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.2 IDG meeting lifecycle state machine (M14-T03). Pure, IO-free.
+// @chartwarden/idg — §2.2 IDG meeting lifecycle state machine (M14-T03). Pure, IO-free.
 //
 // The meeting aggregate lifecycle (§2.2):
 //
@@ -13,7 +13,7 @@
 // raise the precise §4.3 code via IdgStateError), and returns the new state + the §2.7 in-transaction
 // side-effect list the service executes. No IO; every fact a guard needs (step-up freshness, per-patient
 // review-floor clearance, override authority, transition reason) is resolved upstream and passed in.
-import type { IdgMeetingStatus } from "@wardenx/types";
+import type { IdgMeetingStatus } from "@chartwarden/types";
 import { type IdgSideEffect, type IdgTransitionResult, result } from "./effects";
 import { IdgStateError, require_ } from "./errors";
 

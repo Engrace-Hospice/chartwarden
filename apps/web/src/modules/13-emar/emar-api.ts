@@ -26,7 +26,7 @@
 //     device and rides as `x-witness-attestation`; this layer only carries it. It is a server-minted,
 //     single-use, 60-second bearer credential — the reason `check-request-header-auth.ts` classifies that
 //     header `verified` rather than trusting a self-asserted "a witness watched me".
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ export type IvSegmentMode = Exclude<AdministrationMode, "single_dose">;
  * §2.11 — `IV_SESSION_GRAPH`, mirrored for the CLIENT's benefit only. The server runs the real one
  * (`assertIvSegmentLegal` on every write), so this decides which BUTTONS to render and nothing else —
  * the alternative is offering all five segments and letting a clinician discover the illegal ones as
- * 409s at an infusion pump. It is a copy because `apps/web` may not import `@wardenx/emar` (a backend
+ * 409s at an infusion pump. It is a copy because `apps/web` may not import `@chartwarden/emar` (a backend
  * feature package); the `state` the server publishes is what keeps the two in agreement.
  */
 export const IV_NEXT_SEGMENTS: Readonly<Record<IvSessionState, readonly IvSegmentMode[]>> = {

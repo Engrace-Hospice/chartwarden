@@ -10,7 +10,7 @@
 //
 // It renders NOTHING when there are no proposals, and a quiet one-line notice when the read fails — a
 // silently-empty section would claim "nothing proposed", which is exactly the wrong thing to say.
-import { Glyph, StatusPill, useApiClient } from "@wardenx/ui";
+import { Glyph, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 

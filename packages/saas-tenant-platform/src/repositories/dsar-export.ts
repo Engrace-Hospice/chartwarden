@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — DSAR export data port: `dsar_export_job` +
+// @chartwarden/saas-tenant-platform · repositories — DSAR export data port: `dsar_export_job` +
 // `dsar_export_job_event` (M34 §3.7).
 //
 // The patient-scoped Data Subject Access Request side of the strict DSAR/tenant-export split (D9):
@@ -6,7 +6,7 @@
 // (D17). This repo inserts the job, drives its status, records the bundle artifact handles (MinIO
 // key, sha256, presigned-URL expiry, download stamp), and appends the disclosure-accounting event
 // ledger. The DEK-redaction / Part 2 honoring and the SLA escalation timers live in the worker.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { type SQL, and, asc, desc, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
 
 const J = schema.dsarExportJob;

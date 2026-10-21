@@ -6,9 +6,9 @@
 // window; refused for Part 2-heightened sessions, §7.4 step 4a), and close (reason='manual').
 //
 // Every route is gated by the REAL Authorization Contract (`requirePermission`/`requireAbac`/
-// `requireStepUp` from @wardenx/auth, M3) on the §4.5 keys M34 registers into M3's catalog
+// `requireStepUp` from @chartwarden/auth, M3) on the §4.5 keys M34 registers into M3's catalog
 // (M34_CONTRIBUTED_PERMISSIONS) + the §4.6 predicates M34 owns (./abac-predicates). Cross-tenant reads
-// run under `withPlatformContext` (M1 @wardenx/tenancy — the separately-pooled, RLS-bypass, AUDITED
+// run under `withPlatformContext` (M1 @chartwarden/tenancy — the separately-pooled, RLS-bypass, AUDITED
 // platform-ops read path, F03/F09) in prod; org/actor binding is ALWAYS server-side (`request.context`,
 // never the body). Mirrors the M22 routes/documents-routes.ts shape (+ the sibling tenants.ts).
 //
@@ -16,8 +16,8 @@
 // `withPlatformContext` → typed response, and `auditRead()` records every PHI-adjacent surveyor read
 // (HIPAA §164.312(b) + the F09 bypass-audit guarantee). The start/elevate/close COMMANDS are synchronous
 // service calls that publish their own §4.9 `m34.support_session.*` outbox in-tx (no worker enqueue).
-import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   CloseSessionRequest,
@@ -30,7 +30,7 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SupportSessionRouteDeps {

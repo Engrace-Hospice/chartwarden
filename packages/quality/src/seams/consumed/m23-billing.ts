@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M23 (Billing — Medicare). §4.4.
+// @chartwarden/quality — consumed-seam view of M23 (Billing — Medicare). §4.4.
 //
 // M23 is BUILT, so this is no longer a pure forward seam: the composition root binds these methods over
 // M23's live `ClaimLineReader` / `PatientDaysProvider` (P2C). Each method still returns a UNION with the

@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.1 D3 visit lifecycle state machine — M17-T03.
+// @chartwarden/scheduling — §2.2.1 D3 visit lifecycle state machine — M17-T03.
 import { describe, expect, it } from "vitest";
 import {
   VISIT_GRAPH,

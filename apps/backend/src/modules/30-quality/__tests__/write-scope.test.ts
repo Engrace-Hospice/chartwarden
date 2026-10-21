@@ -1,7 +1,7 @@
 // GAP-091 follow-up — the M30 PHI WRITE path is patient-scoped at the SERVICE layer too ("both layers"):
 // a second caller that skips the route predicate must still be refused (404) for a patient outside the
 // actor's scope; a typed system actor keeps working; an org-wide role passes; any seam failure denies.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type M30WriteActor, m30SystemWriteActor } from "../routes/actor";
 import type { QualityPatientScope } from "../routes/patient-scope";

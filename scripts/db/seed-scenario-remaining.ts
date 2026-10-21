@@ -1,4 +1,4 @@
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 /**
  * WardenX — final scenario-data batch: M16 (Bereavement) / M30 (HQRP & Quality) / M37 (IPU Management) /

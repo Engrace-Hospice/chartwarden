@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the deterministic linear-extrapolation projection (D5, §1.2: "deterministic
+// @chartwarden/cap-management — the deterministic linear-extrapolation projection (D5, §1.2: "deterministic
 // linear extrapolation", explicitly NOT AI/predictive). The projection is the bridge between "paid YTD" and
 // "what we will be paid by Sep 30": projectedYearEnd = paidYtd / elapsedFraction (a constant run-rate over
 // the cap-year window). Accrual basis is PAID amount from M25 remittance (D4); outstanding-billed is carried

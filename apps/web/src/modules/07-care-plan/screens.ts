@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/07-care-plan — M7 screen registration (Track B, ADR-0030).
 // The §5 Plan of Care (IPOC) screens that have a backing M7 read route on the generated client: the
 // patient-scoped Plan of Care View (§5.2), the Version History ledger (§5.1), and the patient-friendly
@@ -47,7 +47,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // above was — the slots are populated at FINALIZE, and until #91 nothing could finalize, so the list was
 // always empty and never scanned. The chip's deviation is the interesting half: the shared `tint()`
 // helper is 12%, which measures 4.59:1 and passes; hand-rolling 14% is what pushed it under, and it was
-// hand-rolled because `tint` was not exported from `@wardenx/ui` at all.
+// hand-rolled because `tint` was not exported from `@chartwarden/ui` at all.
 //
 // STILL NOT BUILT: the IDG-review MEETING screens are M14's, not M7's (#91 lists them under M14); the
 // AI care-plan suggestion rail is M29 and renders as a stated absence.

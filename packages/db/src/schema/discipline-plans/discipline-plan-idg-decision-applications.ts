@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_plan_idg_decision_application` (M15, migration 0306; F-234 / #248). The durable,
+// @chartwarden/db — `discipline_plan_idg_decision_application` (M15, migration 0306; F-234 / #248). The durable,
 // idempotent record that M15's IDG-decision consumer handled one `idg.decision_recorded` of kind
 // `discipline_plan_update` (M15 spec §1.1 / §7.7; idempotency key `idgDecisionId`, §4.5). UNIQUE
 // (organization_id, idg_decision_id): a redelivery finds the row and is a no-op. `applied` rows carry the open

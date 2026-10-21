@@ -9,7 +9,7 @@
 // The model is ADVISORY-not-block (D3 / §7.5): a geofence failure does NOT refuse the event — it stamps the
 // quality band, records the snapshot, and (at the recorder, §2.4) routes to the breach-attest path. Care
 // delivery is never blocked by a geofence breach.
-import type { EvvEventGpsQuality } from "@wardenx/types";
+import type { EvvEventGpsQuality } from "@chartwarden/types";
 
 /** Mean Earth radius in metres (WGS-84 spherical approximation; sufficient for sub-100m geofences). */
 export const EARTH_RADIUS_M = 6_371_000;

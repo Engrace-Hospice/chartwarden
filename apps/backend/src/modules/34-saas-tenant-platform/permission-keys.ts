@@ -19,12 +19,12 @@
 // class. The platform-surface keys below default to ABAC `tenant_lifecycle_platform_ops`, which
 // tests the role (not `ctx.sessionClass`); see ./abac-predicates.
 //
-// REGISTRATION: this map is consumed by `@wardenx/auth`'s contributed-permission registry exactly
+// REGISTRATION: this map is consumed by `@chartwarden/auth`'s contributed-permission registry exactly
 // as the M22 `M22_CONTRIBUTED_PERMISSIONS` map is (packages/auth/src/permissions/contributed.ts —
 // `m22ContributedPermissionMirrorRows`). The companion mirror-row projector + `allPermissionMirrorRows`
 // wiring lands in that file (M3-owned catalog) in this phase's auth-package edit; this typed list is
 // the M34-owned source of truth those rows project from.
-import type { PermissionDef } from "@wardenx/auth";
+import type { PermissionDef } from "@chartwarden/auth";
 
 /**
  * The §4.5 permission keys M34 owns (registered into M3). Single-owner across the platform registry.

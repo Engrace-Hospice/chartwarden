@@ -1,4 +1,4 @@
-// @wardenx/db — the `bytea` column type M32's §3.6 cipher columns use.
+// @chartwarden/db — the `bytea` column type M32's §3.6 cipher columns use.
 //
 // §3.6 registers four columns with M1's envelope-encryption helper: `ai_invocation`'s three payload
 // ciphers and `ai_hallucination_report.reporter_narrative_cipher`. All four hold DEK-wrapped BYTES, not

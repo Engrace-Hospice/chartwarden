@@ -1,4 +1,4 @@
-// @wardenx/cap-management — threshold-band evaluation (D7). Aggregate (agency + per-patient) bands at
+// @chartwarden/cap-management — threshold-band evaluation (D7). Aggregate (agency + per-patient) bands at
 // 90% watch / 95% warn / 100% breach; inpatient bands at 18% watch / 20% breach. A band TRANSITION to a
 // higher band emits a cap_threshold_event + M36 alert (§2.4); a drop back to the safe band auto-resolves.
 //

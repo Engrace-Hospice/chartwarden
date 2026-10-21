@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M33 (Reporting & Dashboards). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M33 (Reporting & Dashboards). PRESENT producer (§4.4).
 //
 // M30 embeds M33 dashboard metrics on the HQRP measure-detail surface via M33's PUBLISHED
 // `MetricsProvider` seam — the single-metric read M33 exposes for embedded surfaces (aggregate-only,

@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: supervisory visit on time (CoP 418.76). Pure. No IO.
+// @chartwarden/quality — operational measure: supervisory visit on time (CoP 418.76). Pure. No IO.
 // Rate of required aide-supervisory visits performed within the regulatory window (higher is better).
 // Source: M15 `DisciplineComplianceProvider`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

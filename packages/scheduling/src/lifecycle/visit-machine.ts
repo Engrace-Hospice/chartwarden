@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.1 D3 visit lifecycle state machine (M17-T03). Pure, IO-free.
+// @chartwarden/scheduling — §2.2.1 D3 visit lifecycle state machine (M17-T03). Pure, IO-free.
 //
 // The §2.2.1 eight-state visit machine (M17-F03 reconciled — `evv_missing_attested`/`reassignment_needed`
 // are NOT states):
@@ -17,7 +17,7 @@
 // the documented reasons, step-up freshness) is resolved upstream and passed in. The D8 gate orchestrator
 // (which composes the seven predicates against the M2/M5/M15 readers) lands in M17-T07; here `publish`
 // takes the already-computed `gatePassed` verdict.
-import type { VisitStatus } from "@wardenx/types";
+import type { VisitStatus } from "@chartwarden/types";
 import { EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH } from "../policy";
 import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";

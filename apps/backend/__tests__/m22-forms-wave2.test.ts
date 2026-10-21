@@ -4,8 +4,8 @@
 // carries are drawn, a signature / patient identity / control number that is missing fails closed, PHI stays out
 // of file metadata and the visible footer, unknown keys are never drawn, Part 2 is handled, and the billing
 // letters carry no patient identity.
-import { findFormTemplate } from "@wardenx/forms";
-import { RenderPayloadError } from "@wardenx/types";
+import { findFormTemplate } from "@chartwarden/forms";
+import { RenderPayloadError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { COMPILED_FORMS, providedFieldIds } from "../src/modules/22-documents/render-pdf/forms";
 import { BILLING_TEXT } from "../src/modules/22-documents/render-pdf/forms/billing-forms";

@@ -1,4 +1,4 @@
-// @wardenx/fhir — opaque search cursor (§4.5 D13, M28-T04).
+// @chartwarden/fhir — opaque search cursor (§4.5 D13, M28-T04).
 //
 // Cursor-based pagination (D13): `Bundle.link.relation='next'` carries an opaque continuation token
 // holding the last resource's id. Offset pagination is broken under concurrent writes; a cursor keyed on

@@ -25,9 +25,9 @@
 // `dependsOn` edge to M6; the composition root wires the same function into both). No active admission for
 // the patient is a genuine data gap — the event is preserved (thrown, not swallowed) rather than minting an
 // unsited/unattributed order.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DeaSchedule, MedClass } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DeaSchedule, MedClass } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";

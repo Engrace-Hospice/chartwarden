@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the UB-04 revenue-code static seed (M38 §3.1 `revenue-codes.ts`: "static seed;
+// @chartwarden/terminology-loader — the UB-04 revenue-code static seed (M38 §3.1 `revenue-codes.ts`: "static seed;
 // manual update on revision"). Only the hospice-relevant subset is bundled; the complete NUBC list is an admin
 // upload of a normalized CSV. Descriptions follow the standard UB-04 titles.
 

@@ -2,7 +2,7 @@
 // conversation only (the server decides what is viewable and returns nothing deleted), and choosing one jumps to it
 // with the same jump the pinned bar and thread links use. Not offered in an archived conversation (the server refuses
 // it there), so the browser's own find keeps working.
-import { Button, Glyph } from "@wardenx/ui";
+import { Button, Glyph } from "@chartwarden/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import type { Message } from "./messaging-types";

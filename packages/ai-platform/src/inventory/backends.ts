@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.3 Phase-1 backend inventory (M32-T01).
+// @chartwarden/ai-platform — §2.3 Phase-1 backend inventory (M32-T01).
 //
 // The `ai_model_backend` rows registered at lock time (D1). PURE DATA — spec T56 is what INSERTs them;
 // this file is the single place the values are written down, so the seed, the routing config (D4) and
@@ -15,7 +15,7 @@
 // rows additionally have no stated context window. Guessing any of them would be worse than leaving the
 // hole visible: a fabricated context window silently truncates a real prompt, and a fabricated
 // `zdr_status` would defeat the exact check D19 exists to make unbypassable. See
-// `AI_BACKEND_SEED_BLOCKING_FIELDS` in `@wardenx/types` for which of the nine actually block an INSERT.
+// `AI_BACKEND_SEED_BLOCKING_FIELDS` in `@chartwarden/types` for which of the nine actually block an INSERT.
 //
 // MODEL PINS ARE THE SPEC'S. §2.3 keys the two cloud backends `anthropic-claude-opus-4-7` and
 // `anthropic-claude-haiku-4-5`. Those keys are the registry's contract and this file reproduces them;
@@ -23,7 +23,7 @@
 // the row can be seeded, which is precisely why the pin is one of the nine unstated fields rather than
 // something derived from the key here.
 
-import type { AiPhase1BackendRegistration } from "@wardenx/types";
+import type { AiPhase1BackendRegistration } from "@chartwarden/types";
 
 /**
  * The eight backends §2.3 registers at lock time, plus the local vision route ADR-0048 adds (F-237).

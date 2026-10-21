@@ -1,4 +1,4 @@
-// @wardenx/db — `prn_administration` (M13 §3.3 / §2.4 D3). 1:1 wrapper carrying the PRN-specific fields for a
+// @chartwarden/db — `prn_administration` (M13 §3.3 / §2.4 D3). 1:1 wrapper carrying the PRN-specific fields for a
 // PRN administration_record: the triggering reason, the effectiveness-reassessment window M9 reads via
 // `triggering_prn_administration_id` linkage. PHI-bearing (patient_id) → the three-column tenancy rule
 // (provider_entity_id + location_id NOT NULL). Non-partitioned (1:1 with administration rows, §3.5).

@@ -1,5 +1,5 @@
 import { periodCoversDate } from "./_util";
-// @wardenx/billing — §4.5 rule `election_period_active` (period, error, regulatory). A valid hospice
+// @chartwarden/billing — §4.5 rule `election_period_active` (period, error, regulatory). A valid hospice
 // election period (M6) must cover every service date on the claim; a revoked patient's coverage ends on
 // the revocation date (D5). Reads the resolved `electionPeriods` snapshot + the claim's line service
 // dates. PURE: reads ctx only.

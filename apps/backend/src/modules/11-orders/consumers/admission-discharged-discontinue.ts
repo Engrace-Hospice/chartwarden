@@ -23,7 +23,7 @@
 // so a system cascade going through it would have been attributed to a clinician who did nothing. The
 // consumed event name is a STRING literal only (no M6 schema import): M11 reads M6 solely through the
 // foundation outbox, never via a `dependsOn` edge (§4 boundary rule).
-import type { OrderKind, OrderStatus } from "@wardenx/types";
+import type { OrderKind, OrderStatus } from "@chartwarden/types";
 
 // ── The discharged payload M11 consumes (M6 owns the canonical wire shape) ────────────────────────────
 

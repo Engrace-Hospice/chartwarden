@@ -1,4 +1,4 @@
-// @wardenx/billing — derive the hospice visit claim lines (CMS Pub. 100-04 ch. 11 §30.3) from the claim's
+// @chartwarden/billing — derive the hospice visit claim lines (CMS Pub. 100-04 ch. 11 §30.3) from the claim's
 // billable encounters. One dated line per visit, in 15-minute units, riding the level-of-care period that covers
 // the visit date (the claim_line model requires one). Nothing is guessed: a visit with no documented duration, or
 // outside every level-of-care period, is reported back as `unresolved` for the caller to fail on, and visits

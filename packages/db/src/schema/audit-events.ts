@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_event` (M1 Foundation §3.9). The append-only audit log,
+// @chartwarden/db — `audit_event` (M1 Foundation §3.9). The append-only audit log,
 // RANGE partitioned on created_at (monthly). HELPER-ONLY: written exclusively via
 // packages/audit (audit()/auditRead()) under the wardenx_audit_writer role — never
 // a direct insert/select from a feature module (HELPER_ONLY_TABLES, manifest).

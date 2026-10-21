@@ -1,4 +1,4 @@
-// @wardenx/db — M37 IPU bed hierarchy (§2.1, §3.3): inpatient_unit → ipu_room → ipu_bed, plus the
+// @chartwarden/db — M37 IPU bed hierarchy (§2.1, §3.3): inpatient_unit → ipu_room → ipu_bed, plus the
 // ipu_bed_cleaning_event turnover ledger (§2.12 D13). All TENANT-SCOPED, RLS on canonical app.org_id
 // (migration 0148/0149). `organization_id` is a logical uuid (its organization FK is declared in the
 // migration SQL, matching the M35 convention); intra-module parent links (unit_id/room_id) are REAL FKs.

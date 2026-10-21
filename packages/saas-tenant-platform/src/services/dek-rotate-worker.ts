@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.dek_rotate` job handler (M34 §3.5 / Pillar 3).
+// @chartwarden/saas-tenant-platform · services — the `tenant.dek_rotate` job handler (M34 §3.5 / Pillar 3).
 //
 // Pillar 3 (§3.5): a tenant's DEK rotates on demand. This worker mints a NEW DEK version, re-wraps it
 // under the active platform KEK, appends the OUTGOING (now-prior) DEK to `tenant_key_ring.priorDekVersions`
@@ -18,7 +18,7 @@
 // concurrency 2. This handler is idempotent on the target version: if the key ring is ALREADY at
 // `targetVersion` (a redelivery after the `recordRotation` committed), it no-ops and reports `already_rotated`
 // instead of minting a second DEK — the version label is the dedup key the queue and this handler share.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { TenantKeyRingRepository } from "../repositories/tenant-key-ring";
 
 /** One retained prior DEK version (`tenant_key_ring.priorDekVersions` element, §3.5 schema comment).

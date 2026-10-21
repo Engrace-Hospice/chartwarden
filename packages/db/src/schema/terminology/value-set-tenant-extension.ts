@@ -1,4 +1,4 @@
-// @wardenx/db — `value_set_tenant_extension` (M38 Terminology §3.5). The ONLY tenant-scoped
+// @chartwarden/db — `value_set_tenant_extension` (M38 Terminology §3.5). The ONLY tenant-scoped
 // table in M38: a tenant's add-only extension to a platform value set (§7.6 — extensions
 // add, never weaken; canonical members are immutable to tenants per §7.4). It carries
 // `organization_id`, lives under `app.org_id` RLS (M38-T03, §3.7), and gets a write-audit

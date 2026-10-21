@@ -18,8 +18,8 @@
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-097-tenant-export-approval-live.test.ts
  */
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { m34PlatformBypassAuditor } from "../src/index";

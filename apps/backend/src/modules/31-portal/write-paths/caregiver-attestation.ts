@@ -19,7 +19,7 @@
 // outbox event. The M4 disclosure-accounting write (§7.7 step 6) is the route's `auditRead`/`audit` call, not
 // a domain concern. If a future scope adds the link event, add it to `M31_EVENT_NAMES` first (the arch:gaps
 // `mN.` convention is validated against that tuple).
-import type { MembershipId, PatientId } from "@wardenx/types";
+import type { MembershipId, PatientId } from "@chartwarden/types";
 import { requirePortalWrite } from "./errors";
 
 /** §7.7 — the ±2h dose-time window (platform floor; a tenant may TIGHTEN, never loosen). */

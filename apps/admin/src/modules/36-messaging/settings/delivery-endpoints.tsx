@@ -3,8 +3,8 @@
 // email target, confirm the code sent to it, remove it.
 // ponytail: the API has NO list route, so only endpoints registered in this session appear (id + channel +
 // target held in component state). Add a GET /notifications/endpoints list route to show earlier ones.
-import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, SelectField, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { StateEmpty, useRestoreFocus } from "../ui";

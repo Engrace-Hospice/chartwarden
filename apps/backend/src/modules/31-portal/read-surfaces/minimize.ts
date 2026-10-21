@@ -10,7 +10,7 @@
 //   • SUD redaction (D7 / §7.8) is a DISPLAY substitution, not a drop. M12/M13 already null the drug name on
 //     a redacted row and set `isRedacted`; M31 renders the placeholder so the row's existence stays honest
 //     (the count is real) without disclosing the substance-use treatment it stands for.
-import type { DocumentAggregateType } from "@wardenx/types";
+import type { DocumentAggregateType } from "@chartwarden/types";
 
 /**
  * §8.4 — the M22 document aggregate types a portal caregiver / patient may see. Anything NOT in this set is

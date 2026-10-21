@@ -3,7 +3,7 @@ import {
   createInMemoryEffectivePermissionStore,
   registerEffectivePermissionResolver,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 // apps/backend/__tests__/device-attestation-routes.test.ts — ADR-0023 D2 / SecHardening §12.2/§12.4.
 //
 // The ceremony end to end, through the FULL M1 middleware chain (request context + error envelope +

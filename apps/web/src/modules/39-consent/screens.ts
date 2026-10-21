@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/39-consent — M39 screen registration (Track B, ADR-0030).
 //
 // M39's first web surface. Until now the module had no `apps/web` codePath in the manifest at all, so

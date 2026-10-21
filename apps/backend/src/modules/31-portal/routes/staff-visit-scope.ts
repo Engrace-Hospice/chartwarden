@@ -15,8 +15,8 @@
 // bypass, and these routes mint a vendor token / mutate lifecycle — a break-glass READ grant must not become a
 // way into a live video visit. It runs as a route preHandler AND is re-asserted by each handler (backstop).
 // Every fact is server-derived (`request.context` via `actorOf`, the visit row via the M31 store).
-import { hasOrgWideScope } from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+import { hasOrgWideScope } from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";

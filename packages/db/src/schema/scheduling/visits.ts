@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `visit` (M17 §3.3 / §2.2.1 D3). The central scheduling aggregate: one row per scheduled
+// @chartwarden/db — `visit` (M17 §3.3 / §2.2.1 D3). The central scheduling aggregate: one row per scheduled
 // patient visit, carrying the §2.2.1/D3 (M17-F03-reconciled) eight-state lifecycle (proposed → published →
 // en_route → in_visit → completed | no_show | cancelled | rescheduled), the EVV-bracket flag (D9, reuses the
 // shared `evv_bracket_state` enum — M18 is authoritative for en_route/in_visit when present, else the

@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the §4.8 PURE job catalog: queue names / params / DLQ / cron cadences /
+// @chartwarden/quality · workers — the §4.8 PURE job catalog: queue names / params / DLQ / cron cadences /
 // idempotency keys + the per-queue tenancy-scope marker. Pure data + thin types — NO `bullmq` import.
 //
 // The live BullMQ `Worker`/`Queue` construction binds at app boot in the M30 backend `jobs/m30-jobs.ts`

@@ -1,4 +1,4 @@
-// @wardenx/billing — TypeBox route schema barrel (M23 §4.1 / §4.2). The request/response SHAPE contracts
+// @chartwarden/billing — TypeBox route schema barrel (M23 §4.1 / §4.2). The request/response SHAPE contracts
 // for the 42-route inventory — one module per route group. PURE shape gates: the P3 routes import these as
 // Fastify `{ schema: { body, querystring, params, response } }`; the validation/lifecycle/penny-math
 // invariants behind each shape live in the pure domain + service layers, NEVER in a schema.

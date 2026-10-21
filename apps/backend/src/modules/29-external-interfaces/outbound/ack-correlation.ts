@@ -13,7 +13,7 @@
 //
 // IO-free: the ack receipt clock and the ack payload digest are INJECTED (the worker computes `sha256(wire)`
 // off the raw ACK frame and calls `envelope.encrypt` for `ack_payload_cipher` — never in this pure core).
-import type { Hl7OutboundAckStatus, Hl7OutboundStatus } from "@wardenx/types";
+import type { Hl7OutboundAckStatus, Hl7OutboundStatus } from "@chartwarden/types";
 import type {
   LabOrderTransmissionFailedPayload,
   LabOrderTransmittedPayload,

@@ -11,7 +11,7 @@
 //   page 1 — the FAX COVER SHEET: who it is for, who it is from, the page count, and the CODE printed large
 //            (Helvetica-Bold 44pt, widened tracking) inside a heavy box, with the return instructions. The
 //            code's alphabet has none of the characters a fax/OCR round trip swaps, and the inbound matcher
-//            (@wardenx/intake-extraction `findRecordsRequestCodes`) folds the remaining confusions back, so a
+//            (@chartwarden/intake-extraction `findRecordsRequestCodes`) folds the remaining confusions back, so a
 //            returned fax with this page on top is filed under the prospect without anyone retyping it. The
 //            code also sits in the instructions and in every page's running footer.
 //   page 2+ — the REQUEST LETTER: the prospect's name + date of birth, what is requested, the dates of

@@ -32,7 +32,7 @@ import type {
   FhirInboundResourceId,
   IsoInstant,
   OrgId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { registerSeam } from "../../../bootstrap/index";
 

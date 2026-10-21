@@ -1,4 +1,4 @@
-// @wardenx/db — business-rule constraint registry (F-022 / #55).
+// @chartwarden/db — business-rule constraint registry (F-022 / #55).
 //
 // A UNIQUE index is often not a storage detail but a BUSINESS RULE the database is the authority
 // for: `scale_license_active_per_org_scale_uq` says "at most one active license per (org, scale)",

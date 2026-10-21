@@ -2,8 +2,8 @@
 // Retention (per message class: period, source, eligible and held counts, capped notice, scan times, certificate state) and Legal holds (list,
 // place, release). The scan is plan-only and approving a destruction certificate destroys nothing yet; the page says so. It shows ids, counts and
 // dates only, never message content. State is a word, never colour alone.
-import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@wardenx/ui";
+import type { MessageLegalHoldDto, RetentionClassDto, RetentionOverviewDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { useSession } from "../../shell/session";

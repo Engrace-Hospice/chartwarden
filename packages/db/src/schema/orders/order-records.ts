@@ -1,4 +1,4 @@
-// @wardenx/db — `order_record` (M11 §3.3). The one root table for all eight §2.1 non-medication order
+// @chartwarden/db — `order_record` (M11 §3.3). The one root table for all eight §2.1 non-medication order
 // kinds (lab / dme / level_of_care_change / recertification / comfort_kit / supply / ancillary_service /
 // idg_requested): the per-kind validated payload in `data` (discriminated by `kind` + `kind_version`,
 // free-text denylisted from audit), the §2.2 D2 draft→pending_signature→verbal_pending→active→

@@ -1,5 +1,5 @@
 // GAP-162 - the M33 platform / compliance admin scope predicates: allow and deny arms.
-import { type AbacContext, type AbacTarget, PLATFORM_OPS_ROLE_KEYS } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, PLATFORM_OPS_ROLE_KEYS } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   M33_ABAC_PREDICATES,

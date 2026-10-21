@@ -6,7 +6,7 @@
  * consumer's page enrichment N+1-free: an empty id set never touches the db, duplicate ids collapse to one
  * `WHERE id = ANY(...)`, and the org summaries flow through untouched.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createOrganizationReader } from "../organization-reader";
 

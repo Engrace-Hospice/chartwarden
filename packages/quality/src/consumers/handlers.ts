@@ -1,4 +1,4 @@
-// @wardenx/quality · consumers — the §4.10 UPSTREAM-event handlers (PURE, port-injected).
+// @chartwarden/quality · consumers — the §4.10 UPSTREAM-event handlers (PURE, port-injected).
 //
 // One pure handler per subscribed topic (`./subscription-map.ts`). Each projects the structurally-minimal
 // upstream event into its M30 effect — a row-draft to insert, or a debounced measure-recompute request —
@@ -13,7 +13,7 @@
 // throw happens only when a JOB RUNS, never at port-bundle construction (RULE 2 / the M34 eager-bind
 // gotcha). These handlers are NOT boot-wired to a running subscriber (RULE 3(d)) — they ship pure + the
 // subscription map; the live inbound dispatcher is a later platform phase.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { DecedentDeathSource } from "../cahps/sampler";
 import { type IncidentTriggerEvent, buildIncidentDraftFromEvent } from "../incidents/auto_creator";
 import { MEASURE_CATALOG, type MeasureFamily } from "../measures/registry";

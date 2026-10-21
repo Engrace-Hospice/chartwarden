@@ -1,5 +1,5 @@
 // GAP-027 — EVV events carry a server-derived service-type code; an empty one never reaches the aggregator.
-import { SandataAdapter } from "@wardenx/evv-aggregators";
+import { SandataAdapter } from "@chartwarden/evv-aggregators";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/08-encounters/seams — M8's published §4.7 owned seams + the M7 CarePlanReader
 // it CONSUMES (M8-T08). M8 publishes FOUR leaf-typed surfaces every downstream module consumes instead
 // of importing M8's schema (architecture §11 blocks the schema import): BillableEncounterReader (M23/M24
@@ -23,7 +23,7 @@ import type {
   LatestAssessmentProvider,
   MileagePayrollReader,
   SignedEncountersReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createBereavementEncounterReader } from "./bereavement-encounter-reader";
 import {

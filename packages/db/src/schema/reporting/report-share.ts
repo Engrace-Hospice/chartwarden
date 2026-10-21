@@ -1,4 +1,4 @@
-// @wardenx/db — `report_share` (M33 §3.3). An explicit share grant for a saved view — either to a
+// @chartwarden/db — `report_share` (M33 §3.3). An explicit share grant for a saved view — either to a
 // specific membership (rare) or to a role key. ORG-SCOPED: carries organization_id NOT NULL →
 // standard app.org_id RLS (writes additionally require report.share.org or self-role share, §3.5).
 // `report_view_id` refs report_view; shared-with membership ref is plain uuid app-validated. RLS +

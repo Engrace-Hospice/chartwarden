@@ -1,10 +1,10 @@
-// @wardenx/quality · repositories — the HQRP measure-value ledger: `quality_measure_value` (the
+// @chartwarden/quality · repositories — the HQRP measure-value ledger: `quality_measure_value` (the
 // append-only / soft-supersede ledger of computed HQRP measures — one CURRENT row per (measure,
 // provider_entity, period) with `superseded_at IS NULL`; recompute writes a new row and stamps the
 // prior) (M30 §3.3). ORG-SCOPED; the measure-recompute worker / read service wrap these in
 // `withOrgContext`. `computation_snapshot` is audit-denylisted (§3.6); this port never reads it back to
 // a PHI-exposed surface — it returns the whole `$inferSelect` row and the service projects.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { QualityDb } from "./db";
 

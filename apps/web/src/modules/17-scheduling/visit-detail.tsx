@@ -3,8 +3,8 @@
 // assignment, and the reschedule chain back-ref. The reschedule/cancel/reassign + state-history write surfaces
 // fill in as those write paths harden; the SERVER owns the §2.2.1 lifecycle + §4.7 ABAC (ADR-0030 — no frontend
 // authz; an out-of-scope visit 404s). Reads GET /api/v1/visits/:visitId via the typed client. Leaves only
-// (@wardenx/ui).
-import { formatMrn } from "@wardenx/types";
+// (@chartwarden/ui).
+import { formatMrn } from "@chartwarden/types";
 import {
   DetailPageLayout,
   EmptyState,
@@ -12,7 +12,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";

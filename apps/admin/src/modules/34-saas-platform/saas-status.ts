@@ -11,7 +11,7 @@
 // neutral≈gray/black "inert", critical≈the §10 gold reserved for controlled/irreversible acts. The
 // cryptographic shred (tenant.shred.execute) is critical — it pairs this tone with a Guardrail
 // confirm-by-typing ceremony (§5.3); destruction_pending warns that the irreversible window is open.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** §5.2 eleven-state tenant lifecycle → §6.6 tone. */
 export const LIFECYCLE_TONE: Record<string, StatusTone> = {

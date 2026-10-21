@@ -1,4 +1,4 @@
-// @wardenx/reporting — translator + spec-validator UNIT TESTS (M33 §2.3 / §4, D4 + D6 + D8).
+// @chartwarden/reporting — translator + spec-validator UNIT TESTS (M33 §2.3 / §4, D4 + D6 + D8).
 //
 // The PHI-safety crown jewel: prove the spec→SQL pipeline has NO raw-SQL surface and NO string
 // interpolation of tenant values. These suites are pure — they NEVER touch a DB. They drive the real
@@ -11,7 +11,7 @@
 //     report_mv.select_<mvKey>(p_org_id) — NOT a direct MV select,
 //   • a `registered`-MV base yields a forward-seam deny-stub (not SQL),
 //   • injection attempts in an alias (quoteIdent regex) or a filter value (bound param) are neutralized.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   type ReportableScopeEnvelope,

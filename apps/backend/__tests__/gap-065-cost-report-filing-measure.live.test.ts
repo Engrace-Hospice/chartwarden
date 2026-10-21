@@ -23,8 +23,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { type QualityHopeConsumer, buildMeasureRegistry } from "@wardenx/quality";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { type QualityHopeConsumer, buildMeasureRegistry } from "@chartwarden/quality";
 import { type ConnectionOptions, Queue, QueueEvents, type Worker } from "bullmq";
 import IORedis from "ioredis";
 import { Client } from "pg";

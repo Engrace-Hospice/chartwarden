@@ -1,4 +1,4 @@
-// @wardenx/quality — HVLDL qualifying-discipline constants (§1.1, D3). Pure data.
+// @chartwarden/quality — HVLDL qualifying-discipline constants (§1.1, D3). Pure data.
 //
 // HVLDL counts visits by a QUALIFYING discipline in the last three days of life. CMS FY2025 qualifies RN
 // and MSW; the FY2028-projected expansion (Chaplain, Aide) is wired as a CONSTANT change now, not a code

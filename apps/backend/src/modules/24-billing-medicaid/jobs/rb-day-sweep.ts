@@ -22,8 +22,8 @@
 //   - GIP -> `excluded` ("general inpatient day"; the IPU, not the NF, is the place of service).
 // The sweep writes `billable`/`excluded` directly (the transient `pending` state is only meaningful where the
 // LOC is not yet known, and a day without a LOC period is skipped rather than parked).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { EligibilityWatchdogStore, RbDaySweepStore } from "./m24-jobs";
 

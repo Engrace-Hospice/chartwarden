@@ -10,7 +10,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   humanizeIdentifier,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `mK4co`): a Fraunces title, a pill

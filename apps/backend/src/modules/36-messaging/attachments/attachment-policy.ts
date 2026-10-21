@@ -1,6 +1,6 @@
 // apps/backend/src/modules/36-messaging/attachments/attachment-policy.ts — WP 1.5: what a chat attachment may be, and
 // the opaque storage key it lives under. Pure; no I/O.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** 25 MB: the M22 verified-upload ceiling is 25 MiB; messaging stays under it (and under the 1075 CHECK). */
 export const MAX_ATTACHMENT_BYTES = 25_000_000;
@@ -169,7 +169,7 @@ export function sanitizeFileName(raw: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point
   const bad = /[\u0000-\u001f\u007f/\\]/.test(name);
   if (name.length < 1 || name.length > 255 || bad || /^\.+$/.test(name)) {
-    throw new WardenXError("VALIDATION_FAILED", "fileName is not a valid file name", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "fileName is not a valid file name", 422);
   }
   return name;
 }
@@ -177,21 +177,21 @@ export function sanitizeFileName(raw: string): string {
 /** Validate an authorize request at the trust boundary; returns the normalised copy. */
 export function validateAuthorizeInput(input: AuthorizeInput): AuthorizeInput {
   if (!ATTACHMENT_MIME_ALLOWLIST.has(input.contentType)) {
-    throw new WardenXError("UNSUPPORTED_MEDIA_TYPE", "attachment content type is not allowed", 415);
+    throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "attachment content type is not allowed", 415);
   }
   if (
     !Number.isSafeInteger(input.byteSize) ||
     input.byteSize < 1 ||
     input.byteSize > MAX_ATTACHMENT_BYTES
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOAD_SIZE_INVALID",
       `attachment byteSize must be between 1 and ${MAX_ATTACHMENT_BYTES}`,
       422,
     );
   }
   if (!SHA256_HEX.test(input.sha256Hex)) {
-    throw new WardenXError("VALIDATION_FAILED", "sha256Hex must be lowercase SHA-256 hex", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "sha256Hex must be lowercase SHA-256 hex", 422);
   }
   return { ...input, fileName: sanitizeFileName(input.fileName) };
 }

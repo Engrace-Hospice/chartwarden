@@ -4,11 +4,11 @@ import {
   MEDICATION_QUESTION_TEXT_MAX,
   type RichBody,
   type RichInline,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 
-const invalid = (message: string): WardenXError =>
-  new WardenXError("VALIDATION_FAILED", message, 422);
+const invalid = (message: string): ChartWardenError =>
+  new ChartWardenError("VALIDATION_FAILED", message, 422);
 
 /** One paragraph: the text, then (when given) one medication link node. Authorisation of the link is the route's job. */
 export function buildMedicationQuestionBody(text: string, medicationId: string | null): RichBody {

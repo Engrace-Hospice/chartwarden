@@ -12,7 +12,7 @@ import {
   humanizeIdentifier,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — Meeting Detail (pre-meeting) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign
 // (flat page head + Panels, right context rail, kit DataTable, 8px-radius buttons). The IDG Coordinator's

@@ -11,7 +11,7 @@ import {
   type StatusTone,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
 // Modernized UI/UX refactor for WardenX Healthcare / Compliance Administration Portal.
 // Preserves all existing business logic, auth checks, server-authoritative API calls, and permission rules.

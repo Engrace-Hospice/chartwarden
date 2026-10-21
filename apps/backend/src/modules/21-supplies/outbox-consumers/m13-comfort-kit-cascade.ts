@@ -26,10 +26,10 @@
 // THREE SEAMS TO ONE OUTCOME. `linkM13Deployment`, the return-open, and the controlled-substance re-emit
 // all run with NO acting membership — the `m11-order-cascade.ts` / F-102 `CONSUMER_USER_ID` convention —
 // because all three cascades are M13 telling M21 something happened, not a human acting on the row.
-import { type DbClient, schema } from "@wardenx/db";
-import { RETURN_WINDOW_HOURS_DEFAULT } from "@wardenx/supplies";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { ComfortKitReturnedContentPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { RETURN_WINDOW_HOURS_DEFAULT } from "@chartwarden/supplies";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { ComfortKitReturnedContentPayload } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {

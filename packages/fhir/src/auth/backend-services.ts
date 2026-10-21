@@ -1,4 +1,4 @@
-// @wardenx/fhir — SMART-on-FHIR Backend Services client-assertion verification (§2.2/D2, M28-T03).
+// @chartwarden/fhir — SMART-on-FHIR Backend Services client-assertion verification (§2.2/D2, M28-T03).
 //
 // Phase 1 authenticates system-to-system FHIR clients two ways (D2); this file is the FIRST — the
 // SMART Backend Services asymmetric flow (RFC 7523 / SMART "Backend Services" profile). A registered
@@ -26,7 +26,7 @@
 //     `kid`, any RSA JWK in the set) — the client actually holds the private key.
 import { createPublicKey, createVerify } from "node:crypto";
 
-import type { FhirClientId } from "@wardenx/types";
+import type { FhirClientId } from "@chartwarden/types";
 
 /**
  * SMART Backend Services mandates RS384 for asymmetric client authentication. Pinned as the sole accepted

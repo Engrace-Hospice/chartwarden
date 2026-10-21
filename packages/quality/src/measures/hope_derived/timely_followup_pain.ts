@@ -1,4 +1,4 @@
-// @wardenx/quality — HOPE-derived measure: Timely Follow-Up for Pain Impact (TFP-PI) (§1.1, D4).
+// @chartwarden/quality — HOPE-derived measure: Timely Follow-Up for Pain Impact (TFP-PI) (§1.1, D4).
 // Pure, IO-free. CMS HQRP-active FY2028; the calculator runs today against M10 `HopeJ2051Provider` data.
 //
 // TFP-PI = % of HOPE J2051 PAIN-impact triggers (impact moderate-or-severe) where a Symptom Follow-Up

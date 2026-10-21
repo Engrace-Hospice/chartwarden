@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_template_medication` (M21 §3.1.4). One row per medication line of a template:
+// @chartwarden/db — `comfort_kit_template_medication` (M21 §3.1.4). One row per medication line of a template:
 // the drug, its strength/form/route, the expected quantity that constitutes a full kit, and the
 // `replenishment_threshold_pct` at which M13's bedside drawdown fires `m13.comfort_kit.replenishment_needed`.
 // The four platform-floor lines are seeded `system_locked` in migration 0103.
@@ -9,7 +9,7 @@
 // parent silently widens the child), and an EXISTS predicate runs per row on every catalog read. Both
 // discriminators are therefore DENORMALIZED onto this row — `organization_id` (NULL on the floor lines) and
 // `is_platform_floor` — with the same CHECK pair the parent carries, so the policy is a flat predicate.
-// Consistency with the parent is a write-boundary invariant enforced by `@wardenx/supplies`; the CHECK pair
+// Consistency with the parent is a write-boundary invariant enforced by `@chartwarden/supplies`; the CHECK pair
 // makes the dangerous half (an org-less tenant line) impossible at the storage layer.
 //
 // D6 / DEA: `is_controlled_substance` + `controlled_substance_schedule` are the pair that decides, at
@@ -65,7 +65,7 @@ export const comfortKitTemplateMedication = pgTable(
     expectedUnit: text("expected_unit").notNull(),
     /** D3 — the fraction remaining at which M13 asks for a replenish. Tenants may only RAISE it above the
      *  platform floor (a higher threshold replenishes sooner = tighter); lowering it lets a kit run further
-     *  down before anyone is told. Enforced by `validateTenantTemplate` in `@wardenx/supplies`. */
+     *  down before anyone is told. Enforced by `validateTenantTemplate` in `@chartwarden/supplies`. */
     replenishmentThresholdPct: numeric("replenishment_threshold_pct").notNull().default("0.25"),
 
     systemLocked: boolean("system_locked").notNull().default(false),

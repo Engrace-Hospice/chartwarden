@@ -7,16 +7,16 @@
 // index makes a work item belong to ONE open handoff; the closed-row and item-guard triggers are the backstop for the
 // transition rules. Resolution takes the handoff row FOR UPDATE first, so an accept racing the expiry tick serialises
 // and the loser sees the winner's state.
-import { type DbClient, schema } from "@wardenx/db";
-import type { HandoffItemAction } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { HandoffItemAction } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type HandoffCloseReason,
   type HandoffEventType,
   type HandoffItemKind,
   type HandoffState,
   TASK_ACTIVE_STATUSES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

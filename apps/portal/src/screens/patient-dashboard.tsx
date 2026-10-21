@@ -1,5 +1,5 @@
-import { Glyph, type GlyphName, useApiClient } from "@wardenx/ui";
-// @wardenx/portal — task-first patient home. The PR1 shell owns persistent patient identity and
+import { Glyph, type GlyphName, useApiClient } from "@chartwarden/ui";
+// @chartwarden/portal — task-first patient home. The PR1 shell owns persistent patient identity and
 // navigation; this screen independently resolves summary and upcoming-visit presentation states.
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";

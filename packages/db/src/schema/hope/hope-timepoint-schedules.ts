@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_timepoint_schedule` (M10 §3.3). One row per HOPE timepoint window
+// @chartwarden/db — `hope_timepoint_schedule` (M10 §3.3). One row per HOPE timepoint window
 // (Admission / HUV1 / HUV2 / Discharge — and SFV rows are distinct): the open→completed/expired/skipped
 // lifecycle (§2.2.1), the [window_opens_at, window_closes_at, late_deadline_at] schedule, and the
 // tenant alert cadence. PHI-bearing → the three-column tenancy rule (organization_id +

@@ -5,7 +5,7 @@
 // is the AI-PRODUCED surface (legitimate); the HUMAN decision / review / commit-provenance rows are the zone
 // no prompt template may target. `validateDocumentsAIBlock()` runs at boot against M32's real
 // `AIPromptRegistry` (D18 table-only query) and refuses to start if an active template targets that zone.
-// The registry is a LOCAL structural port (no @wardenx/ai-platform import); the composition root binds the
+// The registry is a LOCAL structural port (no @chartwarden/ai-platform import); the composition root binds the
 // real seam in the db-present onReady hook (the M37 / M21 / M23 precedent).
 //
 // The spec's NIGHTLY re-run (`ai-block-validator.cron.ts`) is deferred: the registry write path already

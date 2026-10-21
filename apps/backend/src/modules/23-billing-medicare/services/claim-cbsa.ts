@@ -1,7 +1,7 @@
 // M23 — binds the claim's wage-index value codes (61 / G8) to data: the patient's / facility's ZIP comes in through
 // injected ports (M23 imports neither M5 nor M40 — the F-121/F-213 posture), the ZIP -> county -> CBSA geography is
 // M23's own platform reference data (migration 1058, SELECT-only for tenants), and the pure resolver in
-// `@wardenx/billing` decides. Nothing is guessed: a missing ZIP or an unplaceable one is reported as unresolved and
+// `@chartwarden/billing` decides. Nothing is guessed: a missing ZIP or an unplaceable one is reported as unresolved and
 // the `cbsa_value_codes_present` rule blocks the claim.
 import {
   type FacilitySpan,
@@ -12,8 +12,8 @@ import {
   hospiceFiscalYearStartingOf,
   type repositories,
   resolveHospiceArea,
-} from "@wardenx/billing";
-import { schema } from "@wardenx/db";
+} from "@chartwarden/billing";
+import { schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 import type { DateRange, HospiceCbsaReader, InpatientStay } from "./claim-assembly-types";
 

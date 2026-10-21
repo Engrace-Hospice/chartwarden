@@ -1,6 +1,6 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
-// @wardenx/admin — ADMIN-T01 shell registry-host unit test. Guards the contract every platform-module
+// @chartwarden/admin — ADMIN-T01 shell registry-host unit test. Guards the contract every platform-module
 // slice depends on: createAdminRegistry() starts empty, merges registered slices' screens, exposes the
 // registered modules, and throws on a duplicate screen id (a collision would silently shadow a surface).
 // The per-slice manifest↔component binding test lives with each slice (M35A-T04); this guards the host.

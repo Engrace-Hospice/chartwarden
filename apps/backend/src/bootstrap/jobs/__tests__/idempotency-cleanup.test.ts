@@ -6,7 +6,7 @@ const backlog: Record<string, number> = { "org-a": 2500, "org-b": 3 };
 const deleteCalls: Array<{ org: string; ids: number }> = [];
 let currentOrg = "";
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   registerPlatformJob: () => {},
   systemOrgContext: (organizationId: string) => ({ organizationId, userId: "" }),
   withOrgContext: async (

@@ -9,8 +9,8 @@
 // before it touches a row, and nothing here is logged. The primary caregiver is resolved as the patient's
 // `is_primary` link with the latest `involvement_from` — INCLUDING an ended involvement, because the CAHPS
 // respondent is the caregiver the patient had at death, not one who is still involved afterwards.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
 
 const PC = schema.patientCaregivers;

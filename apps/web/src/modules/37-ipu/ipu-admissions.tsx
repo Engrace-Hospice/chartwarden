@@ -28,7 +28,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";

@@ -13,15 +13,15 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — DSAR queue (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /exports/dsar. The HIPAA §164.524 right-of-access queue — one row per data-subject-access
 // export job, with the 30-day fulfillment SLA rendered as a CountdownChip so aging is legible at a
 // glance. Backed by GET /api/v1/tenant/dsar-export-jobs (the tenant-scoped DSAR surface; there is no
 // platform-wide DSAR list route — §164.524 is tenant/org-scoped, D9). Filters by patient + status.
 // requiredPermission: `dsar_export.list_own`. Mirrors the M40/M36 R1 work-queue exemplars exactly:
-// useApiClient + client.GET, @wardenx/ui primitives, mono identifiers (wx-data-md), tabular numerics,
+// useApiClient + client.GET, @chartwarden/ui primitives, mono identifiers (wx-data-md), tabular numerics,
 // laid out as the redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";

@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: F2F compliance-window on-time rate (CoP 418.22). Pure. No IO.
+// @chartwarden/quality — operational measure: F2F compliance-window on-time rate (CoP 418.22). Pure. No IO.
 // Rate of F2F compliance windows closed on time — no Medical-Director override, not late (higher is
 // better). Source: M6 `ComplianceWindowCountsProvider.f2fWindowOnTimeCounts` (F-178, #248).
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

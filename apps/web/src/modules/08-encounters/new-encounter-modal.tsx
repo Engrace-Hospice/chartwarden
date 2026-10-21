@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — the §2.2 "open a visit note" modal (F-083, #91).
 //
 // THE FIRST STEP OF THE AUTHORED-THEN-SIGNED PATH DID NOT EXIST. `screens.ts` records that #91/F-063

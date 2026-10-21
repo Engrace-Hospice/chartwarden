@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/administration-identity.ts — pure adapter: M12's administration context
 // (`MedicationOrderProvider.getAdministrationContext`) -> the identity facts M13 files an administration under
 // (`EmarMedicationOrderPort.administrationIdentity`). Kept out of `index.ts` so it is unit-testable.
-import type { MedicationOrderDto } from "@wardenx/types";
+import type { MedicationOrderDto } from "@chartwarden/types";
 
 type AdministrationContext = {
   readonly order: MedicationOrderDto;

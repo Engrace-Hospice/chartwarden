@@ -17,7 +17,7 @@ export const messageAfterhoursTriageLinks = pgTable(
     requestId: uuid("request_id").notNull(),
     sourceOutboxEventId: uuid("source_outbox_event_id").notNull(),
     triageCallId: uuid("triage_call_id"),
-    /** 'opened' | 'coalesced' | 'no_coverage' (AFTERHOURS_TRIAGE_OUTCOMES in @wardenx/types); NULL until M19 replies. */
+    /** 'opened' | 'coalesced' | 'no_coverage' (AFTERHOURS_TRIAGE_OUTCOMES in @chartwarden/types); NULL until M19 replies. */
     outcome: text("outcome"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

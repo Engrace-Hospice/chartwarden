@@ -22,8 +22,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { computeBillingPseudonym, loadPseudonymKekRing } from "@wardenx/subscription-billing";
+import { createDbClient } from "@chartwarden/db";
+import { computeBillingPseudonym, loadPseudonymKekRing } from "@chartwarden/subscription-billing";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

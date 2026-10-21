@@ -7,14 +7,14 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — FORM.TemplateLibrary (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "FORM.TemplateLibrary" — browse the platform-floor form templates with version metadata; the
 // per-template overlay editor (§5.1 FORM.TemplateOverlayEditor, D16 loosen-block) + render preview are admin
 // write surfaces that fill in as those paths harden. Built to the Lantern look: Work Queue pattern, §6.6
 // status pills, §3.1 mono identifiers (template key), No-Line table (§6.7), warm-paper surfaces. Nav-grouped
 // under Admin and gated by `documents.read_templates` — but the SERVER stays the only authz point (ADR-0030).
-// Reads GET /api/v1/form-templates (cursor-paginated) via the typed client. Leaves only (@wardenx/ui).
+// Reads GET /api/v1/form-templates (cursor-paginated) via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Mono, ts } from "./lantern";

@@ -40,9 +40,9 @@
 // (re-admission at a different provider entity) correctly overwrites the earlier value with the
 // currently-true one — there is no ordering hazard to guard against beyond what the outbox already
 // guarantees (per-aggregate in-order delivery).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { endAdmittingAssignments } from "../assignments-db";

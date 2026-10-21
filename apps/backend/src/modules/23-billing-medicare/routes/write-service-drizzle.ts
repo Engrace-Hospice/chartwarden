@@ -7,7 +7,7 @@
 // `withOrgContext(db, {organizationId, userId}, …)` transaction on the PRIMARY so Postgres RLS scopes each
 // statement to `app.org_id` (the M27 routes/write-service-drizzle precedent). Org/actor/owner binding is
 // ALWAYS the server-assembled {@link M23WriteActor} (never the body). The lifecycle methods do NOT
-// re-implement state logic — they drive the pure @wardenx/billing machines (`claim` reducer + `noeMachine` /
+// re-implement state logic — they drive the pure @chartwarden/billing machines (`claim` reducer + `noeMachine` /
 // `notrMachine`) and persist the result with the §2.5 version check (`transitionToState` →
 // VERSION_CONFLICT → 412). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
 // in the SAME unit of work as the mutation (transactional outbox, D2); the §4.8 worker jobs through the
@@ -21,10 +21,10 @@
 // `replaceClaim` / `voidClaim` assemble the NEW TOB-817/818 claim; the ORIGINAL transitions to
 // REPLACED/VOIDED only when the 277CA acceptance arrives (the ack consumer/worker), never at this surface.
 //
-// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@wardenx/db` ROOT barrel is forbidden; the
-// universal `@wardenx/db/schema` leaf supplies the `claim_line` / `claim` table objects the internal-write
-// re-assembly delete needs, and `withOrgContext` comes from the always-importable `@wardenx/tenancy`
-// foundation. AI-BLOCK (D13): no `@wardenx/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
+// IMPORT BOUNDARY (M23 dependsOn = [6,8,22,38,40], NOT M1): the `@chartwarden/db` ROOT barrel is forbidden; the
+// universal `@chartwarden/db/schema` leaf supplies the `claim_line` / `claim` table objects the internal-write
+// re-assembly delete needs, and `withOrgContext` comes from the always-importable `@chartwarden/tenancy`
+// foundation. AI-BLOCK (D13): no `@chartwarden/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
 // is composed at the route (see ./actor `rejectAiActor`).
 import { randomUUID } from "node:crypto";
 import {
@@ -36,10 +36,10 @@ import {
   noeMachine,
   notrMachine,
   repositories,
-} from "@wardenx/billing";
-import * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
@@ -316,12 +316,12 @@ const mapUniqueViolation =
 
 const denyCcn: ProviderCcnPort = {
   ccnForProviderEntity: async () => {
-    throw new WardenXError("SEAM_UNBOUND", "the provider-entity CCN resolver is not bound", 503);
+    throw new ChartWardenError("SEAM_UNBOUND", "the provider-entity CCN resolver is not bound", 503);
   },
 };
 const denyCipher: SecretCipherPort = {
   encrypt: async () => {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SEAM_UNBOUND",
       "the MAC credential secret cipher is not bound (set M24_CREDENTIAL_ENCRYPTION_KEY, 32 bytes base64)",
       503,
@@ -330,7 +330,7 @@ const denyCipher: SecretCipherPort = {
 };
 const denyAudit: AuditEventPort = {
   recordOverrideAudit: async () => {
-    throw new WardenXError("SEAM_UNBOUND", "the override audit port is not bound", 503);
+    throw new ChartWardenError("SEAM_UNBOUND", "the override audit port is not bound", 503);
   },
 };
 
@@ -338,7 +338,7 @@ const denyAudit: AuditEventPort = {
 export function buildRefusingM23JobEnqueue(): JobEnqueuePort {
   return {
     async enqueue(queueName) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SEAM_UNBOUND",
         `billing worker capability '${queueName}' is not available`,
         503,
@@ -409,7 +409,7 @@ export function buildDrizzleM23WriteService(
   /** §6 / §D14 server-side step-up gate (claim submit/replace/void · override · MAC-credential admin). */
   const requireStepUp = (actor: M23WriteActor): void => {
     if (!actor.stepUpRecent) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "STEP_UP_REQUIRED",
         "this action requires a recent step-up re-authentication",
         403,
@@ -419,7 +419,7 @@ export function buildDrizzleM23WriteService(
 
   const requireReason = (reason: string): void => {
     if (reason.trim().length < REASON_FLOOR) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         `a reason of at least ${REASON_FLOOR} characters is required`,
         422,
@@ -427,17 +427,17 @@ export function buildDrizzleM23WriteService(
     }
   };
 
-  const conflict412 = (currentVersion: number | null): WardenXError =>
-    new WardenXError(
+  const conflict412 = (currentVersion: number | null): ChartWardenError =>
+    new ChartWardenError(
       "VERSION_CONFLICT",
       `the record was modified concurrently (current version ${currentVersion ?? "unknown"})`,
       412,
     );
 
   /** Map a pure-reducer rejection to the structured response envelope. */
-  const reduceError = (error: string, event: string): WardenXError =>
+  const reduceError = (error: string, event: string): ChartWardenError =>
     error === "GUARD_FAILED"
-      ? new WardenXError("GUARD_FAILED", `the '${event}' transition guard failed`, 422)
+      ? new ChartWardenError("GUARD_FAILED", `the '${event}' transition guard failed`, 422)
       : new ConflictError(`cannot '${event}' a record in its current state`);
 
   /**
@@ -573,7 +573,7 @@ export function buildDrizzleM23WriteService(
         attemptIndex: 0,
       });
     } catch (e) {
-      throw new WardenXError("VALIDATION_FAILED", (e as Error).message, 422);
+      throw new ChartWardenError("VALIDATION_FAILED", (e as Error).message, 422);
     }
     const seq = await new repositories.SequestrationPolicyRepository(tx).findEffectiveOn(
       input.providerEntityId,
@@ -764,7 +764,7 @@ export function buildDrizzleM23WriteService(
         }
         const blocking = await unresolvedBlockingFailures(tx, claim.id);
         if (blocking > 0) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "GUARD_FAILED",
             "the claim has unresolved blocking validation failures",
             422,
@@ -787,7 +787,7 @@ export function buildDrizzleM23WriteService(
             attemptIndex,
           });
         } catch (e) {
-          throw new WardenXError("VALIDATION_FAILED", (e as Error).message, 422);
+          throw new ChartWardenError("VALIDATION_FAILED", (e as Error).message, 422);
         }
         const submission = await subRepo.append({
           organizationId: actor.organizationId,
@@ -909,7 +909,7 @@ export function buildDrizzleM23WriteService(
         // surveyor can join them (and the request's logs). Prefer the request's id; fall back to a fresh one.
         const correlationId = actor.request?.correlationId ?? randomUUID();
         await tx.execute(sql`SELECT set_config('app.correlation_id', ${correlationId}, true)`);
-        // Record the §4.5 prominent M4 audit event in the same tx (the @wardenx/audit helper is the only
+        // Record the §4.5 prominent M4 audit event in the same tx (the @chartwarden/audit helper is the only
         // sanctioned writer of `audit_event`); its id is stamped onto the NOT-NULL override back-ref.
         const { auditEventId } = await auditPort.recordOverrideAudit(tx, {
           organizationId: actor.organizationId,
@@ -956,7 +956,7 @@ export function buildDrizzleM23WriteService(
     async createRuleConfig(actor, args: CreateRuleConfigArgs): Promise<RuleConfigView> {
       // A legacy (pre-1069) spelling can never be created: it would be an inert row the read side aliases away.
       if (canonicalRuleKey(args.ruleKey) !== args.ruleKey) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VALIDATION_FAILED",
           `rule key '${args.ruleKey}' is a legacy spelling; use '${canonicalRuleKey(args.ruleKey)}'`,
           400,
@@ -1230,7 +1230,7 @@ export function buildDrizzleM23WriteService(
               throw new NotFoundError("mac credential");
             }
             if (args.expectedVersion === undefined) {
-              throw new WardenXError(
+              throw new ChartWardenError(
                 "IF_MATCH_REQUIRED",
                 "an If-Match version is required to update an existing MAC credential",
                 428,

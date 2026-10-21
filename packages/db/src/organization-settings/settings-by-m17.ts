@@ -1,4 +1,4 @@
-// @wardenx/db — M17's organization-settings contributions (M1 Foundation §3.15.1).
+// @chartwarden/db — M17's organization-settings contributions (M1 Foundation §3.15.1).
 //
 // Same contribution pattern as settings-by-m3.ts / settings-by-m5.ts — the key belongs to M17
 // here, since it's M17's own pre-schedule-gate policy (GAP-030 follow-up).

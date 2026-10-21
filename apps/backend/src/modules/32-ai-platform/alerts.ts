@@ -33,7 +33,7 @@ import type {
   AiHallucinationSeverity,
   AiKillSwitchScope,
   AiKillSwitchSeverity,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { getAiAlertBus } from "./seams/index";
 

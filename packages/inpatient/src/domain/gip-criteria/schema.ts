@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05, §2.4/§3.4. The GIP admission-criteria discriminated-union TypeBox (CoP
+// @chartwarden/inpatient — M37-T05, §2.4/§3.4. The GIP admission-criteria discriminated-union TypeBox (CoP
 // 418.108's three permitted GIP criteria) that validates the structured `gip_admission_criteria.data`
 // payload, plus the IV-safety overlay invariant schema. Pure schema definitions; validation helpers live
 // in ./validate.ts. The route DTOs (M37-T11) reuse `GipCriteriaPayload` verbatim.

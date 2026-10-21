@@ -21,7 +21,7 @@ import { defineConfig } from "vitest/config";
  */
 const EXCLUDE = ["**/node_modules/**", "**/dist/**", "scripts/__fixtures__/**"];
 // GAP-080: `packages/**` was outside the dom project, so a hook or component that lives in
-// @wardenx/ui — where the shared UI surface actually lives — had no jsdom project to run in at all.
+// @chartwarden/ui — where the shared UI surface actually lives — had no jsdom project to run in at all.
 // Both globs are listed rather than one `**/*.dom.test.tsx` so the exclude below stays a literal
 // mirror of the include (the node project subtracts exactly these).
 const DOM_GLOBS = ["apps/**/*.dom.test.tsx", "packages/**/*.dom.test.tsx"];

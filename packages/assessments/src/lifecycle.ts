@@ -1,4 +1,4 @@
-// @wardenx/assessments — entity lifecycle machines (§2.2, D9). Pure, IO-free (the M8 lifecycle
+// @chartwarden/assessments — entity lifecycle machines (§2.2, D9). Pure, IO-free (the M8 lifecycle
 // convention): legal-graph check + enumerated guards (each raises the §4.4 code), facts injected as
 // data. The recording/correction services (M9-T05) compose these over the Drizzle write transaction; the
 // significant-change escalation cron (M9-T06) composes the ack machine. No cross-module schema import.
@@ -11,8 +11,8 @@ import type {
   ScaleType,
   SignificantChangeRuleId,
   SignificantChangeStatus,
-} from "@wardenx/types";
-import { isCriticalRule } from "@wardenx/types";
+} from "@chartwarden/types";
+import { isCriticalRule } from "@chartwarden/types";
 import { AssessmentStateError, require_ } from "./errors";
 
 // ── §2.2.1 `clinical_assessment.status` — append-only correction-of-record (active → superseded) ──────

@@ -11,8 +11,8 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // QAPI queue: the list stays identity-free; the authorized detail panel intentionally omits patient IDs
 // and kind-specific payload because they are unnecessary for this triage surface.
 import { useCallback, useEffect, useMemo, useState } from "react";

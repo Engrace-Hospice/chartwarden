@@ -16,14 +16,14 @@
 // medicaid_acknowledgment.raw_payload_cipher, medicaid_validation_override.reason — all keyed by claim, not
 // patient) + the trading-partner secret crypto-shred (org-destruction only) follow the claim chain / the
 // org-offboarding path; the per-patient direct-link subset is shredded here.
-import { type DbClient, schema } from "@wardenx/db";
-import type { DataClass, DataEraser, OrgScope } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { DataClass, DataEraser, OrgScope } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 /** The M4 destruction-registry hook the composition root binds (its bootstrap `registerEraser`). */
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
-/** The M24 destruction data class (not a `@wardenx/types` DataClass member — cast, the M25/M26 posture). */
+/** The M24 destruction data class (not a `@chartwarden/types` DataClass member — cast, the M25/M26 posture). */
 export const MEDICAID_BILLING_DATA_CLASS = "medicaid_billing_record" satisfies DataClass;
 
 const ERASED = "ERASED";

@@ -7,7 +7,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@wardenx/types";
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
   EncounterView as ServiceEncounterView,
@@ -29,7 +29,7 @@ if (!FormatRegistry.Has("date")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// §2.2 vocab mirrors (string-literal unions; the canonical types live in @wardenx/types).
+// §2.2 vocab mirrors (string-literal unions; the canonical types live in @chartwarden/types).
 const ENCOUNTER_TYPE = [
   "routine_visit",
   "admission_visit",
@@ -110,7 +110,7 @@ export const CreateEncounterSchema = Type.Object({
 // server-derived from the encounter row — a client that could name its own template key could assemble a
 // note against a template the encounter's discipline is not allowed to use.
 const SelectionEntrySchema = Type.Object({
-  /** A `@wardenx/narrative-vocab` entry code; assembly rejects one that is not in the shipped corpus. */
+  /** A `@chartwarden/narrative-vocab` entry code; assembly rejects one that is not in the shipped corpus. */
   code: Type.String({ minLength: 1, maxLength: 64 }),
   /** Values for the phrase template's `${slot}`s (numeric-direct vitals, grades, scores). */
   params: Type.Optional(

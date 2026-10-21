@@ -1,4 +1,4 @@
-// @wardenx/db — `provider_entity` (M1 Foundation §3.4). Second level of the tenancy
+// @chartwarden/db — `provider_entity` (M1 Foundation §3.4). Second level of the tenancy
 // spine (the Medicare-certified provider under an organization). NON_ORG_SCOPED in
 // check-tenancy.ts: it carries organization_id but defines provider scope.
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";

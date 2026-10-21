@@ -5,7 +5,7 @@ import {
   SAFETY_TERMINUS_ACTION_KINDS,
   SAFETY_TERMINUS_ACTION_STATUSES,
   SAFETY_TERMINUS_OUTCOME_CODES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -113,7 +113,7 @@ describe("ledger vocabulary mirrors the migration CHECKs", () => {
     const m = new RegExp(`"${constraint}" CHECK \\([\\s\\S]*?IN \\(([^)]*)\\)`).exec(sql);
     return (m?.[1] ?? "").match(/'([a-z0-9_]+)'/g)?.map((s) => s.replaceAll("'", "")) ?? [];
   };
-  it("keeps kinds, statuses and outcome codes in lock-step with @wardenx/types", () => {
+  it("keeps kinds, statuses and outcome codes in lock-step with @chartwarden/types", () => {
     expect(listIn("m20_ssta_kind")).toEqual([...SAFETY_TERMINUS_ACTION_KINDS]);
     expect(listIn("m20_ssta_outcome")).toEqual([...SAFETY_TERMINUS_OUTCOME_CODES]);
     // m20_ssta_status is `"status" IN (...)`, the same shape.

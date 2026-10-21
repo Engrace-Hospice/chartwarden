@@ -1,4 +1,4 @@
-// @wardenx/dosespot — EPCS 60-second 2FA signing-session submachine (§2.4 §1311.116, M12-T05). Pure, IO-free.
+// @chartwarden/dosespot — EPCS 60-second 2FA signing-session submachine (§2.4 §1311.116, M12-T05). Pure, IO-free.
 //
 // The DEA two-factor-authentication-at-signing flow (21 CFR §1311.116), modelled as a two-step submachine
 // that brackets the medication-order machine's `pending_signature → epcs_identity_pending → signed` branch:
@@ -22,7 +22,7 @@ import type {
   EpcsSecondFactorType,
   EpcsSigningAttemptOutcome,
   Ial2Status,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type DoseSpotEpcsFlags,
   assertEpcsCertified,

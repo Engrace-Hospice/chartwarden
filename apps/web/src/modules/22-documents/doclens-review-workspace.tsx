@@ -8,7 +8,7 @@ import {
   type StatusTone,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — INTAKE.ReviewSideBySide (DocLens, F-237; spec
 // docs/design/screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md "Review Workspace"). The human-in-the
 // -loop boundary for DocLens: the source page on the left with every extracted value's bounding box laid

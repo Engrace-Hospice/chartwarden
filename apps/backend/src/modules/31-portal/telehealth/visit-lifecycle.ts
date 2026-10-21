@@ -6,7 +6,7 @@
 // (M31-T06/T07) fold the live join/leave events onto a row through these helpers so an illegal transition
 // (e.g. `reconciled` → `in_progress`, a replayed webhook racing the state) is refused rather than forced.
 // No clock, no IO — facts in, next state out.
-import type { TelehealthEndReason, TelehealthLifecycleState } from "@wardenx/types";
+import type { TelehealthEndReason, TelehealthLifecycleState } from "@chartwarden/types";
 import { requireTelehealth } from "./errors";
 
 /**

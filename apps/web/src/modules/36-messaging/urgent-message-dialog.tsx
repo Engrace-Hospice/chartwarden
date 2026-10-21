@@ -4,9 +4,9 @@
 // offered. Nothing is parsed from the text: the server stores the SBAR document and marks the message urgent from this entry
 // alone. The draft and the {Idempotency-Key, client_message_id} pair live in the button (`draft`), so a retry of an identical
 // payload reuses them across close/reopen; closing with text asks first, in the dialog.
-import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, validateSbar } from "@wardenx/types";
-import type { SbarIssue, SbarSectionKey } from "@wardenx/types";
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, validateSbar } from "@chartwarden/types";
+import type { SbarIssue, SbarSectionKey } from "@chartwarden/types";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { createPortal } from "react-dom";

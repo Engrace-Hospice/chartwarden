@@ -19,7 +19,7 @@
 // SHAPE MIRRORS THE PROVEN PRECEDENT for exactly this kind of record in this codebase:
 // `packages/consent/src/routes/service.ts`'s `ConsentCaptureEvidence` / `validateCaptureEvidence` (M39) —
 // a `captureMethod` enum plus a per-method evidence floor. NOT the literal M39 type: M21's manifest
-// `dependsOn` is [1, 11, 40] with no edge to 39, so this module may not import `@wardenx/consent`. The
+// `dependsOn` is [1, 11, 40] with no edge to 39, so this module may not import `@chartwarden/consent`. The
 // method set is narrowed to what is plausible for a courier-delivery caregiver signature — no portal
 // session, no uploaded PDF, no notary.
 //
@@ -30,7 +30,7 @@
 import type {
   SupplyCaregiverSignatureCaptureMethod,
   SupplyCaregiverSignatureEvidence,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /** The already-persisted capture facts, as `write-service-drizzle.ts` reads them off the row before

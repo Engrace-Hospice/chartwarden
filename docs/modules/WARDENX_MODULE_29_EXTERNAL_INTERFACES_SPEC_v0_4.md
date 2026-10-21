@@ -1098,8 +1098,8 @@ The audit posture: the *fact* of a write to these tables is always captured (tim
 
 ```typescript
 // apps/backend/src/modules/29-external-interfaces/boot.ts (excerpt)
-import { registerEraser } from '@wardenx/foundation/eraser-registry'
-import type { DataEraser } from '@wardenx/foundation/interfaces'
+import { registerEraser } from '@chartwarden/foundation/eraser-registry'
+import type { DataEraser } from '@chartwarden/foundation/interfaces'
 
 const externalInterfacesEraser: DataEraser = {
   className: 'external_interfaces',
@@ -1475,7 +1475,7 @@ export interface ExternalInterfaceMetricsProvider {
 }
 
 // Boot-time registration in apps/backend/src/modules/29-external-interfaces/boot.ts
-import { SeamRegistry } from '@wardenx/foundation/seam-registry'
+import { SeamRegistry } from '@chartwarden/foundation/seam-registry'
 SeamRegistry.register('LabObservationReader', new LabObservationReaderImpl(db, deps))
 SeamRegistry.register('Hl7InboundProposalReader', new Hl7InboundProposalReaderImpl(db))
 SeamRegistry.register('ExternalFeedReader', new ExternalFeedReaderImpl(db))
@@ -1640,7 +1640,7 @@ Per D20, six new predicates are contributed to the M3 named-predicate registry. 
 
 ```typescript
 // apps/backend/src/modules/29-external-interfaces/predicates/index.ts
-import { registerPredicate, type PredicateContext } from '@wardenx/modules/03-authorization/predicates'
+import { registerPredicate, type PredicateContext } from '@chartwarden/modules/03-authorization/predicates'
 
 /** external_feed_organization_scope:
  *  The resource's organization_id must equal the actor's organization_id.

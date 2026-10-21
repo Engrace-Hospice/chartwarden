@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_loinc` (M38 Terminology §3.4). One of the four Phase-1
+// @chartwarden/db — `concept_loinc` (M38 Terminology §3.4). One of the four Phase-1
 // per-system concept tables (§2.3). LOINC-specific columns are the six-axis model
 // (component/property/time/system/scale/method) plus short_name; the axis index backs
 // component+property lookups and the trigram index backs fuzzy display search. Composite

@@ -10,9 +10,9 @@
 //  * EVERY enabled flip sets `changed_at = now()` (C2's reconcile treats a `ready` index as trustworthy only while
 //    `reconciled_at >= changed_at`) and `changed_by_user_id`. A repeat of the current value is not a flip: it writes nothing,
 //    except that OFF always (re)requests the purge and ON records a newly acknowledged notice version. Audit is the write-audit trigger on the table (who/when/old/new).
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import { CURRENT_NOTICE, type GlobalSearchNotice } from "./notice";
 import {
@@ -76,7 +76,7 @@ const CHECK_MESSAGES: Record<ChecklistFailureCode, string> = {
     "The purge started by the last switch-off has not finished; wait for it to complete.",
 };
 
-export class PrerequisitesUnmetError extends WardenXError {
+export class PrerequisitesUnmetError extends ChartWardenError {
   constructor(codes: readonly ChecklistFailureCode[]) {
     super(
       "GLOBAL_SEARCH_PREREQUISITES_UNMET",
@@ -89,7 +89,7 @@ export class PrerequisitesUnmetError extends WardenXError {
 }
 
 /** F5: switching ON without acknowledging the CURRENT notice version. 409 so the UI re-reads the GET and shows the new text. */
-export class NoticeNotAcknowledgedError extends WardenXError {
+export class NoticeNotAcknowledgedError extends ChartWardenError {
   constructor(code: "NOTICE_ACK_REQUIRED" | "NOTICE_ACK_STALE") {
     super(
       "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED",

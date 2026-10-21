@@ -6,7 +6,7 @@
 // verified `INTERNAL_SERVICE_TOKEN` branch of the authenticate hook can set, so a request-borne actor is
 // refused. It asserted a `systemPrincipal` attribute until F-030; nothing ever wrote that name, so these
 // three endpoints refused every caller including the seam consumers they exist for.
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { M25IngestService } from "../ingest/service";
 import { actorOf } from "./actor";

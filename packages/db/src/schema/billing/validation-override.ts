@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `validation_override` (M23 Billing-Medicare §3.3, D5; append-only; NON-partitioned;
+// @chartwarden/db — `validation_override` (M23 Billing-Medicare §3.3, D5; append-only; NON-partitioned;
 // retention class `compliance`). One row per overridden failed validation result: a role-gated,
 // reason-required, M4-audited override that lets a claim proceed past a non-regulatory failure. At most
 // one override per result. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).

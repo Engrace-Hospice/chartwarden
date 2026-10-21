@@ -1,10 +1,10 @@
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/39-consent/routes/consent-routes.ts — M39-T07 the consent route inventory
 // (M39 spec §4.1–4.2; the §4.7 permission handshake; §4.11 ABAC; §4.12 cursor pagination).
 //
 // A representative slice of the §4.1 inventory over the injected `ConsentRouteService` (in-memory in
 // the slice; Drizzle in prod, T09). Every route is gated by the REAL Authorization Contract
-// (`requirePermission` from @wardenx/auth, M3) on the §4.7 keys M39 registers into M3's catalog
+// (`requirePermission` from @chartwarden/auth, M3) on the §4.7 keys M39 registers into M3's catalog
 // (M39_CONTRIBUTED_PERMISSIONS); the sign/supersede/revoke/overlay/admin routes additionally
 // STEP-UP re-auth (`requireStepUp`, the `consent_management` profile, §4.1). Org binding is always
 // server-side (`request.context`, never the body). The eval-audit query is CURSOR-paginated (§4.12 —
@@ -20,9 +20,9 @@ import type {
   UpdateConsentDraftInput,
   UpdateDpoaAgentInput,
   UpsertConsentOverlayInput,
-} from "@wardenx/consent";
-import { ConsentRouteError } from "@wardenx/consent";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/consent";
+import { ConsentRouteError } from "@chartwarden/consent";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentAccessDeps, ConsentStaffActor } from "../access-scope";
 import { createScopedConsentRouteService } from "../scoped-consent-service";
@@ -172,7 +172,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
       const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const record = await scoped.getConsent(actor, organizationId, consentId);
-      if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
+      if (!record) throw new ChartWardenError("NOT_FOUND", "consent not found", 404);
       return { data: record };
     },
   );

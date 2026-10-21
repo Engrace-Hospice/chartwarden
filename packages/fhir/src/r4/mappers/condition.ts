@@ -1,4 +1,4 @@
-// @wardenx/fhir — Condition mapper (us-core-condition, M6, M28-T04).
+// @chartwarden/fhir — Condition mapper (us-core-condition, M6, M28-T04).
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { Condition, FhirCoding } from "../types";

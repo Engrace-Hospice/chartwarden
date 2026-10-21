@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER PLAN VIEW + ASSIGNMENT MODAL (§5.1 #9/#10).
 //
 // The 42 CFR §418.78 surface over the shared plan spine, plus the coordinator's assignment ledger and the

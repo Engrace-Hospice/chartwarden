@@ -1,4 +1,4 @@
-// @wardenx/db — `support_session` (M34 §3.6). An active platform-ops support window opened against a
+// @chartwarden/db — `support_session` (M34 §3.6). An active platform-ops support window opened against a
 // `support_consent_grant`. Tenancy (§3.10 M34-F02 / ADR-0010): ORG-SCOPED — carries its own
 // `organization_id` NOT NULL so the canonical app.org_id RLS predicate applies directly.
 // `actor_membership_id` is the platform-ops actor (must be distinct from the grant's grantor — enforced

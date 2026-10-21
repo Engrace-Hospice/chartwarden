@@ -1156,7 +1156,7 @@ M9's mobile offline layer uses the **platform sqlcipher encrypted SQLite store**
 store used by M5 / M6 / M8 mobile offline layers, keyed per-org per-session via the platform
 per-tenant DEK):
 
-- **Store location:** `@wardenx/mobile-offline` package, table `assessment_draft` in the
+- **Store location:** `@chartwarden/mobile-offline` package, table `assessment_draft` in the
   encrypted SQLite database opened with the session-derived key.
 - **Draft schema (sqlcipher table):**
 
@@ -1184,7 +1184,7 @@ per-tenant DEK):
   opaque ciphertext. This satisfies SEC-075's "no residual PHI on device after session end"
   requirement. The eviction is synchronous in the logout flow; the app does not reach the
   logged-out state until the DELETE completes.
-- **Sync-on-reconnect:** When connectivity is restored the `@wardenx/mobile-offline` sync worker
+- **Sync-on-reconnect:** When connectivity is restored the `@chartwarden/mobile-offline` sync worker
   reads `synced=0` draft rows in insertion order and submits each as a
   `POST /patients/:patientId/assessments` with the draft's `draft_id` as the `Idempotency-Key`.
   On HTTP 200 or 409 (already processed), the row is marked `synced=2`. On 4xx (validation
@@ -1433,7 +1433,7 @@ Module 9 registers an eraser with Module 4's destruction-certificate registry at
 
 ```typescript
 // apps/backend/src/modules/09-assessments/boot.ts
-import { registerEraser } from '@wardenx/audit'
+import { registerEraser } from '@chartwarden/audit'
 import { eraseAssessmentsForPatient } from './services/eraser'
 
 registerEraser('clinical_assessment', async (ctx, certificate) => {

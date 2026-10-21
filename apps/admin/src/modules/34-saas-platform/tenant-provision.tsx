@@ -8,7 +8,7 @@ import {
   isStepUpRequired,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — "New tenant" (§4.1 #3, POST /api/v1/platform/tenants). Raw-input provisioning
 // (no signup intent): the server step-up gates it and enqueues `tenant.provision`, answering 202, so the tenant appears in the
 // inventory once the provisioner has run — this form only reports that the request was accepted. A step-up refusal keeps

@@ -3,7 +3,7 @@
 // BullMQ rejects a custom jobId containing ':', which M30's own colon-delimited dedupe keys collided with)
 // is proved against a real Redis in the live suite (m30-quality-scheduled-jobs.live.test.ts) — that path
 // needs an actual `Queue.add` round trip, which this pure unit file intentionally does not stand up.
-import { DegradedError } from "@wardenx/types";
+import { DegradedError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M30InfraPortUnbound, buildM30RecomputeEnqueue } from "../wiring";
 

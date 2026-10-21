@@ -41,7 +41,7 @@ import {
   SYSTEM_LOCKED_FLOORS,
   allPermissionMirrorRows,
   systemRoleDisplayName,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { Client } from "pg";
 import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";

@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_assessment_answer` (M10 HOPE modernization Phase 1A). Canonical current
+// @chartwarden/db — `hope_assessment_answer` (M10 HOPE modernization Phase 1A). Canonical current
 // item-level answer rows for a HOPE assessment. The assessment link remains a logical UUID because
 // `hope_assessment` is partitioned by target_date with a composite PK; service code enforces parent
 // integrity just like the existing M10 child tables.

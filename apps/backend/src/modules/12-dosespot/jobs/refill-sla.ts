@@ -2,14 +2,14 @@
 // Hourly scan of PENDING refill requests: >= 48 h => `m12.refill_request_sla_warn`, >= 72 h =>
 // `m12.refill_request_sla_critical` (the platform-default policy; the tenant-tightening `refill_inbox_policy`
 // table does not exist in Phase 1, so the default is authoritative). The clock math is the pure
-// `classifyRefillSlaStage` in `@wardenx/dosespot`.
+// `classifyRefillSlaStage` in `@chartwarden/dosespot`.
 //
 // ONCE PER STAGE: each stage stamps its `sla_*_emitted_at` marker (migration 0412) with a guarded UPDATE
 // (`... IS NULL`, row count asserted) in the SAME transaction as the outbox event, so two replicas racing the
 // tick emit exactly one event and a re-run emits nothing. A request that jumped straight past 72 h gets the
 // critical event only. The upstream rows come from the webhook `refill_request` handler.
-import { schema } from "@wardenx/db";
-import { classifyRefillSlaStage, computeHoursPending, planRefillSlaAlert } from "@wardenx/dosespot";
+import { schema } from "@chartwarden/db";
+import { classifyRefillSlaStage, computeHoursPending, planRefillSlaAlert } from "@chartwarden/dosespot";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 

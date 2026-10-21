@@ -2,13 +2,13 @@ import type {
   CahpsDecedentSampleRow,
   CahpsResultSummaryInput,
   CahpsVendorAdapter,
-} from "@wardenx/quality";
-// @wardenx/cahps-vendors — Press Ganey adapter (M30 §4.5). Phase-2 PLACEHOLDER.
+} from "@chartwarden/quality";
+// @chartwarden/cahps-vendors — Press Ganey adapter (M30 §4.5). Phase-2 PLACEHOLDER.
 //
 // A real, registrable adapter whose behavior is deliberately not-yet-implemented: `validateConfig`
 // reports the vendor is unavailable (so org boot refuses to bind it), and every operating method fails
 // closed with `vendor_adapter_not_implemented`. The Press Ganey CSV/result layouts land in Phase 2.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 const NOT_IMPLEMENTED = "the Press Ganey CAHPS adapter is not yet implemented (phase 2)";
 
@@ -29,7 +29,7 @@ export class PressGaneyCahpsAdapter implements CahpsVendorAdapter {
     _samplePeriod: { start: string; end: string },
     _decedents: CahpsDecedentSampleRow[],
   ): Promise<{ filename: string; mimeType: string; bytes: Buffer }> {
-    throw new WardenXError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
+    throw new ChartWardenError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
   }
 
   pushExport(
@@ -37,11 +37,11 @@ export class PressGaneyCahpsAdapter implements CahpsVendorAdapter {
     _file: { filename: string; mimeType: string; bytes: Buffer },
     _config: Record<string, unknown>,
   ): Promise<{ status: "pushed"; vendorJobId: string } | { status: "no_push"; reason: string }> {
-    throw new WardenXError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
+    throw new ChartWardenError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
   }
 
   parseResultIngest(_payload: Buffer): Promise<CahpsResultSummaryInput[]> {
-    throw new WardenXError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
+    throw new ChartWardenError("vendor_adapter_not_implemented", NOT_IMPLEMENTED, 503);
   }
 
   minimumCellSize(): number {

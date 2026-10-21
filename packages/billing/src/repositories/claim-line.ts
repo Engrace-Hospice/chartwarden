@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `claim_line` (child line table of `claim`, §3.3). INTERNAL-WRITE-ONLY:
+// @chartwarden/billing · repositories — `claim_line` (child line table of `claim`, §3.3). INTERNAL-WRITE-ONLY:
 // ONLY the claim-assembly service writes lines, and only as a batch under the parent claim's transaction;
 // there is NO external line-mutation route and this repo offers NO update/delete surface (spec §3.1 — the
 // routes expose lines read-only once a claim leaves DRAFT). Re-assembly replaces the line set wholesale by
@@ -9,7 +9,7 @@
 // through `levelOfCareCodec` on read + write so the assembly service speaks the long-form domain
 // `LevelOfCare`. `revenue_code` / `q_code` are DB-native code enums with no domain divergence and pass
 // through unchanged. No PHI (D13).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { asc, eq } from "drizzle-orm";
 import type { LevelOfCare } from "../contracts";
 import { type BillingDb, levelOfCareCodec } from "./db";

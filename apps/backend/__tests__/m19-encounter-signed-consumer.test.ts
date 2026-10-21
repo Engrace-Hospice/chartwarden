@@ -3,7 +3,7 @@
 // assertion below.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { OrgId, TriageCallId } from "@wardenx/types";
+import type { OrgId, TriageCallId } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/events-by-m8";
 import {

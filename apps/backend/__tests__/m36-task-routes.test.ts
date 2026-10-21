@@ -16,8 +16,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { ForbiddenError, NotFoundError, type TaskDto, WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ForbiddenError, NotFoundError, type TaskDto, ChartWardenError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -228,7 +228,7 @@ describe("POST /channels/:id/messages/:messageId/tasks", () => {
       [409, "TASK_STATE_CONFLICT"],
       [409, "TASK_ASSIGNEE_ALREADY_HAS_ACTIVE"],
     ] as const) {
-      failWith = new WardenXError(code, "x", status);
+      failWith = new ChartWardenError(code, "x", status);
       const res = await send(app, "nurse", "POST", convertUrl(), { assignee_user_id: ASSIGNEE });
       expect(res.statusCode).toBe(status);
       expect(res.json().error?.code ?? res.json().code).toBe(code);
@@ -396,7 +396,7 @@ describe("POST /tasks/:taskId/{accept,complete,cancel,reassign}", () => {
       [422, "TASK_CLOSE_REASON_REQUIRED", "/complete"],
       [422, "TASK_CLOSE_REASON_INVALID", "/cancel"],
     ] as const) {
-      failWith = new WardenXError(code, "x", status);
+      failWith = new ChartWardenError(code, "x", status);
       const res = await send(
         app,
         "nurse",

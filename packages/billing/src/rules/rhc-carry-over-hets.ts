@@ -1,5 +1,5 @@
 import { paramNumber } from "./_util";
-// @wardenx/billing — rule `rhc_carry_over_hets_fresh` (perDiemClass, WARN, NON-regulatory). The two-tier RHC split
+// @chartwarden/billing — rule `rhc_carry_over_hets_fresh` (perDiemClass, WARN, NON-regulatory). The two-tier RHC split
 // (days 1–60 high, 61+ low) continues across a readmission within 60 days of ANY prior hospice discharge,
 // including days at another hospice (Claims Processing Manual ch. 11 §30.2; CR 9201 / R3326CP). Medicare
 // counts those days from CWF; we only see other hospices' days through the HETS 271 history. When the

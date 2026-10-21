@@ -2,7 +2,7 @@ import {
   computeHciIndicator01,
   computeHciIndicator03,
   computeHciIndicator04,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 // apps/backend/__tests__/m30-hci-indicators-01-03-04.test.ts — the three M6-only HCI indicators (no
 // cross-module join needed, unlike HVLDL/HCI-10's M6×M8 combination).
 //

@@ -26,8 +26,8 @@
 //      "clinicians see their own state only" cannot be expressed by `caseload_or_scope` — an ABAC
 //      predicate answers yes/no for a request, not which rows come back. The guard admits her to the
 //      route; this layer narrows the snapshot.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type IsoInstant,
   NotFoundError,
@@ -50,8 +50,8 @@ import {
   type SafetySosLifecycleState,
   type SafetySosOutcome,
   type SafetySubscriptionScopeKind,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { ACTIVE_SOS_RESPONDER_STATES, decideSafetySupervisorOrAbove } from "../abac-predicates";
 import { mergeEffectivePolicy, safetyPolicyFloorSeed } from "../lifecycle/policy";
@@ -112,7 +112,7 @@ export interface SafetyDecipherPort {
 /** The default: refuses, loudly, rather than handing ciphertext up as plaintext. */
 export const denyStubSafetyDecipherPort: SafetyDecipherPort = {
   async decrypt() {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "SAFETY_CIPHER_UNBOUND",
       "no per-tenant DEK decipher is bound for M20; the stored value cannot be opened here",
       503,
@@ -410,7 +410,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
           alert.lifecycleState,
         );
         if (!stillActive && (filters.accessReason ?? "").trim().length < 40) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "COORDINATE_ACCESS_REASON_REQUIRED",
             "reading a closed alert's coordinate stream requires a ≥40-character reason; the poster sees this access on her own consent surface (§6, §8.7)",
             422,

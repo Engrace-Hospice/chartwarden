@@ -1,7 +1,7 @@
 // apps/backend/src/modules/32-ai-platform/safety/service.ts — W3's kill switch, W5's hallucination
 // workflow and §3.2.11's evaluation runs, sequenced (M32-T05).
 //
-// Every RULE lives in `@wardenx/ai-platform/safety`; this file resolves the facts those rules need,
+// Every RULE lives in `@chartwarden/ai-platform/safety`; this file resolves the facts those rules need,
 // performs the writes their decisions imply, and hands back the follow-up work rather than doing it.
 //
 // ── WHAT THIS FILE DELIBERATELY DOES NOT DO ───────────────────────────────────────────────────────
@@ -40,8 +40,8 @@ import {
   evaluateAiKillSwitchActivation,
   evaluateAiKillSwitchDeactivation,
   requireAiGovernance,
-} from "@wardenx/ai-platform";
-import { ForbiddenError } from "@wardenx/types";
+} from "@chartwarden/ai-platform";
+import { ForbiddenError } from "@chartwarden/types";
 import type {
   AiCapabilityLifecycleState,
   AiEvaluationRunStage,
@@ -50,7 +50,7 @@ import type {
   AiKillSwitchActorKind,
   AiKillSwitchScope,
   AiKillSwitchSeverity,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import type { AiCapabilityRegistryStore } from "../governance/store";
 import type { AiKillSwitchGate } from "../invocation/service";

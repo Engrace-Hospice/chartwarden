@@ -5,11 +5,11 @@
 // id is recorded as `*_not_found`, never matched loosely.
 //
 // The INNER payload field names are our provisional wire mapping (`DOSESPOT_WIRE_MAPPING_VERIFIED = false`).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   DoseSpotRefillRequestPayload,
   DoseSpotScriptStatusUpdatePayload,
-} from "@wardenx/dosespot";
+} from "@chartwarden/dosespot";
 import { and, eq } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { applyPharmacyAck, applyPharmacyNack } from "../jobs/order-outcomes";

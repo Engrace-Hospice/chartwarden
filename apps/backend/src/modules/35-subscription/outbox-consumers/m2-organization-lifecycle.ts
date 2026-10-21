@@ -14,7 +14,7 @@
 // it needs no new fact, no plan choice, and both existing routes agree on the target state (`active`,
 // never `trialing` — resuming a paused subscription does not re-derive whether a trial was still open).
 // CREATE ("start" — a brand-new org's very first subscription) is DELIBERATELY NOT BUILT: `createSubscription`
-// (`@wardenx/subscription-billing`'s `SubscriptionLifecycleService`) requires a `planId`, and nothing in
+// (`@chartwarden/subscription-billing`'s `SubscriptionLifecycleService`) requires a `planId`, and nothing in
 // this event's payload, this consumer's injected facts, or the spec's own text names which of the three
 // platform plan tiers (Starter/Professional/Enterprise, D1) a newly-activated org should default onto —
 // the "(optionally)" hedge is the spec's own tell that this half was never decided. Inventing a default
@@ -44,8 +44,8 @@
 // (`cancelAtPeriodEnd = true`, `status` left untouched) rather than transitioning `status` to `canceled`
 // immediately — matching that route's own shape exactly, including its choice not to write a
 // `subscription_state_history` row (status did not change, so there is no state transition to log).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 

@@ -2,7 +2,7 @@
 // indicators 3/4's early/late live-discharge counts). A fake scoped db drives the reader's
 // `select().from().innerJoin().where()` chain and the test asserts the day-since-admission
 // classification — the actual point of this reader, not just that it queried the right tables.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createDischargeReader } from "../src/modules/06-admission/index";
 

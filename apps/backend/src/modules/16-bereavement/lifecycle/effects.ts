@@ -17,7 +17,7 @@ import type {
   BereavementPlanClosureReason,
   IsoInstant,
   M16EventName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.6). The service layer is the only place these

@@ -1,5 +1,5 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
 // by event id / type client-side, with a per-event Replay (stripe.admin.replay — step-up + Idempotency-Key)

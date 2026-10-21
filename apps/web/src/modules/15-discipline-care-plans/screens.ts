@@ -1,11 +1,11 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/15-discipline-care-plans — M15 Discipline Care Plans screen registration
 // (Track B / ADR-0030, §5.1). The read + write surface over the live /api/v1/discipline-plans +
 // /api/v1/volunteer-* backend (28 routes, M15-T06).
 //
 // Each `requiredPermission` is the REAL §4.4 M15 key the matching route gates on
 // (apps/backend/src/modules/15-discipline-care-plans/permission-keys.ts → `M15_CONTRIBUTED_PERMISSIONS` in
-// @wardenx/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and an
+// @chartwarden/auth) — this gates NAV VISIBILITY only; the server stays the authoritative enforcer, and an
 // out-of-scope plan is a non-leaking 404 from the server, never a frontend hide.
 //
 // The patient-scoped clinical surfaces carry no `navGroup`: they are param routes reached from the patient

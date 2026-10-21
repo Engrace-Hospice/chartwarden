@@ -19,8 +19,8 @@
 //   • an alert failure never fails the mutation;
 //   • the §8.2 eraser SHREDS before it deletes, PRESERVES the de-identified controlled-substance ledger
 //     (DEA 21 CFR §1304.04), and a second erase reports zero.
-import { M21_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@wardenx/auth";
-import type { AbacContext } from "@wardenx/auth";
+import { M21_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@chartwarden/auth";
+import type { AbacContext } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   COMFORT_KIT_RECONCILER_ROLES,

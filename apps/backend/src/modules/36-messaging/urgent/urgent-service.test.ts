@@ -1,8 +1,8 @@
 // WP 4.1 - the urgent service over a fake send core with the real contract (the hook runs inside the "transaction", not on a
 // replay). Proves every refusal writes nothing, the recipient answer is one uniform code, a replay publishes nothing, the
 // event carries ids only, and the SBAR urgency hint and the message text never decide anything.
-import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type UrgentServiceDeps, type ValidateLinks, createUrgentService } from "./urgent-service";
 
@@ -97,7 +97,7 @@ const code = async (p: Promise<unknown>): Promise<string> => {
   try {
     await p;
   } catch (e) {
-    if (e instanceof WardenXError) return `${e.statusCode}:${e.code}`;
+    if (e instanceof ChartWardenError) return `${e.statusCode}:${e.code}`;
     throw e;
   }
   return "no-error";

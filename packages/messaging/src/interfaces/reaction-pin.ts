@@ -2,7 +2,7 @@
 // Both are channel-scoped: the caller has run `channel_visibility` on `channelId`, and every operation re-scopes the
 // message to that channel, so a message of another channel, another org or an unknown id is the one 404 a random id gets.
 // Reactions are non-clinical and are NOT a sign-off: nothing here reads or writes receipt state.
-import type { MessageReactionKey, MessageReactionSummary } from "@wardenx/types";
+import type { MessageReactionKey, MessageReactionSummary } from "@chartwarden/types";
 import type { ResolvedMessage } from "./provider";
 
 export interface MessageReactionPinService {

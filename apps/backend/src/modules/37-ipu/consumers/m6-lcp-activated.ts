@@ -21,8 +21,8 @@
 // IDEMPOTENT: a redelivery that finds the admission already past `bed_assigned` returns without acting. A
 // concurrent delivery that loses the race makes `confirm` throw an illegal transition; the consumer re-reads
 // and treats "now activated" as success, and rethrows anything else.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { IpuRouteService } from "../routes/service";
 import { m6LcpAckActor } from "../routes/system-actor";

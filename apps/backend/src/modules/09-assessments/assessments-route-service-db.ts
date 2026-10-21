@@ -47,17 +47,17 @@ import {
   scaleResponseDetail,
   scoreAssessment,
   transitionSignificantChange,
-} from "@wardenx/assessments";
-import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/assessments";
+import { type DbClient, schema, todayForOrganization } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AssessmentActingAs,
   ScaleDelta,
   ScaleSeries,
   ScaleSeriesPoint,
   ScaleType,
-} from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   type AssessmentSitingResolver,
@@ -125,7 +125,7 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
 }
 
 // PARAM-004: "today" for a scale-license effective/expiry check is the ORG's operating calendar
-// day (org_timezone), never a naive UTC-instant slice — see @wardenx/db's todayForOrganization.
+// day (org_timezone), never a naive UTC-instant slice — see @chartwarden/db's todayForOrganization.
 const toIso = (v: Date | string): string =>
   v instanceof Date ? v.toISOString() : new Date(v).toISOString();
 const toNum = (v: string | number | null): number | null => (v === null ? null : Number(v));

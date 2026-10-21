@@ -16,8 +16,8 @@
 // separately-receipted binding (its own consumer name) for direction `in`. The M6 facts arrive through an
 // INJECTED org-explicit port (`transferInNoticeContextForOrg`); no M6 schema is imported.
 import { randomUUID } from "node:crypto";
-import { deriveControlNumber, repositories, transferNoticeTob } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+import { deriveControlNumber, repositories, transferNoticeTob } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { BillingDb, WriteOutboxPort } from "../services/claim-state-service";
 
 export const M23_TRANSFER_NOTICE_DRAFT_CONSUMER = {

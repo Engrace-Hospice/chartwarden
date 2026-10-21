@@ -3,7 +3,7 @@
 // `tpe_rule.manage`. Every change to a program, round or sampled claim is If-Match (409 when stale), a threshold update takes an optional If-Match, and every mutation requires an Idempotency-Key. Org,
 // actor and provider-entity scope are server-derived (actor.ts). Nothing is filed and no threshold has a default.
 import { FormatRegistry, Type } from "@sinclair/typebox";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { TPE_CLAIM_RESULTS, TPE_MAC_RESULTS, TPE_REFERRAL_KINDS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

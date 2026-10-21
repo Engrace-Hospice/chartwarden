@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Accept Invitation (M2 Auth, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
 // TASK-030: the original cut deferred "set password" because there was no way to know the invitee's
@@ -141,7 +141,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "checking") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <p>Checking your invitation…</p>
       </CenteredCardLayout>
     );
@@ -149,7 +149,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "invalid") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-error)" }}>{error}</p>
       </CenteredCardLayout>
@@ -158,7 +158,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "accepted") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p>Your membership is active. Continue to select your organization.</p>
         <button type="button" onClick={() => navigate("/login/organization")} style={primaryBtn}>
@@ -170,7 +170,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "wrong-account") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-on-surface-variant)" }}>
           This invitation to <strong>{invite?.organizationName}</strong> was sent to{" "}
@@ -191,7 +191,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "ready-to-accept") {
     return (
-      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-on-surface-variant)" }}>
           Accept your invitation to <strong>{invite?.organizationName}</strong> with your current
@@ -207,14 +207,14 @@ export function AcceptInvitation(): JSX.Element {
 
   // "needs-account" | "creating" — the invitee has no session yet: create their account first.
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>}>
+    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
       <form
         onSubmit={createAccountAndAccept}
         style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
       >
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Create your account</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
-          You’ve been invited to join <strong>{invite?.organizationName}</strong> on WardenX as{" "}
+          You’ve been invited to join <strong>{invite?.organizationName}</strong> on ChartWarden as{" "}
           <strong>{invite?.email}</strong>.
         </p>
         <label

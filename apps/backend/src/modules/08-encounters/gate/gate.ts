@@ -14,13 +14,13 @@ import {
   requiredScalesFor,
   requiredVitalsFor,
   resolveTemplate,
-} from "@wardenx/hearthnote";
+} from "@chartwarden/hearthnote";
 import type {
   CarePlanOverdueStatus,
   EncounterDiscipline,
   EncounterType,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { GateCheckId } from "./checks";
 
@@ -59,7 +59,7 @@ export interface EncounterGateFacts {
   /**
    * §2.6 check 2 — the union, across every `vitals` row this encounter carries, of fields with a
    * non-null value (`bp` needs BOTH `bpSystolic`/`bpDiastolic`). Resolved upstream because the gate
-   * takes no IO; see `requiredVitalsFor` (@wardenx/hearthnote) for what a template requires.
+   * takes no IO; see `requiredVitalsFor` (@chartwarden/hearthnote) for what a template requires.
    */
   readonly vitalsCaptured: ReadonlySet<VitalField>;
   /**

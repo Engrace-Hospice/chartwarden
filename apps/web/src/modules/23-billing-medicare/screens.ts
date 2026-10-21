@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare screen registration (R2, ADR-0030,
 // §5.1 / §10 PR-J). The read + write surface over the existing /api/v1/billing/* backend (37 routes). Each
 // `requiredPermission` is the REAL §4.6 M23 key the matching route gates on

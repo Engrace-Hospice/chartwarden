@@ -5,7 +5,7 @@
 // stop two tenants' digests from ever being equal and keep the unique index meaningful; a 128-bit random token
 // makes an unkeyed SHA-256 non-invertible, so no pepper / KMS key has to be managed (decision 2 of the design).
 import { createHash, randomBytes } from "node:crypto";
-import { WRISTBAND_TOKEN_BYTES, formatWristbandPayload } from "@wardenx/types";
+import { WRISTBAND_TOKEN_BYTES, formatWristbandPayload } from "@chartwarden/types";
 
 const DIGEST_DOMAIN = "wx.wristband.v1";
 

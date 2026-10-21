@@ -1,4 +1,4 @@
-// @wardenx/messaging — the ring (v2) message body envelope (M36 WP 2.13 / ADR-0058 P1).
+// @chartwarden/messaging — the ring (v2) message body envelope (M36 WP 2.13 / ADR-0058 P1).
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

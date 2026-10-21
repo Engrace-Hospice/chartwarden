@@ -7,7 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the ROLE DASHBOARD (R2).
 // Spec §5.1.5 (`/reports/role/:roleKey`) — a role's seeded operational dashboard. Reads the role's
 // dashboard definition via GET /api/v1/reporting/dashboards/{dashboardId}, then each KPI card reads its

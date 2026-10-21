@@ -1,4 +1,4 @@
-// @wardenx/quality — the SSVI metrics whose input a provider-side EHR structurally cannot assemble. Pure data.
+// @chartwarden/quality — the SSVI metrics whose input a provider-side EHR structurally cannot assemble. Pure data.
 //
 // The HCI precedent exactly (`../hci/availability.ts`): a DECLARED absence carrying its reason, so the nightly
 // recompute writes a suppressed row that says why, never an unbound resolver that throws.

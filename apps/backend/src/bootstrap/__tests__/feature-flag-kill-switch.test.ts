@@ -6,7 +6,7 @@
  * (a same-key global row is never toggled for a tenant's row or vice-versa), a missing row is a 404 not an
  * insert, and a boot with no platform ports refuses 501 rather than flipping a flag unaudited.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";

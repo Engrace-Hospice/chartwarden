@@ -22,8 +22,8 @@
 // The event name is a STRING literal only (no M9 schema import): M11 reads M9 solely through the
 // foundation outbox, never via a `dependsOn` edge (§4 boundary rule) — `SignificantChangePayload` is
 // `assessment-trigger.ts`'s own leaf-typed projection of the wire payload.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, or } from "drizzle-orm";
 import type Redis from "ioredis";
 import {

@@ -6,7 +6,7 @@
  *
  *   DATABASE_URL="postgres://wardenx_app:wardenx-app-dev-password@localhost:5432/wardenx" bun run db:idg:carry-forward
  */
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import {
   buildBootOutboxCatalog,
   buildTxOutboxPublisher,

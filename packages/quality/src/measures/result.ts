@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 measure-calculator KERNEL: the shared result/input contract every measure
+// @chartwarden/quality — M30 measure-calculator KERNEL: the shared result/input contract every measure
 // calculator in `measures/**` returns and consumes (§1.1, §3.3, §4.11). Pure domain — no IO.
 //
 // A measure calculator is a PURE function `(input) => QualityMeasureValueResult`. The worker phase (later)
@@ -10,7 +10,7 @@
 // NOTE (cycle-free barrel): these symbols live in this leaf and are RE-EXPORTED from `measures/index.ts`
 // so the package surface still exposes them "from measures/index.ts" while keeping the calculator subtree
 // free of an import cycle back into the barrel (the repo `no-circular` dependency-cruiser rule).
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 
 /**
  * The opaque, calculator-version-specific reproducibility snapshot persisted on

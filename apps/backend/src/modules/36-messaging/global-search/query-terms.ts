@@ -19,13 +19,13 @@ import {
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
-} from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { headPairKey } from "./stats";
 
 export const MAX_QUERY_TERMS = 8;
 
-const invalid = (message: string) => new WardenXError("INVALID_SEARCH_QUERY", message, 422);
+const invalid = (message: string) => new ChartWardenError("INVALID_SEARCH_QUERY", message, 422);
 
 /** The query's distinct index tokens, in the order typed. The LAST one is the (possibly partial) prefix term. */
 export function parseQueryTerms(q: string): string[] {

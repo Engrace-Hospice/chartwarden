@@ -1,7 +1,7 @@
 // WP 2.2: the data half of the thread side panel. One root message and its direct replies, read through
 // GET /channels/:id/messages/:messageId/thread (oldest reply first, keyset-paged). Permissions are the channel's: a
 // thread the viewer may no longer read is the same "unavailable" answer as a thread that never existed.
-import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Message } from "./messaging-types";
 import { mergeMessages } from "./messaging-utils";

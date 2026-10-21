@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/outbox-consumers/m6-admission-discharged-cascade.ts — the §2.5/§2.7 D14
 // admission-discharge cascade, live for the first time (F-155, #248).
 //
-// `planDischargeCascade` (`@wardenx/emar`, `cascade/discharge-cascade.ts`) has been a complete, pure,
+// `planDischargeCascade` (`@chartwarden/emar`, `cascade/discharge-cascade.ts`) has been a complete, pure,
 // unit-tested planner since M13-T05, and `M13_OUTBOX_SUBSCRIPTIONS` (`consumers/index.ts`) has named
 // `m6.admission.discharged` with a real consumer (`m13.admission-discharged-cascade`) since the list was
 // written — nothing has ever bound it. One layer down: `scheduled_dose.status`/`cancellation_reason` and
@@ -38,10 +38,10 @@
 // none to name here regardless: neither table carries an actor column for this transition
 // (`scheduled_dose` has no actor column at all; `comfort_kit_deployment.deployed_by_membership_id` is the
 // DEPLOYMENT actor, set once at deploy time, never touched by a return-required flip).
-import { type DbClient, schema } from "@wardenx/db";
-import { planDischargeCascade } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionId, IsoInstant, PatientId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { planDischargeCascade } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionId, IsoInstant, PatientId } from "@chartwarden/types";
 import { and, eq, gt } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 

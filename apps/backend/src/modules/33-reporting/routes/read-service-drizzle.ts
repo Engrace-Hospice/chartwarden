@@ -20,7 +20,7 @@
 // isForwardSeamDenyStub: true` for every metric, forever). All three bind here now.
 // The two MV-admin commands enqueue the on-PRIMARY `report.mv_refresh` worker (§2.4 / §4.8); the read layer
 // never refreshes from the request thread.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   type DashboardCatalogProvider,
   type MetricsProvider,
@@ -37,8 +37,8 @@ import {
   computeFreshnessSeconds,
   translateSpec,
   withReportSession,
-} from "@wardenx/reporting";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { CursorPage } from "./concurrency";
 import { paginate } from "./concurrency";

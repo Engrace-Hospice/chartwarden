@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 snapshot canonicalization + content hash (D10). The snapshot-on-submit
+// @chartwarden/cost-report — M27 snapshot canonicalization + content hash (D10). The snapshot-on-submit
 // flow freezes every seam-derived input + worksheet state into a `cost_report_snapshot` row and stamps
 // it with a SHA-256 `content_hash_sha256`; on every read the stored hash is recomputed and asserted, so
 // any out-of-band mutation of the immutable snapshot surfaces as `SNAPSHOT_CORRUPTED` / a P0 system-
@@ -6,7 +6,7 @@
 // must be CANONICAL — independent of object key insertion order — so the same logical snapshot always
 // hashes identically across the writer (submit transaction) and every later read-time verification.
 //
-// PURE DOMAIN: `node:crypto` only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: `node:crypto` only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 // No PHI — the snapshot is aggregate financial/statistical only (D18); these primitives are agnostic to
 // content and simply produce a deterministic byte string + digest over whatever value they are given.
 import { createHash } from "node:crypto";

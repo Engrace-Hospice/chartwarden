@@ -3,7 +3,7 @@
 // days a new election continues — our earlier stays merged with other hospices' days from the HETS 271 history —
 // with the chain counted, the basis (`internal_only` / `hets_merged` / `hets_stale`) and any warnings. Shared kit
 // only (StatusPill, InlineAlert); flat rows, no cards. `rhcCarryOverModel` is the pure part (DOM-free tests).
-import { InlineAlert, StatusPill, type StatusTone } from "@wardenx/ui";
+import { InlineAlert, StatusPill, type StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 
 export type RhcCarryOverBasis = "internal_only" | "hets_merged" | "hets_stale";

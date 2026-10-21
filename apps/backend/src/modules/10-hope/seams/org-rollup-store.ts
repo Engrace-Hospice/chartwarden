@@ -14,14 +14,14 @@
 // from `hope_assessment.data.J.J2051.entries` (a bounded set — clearer + unit-testable than raw JSONB SQL,
 // per the #107 brief). The in-memory double seeds the intermediate rows directly so the provider's
 // derivation (the single correctness-critical logic) is exercised with no DB.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type HopeRollupPeriod,
   type IsoInstant,
   type J2051Severity,
   J2051_SEVERITY_ORDER,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 // ── intermediate row projections (the provider reduces these to counts; never crosses the seam) ──────────

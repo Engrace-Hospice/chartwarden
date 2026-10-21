@@ -7,13 +7,13 @@
 // (M20 field-safety live-awareness — the only coordinate-bearing seam, D10), `EvvMetricsProvider` (M30/M33
 // dashboards), and `EvvVerificationProvider` (M31 portal arrival surface, timestamp only).
 //
-// M18-T06 lands: the §4.5 D1 `EvvAggregatorAdapter` seam (`@wardenx/evv-aggregators` — Sandata + open-model
+// M18-T06 lands: the §4.5 D1 `EvvAggregatorAdapter` seam (`@chartwarden/evv-aggregators` — Sandata + open-model
 // adapters + the per-state `StateAggregatorRegistry` selecting from M40 master data), the pure §2.2.5 D7
 // submission state machine (`transitionAggregatorSubmission`) + the §7.8/§7.9 `dispatchSubmission` /
 // `pollSubmissionOnce` orchestration, the §4.6 permission keys (`M18_CONTRIBUTED_PERMISSIONS` → M3), the two
 // §4.7 ABAC predicates (`assigned_clinician_for_visit` / `evv_within_visit_window` → M3), and the §4.1 route
 // inventory behind the M3 Authorization Contract over the in-memory `EvvRouteService` slice.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
 import type { EvvCoordsCipher, EvvCoordsFaultReporter } from "./coords";

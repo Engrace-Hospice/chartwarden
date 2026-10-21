@@ -5,7 +5,7 @@
  *   - `buildM17EvvAtPatientAddressConsumer` (`m18.evv.at_patient_address` → `en_route → in_visit`)
  *   - `buildM17SosVisitCancellationConsumer` (`m20.safety.visit_cancellation_requested` → `* → cancelled`)
  *
- * `@wardenx/scheduling`'s `transitionVisit` has supported an EVV-sourced `start`/`arrive`
+ * `@chartwarden/scheduling`'s `transitionVisit` has supported an EVV-sourced `start`/`arrive`
  * (`VisitAdvanceSource: { via: "evv" }`) since the machine shipped, naming these two exact M18 events in
  * its own doc comment; nothing had ever bound either. M20's own catalog entry for
  * `visit_cancellation_requested` says "M20 never writes an M17 row — this event IS the request and M17's
@@ -16,7 +16,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

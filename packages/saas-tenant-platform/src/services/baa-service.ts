@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the platform-tenant BAA service (M34 §3.8, §7.5, D11).
+// @chartwarden/saas-tenant-platform · services — the platform-tenant BAA service (M34 §3.8, §7.5, D11).
 //
 // The WardenX → tenant Business Associate Agreement control plane — DISTINCT from M40's tenant →
 // external BAA register (`mdm_baa_record`). Three responsibilities, each PURE and IO-free over the
@@ -22,10 +22,10 @@
 // Cross-module reach is via OUTBOX only (no new manifest dependsOn edge — M34 dependsOn is [1,2,3,4,36]):
 // the executed-BAA + expiry events are published through the injected `BaaOutboxPublisher` port; M36 is
 // the live consumer (the alert-rule engine, §4.8). No direct import of M22/M36/M5.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { BaaRegisterRepository } from "../repositories/baa-register";
 
-/** The platform-tenant BAA register row (M34 §3.8) — surfaced via the `@wardenx/db` `schema` namespace
+/** The platform-tenant BAA register row (M34 §3.8) — surfaced via the `@chartwarden/db` `schema` namespace
  *  (the M34 repos' `schema.PlatformTenantBaaRecord` convention). */
 type PlatformTenantBaaRecord = schema.PlatformTenantBaaRecord;
 
@@ -96,7 +96,7 @@ export interface BaaOutboxPublisher {
   publishBaaExpiring(payload: BaaExpiringEventPayload): Promise<void>;
 }
 
-/** Injected clock (`@wardenx/tenancy` convention — no `Date.now()` in the pure layer), so the sweep's
+/** Injected clock (`@chartwarden/tenancy` convention — no `Date.now()` in the pure layer), so the sweep's
  *  tier math + the onboarding-gate 90-day cutoff are deterministic and assertable. */
 export type Clock = () => Date;
 

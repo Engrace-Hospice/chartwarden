@@ -4,12 +4,12 @@
 // never imports M14; the registry is the mutable seam). Notification COMPOSITION + recipient resolution moved
 // to M36 per ADR-0024 (§4.11 superseded): M14 emits these deterministic, PHI-free payloads (IDs + structural
 // facts + a `bodyTemplate`); M36 resolves recipient PHI per permission scope and never re-templates. The
-// payload TYPES mirror the `M14AlertPayload` discriminated union in @wardenx/types. The platform-floor
+// payload TYPES mirror the `M14AlertPayload` discriminated union in @chartwarden/types. The platform-floor
 // severity/cadence may be TIGHTENED by a tenant, never loosened — `m14.action_item.created` and
 // `m14.review_clock.escalated` carry their own in-payload escalation that the D11 override tightens against.
 // check-fitness-gaps.ts enforces the same `mN.<resource>.<verb>` ownership the outbox catalog uses.
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@wardenx/types";
+import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const orgId = Type.String({ minLength: 1 });
 const id = Type.String({ minLength: 1 });

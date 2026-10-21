@@ -34,8 +34,8 @@ import {
   registerDbEffectivePermissionResolver,
   requirePermission,
   resetAbacRegistry,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

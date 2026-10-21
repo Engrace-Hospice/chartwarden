@@ -34,7 +34,7 @@ import type {
   SupplyRequestKind,
   SupplySkuClass,
   VendorRoutingScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { M21WriteActor } from "./actor";
 import type {
   ComfortKitReturnDetail,

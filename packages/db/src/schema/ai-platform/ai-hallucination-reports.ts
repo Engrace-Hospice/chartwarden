@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_hallucination_report` (M32 §3.2.10). W5's entry point: the clinician's report that
+// @chartwarden/db — `ai_hallucination_report` (M32 §3.2.10). W5's entry point: the clinician's report that
 // the model fabricated something, and the triage that follows it to a mitigation or a deprecation.
 //
 // TENANT-SCOPED + THE THREE-COLUMN RULE. §3.2.10 gives the table organization_id only; ARCH-011
@@ -22,7 +22,7 @@
 // parent `ai_invocation` is partitioned (the `ai_token_ledger` argument).
 //
 // `triage_disposition` is TEXT with a value CHECK rather than a pgEnum: §3.1 declares twenty-one enums
-// and this vocabulary is not among them (`AiHallucinationTriageDisposition` in @wardenx/types).
+// and this vocabulary is not among them (`AiHallucinationTriageDisposition` in @chartwarden/types).
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import {

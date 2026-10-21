@@ -1,4 +1,4 @@
-// @wardenx/db - `external_feed_listener_state` (M29 §4.11.5, GAP-043; migration 1052). One row per feed.
+// @chartwarden/db - `external_feed_listener_state` (M29 §4.11.5, GAP-043; migration 1052). One row per feed.
 //
 // The LISTENER process writes `listenerHeartbeatAt` / `listenerBound` every tick (facts); the WATCHER (worker role)
 // writes `circuitState` / `outageOpenedAt` / `lastEvaluatedAt` (decisions) in the same transaction as the outbox event

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 staffing + the 24/7 RN-coverage invariant (§2.3 D3, §3.3): ipu_shift,
+// @chartwarden/db — M37 staffing + the 24/7 RN-coverage invariant (§2.3 D3, §3.3): ipu_shift,
 // ipu_staff_assignment, and the ipu_rn_coverage_window materialized-invariant table (rebuilt every 5 min
 // by the coverage cron). TENANT-SCOPED, RLS on app.org_id. ipu_shift carries a GiST exclusion-style
 // index over `tstzrange(shift_start_at, shift_end_at)` declared in the migration (Drizzle can't express

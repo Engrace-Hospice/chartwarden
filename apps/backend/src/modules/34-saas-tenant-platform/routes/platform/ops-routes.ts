@@ -5,8 +5,8 @@ import { Type } from "@sinclair/typebox";
 // ABAC predicate (the spec's route-table scope). The skip route additionally requires a fresh M2 step-up
 // (§6 / D10) and carries a recorded rationale; idempotency rides the M1 `Idempotency-Key` middleware.
 // Every read is `auditRead`-declared (the cross-tenant platform-bypass anchor, F09).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { SkipOnboardingTaskRequest } from "../typebox";
 import type { PlatformOpsService } from "./ops-service";

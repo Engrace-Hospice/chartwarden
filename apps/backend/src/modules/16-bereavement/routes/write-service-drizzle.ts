@@ -37,15 +37,15 @@ import {
   bereavementWindowEnd,
   isClosedPlanStatus,
   requiresSourceEncounter,
-} from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   NotFoundError,
   type PatientCaregiverRosterReader,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type {
   BereavedContactRelationship,
   BereavementAnniversaryMark,
@@ -59,7 +59,7 @@ import type {
   BereavementRiskTier,
   IsoInstant,
   MembershipId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { NotImplementedError, getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher, BereavementCipherColumn } from "../bereavement-crypto";
@@ -188,8 +188,8 @@ export interface M16WriteDeps {
  * the counselor it was saved. A request without any is unaffected.
  */
 export const CHANNEL_STORAGE_UNAVAILABLE = "CHANNEL_STORAGE_UNAVAILABLE";
-const channelStorageUnavailable = (): WardenXError =>
-  new WardenXError(
+const channelStorageUnavailable = (): ChartWardenError =>
+  new ChartWardenError(
     CHANNEL_STORAGE_UNAVAILABLE,
     "contact details and counselor notes cannot be stored until the encrypted store is available; submit without them",
     503,

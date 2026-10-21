@@ -5,7 +5,7 @@
 // registers the real reader over its boot deny-stub (before validateSeams()), driven from the
 // composition root's wireModuleSeams(). The reader is pure orchestration over an injected
 // CarePlanReaderStore (in-memory slice here; Drizzle in prod, reads under the consumer's RLS).
-import type { CarePlanReader } from "@wardenx/types";
+import type { CarePlanReader } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { type NowClock, createCarePlanReader } from "./reader";
 import { type CarePlanReaderStore, createInMemoryCarePlanReaderStore } from "./store";

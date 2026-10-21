@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the `tenant.dsar_export` job handler (M34 §7.3, D9/D17/D19).
+// @chartwarden/saas-tenant-platform · services — the `tenant.dsar_export` job handler (M34 §7.3, D9/D17/D19).
 //
 // THE PATIENT-SCOPED DSAR FULFILMENT WORKER (HIPAA §164.524 — "all my data" within 30 days). Given a
 // `dsar_export_job` already inserted `status='requested'` (the route did that + emitted
@@ -122,7 +122,7 @@ export interface DsarExportWorkerPorts {
   now(): Date;
 
   /** Resolve the DSAR subject through M5 (`merged_into_id` redirect, §7.3 step 3). Bound to the M5
-   *  `PatientReader` seam (`getSeam('PatientReader')`) in the boot wiring — no `@wardenx/patient` edge. */
+   *  `PatientReader` seam (`getSeam('PatientReader')`) in the boot wiring — no `@chartwarden/patient` edge. */
   resolveSubject(orgId: string, patientId: string): Promise<DsarSubject>;
 
   /** Open the encrypted, MinIO-backed {@link FhirResourceSink} the shards stream FHIR resources into, plus

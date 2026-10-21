@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — a 999 implementation acknowledgment (005010X231A1), read in TypeScript (ADR-0037,
+// @chartwarden/x12-837-client — a 999 implementation acknowledgment (005010X231A1), read in TypeScript (ADR-0037,
 // ADR-0053 D9). The clearinghouse's answer to "was the file structurally valid?" — NOT the payer's answer; only a
 // 277CA/payer-stage event satisfies NOE timeliness (ADR-0052 D4).
 //

@@ -1,7 +1,7 @@
-// @wardenx/db — `medicaid_state_plan_code` (M24 Billing-Medicaid §3.3/D8-adjacent; non-partitioned;
+// @chartwarden/db — `medicaid_state_plan_code` (M24 Billing-Medicaid §3.3/D8-adjacent; non-partitioned;
 // retention class `reference`). The per-state Medicaid program/plan catalog `medicaid_claim.state_plan_code_id`
 // snapshots at assembly (WX-PR-011). D8 in the locked spec names this an M40 platform-shared table read via
-// `MdmEntityProvider` — DEVIATION: M40's real `MdmEntityProvider` (@wardenx/mdm) is a physician/facility/payer
+// `MdmEntityProvider` — DEVIATION: M40's real `MdmEntityProvider` (@chartwarden/mdm) is a physician/facility/payer
 // entity-MERGE engine (generic `CanonicalFields<K>`/`OverlayFields<K>` per kind); a static state-plan-code
 // reference list is not an entity-resolution problem, so routing it through that machinery would be a large,
 // disproportionate extension for one NOT-NULL FK. Self-owned here instead, mirroring the ACTUAL M23

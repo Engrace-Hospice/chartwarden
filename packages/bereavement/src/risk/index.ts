@@ -1,4 +1,4 @@
-// @wardenx/bereavement/risk — the D3/D17 deterministic rubric and its D3 Layer-2 gate.
+// @chartwarden/bereavement/risk — the D3/D17 deterministic rubric and its D3 Layer-2 gate.
 //
 //   · ./rubric    M16-T01 — the 8 factor weights, the tier cutoffs, the `unknown`-aware scorer with its
 //                 completeness / confidence bands, the D8 grief-screen promotion, and the `rule_score`

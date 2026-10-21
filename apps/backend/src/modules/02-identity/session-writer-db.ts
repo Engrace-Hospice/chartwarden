@@ -6,7 +6,7 @@
 // 401. Reads the M1-owned `membership` only to map a membershipId → its user for revoke (M2 dependsOn
 // M1; via the Drizzle query builder, never raw SQL — mirrors membership-repository.ts). Foundation
 // `session`/`membership` are not org-RLS'd; runs on the app connection.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 import type { SessionWriter } from "./identity-ports";
 

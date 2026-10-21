@@ -15,7 +15,7 @@
 // answer as a BOOLEAN rather than as a guard (F-028). Registered once,
 // idempotently (the registry is single-owner / no-clear, so re-boot in tests is idempotent via
 // `registerPredicateIdempotent`).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import { STEP_UP_FLOOR_KEY, stepUpFreshFor } from "../../bootstrap/index";
 
 /** The single predicate name M3 owns for the step-up ceremony (the §4.2.1 freshness gate). */
@@ -31,7 +31,7 @@ export const M3_STEP_UP_PREDICATE = "step_up_recent";
 export const M3_STEP_UP_FLOOR_KEY = STEP_UP_FLOOR_KEY;
 
 /** The M3-BASE org-scoping predicate name. The predicate itself is INTRINSIC — seeded into every
- *  registry from `@wardenx/auth` (`M3_INTRINSIC_PREDICATES`), beside provider_entity_scope /
+ *  registry from `@chartwarden/auth` (`M3_INTRINSIC_PREDICATES`), beside provider_entity_scope /
  *  location_scope — so it is live before any module boots. Re-exported here as the name modules gate on. */
 export const M3_IN_ORG_PREDICATE = "inOrg";
 

@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_deployment` (M13 §3.3 / §2.7 D5). One row per emergency/comfort-kit deployment to a
+// @chartwarden/db — `comfort_kit_deployment` (M13 §3.3 / §2.7 D5). One row per emergency/comfort-kit deployment to a
 // patient's home: the deploy event, the M21 supply-dispatch back-ref, and the disposal/return lifecycle (the
 // deceased/discharge cascade flips it to return_required). PHI-bearing (patient_id) → the three-column tenancy rule
 // (provider_entity_id + location_id NOT NULL). Non-partitioned (§3.5). Cross-module refs (M5 patient, M6 admission,

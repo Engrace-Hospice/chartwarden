@@ -2,7 +2,7 @@
 //
 // `packages/types/src/safety.ts` says its enum mirrors are "kept in lock-step with
 // `packages/db/src/enums.ts`". A comment does not keep anything in lock-step. These tests are where the
-// claim is enforced: `@wardenx/types` is a LEAF and cannot import `@wardenx/db`, so the two sides can
+// claim is enforced: `@chartwarden/types` is a LEAF and cannot import `@chartwarden/db`, so the two sides can
 // only be compared somewhere that already depends on both — the backend, which is exactly the consumer
 // that would ship the drift. Several of the assertions below pin a deliberate DEVIATION from the spec
 // body (the added `emergency_terminus` state, the 22-name event catalog, the compliance-stamped
@@ -24,7 +24,7 @@ import {
   safetySosCancelStatus,
   safetySosLifecycleState,
   safetySubscriptionModel,
-} from "@wardenx/db/schema";
+} from "@chartwarden/db/schema";
 import {
   M20_AUDIT_DENYLIST,
   M20_AUDIT_RETENTION_CLASS,
@@ -53,7 +53,7 @@ import {
   type SafetySosCancelStatus,
   type SafetySosLifecycleState,
   type SafetySubscriptionModel,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { MODULES } from "../../../architecture/module-manifest";
 
 /** Each triple is (SQL type name, the pgEnum's runtime values, the leaf union's members). The third
@@ -186,7 +186,7 @@ const MIRRORS = [
   ],
 ] as const;
 
-describe("§3.2 enum mirrors — pgEnum ↔ @wardenx/types", () => {
+describe("§3.2 enum mirrors — pgEnum ↔ @chartwarden/types", () => {
   it.each(MIRRORS.map(([name, pg, ts]) => [name, pg, ts] as const))(
     "%s carries the same members in the same order on both sides",
     (_name, pgValues, tsValues) => {

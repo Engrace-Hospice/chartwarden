@@ -26,7 +26,7 @@ import type {
   ComplianceWindowKind,
   ExternalSignalWindowPayload,
   LocalDate,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── The accepted-proposal payload M6 consumes (§4.8.2) ───────────────────────────────────────────────
 

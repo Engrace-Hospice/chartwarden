@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the live DoseSpot v2 HTTP transport (M12 GAP-037 close-out, spec §2.5 / §4.10 / D5).
+// @chartwarden/dosespot — the live DoseSpot v2 HTTP transport (M12 GAP-037 close-out, spec §2.5 / §4.10 / D5).
 //
 // FAIL-CLOSED BY CONSTRUCTION. `createHttpDoseSpotClient` reads each tenant's configuration through the injected
 // {@link DoseSpotTenantConfigResolver}; a tenant with no complete config gets a non-retryable `DegradedError` and

@@ -1,4 +1,4 @@
-// @wardenx/mdm — the `MdmStore` data port + an in-memory slice default (M40-T05, §4.5).
+// @chartwarden/mdm — the `MdmStore` data port + an in-memory slice default (M40-T05, §4.5).
 //
 // The `MdmEntityProvider` seam (provider.ts) is PURE ORCHESTRATION: it runs the T04 merge-redirect
 // chase + overlay join over rows this port returns. The port is the seam between the stable

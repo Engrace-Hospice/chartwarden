@@ -1,11 +1,11 @@
-// @wardenx/shared — Outbox catalog boot projection (M1 Foundation §3.17.4).
+// @chartwarden/shared — Outbox catalog boot projection (M1 Foundation §3.17.4).
 //
 // Projects the validated OUTBOX_EVENT_CATALOG into the rows persisted in the
 // `outbox_event_catalog` table. The actual write is dependency-injected: the real
 // Drizzle `db` handle + boot sequencing land with the backend bootstrap (M1-T09/T10),
-// so this stays a pure leaf here (no `@wardenx/db` import — packages/shared is a leaf)
+// so this stays a pure leaf here (no `@chartwarden/db` import — packages/shared is a leaf)
 // and is wired then, mirroring the injected-writer pattern in the org-settings boot.
-import type { OutboxEventCatalogRow } from "@wardenx/types";
+import type { OutboxEventCatalogRow } from "@chartwarden/types";
 import { OUTBOX_EVENT_CATALOG } from "./registry";
 
 /** The persisted form of every catalog entry (insert-or-update on `event_name`). */

@@ -20,12 +20,12 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
   setBreakGlassChecker,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type ConsentRecordView,
   ConsentRouteError,
   createInMemoryConsentRouteService,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

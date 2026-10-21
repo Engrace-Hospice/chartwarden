@@ -33,7 +33,7 @@
  * Prereqs: bun run db:seed:staff, db:seed:scenario-admissions (Whitfield must be active).
  * Run:     bun run db:seed:scenario-clinical
  */
-import { resolveTemplate } from "@wardenx/hearthnote";
+import { resolveTemplate } from "@chartwarden/hearthnote";
 import { Client } from "pg";
 import type { WxSession } from "./lib/api-session";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";

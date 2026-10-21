@@ -5,7 +5,7 @@
 // Staff-class sessions only: portal, auditor and external sessions belong to other modules' lifecycles and have no realtime channel. The select
 // lists columns by name, so the token, the IP address and the scope can never be returned by accident. `session` is not org-RLS'd (a Better
 // Auth table), so the organisation bound is an explicit predicate here, never an assumption.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, gt, isNotNull } from "drizzle-orm";
 
 const S = schema.sessions;

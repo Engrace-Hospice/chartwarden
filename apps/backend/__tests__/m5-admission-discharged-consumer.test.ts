@@ -1,7 +1,7 @@
 // M5 §2.4.1 live-discharge consumer — the decisions taken BEFORE any patient write (no DB): a death is
 // the death cascade's, an unknown admission / a re-admission under care / a not-yet-ended admission are
 // skipped. The patient-row edges themselves are proven live in `m5-admission-siting.live.test.ts`.
-import type { AdmissionPatientCare } from "@wardenx/types";
+import type { AdmissionPatientCare } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {

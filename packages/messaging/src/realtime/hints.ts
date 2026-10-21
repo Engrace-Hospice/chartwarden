@@ -1,4 +1,4 @@
-// @wardenx/messaging — the realtime HINT contract (ADR-0054 decision 2, supersedes the per-user payloads above for
+// @chartwarden/messaging — the realtime HINT contract (ADR-0054 decision 2, supersedes the per-user payloads above for
 // message traffic). A hint is `{ kind, cursor, ids }`: it says "something changed, go and read it", never what.
 // It carries no body, preview, name, patient identifier or diagnosis, so delivering it to a socket that should not
 // have it leaks nothing a REST call (with requirePermission / ABAC / read-audit) would not also gate.

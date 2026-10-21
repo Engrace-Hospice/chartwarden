@@ -1,4 +1,4 @@
-// @wardenx/ui — the way back from a STEP_UP_REQUIRED refusal. A 403 carrying `STEP_UP_REQUIRED` means the
+// @chartwarden/ui — the way back from a STEP_UP_REQUIRED refusal. A 403 carrying `STEP_UP_REQUIRED` means the
 // session is valid but not FRESH enough for this action; the remedy is the app's `/step-up?returnTo=` page
 // (StepUpCard), which re-verifies and comes back. Any other 403 is a permanent "not allowed", so only that
 // code qualifies. Lives in the kit (not one app's shell) because both apps/web and apps/admin need it, and

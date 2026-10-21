@@ -1,6 +1,6 @@
 // apps/backend/src/modules/39-consent/jobs/expiration.ts — M39 §4.9 `consent-expiration` and
 // `expiration-reminder` cron bodies (F-216). THE PURE ENGINES ALREADY EXISTED (`shouldExpire`,
-// `mostUrgentReminder` in `@wardenx/consent`'s `jobs/index.ts`, `nextConsentStatus` in its status
+// `mostUrgentReminder` in `@chartwarden/consent`'s `jobs/index.ts`, `nextConsentStatus` in its status
 // machine) with no production caller — `M39_QUEUES`/`shouldExpire` had zero uses under apps/backend, so
 // nothing ever flipped a lapsed consent to `expired` and `m39.consent.expired` / `.expiring_soon` had no
 // producer (the `m5 <- m39.consent.expired` deferral's real blocker, F-167).
@@ -29,9 +29,9 @@ import {
   mostUrgentReminder,
   nextConsentStatus,
   shouldExpire,
-} from "@wardenx/consent";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/consent";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { ConsentWriteOutboxPort } from "../consent-store-db";
 import { M39_CRON_BOUNDS } from "./index";

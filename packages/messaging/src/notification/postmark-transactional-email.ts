@@ -1,4 +1,4 @@
-// @wardenx/messaging — Postmark adapter for the M36 transactional email PORT (DR/INT #14).
+// @chartwarden/messaging — Postmark adapter for the M36 transactional email PORT (DR/INT #14).
 //
 // Implements `TransactionalEmailTransport` over Postmark's single-message HTTP API
 // (`POST {baseUrl}/email`, auth header `X-Postmark-Server-Token`). The port stays provider-agnostic: SES can

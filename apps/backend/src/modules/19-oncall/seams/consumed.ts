@@ -7,7 +7,7 @@
 //
 // Resolving through `getSeam` is why M19's manifest `dependsOn` carries M1 (the registry lives in
 // `apps/backend/src/bootstrap`, which is M1 code); M17 is already an M19 dependency per the manifest. The
-// CONTRACT types are leaf `@wardenx/types` (ADR-0005 D1/D2) and the binding is runtime — the shape
+// CONTRACT types are leaf `@chartwarden/types` (ADR-0005 D1/D2) and the binding is runtime — the shape
 // M15-T03 / M16-T03 / M21-T04 each use.
 //
 // The seams M19 PUBLISHES (§4.3 `OnCallProvider`, `TriageCallReader`, `TriageCallProvider`,
@@ -23,7 +23,7 @@ import type {
   RefillInboxProvider,
   VisitAssignmentReader,
   VisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**

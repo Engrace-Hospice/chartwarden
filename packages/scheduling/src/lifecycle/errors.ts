@@ -1,15 +1,15 @@
-// @wardenx/scheduling — M17 scheduling-lifecycle failure-code catalog (§2.2 / §2.3 / §7.7, M17-T03).
+// @chartwarden/scheduling — M17 scheduling-lifecycle failure-code catalog (§2.2 / §2.3 / §7.7, M17-T03).
 //
 // Every guard / validation failure in the pure scheduling-lifecycle domain (the §2.2.1 visit machine, the
 // §2.2.6 time_off machine, the §2.2.5 availability validator, the §7.7 RRULE materializer) raises a
-// `SchedulingStateError` carrying the machine-readable code below. The error extends the M1 `WardenXError`
-// envelope base (`@wardenx/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler
+// `SchedulingStateError` carrying the machine-readable code below. The error extends the M1 `ChartWardenError`
+// envelope base (`@chartwarden/types` — NOT the banned `packages/foundation`) so the M1 Fastify error handler
 // renders it with the precise code + HTTP status with no cross-module import edge (the M8/M11/M14 lifecycle
 // convention). Nothing transitions on a string match — each code is an enumerated constant; the §2.3 / §2.5
 // DB CHECK + GiST-exclusion backstops (`VISIT_OVERLAP_CONFLICT`, the reason-length CHECKs, M17-T02) repeat
 // the strongest of these at the schema layer as defense in depth. The route layer (M17-T07) reuses these
 // codes verbatim.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The M17 scheduling-lifecycle failure-code catalog → canonical HTTP status. */
 export const M17_ERROR_STATUS = {
@@ -78,7 +78,7 @@ export type M17ErrorCode = keyof typeof M17_ERROR_STATUS;
  * UI renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Every guard
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class SchedulingStateError extends WardenXError {
+export class SchedulingStateError extends ChartWardenError {
   constructor(code: M17ErrorCode, message: string) {
     super(code, message, M17_ERROR_STATUS[code]);
     this.name = "SchedulingStateError";

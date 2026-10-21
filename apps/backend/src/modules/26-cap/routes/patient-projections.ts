@@ -8,8 +8,8 @@ import {
   capYearWindow,
   computeAggregateProjection,
   perBeneficiaryAllocatedCap,
-} from "@wardenx/cap-management";
-import { schema } from "@wardenx/db";
+} from "@chartwarden/cap-management";
+import { schema } from "@chartwarden/db";
 import { and, eq, sql } from "drizzle-orm";
 import { type ProjectionTrigger, type SnapshotTx, persistSnapshot } from "./persist-snapshot";
 import type { WriteOutboxPort } from "./write-service";

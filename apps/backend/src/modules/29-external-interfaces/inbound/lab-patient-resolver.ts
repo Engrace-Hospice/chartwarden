@@ -11,7 +11,7 @@
 // candidate (L4/L5), ambiguous, or no-match outcome stays UNMATCHED (`match_method='unmatched'`,
 // patient_id null) for human review — the D5-vs-D7 asymmetry (reporting an observation against a
 // known-with-MRN patient is low-risk; a loose demographic guess is not).
-import type { Hl7InboundMatchLevel, LabMatchMethod } from "@wardenx/types";
+import type { Hl7InboundMatchLevel, LabMatchMethod } from "@chartwarden/types";
 import { type CascadeDeps, type CascadePid, matchPatient } from "./match-cascade";
 
 /** The narrow slice of M11's `OrderProvider` the placer resolver needs (§4.5 consumed seam, D8). */

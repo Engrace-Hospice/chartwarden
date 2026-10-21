@@ -24,7 +24,7 @@
 //
 // INTERNAL callers (outbox consumers, crons, workers) pass the typed {@link CONSENT_SYSTEM_ACTOR}
 // marker. It is a distinct `kind`, not a role string: no role set — however it is spelled — satisfies it.
-import { hasOrgWideScope } from "@wardenx/auth";
+import { hasOrgWideScope } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 
 /** The explicit marker an internal/system caller passes instead of an authenticated staff actor. */

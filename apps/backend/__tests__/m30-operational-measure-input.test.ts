@@ -13,7 +13,7 @@ import {
   computeVerbalOrderSignatureOnTime,
   computeVisitOnTimeRate,
   computeVolunteerComplianceGateRate,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 // apps/backend/__tests__/m30-operational-measure-input.test.ts — the counts-not-rates measure inputs.
 //
 // M30's operational measures could not be bound because their producer seams returned a RATE while the

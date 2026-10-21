@@ -1,4 +1,4 @@
-import { Button, InlineAlert, TextField } from "@wardenx/ui";
+import { Button, InlineAlert, TextField } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the cited-evidence editor of a QIC reconsideration draft (milestone 4) and the
 // fields a reconsideration adds to the submit form. The redetermination notice names the documentation it found
 // missing; each item is either enclosed (an attached document) or explained, and the person is warned that evidence

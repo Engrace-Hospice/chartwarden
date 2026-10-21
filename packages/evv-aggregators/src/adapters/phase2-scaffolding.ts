@@ -1,5 +1,5 @@
 import { eventPairHash } from "../event-pair-hash";
-// @wardenx/evv-aggregators — Phase-2 vendor scaffolding (M18-T06, §4.5, §8.5).
+// @chartwarden/evv-aggregators — Phase-2 vendor scaffolding (M18-T06, §4.5, §8.5).
 //
 // HHAeXchange / Tellus / CareBridge ship as INTERFACE-CONFORMANCE-ONLY scaffolding for Phase 2 (§8.5): each
 // satisfies `EvvAggregatorAdapter` (so the registry + the conformance test typecheck) but refuses live

@@ -8,8 +8,8 @@ import {
   type CHART_PROMOTION_REJECT_REASONS,
   type ChartPromotionReview,
   ConflictError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 export const CHART_PROMOTION_DECIDED_EVENT = "m14.chart_promotion.decided";
@@ -45,8 +45,8 @@ export interface ChartPromotionListView {
 /** Whether a patient is within the caller's IDG scope (an org-wide role, the caseload, or the pinned patient). */
 export type PatientInScope = (patientId: string) => boolean;
 
-export const promotionNotAvailable = (): WardenXError =>
-  new WardenXError("PROMOTION_NOT_AVAILABLE", "that proposal is not available to review", 422);
+export const promotionNotAvailable = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_NOT_AVAILABLE", "that proposal is not available to review", 422);
 
 /**
  * The proposal for review, or PROMOTION_NOT_AVAILABLE. Not available = the seam says no (flag off, not proposed, wrong

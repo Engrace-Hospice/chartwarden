@@ -11,8 +11,8 @@
 // unattributed — that is an accepted audit gap, not a delivery failure); 401 on a bad/missing token; 503 when
 // unconfigured OR when the database is unavailable (MinIO retries a non-2xx delivery from its own queue).
 import { timingSafeEqual } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
-import { WardenXError } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { ingestConsumptions, parseConsumptions } from "./minio-access-log";
 
@@ -47,14 +47,14 @@ export function registerMinioAccessLogRoute(
   }
   app.post("/api/v1/webhooks/minio/access-log", async (request, reply) => {
     if (!token) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WEBHOOK_UNCONFIGURED",
         "the MinIO access-log webhook is not configured",
         503,
       );
     }
     if (!bearerMatches(request.headers.authorization, token)) {
-      throw new WardenXError("UNAUTHENTICATED", "invalid webhook credentials", 401);
+      throw new ChartWardenError("UNAUTHENTICATED", "invalid webhook credentials", 401);
     }
     const consumptions = parseConsumptions(request.body, (deps.now ?? (() => new Date()))());
     const result = await ingestConsumptions(deps.db, consumptions);

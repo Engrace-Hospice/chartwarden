@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `external_triage_vendor` (M19 §3.3). D13 / ADR-0026: the tenant's BINDING to an external
+// @chartwarden/db — `external_triage_vendor` (M19 §3.3). D13 / ADR-0026: the tenant's BINDING to an external
 // after-hours triage vendor for the Hybrid and Centralized models. Org-scoped CONFIGURATION — the canonical
 // vendor ENTITY is M40's (`mdm_vendor_id`, a logical uuid resolved through M40's reader), so a vendor is
 // not re-keyed per tenant; what lives here is this tenant's own attestation, adapter selection and
@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 // `external_triage_vendor` session class (org + vendor + shift scoped, MFA). There is deliberately no
 // secret, api_key or token column on this table — the absence is the control.
 //
-// NO `baa_in_effect ⇒ baa_expires_on IS NOT NULL` CHECK, on purpose. `@wardenx/triage-vendors`'
+// NO `baa_in_effect ⇒ baa_expires_on IS NOT NULL` CHECK, on purpose. `@chartwarden/triage-vendors`'
 // `assertVendorBindingActive` (M19-T01, already published) types `baaExpiresOn` as `string | null` and
 // documents null as "the BAA has no stated expiry" — a NOT NULL pairing here would make a legitimately
 // perpetual BAA unwritable and would contradict a contract that is already locked. The gate that matters
@@ -37,7 +37,7 @@ export const externalTriageVendor = pgTable(
     /** M40 canonical vendor entity — LOGICAL uuid, validated through M40's `VendorReader` at write. */
     mdmVendorId: uuid("mdm_vendor_id").notNull(),
     name: text("name").notNull(),
-    /** Selects the `@wardenx/triage-vendors` adapter (§8.5 / architecture §25.14 adapter mandate). */
+    /** Selects the `@chartwarden/triage-vendors` adapter (§8.5 / architecture §25.14 adapter mandate). */
     adapterKey: text("adapter_key").notNull(),
 
     /** D13 — the tenant attests the vendor staffs RNs on the covered nights. */

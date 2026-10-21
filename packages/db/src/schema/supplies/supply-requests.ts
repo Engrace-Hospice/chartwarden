@@ -1,4 +1,4 @@
-// @wardenx/db — `supply_request` (M21 §3.1.7). D1's SHARED row: one table spanning all four kinds
+// @chartwarden/db — `supply_request` (M21 §3.1.7). D1's SHARED row: one table spanning all four kinds
 // (`dme` | `supply` | `comfort_kit_deploy` | `comfort_kit_replenish`), discriminated by `kind` with the
 // per-kind payload in the TypeBox-validated `data` jsonb. Four near-identical tables would have meant four
 // copies of the §2.2 lifecycle, four cancellation cascades and four places for M11 to look.
@@ -65,7 +65,7 @@ export const supplyRequest = pgTable(
     requestedByMembershipId: uuid("requested_by_membership_id"), // logical FK → M2
 
     kind: supplyRequestKind("kind").notNull(),
-    /** Per-kind payload, validated against the matching TypeBox in `@wardenx/supplies` before the write. */
+    /** Per-kind payload, validated against the matching TypeBox in `@chartwarden/supplies` before the write. */
     data: jsonb("data").notNull(),
     status: supplyRequestStatus("status").notNull().default("requested"),
 

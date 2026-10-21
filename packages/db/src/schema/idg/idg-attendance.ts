@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_attendance` (M14 §3.3.1). One row per attendee per meeting: the §2.7 participation
+// @chartwarden/db — `idg_attendance` (M14 §3.3.1). One row per attendee per meeting: the §2.7 participation
 // status (present/tardy/partial/absent/excused) + check-in/out timestamps, the substrate the §4.7
 // `quorate_decision` ABAC predicate reads. Org-scoped child of idg_meeting (NOT patient-bearing). FK to the
 // meeting (cascade) + the tenancy spine (organization); membership_id → M1 membership is plain uuid

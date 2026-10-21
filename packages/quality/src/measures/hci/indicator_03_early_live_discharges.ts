@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 3: Early Live Discharges (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 3: Early Live Discharges (§1.1). Pure. No IO.
 //
 // CMS criterion: the rate of LIVE discharges occurring early in the stay is LOW (lower is better).
 // Numerator = early live discharges; denominator = all discharges. Source: M6 `DischargeReader`.

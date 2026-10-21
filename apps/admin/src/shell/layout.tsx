@@ -5,7 +5,7 @@ import {
   useDisclosureDismiss,
   useOffCanvasNav,
   useTheme,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/shell — the Platform-Ops console frame in the clinical app's 2026-09-25 redesign: a full-height
 // sidebar (brand + grouped nav, admin-nav.ts) beside a column holding the top bar and the routed screen. The markup
 // and `wx-shell` classes match apps/web/src/shell/layout.tsx; the rules live in packages/ui/src/web/styles/app-shell.css,
@@ -63,21 +63,12 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
         className={navOpen ? "wx-sidebar wx-nav-open" : "wx-sidebar"}
         onClick={closeNavOnLinkClick}
       >
-        <Link to="/" className="wx-brand-block" aria-label="WardenX Platform Ops home">
+        <Link to="/" className="wx-brand-block" aria-label="ChartWarden Platform Ops home">
           <span className="wx-brand-logo" aria-hidden>
-            <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
-              <path
-                d="M11 1 2 4.6v6.2C2 16.6 5.9 21.5 11 23c5.1-1.5 9-6.4 9-12.2V4.6L11 1Z"
-                fill="currentColor"
-              />
-              <path
-                d="M11 7.2a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"
-                fill="var(--color-on-emphasis)"
-              />
-            </svg>
+            <img src="/chartwarden-mark.svg" width="28" height="28" alt="" />
           </span>
           <span className="wx-brand-text">
-            <span className="wx-brand">WardenX</span>
+            <span className="wx-brand">ChartWarden</span>
             <span className="wx-brand-sub">Platform Ops</span>
           </span>
         </Link>

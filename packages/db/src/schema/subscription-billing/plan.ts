@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `plan` (M35 §3.3). The platform-owned pricing catalog (D11). PLATFORM-SHARED: no
+// @chartwarden/db — `plan` (M35 §3.3). The platform-owned pricing catalog (D11). PLATFORM-SHARED: no
 // organization_id BY DESIGN — one plan definition is the same offer for every tenant, so read-all
 // `USING (true)` TO wardenx_app and writes only via wardenx_admin (0143; the M38 code_system / M28
 // fhir_capability_snapshot precedent). Listed in check-tenancy's NON_ORG_SCOPED set.

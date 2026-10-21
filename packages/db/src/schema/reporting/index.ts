@@ -1,4 +1,4 @@
-// @wardenx/db — M33 Reporting schema barrel (§3.3, 12 tables + shared jsonb types). Re-exported from
+// @chartwarden/db — M33 Reporting schema barrel (§3.3, 12 tables + shared jsonb types). Re-exported from
 // the central schema barrel (../index.ts). Ordering follows FK dependency: the three PLATFORM-global
 // catalogs (materialized_view_metadata → report_base_catalog → report_metric_catalog) first, then the
 // org-scoped definition → version → view → share → schedule chain, the partitioned run ledgers

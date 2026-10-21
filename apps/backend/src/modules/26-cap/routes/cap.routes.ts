@@ -3,7 +3,7 @@
 // reads, the threshold-event queue + acknowledge, and the cap-watch dashboard composite. Reads gate on the
 // §4.6 key; the lifecycle mutations compose the §4.7 ABAC predicate over `:periodId` and the §D12 step-up
 // on methodology-lock / reopen. Org/actor binding is server-side (actorOf/writeActorOf).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { clampLimit, requireIdempotencyKey } from "./concurrency";

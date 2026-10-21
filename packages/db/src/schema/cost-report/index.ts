@@ -1,4 +1,4 @@
-// @wardenx/db — M27 Cost Report schema barrel (§3.3, 14 owned tables). Re-exported from the central
+// @chartwarden/db — M27 Cost Report schema barrel (§3.3, 14 owned tables). Re-exported from the central
 // schema barrel (../index.ts). Ordering follows FK dependency: the cost_report root, then its worksheet/
 // snapshot/validation cluster, then the bad-debt/statistics/import/mapping/submission/compliance-window
 // tables. NONE are partitioned (M27 is small in row-count). The RLS + grants + M4 write-audit triggers

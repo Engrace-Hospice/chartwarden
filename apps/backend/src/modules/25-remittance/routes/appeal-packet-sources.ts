@@ -15,8 +15,8 @@
 //     (and byte-level handling) that this reference-only packet does not make.
 // Every refusal is a 422 `APPEAL_DOCUMENT_NOT_ATTACHABLE` carrying the document id and a REASON CODE, never the
 // document's title or any content.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import {
   type AppealClaimCopy,
   type AppealEnclosureRefusal,
@@ -24,9 +24,9 @@ import {
   type DocumentDigest,
   type DocumentReader,
   MAX_APPEAL_ENCLOSURES,
-  WardenXError,
+  ChartWardenError,
   appealEnclosureRefusal,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 
@@ -67,10 +67,10 @@ export function buildSeamAppealSourcePorts(): AppealSourcePorts {
 /** No port bound: a packet whose sources cannot be read is refused, never filed half-empty. */
 export const UNBOUND_APPEAL_SOURCES: AppealSourcePorts = {
   documents: () => {
-    throw new WardenXError("SEAM_UNBOUND", "the appeal packet document source is not bound", 503);
+    throw new ChartWardenError("SEAM_UNBOUND", "the appeal packet document source is not bound", 503);
   },
   claims: () => {
-    throw new WardenXError("SEAM_UNBOUND", "the appeal packet claim source is not bound", 503);
+    throw new ChartWardenError("SEAM_UNBOUND", "the appeal packet claim source is not bound", 503);
   },
 };
 
@@ -92,7 +92,7 @@ export interface DescribedEnclosure {
 }
 
 function refuse(documentId: string, reason: EnclosureRefusal, subject: string): never {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "APPEAL_DOCUMENT_NOT_ATTACHABLE",
     `document ${documentId} cannot be enclosed in this ${subject} (${reason})`,
     422,
@@ -117,7 +117,7 @@ export async function describeEnclosures(
 }> {
   const all = [...attachedDocumentIds, ...(bundleDocumentId ? [bundleDocumentId] : [])];
   if (all.length > MAX_APPEAL_ENCLOSURES) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "APPEAL_TOO_MANY_ENCLOSURES",
       `an appeal packet carries at most ${MAX_APPEAL_ENCLOSURES} enclosures`,
       422,
@@ -125,7 +125,7 @@ export async function describeEnclosures(
   }
   const dup = all.find((id, i) => all.indexOf(id) !== i);
   if (dup !== undefined) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "APPEAL_DUPLICATE_ENCLOSURE",
       `document ${dup} is listed more than once`,
       422,
@@ -158,7 +158,7 @@ export async function describeEnclosures(
 export function numericToCents(value: string | number): number {
   const s = String(value).trim();
   const m = /^(-?)(\d+)(?:\.(\d{1,2}))?\d*$/.exec(s);
-  if (!m) throw new WardenXError("INVALID_AMOUNT", "a money amount is not a decimal number", 500);
+  if (!m) throw new ChartWardenError("INVALID_AMOUNT", "a money amount is not a decimal number", 500);
   const cents = Number(m[2]) * 100 + Number((m[3] ?? "").padEnd(2, "0"));
   return m[1] === "-" ? -cents : cents;
 }

@@ -3,7 +3,7 @@ import type {
   PortalAccountDigest,
   PortalScopeSet,
   TelehealthVisitDigest,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/backend/__tests__/portal-seams.test.ts — M31-T06 the seven §4.3 published reader seams + §3.7 eraser.
 //
 // Covers each seam impl over the in-memory slice (PHI-minimal digests in, projections out), the §4.4 consumed

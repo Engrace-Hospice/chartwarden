@@ -35,7 +35,7 @@ import type {
   MswRiskFactor,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { SupervisoryClockFacts } from "../lifecycle/index";
 import type { VolunteerGateFacts } from "../volunteer/index";
 
@@ -82,7 +82,7 @@ export interface VolunteerHourTotals {
 
 /**
  * The data port the §4.3 seam providers compose over. Reads return the read-only DTO shapes from
- * `@wardenx/types` (never Drizzle rows) or the raw column facts the pure lifecycle/volunteer functions decide
+ * `@chartwarden/types` (never Drizzle rows) or the raw column facts the pure lifecycle/volunteer functions decide
  * over. Reads key on the subject id / a scope — the org is already pinned by RLS — and return an empty slice /
  * null when the subject has no visible rows under the consumer's tenant.
  */

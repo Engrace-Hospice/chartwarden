@@ -1,4 +1,4 @@
-// @wardenx/db — M16 Bereavement schema barrel (§3.1/§3.3, 9 owned tables). The central ../index.ts
+// @chartwarden/db — M16 Bereavement schema barrel (§3.1/§3.3, 9 owned tables). The central ../index.ts
 // re-exports this barrel; the 14 pgEnums live in ../../enums.ts (M16-T01).
 //
 // SHAPE (D1, tripartite): `bereavement_plan` is the program ROOT — one per discharged-by-death admission,

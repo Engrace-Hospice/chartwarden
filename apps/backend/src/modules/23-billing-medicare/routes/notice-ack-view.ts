@@ -3,7 +3,7 @@
 // 999 / 277CA rejection with its PHI-free reason codes, and (migration 0378) Medicare's own date for that answer
 // with its source. Never the raw acknowledgment. Plus the correction chain: the rejected notice a corrected one
 // was filed for, and the correction filed for a rejected one.
-import type { NoticeState, PayerStatusDateSource } from "@wardenx/billing";
+import type { NoticeState, PayerStatusDateSource } from "@chartwarden/billing";
 import type { NoticeAckOutcomeView, NoticeCorrectionLinkView } from "./read-service";
 
 interface NoticeAckColumns {

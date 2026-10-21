@@ -1,4 +1,4 @@
-// @wardenx/assessments — PAINAD (Pain Assessment in Advanced Dementia) scorer (§4.3).
+// @chartwarden/assessments — PAINAD (Pain Assessment in Advanced Dementia) scorer (§4.3).
 //
 // Five behavioral items (breathing, negative vocalization, facial expression, body language,
 // consolability), each 0..2; the total is their sum, 0..10. The `painad_ge_4` significant-change rule

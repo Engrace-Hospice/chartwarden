@@ -3,8 +3,8 @@
  * (producing the manifest) and on the restored copy (producing the verdict); the comparison itself is in ./report.ts.
  */
 import { createHash } from "node:crypto";
-import { createDbAuditChainReader } from "@wardenx/audit";
-import { createDbClient } from "@wardenx/db";
+import { createDbAuditChainReader } from "@chartwarden/audit";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import {
   type ObjectStorePort,

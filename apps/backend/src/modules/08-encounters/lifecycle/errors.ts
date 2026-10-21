@@ -2,12 +2,12 @@
 //
 // Every guard / validation failure in the M8 encounter domain raises an `EncounterStateError` carrying
 // the machine-readable code the spec's §2.7 table enumerates (e.g. `INVALID_ENCOUNTER_DISCIPLINE_PAIR`,
-// `STEP_UP_AUTH_REQUIRED`, `IMMUTABLE_AFTER_SIGN`). The error extends the M1 `WardenXError` envelope
+// `STEP_UP_AUTH_REQUIRED`, `IMMUTABLE_AFTER_SIGN`). The error extends the M1 `ChartWardenError` envelope
 // base (packages/types — NOT the banned packages/foundation) so the M1 Fastify error handler renders it
 // with the precise code + HTTP status the UI keys its message off, with no cross-module import edge. The
 // code→status mapping is the single source mirrored from §2.7; nothing transitions on a string match —
 // each code is an enumerated constant (the M6 state-machine convention).
-import { type ErrorDetailType, WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, ChartWardenError } from "@chartwarden/types";
 
 /** The full §2.7 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M8_ERROR_STATUS = {
@@ -46,7 +46,7 @@ export const M8_ERROR_STATUS = {
   PARENT_VOIDED: 409,
   VERSION_MISMATCH: 412,
   IMMUTABLE_AFTER_SIGN: 409,
-  // §2.6 HearthNote Layer-1 assembly (#114). `@wardenx/hearthnote` documents its own error codes as
+  // §2.6 HearthNote Layer-1 assembly (#114). `@chartwarden/hearthnote` documents its own error codes as
   // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because
   // nothing ever assembled. TEMPLATE_NOT_FOUND and VOCAB_VERSION_MISMATCH already have codes above
   // (INVALID_ENCOUNTER_DISCIPLINE_PAIR / VOCAB_VERSION_MISMATCH), exactly as the package prescribes.
@@ -76,7 +76,7 @@ export type M8ErrorCode = keyof typeof M8_ERROR_STATUS;
  * renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.3 every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class EncounterStateError extends WardenXError {
+export class EncounterStateError extends ChartWardenError {
   /** `details` carries the §2.6 Layer-3 remediation list on a gate failure (the only code that uses it
    *  today): `{ field?, code, message }` per failed check, rendered by the M1 error handler into the
    *  §4.3 envelope the UI already reads. Every other code raises without one. */

@@ -1,4 +1,4 @@
-// @wardenx/ui web — internal glyph set for the WardenX system primitives (R0.3).
+// @chartwarden/ui web — internal glyph set for the WardenX system primitives (R0.3).
 // Dependency-free inline SVG (the repo carries no icon library). Every colored signal in Lantern
 // needs a non-color partner (Hard Rule §10.10) — these are those partners: lock, shield, sparkle,
 // alert, check, clock, etc. They paint in `currentColor` so the caller's text color drives them.

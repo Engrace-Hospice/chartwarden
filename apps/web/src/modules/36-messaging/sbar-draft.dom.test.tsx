@@ -2,7 +2,7 @@
 // survives a channel switch, a reload and another device; sending or discarding clears only the SBAR part.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

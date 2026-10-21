@@ -22,8 +22,8 @@
 //      §4.1's own ABAC column agrees for 3 and 4 (`org_scope_bereavement_oversight ∧ …`); route 5's
 //      `bereavement_window` cell is the spec contradicting its own §4.8 definition, and §4.8 (the
 //      predicate's definition) wins, so route 5 binds oversight.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 type TargetRequest = {

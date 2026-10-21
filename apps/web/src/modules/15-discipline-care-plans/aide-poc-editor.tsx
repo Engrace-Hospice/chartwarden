@@ -6,7 +6,7 @@ import {
   StickyFooterActions,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the AIDE POC EDITOR (§5.1 #3, Track B / ADR-0030).
 //
 // The RN Case Manager's authoring surface for the 42 CFR §418.76(b) aide task list: the interventions that

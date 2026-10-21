@@ -10,8 +10,8 @@
 // the human acknowledgment AI Governance §2.1.1 requires — an AI actor cannot give it), and the acting
 // membership is required (it is stamped as the problem's `added_by` and the proposal's decider).
 // SUD-flagged proposals follow the §7.6 rule: omitted for a caller without disclosure, 404 on decide.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { membershipIdOf } from "../abac-predicates";
 import type { ProblemProposalService } from "../problem-proposals-db";

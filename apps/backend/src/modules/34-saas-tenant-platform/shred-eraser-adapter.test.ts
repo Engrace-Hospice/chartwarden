@@ -1,4 +1,4 @@
-import type { DataClass, DataEraser } from "@wardenx/types";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   TENANT_SHRED_ERASER_SUBJECT,

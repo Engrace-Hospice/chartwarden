@@ -1,10 +1,10 @@
-// @wardenx/shared - even-odd ray-cast point-in-polygon over GeoJSON-style rings (`[[[lng,lat], ...], ...]`,
+// @chartwarden/shared - even-odd ray-cast point-in-polygon over GeoJSON-style rings (`[[[lng,lat], ...], ...]`,
 // WGS-84), the one implementation M20 (high-risk areas) and M40 (tenant-curated PSAP jurisdictions) share.
 //
 // The first ring is the outer boundary; further rings are holes, so a point inside an odd number of rings is
 // inside the polygon. A ring with fewer than three points bounds no area and matches nothing rather than
 // throwing: one degenerate saved shape must not take down a read over data the tenant can fix.
-import type { SafetyPolygonRings } from "@wardenx/types";
+import type { SafetyPolygonRings } from "@chartwarden/types";
 
 const MIN_RING_POINTS = 4; // a closed triangle repeats its first point
 

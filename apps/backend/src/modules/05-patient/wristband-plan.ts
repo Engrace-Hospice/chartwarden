@@ -1,7 +1,7 @@
 // apps/backend/src/modules/05-patient/wristband-plan.ts -- GAP-020: the PURE decisions behind issuing and voiding
 // a patient wristband generation. The routes run them inside one tenant transaction that has the patient row
 // `FOR UPDATE`, so the generations they are shown cannot change under them.
-import type { WristbandIssueReason } from "@wardenx/types";
+import type { WristbandIssueReason } from "@chartwarden/types";
 
 /** The slice of one `patient_wristband` row the planners need. */
 export interface WristbandGenerationState {

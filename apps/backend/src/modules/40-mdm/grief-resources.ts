@@ -9,16 +9,16 @@
 // asserts its row count: a write that matched nothing is a 404/409, never a silent success.
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { requirePermission } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ExternalGriefResource,
   type ExternalGriefResourceReader,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 

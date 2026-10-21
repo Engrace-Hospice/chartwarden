@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · onboarding barrel (M34 §2.3 / D3).
+// @chartwarden/saas-tenant-platform · onboarding barrel (M34 §2.3 / D3).
 //
 // The §2.3 onboarding ROOT machine (strictly observable, pure) + its data-driven step floor + the typed
 // precondition-DSL evaluator + the structured OnboardingContext the preconditions read. The IO-bearing

@@ -1,7 +1,7 @@
 // GAP-119 — the census KPI strip's admission-owned figures come from an injected M6-published summary port
 // (org-explicit, counts only). A failing or absent port degrades to `admissions: null`; it never fails the
 // census and never fabricates a number.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 

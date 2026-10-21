@@ -15,8 +15,8 @@
 // double-spend an attempt. The alert is emitted BEFORE the status flip and keyed on the revocation id
 // (AlertEmitter is idempotent on `(org, correlationId)`), so a failed flip rolls back and the next tick re-emits
 // harmlessly — at-least-once, never lost.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   CASCADE_ATTEMPTS_KEY,

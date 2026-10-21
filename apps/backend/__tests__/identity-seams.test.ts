@@ -9,7 +9,7 @@
 import {
   createInMemoryAuditorMagicLinkIssuer,
   createInMemorySessionContextStore,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";

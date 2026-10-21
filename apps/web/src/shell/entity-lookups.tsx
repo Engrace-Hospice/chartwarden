@@ -1,11 +1,11 @@
-import { EntityLookupField, humanizeIdentifier, useApiClient } from "@wardenx/ui";
+import { EntityLookupField, humanizeIdentifier, useApiClient } from "@chartwarden/ui";
 import type {
   ApiClient,
   EntityLookupFieldProps,
   EntityLookupLoadInput,
   EntityLookupLoadResult,
   EntityLookupOption,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";

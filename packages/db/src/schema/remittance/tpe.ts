@@ -1,4 +1,4 @@
-// @wardenx/db — M25 milestone 5 (migration 1118): the TPE program tracker. tpe_mac_rule (per-organization exit
+// @chartwarden/db — M25 milestone 5 (migration 1118): the TPE program tracker. tpe_mac_rule (per-organization exit
 // thresholds, NO seed) ─ tpe_program ─ tpe_round ─ tpe_round_claim. NON-partitioned; organization_id NOT NULL on all four
 // (canonical app.org_id RLS). States, results and referral kinds are text + CHECK (closed sets mirrored in
 // domain/tpe.ts), so there is no new pgEnum. provider_entity_id and claim_id (M23) are LOGICAL uuid FKs;

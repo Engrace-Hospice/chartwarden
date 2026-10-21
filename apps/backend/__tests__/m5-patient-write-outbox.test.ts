@@ -3,7 +3,7 @@
 // on the SAME transaction as the write (so a rollback drops the event). Unit level: a scripted fake
 // Drizzle tx records the call order; the real catalog-validating publisher + RLS are proven in
 // `m5-patient-write-outbox.live.test.ts`.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import type { M5OutboxEmission, M5OutboxPort } from "../src/modules/05-patient/deceased-db";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";

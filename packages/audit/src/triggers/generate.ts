@@ -1,4 +1,4 @@
-// @wardenx/audit — PHI write-audit trigger generator (M4-T02 ⟵ core, M4 spec §3.3, M04-F06).
+// @chartwarden/audit — PHI write-audit trigger generator (M4-T02 ⟵ core, M4 spec §3.3, M04-F06).
 //
 // The mechanism that guarantees no clinical mutation escapes the log. Every PHI module calls
 // `generateAuditTrigger()` in its migration — the same way it calls M1's RLS generator — to emit

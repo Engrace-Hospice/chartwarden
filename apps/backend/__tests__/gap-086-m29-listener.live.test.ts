@@ -14,9 +14,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientIdentity, PatientReader } from "@wardenx/types";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientIdentity, PatientReader } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

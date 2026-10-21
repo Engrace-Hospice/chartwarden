@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Sensitivity & Consent Layer (DESIGN.md §8). Masked identifiers, sealed Part-2
 // blocks, the ambient break-glass banner, and consent-gated badges.
-import { BreakGlassBanner, ConsentBadge, MaskedIdentifier, SealedBlock } from "@wardenx/ui";
+import { BreakGlassBanner, ConsentBadge, MaskedIdentifier, SealedBlock } from "@chartwarden/ui";
 import { type JSX, useState } from "react";
 
 const meta: Meta = { title: "Lantern/Sensitivity" };

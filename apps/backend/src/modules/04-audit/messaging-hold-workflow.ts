@@ -5,14 +5,14 @@
 // `POST /api/v1/legal-holds/:id/release` (routes/legal-holds.ts), extracted so the route and a cross-module caller write
 // the SAME row, the SAME `data.legal_hold_*` audit event and the SAME `m4.legal_hold.*` outbox payload. The caller owns the
 // transaction (`withOrgContext`), the permission/step-up gates and the match count.
-import { type AuditContext, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   MESSAGING_GOVERNANCE_HOLD_ORIGIN,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   messagingHoldLockName,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { LegalHoldCriteria } from "./routes/audit-typebox";
 
@@ -149,7 +149,7 @@ export async function releaseLegalHoldInTx(
     .limit(1);
   if (!hold) throw new NotFoundError("legal_hold", id);
   const alreadyReleased = () =>
-    new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
+    new ChartWardenError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
   if (hold.status === "released") throw alreadyReleased();
   const restoredRecordCount = await input.countRestored(hold.criteria as LegalHoldCriteria);
   // Conditional update: of two concurrent releases that both read 'active', only one matches the row once the other commits,

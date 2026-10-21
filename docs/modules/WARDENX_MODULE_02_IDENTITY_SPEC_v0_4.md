@@ -867,11 +867,11 @@ export const STEP_UP_POLICY: StepUpPolicy = Object.freeze({
 ```ts
 // apps/backend/src/modules/02-identity/policy/step-up-resolver.ts
 
-import { STEP_UP_POLICY } from '@wardenx/foundation/policy/step-up-policy'
-import { db } from '@wardenx/db'
-import { tenantStepUpPolicyOverride } from '@wardenx/db/schema/identity'
+import { STEP_UP_POLICY } from '@chartwarden/foundation/policy/step-up-policy'
+import { db } from '@chartwarden/db'
+import { tenantStepUpPolicyOverride } from '@chartwarden/db/schema/identity'
 import { and, eq } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 
 export interface ResolvedStepUpPolicy {
   readonly qualifyingFactors: readonly StepUpFactor[]
@@ -925,11 +925,11 @@ The Module 3 `step_up_recent` predicate calls `resolveStepUpPolicy({ organizatio
 
 import { Type } from '@sinclair/typebox'
 import type { FastifyInstance } from 'fastify'
-import { db } from '@wardenx/db'
-import { session, twoFactor, passkey } from '@wardenx/db/schema/identity'
+import { db } from '@chartwarden/db'
+import { session, twoFactor, passkey } from '@chartwarden/db/schema/identity'
 import { eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import { withOutbox } from '@wardenx/foundation/outbox'
+import { withOrgContext } from '@chartwarden/tenancy'
+import { withOutbox } from '@chartwarden/foundation/outbox'
 
 const initiateBodySchema = Type.Object({
   factor: Type.Union([Type.Literal('webauthn'), Type.Literal('totp')]),

@@ -1,4 +1,4 @@
-// @wardenx/terminology — the platform `value_set` definition seed (M38-T08, spec §3.9).
+// @chartwarden/terminology — the platform `value_set` definition seed (M38-T08, spec §3.9).
 //
 // Definitions ONLY (id/name/description/scope). Members live in `value_set_member`, seeded from
 // the curation file (value-set-members.ts) for the small, fully-enumerated reference sets and

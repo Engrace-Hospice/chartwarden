@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type AlertEmitter, PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+import { type AlertEmitter, PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import {
   TRIAGE_AWAITING_CALLBACK_GRACE_MINUTES,
   TRIAGE_CALLBACK_SLA_DEFAULT_MINUTES,
   TRIAGE_ESCALATION_SLA_DEFAULT_MINUTES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import {

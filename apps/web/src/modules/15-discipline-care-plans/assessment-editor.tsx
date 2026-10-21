@@ -1,4 +1,4 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the DISCIPLINE ASSESSMENT EDITOR (§5.1 #7, Track B).
 //
 // Capture, sign and amend one discipline assessment (routes 12 / 13 / 14). The lifecycle it renders is

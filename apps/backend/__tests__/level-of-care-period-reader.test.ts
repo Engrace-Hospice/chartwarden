@@ -3,7 +3,7 @@
 // `select().from().where()` reads (election periods, then LOC rows for those admissions) and the test
 // asserts the reader's own interval-overlap classification — the actual point of this reader, not just
 // that it queried the right tables.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createLevelOfCarePeriodReader } from "../src/modules/06-admission/index";
 

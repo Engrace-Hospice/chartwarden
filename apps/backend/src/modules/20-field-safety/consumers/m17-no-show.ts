@@ -5,7 +5,7 @@
 // Two things about M20's own vocabulary decide what that can mean.
 //
 // AN INQUIRY WITH NO SCHEDULE ROW IS UNEMITTABLE. `M20CheckInOverduePayload.scheduleId` is
-// non-nullable and so is `SafetyCheckInOverdueAlert.scheduleId` (@wardenx/types, §4.10 / §4.9) — the warn
+// non-nullable and so is `SafetyCheckInOverdueAlert.scheduleId` (@chartwarden/types, §4.10 / §4.9) — the warn
 // channel M20 owns is anchored to an obligation, not to a visit. So the consumer keeps ONE obligation as
 // the inquiry's anchor and retires the others; it never synthesises an event with nothing behind it.
 //
@@ -21,7 +21,7 @@
 // go overdue at its scheduled minute and walk the full D4 ladder — a supervisor paged at `critical` about
 // a clinician who is demonstrably fine. `./schedule-plan` explains why retirement is a DELETE: no member
 // of `safety_check_in_state` can say "this plan was invalidated" without lying.
-import type { IsoInstant, SafetyCheckInKind, SafetyCheckInScheduleId } from "@wardenx/types";
+import type { IsoInstant, SafetyCheckInKind, SafetyCheckInScheduleId } from "@chartwarden/types";
 import { withAudit } from "../lifecycle/effects";
 import {
   type SafetyConsumerDecision,

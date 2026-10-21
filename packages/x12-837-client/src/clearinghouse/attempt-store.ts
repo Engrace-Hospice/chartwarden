@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the durable record of what we sent a clearinghouse (ADR-0053 D4).
+// @chartwarden/x12-837-client — the durable record of what we sent a clearinghouse (ADR-0053 D4).
 //
 // Vendors expire idempotency keys (Stedi: 24 h) and share one platform credential across every tenant, so the
 // guarantee "the same key + identical submission replays; anything else conflicts; tenants never collide" is kept by

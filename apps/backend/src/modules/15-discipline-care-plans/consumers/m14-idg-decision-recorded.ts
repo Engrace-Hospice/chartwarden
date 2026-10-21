@@ -22,10 +22,10 @@
 // `activeProblemIdsForOrg`): `CarePlanReader`'s id-keyed reads need an ambient request scope a relay tick has
 // not got, and M15 must not import M7's schema. The port runs BEFORE the transaction (its own `withOrgContext`).
 import { randomUUID } from "node:crypto";
-import { type AuditContext, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DisciplineGoalSource, DisciplinePlanKind } from "@wardenx/types";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DisciplineGoalSource, DisciplinePlanKind } from "@chartwarden/types";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { transitionDisciplinePlan } from "../lifecycle/plan";
 import { resolveRequiredSignerSet } from "../lifecycle/required-signer-set";

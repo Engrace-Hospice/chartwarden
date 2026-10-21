@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `idg_action_item` (M14 §3.3.1 / D8). One row per follow-up task from an IDG decision: the
+// @chartwarden/db — `idg_action_item` (M14 §3.3.1 / D8). One row per follow-up task from an IDG decision: the
 // open → in_progress → completed/cancelled/auto_closed lifecycle, the carry-forward counter (overdue items
 // re-surface on the next meeting's cover), and the linked downstream artifact (care_plan_version / order /
 // encounter / medication_order) whose signing auto-closes it. PHI-bearing when patient-scoped (`patient_id`)

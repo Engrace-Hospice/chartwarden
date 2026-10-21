@@ -9,7 +9,7 @@
 // step-up (§6/D10); oversized bundles require a prior platform-ops `approve-oversized` (the PLATFORM-scoped
 // route, separate file) before a download URL is issued. The list/download surfaces are auditRead-declared
 // in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";

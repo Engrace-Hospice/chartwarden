@@ -1,5 +1,5 @@
-// @wardenx/billing — the 837I Loop 2300 occurrence-span HI segment (UB-04 FL 35-36): `HI*BI:<code>:RD8:<from>-<thru>~`.
-import { buildOccurrenceSpanSegments } from "@wardenx/billing";
+// @chartwarden/billing — the 837I Loop 2300 occurrence-span HI segment (UB-04 FL 35-36): `HI*BI:<code>:RD8:<from>-<thru>~`.
+import { buildOccurrenceSpanSegments } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 describe("837I occurrence-span segments", () => {

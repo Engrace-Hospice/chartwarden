@@ -7,7 +7,7 @@
 // parent layer. All functions are IO-free; the service layer (M18-T06) loads the active rows under RLS and
 // feeds them here. The §2.3 bounds (`radius_m ∈ [50,1000]`, `max_accuracy_m ∈ [5,100]`) are mirrored by DB
 // CHECKs (M18-T02) as defense in depth.
-import type { EvvGeofencePolicyScope } from "@wardenx/types";
+import type { EvvGeofencePolicyScope } from "@chartwarden/types";
 import { require_ } from "./errors";
 import type { GeofenceSettings } from "./geofence";
 

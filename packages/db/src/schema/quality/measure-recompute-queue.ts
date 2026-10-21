@@ -1,4 +1,4 @@
-// @wardenx/db — `measure_recompute_queue` (M30 §3.3; non-partitioned; retention class `operational`).
+// @chartwarden/db — `measure_recompute_queue` (M30 §3.3; non-partitioned; retention class `operational`).
 // The debounced recompute work list: one pending row per (measure, provider_entity, period) flips
 // requires_recompute=true on a triggering domain event (or cron) and is cleared by the recompute
 // worker. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). provider_entity_id is a

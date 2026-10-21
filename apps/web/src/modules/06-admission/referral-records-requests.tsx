@@ -5,7 +5,7 @@
 //
 // Mounted by the referral page's "Records" tab (`{/* records-requests mount */}`); talks to M22's routes
 // over HTTP only (no backend import, no cross-module web import).
-import { Button, EmptyState, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, EmptyState, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { RecordsRequestFaxAction } from "./records-request-fax-action";

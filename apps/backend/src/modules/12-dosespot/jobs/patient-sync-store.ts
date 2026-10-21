@@ -3,8 +3,8 @@
 // response and read by the MedHx-fetch worker to key the pull. Before migration 0303 no such table existed
 // (`vendor-boundary.ts`'s `M12DosespotPatientIdUnbound`); a patient that has never had a successful upsert
 // resolves to `null` — never a guessed or derived id.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { DosespotPatientIdResolver } from "./vendor-boundary";
 

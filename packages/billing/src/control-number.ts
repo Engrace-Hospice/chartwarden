@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 deterministic claim_control_number derivation (D4 / §2.6). The control number
+// @chartwarden/billing — M23 deterministic claim_control_number derivation (D4 / §2.6). The control number
 // is the idempotency key BOTH internally (the `(provider_entity_id, claim_control_number, attempt_index)`
 // unique index on `claim_submission`) AND at the MAC (the MAC dedupes on the control number so a retried
 // submission is a no-op by construction). It is derived deterministically so the `claim.submit` worker
@@ -24,7 +24,7 @@
 // MAC field ceiling. TODO(CMS-fixture): confirm the exact NGS-J6 patient-control-number field length on
 // the first live 837I round-trip; widen the prefix only if the MAC field proves wider than 23.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI /
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. No PHI /
 // no MBI (D13 / §3.6). Deterministic: identical inputs always yield the identical string.
 import type { ClaimId, IsoDate } from "./contracts";
 

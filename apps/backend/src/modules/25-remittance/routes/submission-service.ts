@@ -9,9 +9,9 @@
 // Nothing is transmitted here or anywhere in 6a: the only live adapter is the guided manual one, and the esMD / fax
 // shells are unbound (registry.ts). A recorded receipt is frozen by trigger; a correction appends to
 // `receipt_amendments`. No outbox events (nothing consumes them); the write-audit trigger and the rows are the trail.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AmendmentRefusal,
@@ -123,8 +123,8 @@ export async function recordFilingAttempt(tx: Tx, input: RecordFilingAttemptInpu
   }
 }
 
-const liveAttemptError = (): WardenXError =>
-  new WardenXError(
+const liveAttemptError = (): ChartWardenError =>
+  new ChartWardenError(
     "SUBMISSION_ATTEMPT_LIVE",
     "this filing already has a submission attempt in progress",
     409,
@@ -388,7 +388,7 @@ export function buildDrizzleSubmissionService(
   ): Promise<void> {
     const claim = await sources.claims().claimCopyForAppeal(organizationId, claimId);
     if (!claim) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SUBMISSION_CLAIM_UNAVAILABLE",
         "the claim for this filing cannot be read, so the receipt document cannot be validated",
         422,
@@ -444,7 +444,7 @@ export function buildDrizzleSubmissionService(
       const now = nowOf();
       const receiptAt = new Date(input.receiptAt);
       const refusal = checkReceipt({ confirmationRef: input.confirmationRef, receiptAt, now });
-      if (refusal) throw new WardenXError(refusal, RECEIPT_MESSAGES[refusal], 422);
+      if (refusal) throw new ChartWardenError(refusal, RECEIPT_MESSAGES[refusal], 422);
       return withOrgContext(db, actor, async (tx) => {
         const subject = await loadSubject(tx, actor, kind, id);
         const cur = await loadAttempt(tx, kind, id, input.attemptId);
@@ -473,7 +473,7 @@ export function buildDrizzleSubmissionService(
             next: nextFacts,
           });
           if (amendRefusal) {
-            throw new WardenXError(amendRefusal, AMENDMENT_MESSAGES[amendRefusal], 409);
+            throw new ChartWardenError(amendRefusal, AMENDMENT_MESSAGES[amendRefusal], 409);
           }
           const amendment = {
             recordedAt: now.toISOString(),
@@ -495,7 +495,7 @@ export function buildDrizzleSubmissionService(
           return { ...updated[0], amended: true };
         }
         if (!canTransitionSubmission(status, "acknowledged")) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SUBMISSION_NOT_AWAITING_RECEIPT",
             `a receipt cannot be recorded on a ${status} attempt`,
             409,
@@ -525,9 +525,9 @@ export function buildDrizzleSubmissionService(
         await loadSubject(tx, actor, kind, id);
         const cur = await loadAttempt(tx, kind, id, attemptId);
         const refusal = checkCancel({ status: cur.status as SubmissionStatus, reason });
-        if (refusal) throw new WardenXError(refusal, CANCEL_MESSAGES[refusal], 409);
+        if (refusal) throw new ChartWardenError(refusal, CANCEL_MESSAGES[refusal], 409);
         if (!canTransitionSubmission(cur.status as SubmissionStatus, "cancelled")) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SUBMISSION_NOT_CANCELLABLE",
             `a ${cur.status} attempt cannot be cancelled`,
             409,

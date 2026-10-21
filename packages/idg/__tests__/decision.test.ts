@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.6 / §2.7 decision recording, quorum, adjournment emission — M14-T03.
+// @chartwarden/idg — §2.6 / §2.7 decision recording, quorum, adjournment emission — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
   decisionMeetsQuorum,

@@ -2483,12 +2483,12 @@ The applier is a single class at `apps/backend/src/modules/06-admission/consumer
 ```ts
 // apps/backend/src/modules/06-admission/consumers/admission-event-applier.ts
 import type { Logger } from 'pino'
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { AuditLogger, PatientReader } from '@wardenx/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { AuditLogger, PatientReader } from '@chartwarden/foundation/seams'
 import type { DischargeService } from '../services/discharge-service'
 import type { ReferralService } from '../services/referral-service'
 import type { ComplianceWindowService } from '../services/compliance-window-service'
-import type { ElectionPeriodReader, AdmissionStatusReader } from '@wardenx/domain/admission/readers'
+import type { ElectionPeriodReader, AdmissionStatusReader } from '@chartwarden/domain/admission/readers'
 
 interface ProposalAcceptedPayload {
   readonly proposalId: string
@@ -2836,7 +2836,7 @@ export class AdmissionEventApplier {
 
 ```ts
 // apps/backend/src/modules/06-admission/outbox-consumers/m29-proposal-accepted.ts
-import type { Outbox } from '@wardenx/foundation/outbox'
+import type { Outbox } from '@chartwarden/foundation/outbox'
 import type { AdmissionEventApplier } from '../consumers/admission-event-applier'
 
 export function registerM29ProposalAcceptedConsumer(

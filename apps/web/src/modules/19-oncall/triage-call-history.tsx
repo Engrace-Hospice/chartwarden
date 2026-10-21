@@ -13,7 +13,7 @@
 // re-implemented here — the §3.6 denylist and the §8.2 redaction happen in SQL, and the response's
 // `redactedCategories` marker (rendered below) is how the omission is disclosed. A second, client-side
 // stripping pass would be a second copy of a rule the server already owns, and the one that drifts.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

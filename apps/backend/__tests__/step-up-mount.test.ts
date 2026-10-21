@@ -1,4 +1,4 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 // apps/backend/__tests__/step-up-mount.test.ts — M2 §4.4.
 //

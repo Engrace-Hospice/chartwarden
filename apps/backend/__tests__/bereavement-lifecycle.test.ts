@@ -3,8 +3,8 @@
 //
 // The pure M16 bereavement domain core (no DB — every fact is injected) plus the seam-consuming death-fact
 // resolver, exercised against registered fake M6 / M5 seams.
-import { BEREAVEMENT_CADENCE_FLOOR, OUTREACH_MODALITY_RANK } from "@wardenx/bereavement";
-import type { BereavementExternalSourceMetadata } from "@wardenx/types";
+import { BEREAVEMENT_CADENCE_FLOOR, OUTREACH_MODALITY_RANK } from "@chartwarden/bereavement";
+import type { BereavementExternalSourceMetadata } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
@@ -57,7 +57,7 @@ const DEATH_AT = "2026-03-01T04:20:00.000Z";
 const ELIGIBLE_AT = "2026-03-02T15:00:00.000Z";
 
 /**
- * Assert a guard raises the exact §2.5 / §4.2 machine-readable code. `WardenXError.message` is prose for
+ * Assert a guard raises the exact §2.5 / §4.2 machine-readable code. `ChartWardenError.message` is prose for
  * the clinician; the CODE is the contract the UI and the route table key off, so the tests assert on it.
  */
 function expectCode(fn: () => unknown, code: string): void {

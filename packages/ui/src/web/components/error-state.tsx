@@ -1,4 +1,4 @@
-// @wardenx/ui — ErrorState (UI-002), split out of `EmptyState`. A failed fetch and a genuinely empty
+// @chartwarden/ui — ErrorState (UI-002), split out of `EmptyState`. A failed fetch and a genuinely empty
 // list are different facts: one is announced (`role="alert"`) and offers a retry, the other is a
 // quiet, editorial "there's nothing here yet" (`EmptyState`, `role="note"`). Wire `onRetry` to the
 // same `load()` the screen already calls on mount.

@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the X12WorkerClient SHAPE + a fail-closed factory.
+// @chartwarden/x12-837-client — the X12WorkerClient SHAPE + a fail-closed factory.
 //
 // Implements the published {@link X12WorkerClient} contract over an injected raw HTTP transport
 // ({@link X12WorkerHttpPort}) to the Python `x12-worker` sidecar. It performs NO direct network I/O and
@@ -171,7 +171,7 @@ function isEligibility271(value: unknown): value is Eligibility271Result {
   );
 }
 
-/** The published factory seam shape (mirrors `@wardenx/cost-report`'s seam interfaces). */
+/** The published factory seam shape (mirrors `@chartwarden/cost-report`'s seam interfaces). */
 export interface X12WorkerClientFactory {
   create(): X12WorkerClient;
 }

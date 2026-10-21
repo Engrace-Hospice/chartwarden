@@ -3,9 +3,9 @@
 // M10-T05 lands the three §2 / D10 owned seams (HopeTimepointProvider / HopeJ2051Provider /
 // HopeSubmissionProvider) registered into the M1 registry via `registerHopeSeams` (driven from the
 // composition root's wireModuleSeams()).
-// M10-T06 adds the §4.1 route inventory + §4.6 perms (in @wardenx/auth) + §4.7 ABAC predicates + the §2.4
-// outbox catalog + the §4.8 BullMQ job catalog & pure scans + the §4.9 M36 alert builders (in @wardenx/hope).
-import type { DbClient } from "@wardenx/db";
+// M10-T06 adds the §4.1 route inventory + §4.6 perms (in @chartwarden/auth) + §4.7 ABAC predicates + the §2.4
+// outbox catalog + the §4.8 BullMQ job catalog & pure scans + the §4.9 M36 alert builders (in @chartwarden/hope).
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
 import { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
@@ -177,7 +177,7 @@ export {
 } from "./seams/index";
 // M10-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M10 owns
 // (`hope.authorDisciplineAllowed` / `hope.sfvAuthorAllowed` / `hope.correctionAuthorAllowed`). The §4.6
-// permission keys M10 contributes to M3 live in @wardenx/auth (M10_CONTRIBUTED_PERMISSIONS).
+// permission keys M10 contributes to M3 live in @chartwarden/auth (M10_CONTRIBUTED_PERMISSIONS).
 export {
   type HopeAbacDeps,
   type HopeAbacResolver,
@@ -284,7 +284,7 @@ export {
 } from "./outbox-consumers/m6-admission-workflow";
 // M10-T07 — the §4.10 iQIES submission worker loop: the pure assemble / submit-readiness / transmit /
 // reconcile / correction-RFA processors over the `hope:submission` queue (the adapter call + MinIO put +
-// SHA-256 are the boot-bound driver's only IO; the @wardenx/iqies-client adapter is the D6 boundary).
+// SHA-256 are the boot-bound driver's only IO; the @chartwarden/iqies-client adapter is the D6 boundary).
 export {
   type AssemblableAssessment,
   type AssembleSubmissionsPlan,

@@ -1,9 +1,9 @@
 // M36 WP 5.5 (ADR-0083) - the composition of the device and session manager: M2's staff-session store, M36's endpoint link, the audit writer and
 // the realtime socket close (injected by the composition root: the Valkey emitter reaches every api node). One transaction per call, with
 // `app.org_id` and `app.user_id` set to the session OWNER (delivery_endpoint's RLS is by user), while the audit row names the real actor.
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { createStaffSessionStore } from "../../02-identity/staff-session-store";
 import { createSessionDeviceService } from "./session-device-service";

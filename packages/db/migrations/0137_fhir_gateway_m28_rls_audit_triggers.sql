@@ -33,7 +33,7 @@
 --        fhir_client_credential   secret_cipher, secret_digest_sha256                (compliance)
 --        fhir_client_session      (empty — generated only because PARTITIONED)       (operational)
 --        fhir_inbound_resource    payload                                            (compliance)
---    The v_cols lists mirror `M28_AUDIT_DENYLIST` in @wardenx/types VERBATIM so the code-side view and the
+--    The v_cols lists mirror `M28_AUDIT_DENYLIST` in @chartwarden/types VERBATIM so the code-side view and the
 --    DB-side scrub cannot drift.
 --
 --    The remaining four (fhir_client, fhir_bulk_export_job, fhir_bulk_export_artifact,

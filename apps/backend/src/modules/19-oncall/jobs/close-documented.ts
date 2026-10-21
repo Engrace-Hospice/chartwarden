@@ -10,10 +10,10 @@
 // `escalation-sla` keeps chasing. Such a call stays `documented` — visible, and the candidate query excludes it
 // so a few stuck calls can never fill the per-tick bound and starve the rest. ACKNOWLEDGED, non-mandatory rows
 // resolve with the close (`autoResolveOnCallClose`'s verdict, `resolved_by` NULL — no actor to invent).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES } from "@chartwarden/types";
 import { and, asc, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { stateHistoryPort } from "../consumers/bindings";
 import { autoResolveOnCallClose } from "../lifecycle/escalation";

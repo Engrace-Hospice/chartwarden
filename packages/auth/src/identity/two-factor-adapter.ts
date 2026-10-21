@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — encrypting Better Auth adapter decorator (M2, ADR-0034 §1).
+// @chartwarden/auth · identity — encrypting Better Auth adapter decorator (M2, ADR-0034 §1).
 //
 // Wraps the Drizzle adapter so the `twoFactor` model's `secret` + `backupCodes` are sealed (AES-256-GCM,
 // two-factor-crypto.ts) on write and opened on read — at-rest encryption Better Auth's plugin doesn't do

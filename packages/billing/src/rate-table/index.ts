@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 tenant-entered hospice RATE TABLE domain (F-210). PURE: no Fastify, no Drizzle, no clock.
+// @chartwarden/billing — M23 tenant-entered hospice RATE TABLE domain (F-210). PURE: no Fastify, no Drizzle, no clock.
 //
 // The CMS per-diem base rates are TENANT-ENTERED (no bundled CMS data file). This module is the single home of the
 // rules that keep a hand-keyed financial input honest before it reaches the database (whose CHECK / EXCLUDE

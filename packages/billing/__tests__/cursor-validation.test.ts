@@ -1,6 +1,6 @@
 // The shared keyset cursor codec (repositories/db.ts): valid cursors round-trip, and a forged one is a 400
 // VALIDATION_FAILED, never a value that reaches Postgres as an invalid timestamp or uuid (a 500).
-import { repositories } from "@wardenx/billing";
+import { repositories } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const { decodeCursor, encodeCursor } = repositories;

@@ -1,5 +1,5 @@
 // GAP-171 — the revocation-cascade arbiter + sweep planner (pure; the DB shells are covered live).
-import { CASCADE_MAX_ATTEMPTS } from "@wardenx/consent";
+import { CASCADE_MAX_ATTEMPTS } from "@chartwarden/consent";
 import { describe, expect, it } from "vitest";
 import {
   CASCADE_DEFERRED_CONSUMERS,

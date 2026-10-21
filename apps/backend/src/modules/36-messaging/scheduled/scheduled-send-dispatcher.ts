@@ -15,14 +15,14 @@
 // published in the same transaction (the sender then gets one generic in-app notification). Otherwise the message goes
 // through the same write core as a live send (`insertEncryptedMessage`) with client_message_id = the row id, and the row
 // is deleted in the SAME transaction, so a crash, a retry or an overlapping tick can never send twice.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   MAX_DISPATCH_ATTEMPTS,
   type ScheduleBlockReason,
   scheduleBlockReasonFor,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { BodyKeyUnavailableError } from "../body-key-ring";
 import { publishMessageHint } from "../message-hint-events";

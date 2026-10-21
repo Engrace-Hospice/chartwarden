@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the OVERRIDE AUDIT (R2, §5.1 #20 /
 // §4.6 `billing.validation.read_override`). The compliance read-out of every validation-override applied
 // across the org's claims: which rule was overridden, by whom (membership), the role applied, the recorded

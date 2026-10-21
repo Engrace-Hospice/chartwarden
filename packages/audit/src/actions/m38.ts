@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 38 (Clinical Terminology) action catalog (M38-T10; §4.6.1 `m38.ts`,
+// @chartwarden/audit — Module 38 (Clinical Terminology) action catalog (M38-T10; §4.6.1 `m38.ts`,
 // M38 spec §8.1).
 //
 // The app-emitted terminology events from M38 §8.1, registered under the D9 `m38.<resource>.<verb>`

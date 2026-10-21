@@ -10,7 +10,7 @@
 // magic-link is accepted and the tenant DEK cipher (M1) encrypts the contact PHI, so this route does not
 // write plaintext into the `*_cipher` columns. The §164.528 audit view is M4's disclosure trail (read via
 // M4, empty here until the M4 read seam is bound).
-import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import {
@@ -54,7 +54,7 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   const sealReason = async (organizationId: string, body: unknown): Promise<string> => {
     const { reason } = parse(AccountSuspendRequest, body);
     if (!deps.reasonCipher) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PORTAL_REASON_CIPHER_UNBOUND",
         "no per-tenant DEK envelope is bound for M31, so the operator's reason cannot be stored encrypted; recording the status change without it is what this route was filed for (#117)",
         503,
@@ -144,7 +144,7 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
         ),
       ];
       if (patientIds.length !== 1 || !patientIds[0]) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VALIDATION_FAILED",
           "the inviting account must have access to exactly one patient",
           422,
@@ -282,7 +282,7 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
       const { id } = request.params as { id: string };
       const query = request.query as { cursor?: string; limit?: string };
       if (!deps.accountAudit) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PORTAL_AUDIT_UNAVAILABLE",
           "the portal audit trail is not available right now",
           503,

@@ -6,12 +6,12 @@
 // the Phase-0 deny-stub; the composition root (apps/backend/src/index.ts `wireModuleSeams`)
 // invokes it inside the boot gate, after M1's wireSeams() and before validateSeams().
 //
-// The seam's rich interface lives in the feature package @wardenx/terminology (not the leaf
-// @wardenx/types — `leaves-stay-leaves` forbids the leaf importing it). So the M1 registry
+// The seam's rich interface lives in the feature package @chartwarden/terminology (not the leaf
+// @chartwarden/types — `leaves-stay-leaves` forbids the leaf importing it). So the M1 registry
 // holds the instance opaquely (`SeamContracts["TerminologyProvider"] = unknown`); this file is
 // the typed boundary: `registerTerminologySeams` registers the typed impl and
 // `getTerminologyProvider` hands consumers a typed handle. Consumers import the
-// `TerminologyProvider` TYPE from @wardenx/terminology (they already list 38 in dependsOn) and
+// `TerminologyProvider` TYPE from @chartwarden/terminology (they already list 38 in dependsOn) and
 // resolve the runtime instance through here.
 //
 // SLICE NOTE: the provider is wired over an injected slice-safe in-memory store by default (no
@@ -22,7 +22,7 @@ import {
   type TerminologyStore,
   createInMemoryTerminologyStore,
   createTerminologyProvider,
-} from "@wardenx/terminology";
+} from "@chartwarden/terminology";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production adapter for M38's published seam (slice defaults to in-memory). */

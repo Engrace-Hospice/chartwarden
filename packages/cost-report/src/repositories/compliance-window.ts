@@ -1,9 +1,9 @@
-// @wardenx/cost-report · repositories — the filing-deadline timer: `cost_report_compliance_window` (one
+// @chartwarden/cost-report · repositories — the filing-deadline timer: `cost_report_compliance_window` (one
 // per cost report — UNIQUE cost_report_id; due FYE + 5 months per 42 CFR §413.24(f); the cron scan emits
 // tiered M36 alerts t4_months → t4_5_months → t4_75_months → past_deadline; MAC-granted extensions update
 // `current_effective_deadline_date` and reset the cadence — D15; mirrors M6's compliance-window pattern)
 // (M27 §3.3). ORG-SCOPED; the filing-deadline-scan worker wraps these in `withOrgContext`. No PHI (D18).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

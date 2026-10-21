@@ -14,14 +14,14 @@
 // carries the bucket `floor((now - origin) / interval)`; bucket 0 is the page the consumer already sent, bucket N >= 1 is
 // `<original>:rN`. `alert` is UNIQUE on (organization_id, correlation_id), so re-running inside a bucket is idempotent and
 // a missed run catches up to the CURRENT bucket only. The intervals, ceilings and the sentinel/abuse predicates come from
-// @wardenx/types (m30-alert-cadence.ts), the same source the consumer reads. No migration, no new `alert_rule`: repeats
+// @chartwarden/types (m30-alert-cadence.ts), the same source the consumer reads. No migration, no new `alert_rule`: repeats
 // re-use the seeded rules of the original alert types. Payloads are ids, enums and instants only - no PHI.
 //
 // Reopened incidents: a `reopened` incident was already triaged once, so the sentinel cadence does NOT restart (only
 // `lifecycle = 'submitted' AND triaged_at IS NULL` is open). D4: no cap on the three safety pages; 90-day ceiling on the
 // 7-day threshold series.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type M30RepeatCadence,
   M30_ABUSE_INCIDENT_KIND,
@@ -29,7 +29,7 @@ import {
   M30_SENTINEL_INCIDENT_SEVERITY,
   qualityAlertCorrelationId,
   repeatBucket,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 

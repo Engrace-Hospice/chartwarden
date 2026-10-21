@@ -2,7 +2,7 @@
 // stated plainly, and the submit. The idempotency pair follows the same rule as a live send (one key per composed
 // request, reused when no reply arrived, rotated after any answered failure), so a lost reply followed by a retry is
 // a replay, never two scheduled copies.
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { type MutableRefObject, useRef, useState } from "react";
 import type { JSX } from "react";
 import { createPortal } from "react-dom";

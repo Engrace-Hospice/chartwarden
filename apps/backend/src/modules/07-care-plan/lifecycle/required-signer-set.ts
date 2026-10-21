@@ -1,7 +1,7 @@
 // apps/backend/src/modules/07-care-plan/lifecycle/required-signer-set.ts — M7-T03 (§2.3 / D5).
 //
 // The pure quorum core for `care_plan_version` sign-off. The §11 D5 `RequiredSignerSet` constants live
-// in @wardenx/types (leaf contract, shared with consumers); this module resolves which set applies to a
+// in @chartwarden/types (leaf contract, shared with consumers); this module resolves which set applies to a
 // version `kind`, decides whether a collected set of signer roles satisfies the quorum, and validates a
 // single incoming signature against the unmet slots (the `signer_role_match` rule, §6 / §2.3). All pure
 // and deterministic — the service layer (M7-T05) composes these inside the version aggregate's
@@ -14,7 +14,7 @@ import {
   REQUIRED_SIGNER_SET_INITIAL,
   type RequiredSignerSet,
   type RequiredSignerSlot,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /**

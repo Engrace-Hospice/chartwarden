@@ -1,4 +1,4 @@
-// @wardenx/types — Module 10 (HOPE Engine) leaf contracts (M10-T01).
+// @chartwarden/types — Module 10 (HOPE Engine) leaf contracts (M10-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M10 spec's references to
 // `packages/types/seams/hope.ts` resolve here — there is no domain/foundation package on the
@@ -9,7 +9,7 @@
 // `HopeSubmissionProvider`, `HopeJ2051Provider`) M14/M30/M32/M33 consume.
 //
 // The per-section TypeBox `data` discriminated unions + the J2051 evaluator live in the
-// `@wardenx/hope` FEATURE package (sections land per-folder in later tasks); the seam IMPLEMENTATIONS +
+// `@chartwarden/hope` FEATURE package (sections land per-folder in later tasks); the seam IMPLEMENTATIONS +
 // their M1-registry wiring land in M10-T05; routes in M10-T06.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
@@ -17,7 +17,7 @@
 import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId } from "./care-plan";
 
-// ── HOPE-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
+// ── HOPE-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ─────────
 export type HopeTimepointScheduleId = string;
 export type HopeAssessmentId = string;
 export type SymptomFollowUpVisitId = string;
@@ -157,7 +157,7 @@ export type M10EventName = (typeof M10_EVENT_NAMES)[number];
 
 // ── §4.9 M36 typed alert payloads (the deterministic messages M10 emits; M36 doesn't re-template) ─────
 // M10 emits typed alerts through M36's dispatch seam. The builders (`buildInAppPayload` /
-// `buildOutOfBandPayload`, §4.9.1 PHI strip) land in `@wardenx/hope` (M10-T06); these contracts are the
+// `buildOutOfBandPayload`, §4.9.1 PHI strip) land in `@chartwarden/hope` (M10-T06); these contracts are the
 // shapes M36 type-checks against. Per M10-F13 (SEC-048/ARCH-185) the PHI fields are in-app render only.
 
 /** The §2 timepoint-window state an alert escalates through (M36 severity climbs as state advances). */

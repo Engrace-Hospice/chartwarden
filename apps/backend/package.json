@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/backend",
+  "name": "@chartwarden/backend",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,11 +16,11 @@
   "dependencies": {
     "@socket.io/redis-adapter": "8.3.0",
     "@socket.io/redis-emitter": "5.1.0",
-    "@wardenx/audit": "workspace:*",
-    "@wardenx/db": "workspace:*",
-    "@wardenx/shared": "workspace:*",
-    "@wardenx/tenancy": "workspace:*",
-    "@wardenx/types": "workspace:*",
+    "@chartwarden/audit": "workspace:*",
+    "@chartwarden/db": "workspace:*",
+    "@chartwarden/shared": "workspace:*",
+    "@chartwarden/tenancy": "workspace:*",
+    "@chartwarden/types": "workspace:*",
     "bullmq": "^5.81.3",
     "cron-parser": "^4.9.0",
     "fastify": "^5.12.5",

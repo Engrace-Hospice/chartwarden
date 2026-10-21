@@ -1,4 +1,4 @@
-// @wardenx/db — `membership_credential` (M17 §1.1 D8, GAP-093). The clinical-license/certification
+// @chartwarden/db — `membership_credential` (M17 §1.1 D8, GAP-093). The clinical-license/certification
 // roster the D8 `clinician_credentials_active` pre-schedule-gate predicate reads — a row per
 // (membership × discipline) credential grant, e.g. "this membership's RN license is active from
 // 2024-01-01, no expiry recorded." Distinct from `discipline_matches_visit` (the M3 RBAC role

@@ -1,4 +1,4 @@
-// @wardenx/mdm — MDM job processors (M40-T08, spec §4.3, §7.5).
+// @chartwarden/mdm — MDM job processors (M40-T08, spec §4.3, §7.5).
 //
 // The pure, infra-free logic the §4.3 workers run, each a function over injected ports — the same
 // pattern as the M38 terminology / M4 audit jobs: unit-tested against in-memory ports, with the

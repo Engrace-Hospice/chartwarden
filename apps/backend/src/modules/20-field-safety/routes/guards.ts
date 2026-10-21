@@ -31,7 +31,7 @@
 //      second name for it (../abac-predicates.ts states the decision). {@link ABAC_IN_ORG} binds it
 //      explicitly rather than leaving the cell bare, so "this route is org-scoped" is a declared fact the
 //      §9 test can assert instead of an absence.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PreHandler } from "./actor";
 

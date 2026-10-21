@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `hospice_visit_charge_schedule` (M23 Billing-Medicare; migration 1056). The TENANT-ENTERED,
+// @chartwarden/db — `hospice_visit_charge_schedule` (M23 Billing-Medicare; migration 1056). The TENANT-ENTERED,
 // effective-dated charge per 15-MINUTE UNIT per visit discipline that claim assembly bills each hospice visit line at
 // (CMS Pub. 100-04 ch. 11 §30.3: a visit line carries "a charge amount", informational — the visit is bundled into the
 // level-of-care payment). One row = one VERSION of one provider entity's schedule over `[effective_from, effective_to]`

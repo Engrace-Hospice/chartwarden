@@ -2,13 +2,13 @@
  * FY2027 CR 14495 — claim assembly emits one separately dated G0679 line (revenue code 0657) per TELEHEALTH
  * recertification face-to-face whose encounter date falls in the claim span, for dates of service on/after
  * 2027-01-01 only. Pure test of `buildG0679LineInputs` (the helper `assemble()` appends after the per-diem
- * lines). Units / charge are the UNCONFIRMED constants from `@wardenx/billing`.
+ * lines). Units / charge are the UNCONFIRMED constants from `@chartwarden/billing`.
  */
 import {
   type FaceToFaceSnapshot,
   G0679_UNITS_PER_ENCOUNTER,
   G0679_UNIT_CHARGE_CENTS,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { buildG0679LineInputs } from "../src/modules/23-billing-medicare/services/claim-assembly";
 

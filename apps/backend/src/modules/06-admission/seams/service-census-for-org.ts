@@ -17,8 +17,8 @@
 //
 // Not a request: opens its own `withOrgContext` envelope (empty acting user, the seam-read convention) with explicit
 // `organization_id` predicates behind RLS.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 
 const LOC = schema.levelOfCarePeriods;

@@ -1,5 +1,5 @@
-import { Button, Glyph, Modal, StatusPill, t, useApiClient } from "@wardenx/ui";
-import type { ApiClient, EntityLookupOption } from "@wardenx/ui";
+import { Button, Glyph, Modal, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import type { ApiClient, EntityLookupOption } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

@@ -18,7 +18,7 @@ export {
   renderConsentRecordDocument,
 } from "./consumed-seams";
 // M39-T07 — the §4.1 route inventory behind requirePermission/requireStepUp on the §4.7 keys
-// (M39_CONTRIBUTED_PERMISSIONS in @wardenx/auth), plus the eleven §4.8 ABAC predicate resolvers M39
+// (M39_CONTRIBUTED_PERMISSIONS in @chartwarden/auth), plus the eleven §4.8 ABAC predicate resolvers M39
 // registers into M3's named-predicate registry (resolved through the ConsentEvaluator seam).
 export { type ConsentRouteDeps, registerConsentRoutes } from "./routes/consent-routes";
 export {
@@ -161,7 +161,7 @@ export {
   createConsentInternalNotesCipher,
 } from "./consent-crypto";
 
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import {
   type DbConsentRouteServiceDeps,

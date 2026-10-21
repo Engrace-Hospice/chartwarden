@@ -23,7 +23,7 @@ describe("task code never touches M14", () => {
   it.each(files)("$path imports nothing from the IDG module and names no IDG table", ({ src }) => {
     // Comments may explain the rule; only code is judged.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    expect(code).not.toMatch(/from\s+["'][^"']*(14-idg|@wardenx\/idg)[^"']*["']/);
+    expect(code).not.toMatch(/from\s+["'][^"']*(14-idg|@chartwarden\/idg)[^"']*["']/);
     expect(code).not.toMatch(/idg_action_item|idgActionItem|IdgActionItem/);
   });
 });

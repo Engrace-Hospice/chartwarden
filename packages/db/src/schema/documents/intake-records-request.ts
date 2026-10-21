@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `intake_records_request` (M22, F-238 / 0313). One outbound request for a prospect's older
+// @chartwarden/db — `intake_records_request` (M22, F-238 / 0313). One outbound request for a prospect's older
 // records (PCP / hospital), sent with a cover sheet carrying `request_code`; the intake job recognises the
 // code on the returned fax pages (or the e-mail subject) and files the batch under `referral_id`.
 // PHI by association (who holds this prospect's records) → the three tenancy columns, FORCEd RLS, audit

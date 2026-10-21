@@ -8,18 +8,18 @@
 // has no patient subject), so the `DataEraser.erase(scope, subjectId)` bridge passes `subjectId` (the org)
 // straight to the package's pure `eraseTenantReporting(orgId, store)`.
 //
-// The pure eraseFn + its narrow store port + the in-memory store live in `@wardenx/reporting` (eraser.ts);
+// The pure eraseFn + its narrow store port + the in-memory store live in `@chartwarden/reporting` (eraser.ts);
 // this backend wrapper only adapts them to the M1 `DataEraser` contract and registers the REAL eraser over the
 // Phase-0 `reporting_class` deny-stub via the composition-root hook (after wireErasers(), before
 // validateErasers() — the same M22/M34/M36/M40 registration shape).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type ReportingEraseStore,
   createInMemoryReportingEraseStore,
   eraseTenantReporting,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

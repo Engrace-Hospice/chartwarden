@@ -1,16 +1,16 @@
-// @wardenx/intake-extraction — §3.1 / Pillar 3 (DocLens) the ExtractionSchema contract.
+// @chartwarden/intake-extraction — §3.1 / Pillar 3 (DocLens) the ExtractionSchema contract.
 //
 // Each of the 11 v1 patient-intake document types declares a per-type schema: the structured fields the
 // extractor proposes, each field's risk level (high = per-field-only, never bulk-approved, §1.4) and the
 // chart module the approved field writes back to (D5). M22-T01 ships the contract + the per-type
 // descriptor DATA; the per-type TypeBox schemas, the LangExtract prompt templates, and the
-// post-processing rules land in later M22 tasks. Leaf-import only (`@wardenx/types`).
+// post-processing rules land in later M22 tasks. Leaf-import only (`@chartwarden/types`).
 
 import type {
   ChartTargetModule,
   ClassifiedPageDocType,
   ExtractionCandidateRiskLevel,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The 11 v1 DocLens document types (the `classified_page_doc_type` set minus `unknown`). */
 export type IntakeDocumentType = Exclude<ClassifiedPageDocType, "unknown">;

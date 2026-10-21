@@ -6,7 +6,7 @@
 // denied. These tests cover the surface that closes that, and specifically the refusals — the binder
 // writes authorization-bearing facts onto a session row, so what it REFUSES matters more than what it
 // writes.
-import type { PortalSessionClass } from "@wardenx/types";
+import type { PortalSessionClass } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   PortalSessionBindError,

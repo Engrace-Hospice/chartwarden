@@ -6,7 +6,7 @@
 // so the domain row, the M4 audit row and the §4.5 outbox row commit together or not at all.
 //
 //   • ./supply-request  §2.2 / D2 — the fulfillment machine, built FROM `SUPPLY_REQUEST_EDGES` in
-//                       `@wardenx/supplies` rather than restating it, with the two-phase post-`ordered`
+//                       `@chartwarden/supplies` rather than restating it, with the two-phase post-`ordered`
 //                       cancellation, the kit-only `returned` branch and the §2.10 lateness detectors
 //   • ./template        §2.3 / D3 — the append-only comfort-kit recipe: floor validation, supersession,
 //                       effective-window resolution, the `system_locked` delete guard
@@ -22,7 +22,7 @@
 //                       required when not covered); NOT a §2.2 transition
 //   • ./invoice         GAP-063 / D16 — the vendor-quote accrual + invoice reconciliation rules; NOT a §2.2
 //                       transition
-//   • ./errors         the §7 / §2.10 code → status catalog on the M1 `WardenXError` envelope
+//   • ./errors         the §7 / §2.10 code → status catalog on the M1 `ChartWardenError` envelope
 export * from "./effects";
 export * from "./errors";
 export * from "./supply-request";

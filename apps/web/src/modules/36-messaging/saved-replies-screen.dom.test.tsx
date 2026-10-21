@@ -1,7 +1,7 @@
 // M36 WP 2.8 - the Saved replies screen (jsdom): every sender manages personal replies; the organization and platform
 // sections appear only for a template manager; a refusal (PHI, required wording) is shown in place and keeps the input.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { SavedReplies } from "./saved-replies-screen";
 

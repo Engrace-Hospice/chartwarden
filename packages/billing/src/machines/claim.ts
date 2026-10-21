@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 `claim` lifecycle reducer (§2.2, D2 / D4 / D14). The spec proposes an XState v5
+// @chartwarden/billing — M23 `claim` lifecycle reducer (§2.2, D2 / D4 / D14). The spec proposes an XState v5
 // machine; the WardenX repo convention is a PURE hand-rolled transition reducer (the M27
 // `cost-report/src/domain/lifecycle.ts` + M39 consent precedents), and ARCHITECTURE WINS over the module
 // spec on this conflict. The twelve `claim` states and their server-authoritative transitions are encoded
@@ -13,7 +13,7 @@
 // (M2 step-up freshness at dispatch, the `service_to <= today` clock check, the NOE-accepted cross-entity
 // gate) live in the Phase-3 service layer, NOT here — they are noted at each transition.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. No PHI (D13).
 // The `claim` state union is the package-canonical `ClaimState` from `./contracts` (the seam DTOs speak
 // it too); the machine operates over that alphabet rather than redeclaring it (mirrors how M27's
 // lifecycle reducer reuses `CostReportState`). Consumers import `ClaimState` from the package root.

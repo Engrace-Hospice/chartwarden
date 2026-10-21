@@ -9,13 +9,13 @@
 // ALWAYS server-side (request.context) — the body/query never carries an org id.
 //
 // `TileReadQuery` / `TileReadResponse` themselves are the canonical §4.2 shapes owned by the
-// @wardenx/reporting package (packages/reporting/src/schemas/tile-read.ts); we re-export them so the
+// @chartwarden/reporting package (packages/reporting/src/schemas/tile-read.ts); we re-export them so the
 // route plugins + the OpenAPI enrichment table reference ONE symbol.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { TileReadQuery, TileReadResponse } from "@wardenx/reporting";
-import { ValidationError } from "@wardenx/types";
+import { TileReadQuery, TileReadResponse } from "@chartwarden/reporting";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -27,7 +27,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// §3.3 vocab mirrors (string-literal unions; canonical enums live in @wardenx/db).
+// §3.3 vocab mirrors (string-literal unions; canonical enums live in @chartwarden/db).
 const BASE_STATUS = ["seeded", "active", "deprecated", "retired"] as const;
 const METRIC_STATUS = ["seeded", "active", "deprecated", "retired"] as const;
 const MV_STATUS = ["registered", "active", "suspended", "retired"] as const;

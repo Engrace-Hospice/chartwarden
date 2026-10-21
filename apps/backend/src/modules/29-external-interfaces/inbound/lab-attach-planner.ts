@@ -2,7 +2,7 @@ import type {
   NewLabObservationInboundLinkRow,
   NewLabObservationRow,
   NewLabObservationValueRow,
-} from "@wardenx/db/schema";
+} from "@chartwarden/db/schema";
 // apps/backend/src/modules/29-external-interfaces/inbound — ORU lab attach planning (M29-T05, §2.2/§4.6 D7).
 // PURE. The transactional-pinch-point core: it turns a projected ORU + its resolved patient binding +
 // terminology/SUD/abnormal decisions into either
@@ -28,8 +28,8 @@ import type {
   LabResultStatus,
   LabTerminologyValidation,
   LabValueType,
-} from "@wardenx/types";
-import { LAB_VALUE_TYPES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { LAB_VALUE_TYPES } from "@chartwarden/types";
 import type { ProjectedObr, ProjectedObx } from "./hl7-oru-projection";
 import { computeAbnormalSummary, isCriticalFlagSet, selectValueFlag } from "./lab-abnormal";
 import type { LabPatientResolution } from "./lab-patient-resolver";

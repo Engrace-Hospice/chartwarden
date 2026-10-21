@@ -6,9 +6,9 @@
 // round snapshots the threshold in force when its results are first recorded. Every command runs under
 // `withOrgContext` (RLS) inside the actor's provider-entity scope; every change is If-Match. There are no events or
 // alerts: the write-audit triggers are the trail, and ADR deadlines already alert through the ADR flow.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   TPE_MAX_ROUNDS,
@@ -150,8 +150,8 @@ export interface TpeServicePorts {
   ) => Promise<boolean>;
 }
 
-const CLOSED = (): WardenXError =>
-  new WardenXError("TPE_PROGRAM_CLOSED", "this TPE program is closed and cannot change", 409);
+const CLOSED = (): ChartWardenError =>
+  new ChartWardenError("TPE_PROGRAM_CLOSED", "this TPE program is closed and cannot change", 409);
 
 /** True when `day` is a real YYYY-MM-DD calendar date. */
 const isRealDay = (day: string): boolean => {
@@ -164,12 +164,12 @@ const isRealDay = (day: string): boolean => {
 };
 
 function requireRealDay(day: string, code: string, what: string): void {
-  if (!isRealDay(day)) throw new WardenXError(code, `${what} is not a real date`, 422);
+  if (!isRealDay(day)) throw new ChartWardenError(code, `${what} is not a real date`, 422);
 }
 
 function requireNotFuture(day: string, code: string, what: string): void {
   if (day > noticeDayOf(new Date())) {
-    throw new WardenXError(code, `${what} cannot be in the future`, 422);
+    throw new ChartWardenError(code, `${what} cannot be in the future`, 422);
   }
 }
 
@@ -234,7 +234,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
     if (program.state === "closed") throw CLOSED();
     // A recorded outcome is final: results, education and sampled claims no longer change once it is in.
     if (program.state !== "active") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "TPE_PROGRAM_NOT_ACTIVE",
         `a ${program.state} program's rounds can no longer change`,
         409,
@@ -341,7 +341,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
 
     async createProgram(actor, input) {
       const macName = input.macName.trim();
-      if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+      if (!macName) throw new ChartWardenError("INVALID_MAC", "the MAC name is required", 422);
       requireRealDay(input.openedOn, "INVALID_OPENED_ON", "the program start date");
       requireNotFuture(input.openedOn, "OPENED_ON_IN_FUTURE", "the program start date");
       const scope = actor.providerEntityScope;
@@ -365,7 +365,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           return inserted[0]!;
         } catch (e) {
           if (isUniqueViolation(e)) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "TPE_PROGRAM_ACTIVE",
               "this provider entity already has an active TPE program with that MAC",
               409,
@@ -383,7 +383,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
         const program = await loadProgram(tx, actor, programId);
         if (program.state === "closed") throw CLOSED();
         if (program.state !== "active") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TPE_PROGRAM_NOT_ACTIVE",
             `a ${program.state} program takes no further rounds`,
             409,
@@ -395,7 +395,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           .where(eq(RD.tpeProgramId, programId))
           .orderBy(asc(RD.roundNumber));
         if (existing.length >= TPE_MAX_ROUNDS) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TPE_ROUND_LIMIT",
             `a TPE program has at most ${TPE_MAX_ROUNDS} rounds`,
             409,
@@ -403,21 +403,21 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
         }
         const prev = existing[existing.length - 1];
         if (noticeOn < program.openedOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "NOTICE_BEFORE_PROGRAM",
             "the round notice cannot be dated before the program opened",
             422,
           );
         }
         if (prev && noticeOn < prev.noticeOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "NOTICE_BEFORE_PREVIOUS_ROUND",
             `the round notice cannot be dated before round ${prev.roundNumber}'s notice`,
             422,
           );
         }
         if (prev && prev.resultsOn === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TPE_PREVIOUS_ROUND_OPEN",
             `record the results of round ${prev.roundNumber} before starting the next round`,
             409,
@@ -454,14 +454,14 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       requireRealDay(input.resultsOn, "INVALID_RESULTS_DATE", "the results letter date");
       requireNotFuture(input.resultsOn, "RESULTS_DATE_IN_FUTURE", "the results letter date");
       if (input.macResult !== "compliant" && input.macResult !== "non_compliant") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_MAC_RESULT",
           "the result must be compliant or non_compliant",
           422,
         );
       }
       if (input.macErrorRatePct !== null && !isPct(input.macErrorRatePct)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_ERROR_RATE",
           "the error rate is a percentage from 0 to 100 with at most 2 decimals",
           422,
@@ -470,7 +470,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       return withOrgContext(db, actor, async (tx) => {
         const { round, program } = await loadRound(tx, actor, roundId);
         if (input.resultsOn < round.noticeOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RESULTS_BEFORE_NOTICE",
             "the results letter cannot be dated before the round notice",
             422,
@@ -505,7 +505,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       return withOrgContext(db, actor, async (tx) => {
         const { round } = await loadRound(tx, actor, roundId);
         if (input.educationOn !== null && input.educationOn < round.noticeOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "EDUCATION_BEFORE_NOTICE",
             "education cannot be dated before the round notice",
             422,
@@ -520,7 +520,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
 
     async upsertClaim(actor, roundId, claimId, input, ifMatch) {
       if (input.result !== undefined && !["pending", "no_error", "error"].includes(input.result)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_CLAIM_RESULT",
           "the claim result must be pending, no_error or error",
           422,
@@ -589,29 +589,29 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       requireNotFuture(input.outcomeOn, "OUTCOME_DATE_IN_FUTURE", "the outcome date");
       const kinds = [...new Set(input.referralKinds ?? [])];
       if (kinds.some((k) => !(TPE_REFERRAL_KINDS as readonly string[]).includes(k))) {
-        throw new WardenXError("INVALID_REFERRAL_KIND", "a referral type is not recognised", 422);
+        throw new ChartWardenError("INVALID_REFERRAL_KIND", "a referral type is not recognised", 422);
       }
       if (input.kind === "referred" && kinds.length === 0) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "REFERRAL_KIND_REQUIRED",
           "name at least one referral type from the CMS letter",
           422,
         );
       }
       if (input.kind === "compliant" && kinds.length > 0) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "REFERRAL_ON_COMPLIANT",
           "a compliant outcome carries no referral types",
           422,
         );
       }
       if (input.kind === "referred" && input.reliefUntil) {
-        throw new WardenXError("RELIEF_ON_REFERRAL", "a referral carries no relief end date", 422);
+        throw new ChartWardenError("RELIEF_ON_REFERRAL", "a referral carries no relief end date", 422);
       }
       if (input.reliefUntil) {
         requireRealDay(input.reliefUntil, "INVALID_RELIEF_DATE", "the relief end date");
         if (input.reliefUntil < input.outcomeOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RELIEF_BEFORE_OUTCOME",
             "the relief end date cannot be before the outcome date",
             422,
@@ -622,14 +622,14 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
         const program = await loadProgram(tx, actor, programId);
         if (program.state === "closed") throw CLOSED();
         if (input.outcomeOn < program.openedOn) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "OUTCOME_BEFORE_PROGRAM",
             "the outcome cannot be dated before the program opened",
             422,
           );
         }
         if (!canTransitionTpeProgram(program.state as TpeProgramState, input.kind)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_TRANSITION",
             `cannot transition from '${program.state}' to '${input.kind}'`,
             409,
@@ -684,9 +684,9 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
 
     async upsertRule(actor, input, ifMatch) {
       const macName = input.macName.trim();
-      if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+      if (!macName) throw new ChartWardenError("INVALID_MAC", "the MAC name is required", 422);
       if (!isPct(input.exitErrorRatePct)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_THRESHOLD",
           "the exit error rate is a percentage from 0 to 100 with at most 2 decimals",
           422,

@@ -24,14 +24,14 @@ import {
   BEREAVEMENT_WINDOW_DAYS,
   UNREACHABLE_CONSECUTIVE_NO_RESPONSE_THRESHOLD,
   isWithinBereavementWindow,
-} from "@wardenx/bereavement";
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavementAnniversaryMark,
   BereavementOutreachKind,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { transitionBereavementOutreach, transitionBereavementPlan } from "../lifecycle/index";

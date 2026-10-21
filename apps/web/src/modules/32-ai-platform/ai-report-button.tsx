@@ -1,4 +1,4 @@
-import { Modal, StatusPill, useApiClient } from "@wardenx/ui";
+import { Modal, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/32-ai-platform — M32 §5.5 `AIReportButton` (GAP-049).
 //
 // The widget consumer modules render adjacent to any AI-enhanced UI region so a clinician can report a

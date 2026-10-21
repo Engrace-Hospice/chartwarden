@@ -13,7 +13,7 @@
 // The honest gap is stated on the screen rather than papered over: the M4 audit trail carries entries this
 // reconstruction cannot — a read that was refused, a break-glass access, the exact actor on a cascade —
 // and a surveyor who needs those goes to the audit surface that owns them.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

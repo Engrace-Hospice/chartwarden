@@ -939,7 +939,7 @@ The MinIO raw 835 file is *not* a database column — it's a blob keyed by `remi
 
 ```typescript
 // apps/backend/src/modules/25-remittance/boot.ts (excerpt)
-import { m4 } from '@wardenx/audit'
+import { m4 } from '@chartwarden/audit'
 
 m4.eraserRegistry.register('remittance', async (orgId, patientIdScope) => {
   // patientIdScope is the set of patient_ids whose retention has expired and were approved for destruction
@@ -1234,15 +1234,15 @@ export interface DenialCaseRecipientResolver {
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { ProviderEntityReader, MembershipReader } from '@wardenx/identity/seams'      // M2
-import type { ClaimReader, ProviderEntityClaimChannelReader, ClaimLineReader } from '@wardenx/billing-medicare/seams'  // M23 — forward
-import type { MedicaidClaimReader } from '@wardenx/billing-medicaid/seams'                  // M24 — forward
-import type { EvvAggregatorReferenceReader } from '@wardenx/evv/seams'                      // M18
-import type { TerminologyProvider } from '@wardenx/terminology/seams'                       // M38
-import type { AlertEmitter, MessagingProvider } from '@wardenx/messaging/seams'             // M36
-import type { PayerCatalogReader } from '@wardenx/mdm/seams'                                // M40
-import type { DocumentRenderProvider } from '@wardenx/documents/seams'                      // M22 — forward
-import type { DenialOutcomePredictionProvider } from '@wardenx/ai-platform/seams'           // M32 — forward, deny-stub
+import type { ProviderEntityReader, MembershipReader } from '@chartwarden/identity/seams'      // M2
+import type { ClaimReader, ProviderEntityClaimChannelReader, ClaimLineReader } from '@chartwarden/billing-medicare/seams'  // M23 — forward
+import type { MedicaidClaimReader } from '@chartwarden/billing-medicaid/seams'                  // M24 — forward
+import type { EvvAggregatorReferenceReader } from '@chartwarden/evv/seams'                      // M18
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'                       // M38
+import type { AlertEmitter, MessagingProvider } from '@chartwarden/messaging/seams'             // M36
+import type { PayerCatalogReader } from '@chartwarden/mdm/seams'                                // M40
+import type { DocumentRenderProvider } from '@chartwarden/documents/seams'                      // M22 — forward
+import type { DenialOutcomePredictionProvider } from '@chartwarden/ai-platform/seams'           // M32 — forward, deny-stub
 ```
 
 > **2026-08-05 correction (WX-PR-012 follow-up):** the shipped D3 auto-match + PR-ledger patient-id bind
@@ -1388,7 +1388,7 @@ Default role-template assignments are codified in `apps/backend/src/modules/3-au
 
 ```typescript
 // apps/backend/src/modules/25-remittance/predicates/claim-assigned-to-actor.ts
-import { predicate } from '@wardenx/authorization'
+import { predicate } from '@chartwarden/authorization'
 
 /**
  * The actor's membership default_provider_entity_id (or any explicit assigned-PE scope on
@@ -1438,7 +1438,7 @@ All queues use the M1 BullMQ + Valkey backing. The `parse-and-post` worker uses 
 
 ```typescript
 // packages/messaging/src/alert-categories/m25.ts
-import type { AlertEmitterPayload } from '@wardenx/messaging'
+import type { AlertEmitterPayload } from '@chartwarden/messaging'
 
 export type M25Alerts =
   | {
@@ -1960,7 +1960,7 @@ The following fixture files MUST exist in `packages/m25/tests/fixtures/`:
 | `evv/aggregator_rejection.json` | M18 outbox envelope for scenario 7.6 |
 | `m22/appeal_packet_render_response.json` | Mocked M22 render result for unit tests of submit flow |
 
-Synthetic PHI is generated via `@wardenx/synthetic-data` which produces consistent fake demographics seeded by fixture name (so tests are deterministic but no real identifiers ever appear).
+Synthetic PHI is generated via `@chartwarden/synthetic-data` which produces consistent fake demographics seeded by fixture name (so tests are deterministic but no real identifiers ever appear).
 
 -----
 

@@ -7,9 +7,9 @@
 // Plus `announcementSendGuard`, the preHandler that keeps SENDING into the announcement channel org_admin-only on the
 // generic channel send route as well (the channel is org-wide visible, so channel_visibility alone lets every member
 // post). Org and actor are always the server-side request context.
-import { requirePermission } from "@wardenx/auth";
-import type { AnnouncementService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import type { AnnouncementService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AnnouncementParamsSchema,

@@ -23,7 +23,7 @@
 // 501, "this device did not prove itself" is a 401 plus a recorded `failed` row. Collapsing them would
 // make an unconfigured deployment look like a fleet of compromised handsets.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { DeviceAttestationPosture } from "@wardenx/types";
+import type { DeviceAttestationPosture } from "@chartwarden/types";
 import type {
   DeviceAttestationAssertion,
   DeviceAttestationChallenge,

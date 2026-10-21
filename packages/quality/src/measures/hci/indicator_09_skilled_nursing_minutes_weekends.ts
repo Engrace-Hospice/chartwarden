@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 9: Skilled Nursing Minutes on Weekends (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 9: Skilled Nursing Minutes on Weekends (§1.1). Pure. No IO.
 //
 // CMS definition: the SHARE of skilled-nursing minutes (on RHC days) delivered on a Saturday or Sunday —
 // weekend SN minutes ÷ all SN minutes. Higher is better. Numerator = SN (RN/LPN) minutes on weekend RHC

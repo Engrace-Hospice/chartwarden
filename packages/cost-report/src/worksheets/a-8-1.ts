@@ -1,11 +1,11 @@
-// @wardenx/cost-report — Worksheet A-8-1 (Statement of Costs of Services from Related Organizations) TypeBox
+// @chartwarden/cost-report — Worksheet A-8-1 (Statement of Costs of Services from Related Organizations) TypeBox
 // schema (Form CMS-1984-14, Pub 15-2 §4319). A-8-1 discloses costs of services/supplies/facilities the
 // hospice obtained from organizations related by common ownership/control, so the cost report reflects the
 // related party's COST (not the charged price) per 42 CFR 413.17. Feeds the Worksheet A-8 adjustment.
 // Money is INTEGER CENTS; no PHI (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4319 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** One related-organization line: the related party, the service furnished, the cost to the related org, and

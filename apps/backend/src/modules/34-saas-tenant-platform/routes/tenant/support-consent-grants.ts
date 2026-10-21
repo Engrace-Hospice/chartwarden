@@ -5,11 +5,11 @@
 // DISTINCT platform-ops actor may later start a support_session against (the with-consent break-glass
 // variant, M34-F01). The §6/D10 step-up table gates the ISSUE route (`passkey_recent_5min`, compliance
 // officer). Routes gate on the REAL Authorization Contract (`requirePermission`/`requireStepUp` from
-// @wardenx/auth) on the §4.5 keys M34 registers; handlers compose over the injected TenantRouteService
+// @chartwarden/auth) on the §4.5 keys M34 registers; handlers compose over the injected TenantRouteService
 // (in-memory slice; Drizzle under `withOrgContext` in prod so RLS backstops). LIST is auditRead-declared
 // in the Drizzle service (every grant view is a §164.528 disclosure-accounting surface). Mirrors the M22
 // registerDocumentRoutes plugin shape EXACTLY.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";

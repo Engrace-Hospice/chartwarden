@@ -6,7 +6,7 @@
 // pure engine returns side effects DECLARATIVELY as data; the M15 service layer (M15-T06 routes / the
 // M15-T04 workers) executes them inside the aggregate's optimistic-locked (§2.5 `If-Match`) transaction.
 // Keeping them as data makes the machines deterministic and unit-testable with no DB.
-import type { DisciplineRequiredSignerSet, IsoInstant, M15EventName } from "@wardenx/types";
+import type { DisciplineRequiredSignerSet, IsoInstant, M15EventName } from "@chartwarden/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.4). The service layer is the only place these

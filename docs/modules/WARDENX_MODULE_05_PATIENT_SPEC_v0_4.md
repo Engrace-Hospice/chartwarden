@@ -24,7 +24,7 @@
 ## Changelog
 
 - **v0.6.1 (Re-locked; 2026-10-07)** — **Additional RNs on the care team.** New `patient_assignment_role` value `rn` (migration `0399_m5_assignment_role_rn.sql`): a visiting/staff RN beside the RN case manager. `primary_rn` stays at most one open per patient (`patient_assignment_primary_rn_unique`); any number of `rn` assignments may be open, subject only to the per-(patient, clinician, role) open-duplicate guard (409 `ASSIGNMENT_ALREADY_OPEN`). `CareTeamProvider.findPrimaryRn` is unchanged — an `rn` is never the RN case manager. Also: the web "Assign care team member" dialog now sends the route's `clinicianUserId` (it sent an unrecognised `clinicianMembershipId`, so every assignment answered 400 `VALIDATION_ERROR`); the unused, drifted `AssignmentBodySchema`/`AssignmentParamsSchema` copies in `patient-typebox.ts` are removed.
-- **v0.6 (Re-locked; 2026-10-04)** — Documented the `PatientIntakeResolver` seam M6 consumes (§4.11) and extended it for referral-intake payer numbers: `PatientIntakeSubject.medicareNumberAtReceipt` feeds the deterministic MBI match and `createPatientFromIntake` writes it as the new patient's `mbi` identifier (`issuer='referral_intake'`); new `recordMedicareNumberIfMissing` adds a referral MBI to an existing patient only when the chart has no active MBI (returns `added` / `already_on_chart` / `different_on_chart`; never overwrites — D12). Shared validators in `@wardenx/types` (`normalizeMedicareNumber` / `isValidMedicareNumber`, the `patient_identifier_mbi_format` rule; `normalizeMedicaidNumber` / `isValidMedicaidNumber`). Medicaid IDs stay on `patient_payer` (§2 "Payers") — no identifier kind added.
+- **v0.6 (Re-locked; 2026-10-04)** — Documented the `PatientIntakeResolver` seam M6 consumes (§4.11) and extended it for referral-intake payer numbers: `PatientIntakeSubject.medicareNumberAtReceipt` feeds the deterministic MBI match and `createPatientFromIntake` writes it as the new patient's `mbi` identifier (`issuer='referral_intake'`); new `recordMedicareNumberIfMissing` adds a referral MBI to an existing patient only when the chart has no active MBI (returns `added` / `already_on_chart` / `different_on_chart`; never overwrites — D12). Shared validators in `@chartwarden/types` (`normalizeMedicareNumber` / `isValidMedicareNumber`, the `patient_identifier_mbi_format` rule; `normalizeMedicaidNumber` / `isValidMedicaidNumber`). Medicaid IDs stay on `patient_payer` (§2 "Payers") — no identifier kind added.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Closed the M29 forward-stub gap. v0.2 established the patient spine, the deterministic-first / probabilistic-queued match pipeline, and the `CaseloadProvider` seam; v0.3 shipped the three pieces M29 needs for its inbound ADT pipeline to close end-to-end on the M5 side:
   - **`PatientReader` seam** (published seam) — the typed read interface M29's T-29.05 patient-match cascade consumes (`findByMrn`, `findByExternalMrn`, `findBySsnLast4AndDob`, `findByNameDobSex`, `findByLooseName`, `findById`). M5 already had the underlying data (`patient_identifier` with `value_last4`, `patientResolver` for merge-redirect); the seam packages it as a typed interface, adds two indexes for L2 (external MRN) and L3 (SSN-last4 + DOB) lookup performance, and boot-registers via the `SeamRegistry`.
@@ -1212,8 +1212,8 @@ export const patientCaseloadProvider: CaseloadProvider = {
 }
 
 // apps/backend/src/modules/05-patient/bootstrap.ts
-import { setCaseloadProvider } from "@wardenx/auth/seams"
-import { registerEraser } from "@wardenx/audit/seams"
+import { setCaseloadProvider } from "@chartwarden/auth/seams"
+import { registerEraser } from "@chartwarden/audit/seams"
 
 export function bootstrapModule5() {
   setCaseloadProvider(patientCaseloadProvider)   // Module 3 boot-validates this
@@ -1611,11 +1611,11 @@ export interface PatientReader {
 
 ```ts
 // apps/backend/src/modules/05-patient/seams/patient-reader.ts
-import { db } from '@wardenx/db'
-import { patient, patientIdentifier } from '@wardenx/db/schema/patient'
+import { db } from '@chartwarden/db'
+import { patient, patientIdentifier } from '@chartwarden/db/schema/patient'
 import { sql, eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
-import type { PatientReader, PatientIdentity } from '@wardenx/foundation/seams'
+import { withOrgContext } from '@chartwarden/tenancy'
+import type { PatientReader, PatientIdentity } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 const MAX_MERGE_HOPS = 3
@@ -1852,7 +1852,7 @@ export class PatientReaderImpl implements PatientReader {
 
 ```ts
 // apps/backend/src/modules/05-patient/boot.ts (extension)
-import { SeamRegistry } from '@wardenx/foundation/seams'
+import { SeamRegistry } from '@chartwarden/foundation/seams'
 import { PatientReaderImpl } from './seams/patient-reader'
 import { PatientMutatorImpl } from './seams/patient-mutator'
 
@@ -1964,15 +1964,15 @@ export interface PatientMutator {
 
 ```ts
 // apps/backend/src/modules/05-patient/seams/patient-mutator.ts
-import { db } from '@wardenx/db'
-import { patient, patientIdentifier, patientAddress, patientNameAlias, patientPhone, patientEmail, patientCommunicationPreference } from '@wardenx/db/schema/patient'
+import { db } from '@chartwarden/db'
+import { patient, patientIdentifier, patientAddress, patientNameAlias, patientPhone, patientEmail, patientCommunicationPreference } from '@chartwarden/db/schema/patient'
 import { eq, and } from 'drizzle-orm'
-import { withOrgContext } from '@wardenx/tenancy'
+import { withOrgContext } from '@chartwarden/tenancy'
 import { ulid } from 'ulid'
-import type { PatientMutator, PatientMutatorInput, PatientMutatorResult } from '@wardenx/foundation/seams'
-import { PatientNotFoundError, PatientMergeRedirectError } from '@wardenx/foundation/seams'
-import type { Outbox } from '@wardenx/foundation/outbox'
-import type { AuditLogger } from '@wardenx/foundation/seams'
+import type { PatientMutator, PatientMutatorInput, PatientMutatorResult } from '@chartwarden/foundation/seams'
+import { PatientNotFoundError, PatientMergeRedirectError } from '@chartwarden/foundation/seams'
+import type { Outbox } from '@chartwarden/foundation/outbox'
+import type { AuditLogger } from '@chartwarden/foundation/seams'
 import type { Logger } from 'pino'
 
 const ALLOWED_FIELDS: ReadonlyArray<keyof PatientMutatorInput['patch']> = [
@@ -2206,10 +2206,10 @@ The M5-side consumer of `m29.hl7_inbound_proposal.accepted` events with `ownerMo
 
 ```ts
 // apps/backend/src/modules/05-patient/outbox-consumers/m29-proposal-accepted.ts
-import type { Outbox, OutboxConsumerHandler } from '@wardenx/foundation/outbox'
+import type { Outbox, OutboxConsumerHandler } from '@chartwarden/foundation/outbox'
 import type { Logger } from 'pino'
-import { SeamRegistry } from '@wardenx/foundation/seams'
-import type { PatientMutator, PatientCreator } from '@wardenx/foundation/seams'
+import { SeamRegistry } from '@chartwarden/foundation/seams'
+import type { PatientMutator, PatientCreator } from '@chartwarden/foundation/seams'
 
 interface ProposalAcceptedPayload {
   readonly proposalId: string
@@ -2929,7 +2929,7 @@ The route inventory had 15 rows that were specified and never registered (the st
 
 The on-file side of M13's BCMA `wrong_patient` arm. A wristband encodes an OPAQUE random token, never an MRN, name or DOB, so a lost band leaks nothing, a "match" proves possession of this patient's current band (an MRN is guessable), and a merge or identity correction can kill a band without touching the identity.
 
-- **Payload.** `WXB1.<26 Crockford-base32 chars = 128 random bits>.<4 hex CRC-16/CCITT-FALSE>` = 36 ASCII chars, rendered as a QR code plus a Code 128 (bwip-js, MIT, `generic` build) with the typed fallback code under them. The shared pure codec is `@wardenx/types` `wristband.ts`; a bad checksum is "rescan", not a wrong-patient event. The band prints name/MRN/DOB beside the code and nothing about SUD treatment, diagnosis or payer (42 CFR Part 2: the band must not reveal program participation).
+- **Payload.** `WXB1.<26 Crockford-base32 chars = 128 random bits>.<4 hex CRC-16/CCITT-FALSE>` = 36 ASCII chars, rendered as a QR code plus a Code 128 (bwip-js, MIT, `generic` build) with the typed fallback code under them. The shared pure codec is `@chartwarden/types` `wristband.ts`; a bad checksum is "rescan", not a wrong-patient event. The band prints name/MRN/DOB beside the code and nothing about SUD treatment, diagnosis or payer (42 CFR Part 2: the band must not reveal program participation).
 - **Table `patient_wristband`** (migration 0850; owned by M5). One row per GENERATION: `generation`, `payload_digest = hex(sha256("wx.wristband.v1|" || organization_id || "|" || token))` (org-salted, domain-separated; a 128-bit token makes an unkeyed hash non-invertible, so no pepper), `issued_at/by/reason` (`first_issue|reprint_lost|reprint_damaged|reprint_other|identity_correction`), `superseded_at`, `voided_at/by`, `void_reason` (`identity_error|patient_merged|patient_deceased|compromised`). Unique `(org, patient, generation)` and `(org, payload_digest)`; a partial unique index allows at most ONE active (not superseded, not voided) generation per patient. Three-column tenancy, ENABLE + FORCE RLS, SELECT/INSERT/UPDATE for `wardenx_app` (the destruction eraser deletes on the destruction connection), M4 write-audit trigger that scrubs `payload_digest`. The raw token is shown once and is stored/logged/audited/queued nowhere.
 - **Routes.** `POST /api/v1/patients/:id/wristbands` (`patient.wristband.issue` + `caseload_or_scope`; body `{ reason, expectedCurrentGeneration }`; 409 on a stale generation, so a double-click or two nurses cannot mint two live bands; locks the patient row `FOR UPDATE`; returns the payload ONCE with `Cache-Control: no-store`). It opts out of `Idempotency-Key` capture (`config.noIdempotencyCapture`) - the shared web client sends a key on every mutation and capturing the response would copy the token into `idempotency_key.response_body`. `GET /api/v1/patients/:id/wristband` (`patient.read`, read-audited with a real resource id) is the chart-badge status and never returns a token or digest. `POST /api/v1/patients/:id/wristbands/:generation/void` (`patient.wristband.void` + step-up; operator reasons `identity_error|compromised`).
 - **Rotation.** A print supersedes the previous generation in the same transaction; the old band stops verifying online immediately.

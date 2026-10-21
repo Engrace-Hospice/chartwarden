@@ -1,6 +1,6 @@
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { ActorEnrichmentReader } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { ActorEnrichmentReader } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 
 /** The DDE work permission an assignee must hold (ADR-0052). */

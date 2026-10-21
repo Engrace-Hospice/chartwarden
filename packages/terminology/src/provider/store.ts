@@ -1,4 +1,4 @@
-// @wardenx/terminology — the `TerminologyStore` data port + an in-memory slice default
+// @chartwarden/terminology — the `TerminologyStore` data port + an in-memory slice default
 // (M38-T05, spec §4.5).
 //
 // The `TerminologyProvider` seam (provider.ts) is PURE ORCHESTRATION: it composes the T04
@@ -15,7 +15,7 @@
 // projection (§7.9) are the Drizzle-backed store's job in T07/T09 — this default keeps them
 // deliberately simple.
 
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { CodeSystemId, ExpansionMember, ResolvedConcept } from "../interfaces/kinds";
 import type {
   CodeSystemVersionWindow,
@@ -195,7 +195,7 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
       let allowed: Set<string> | null = null;
       if (opts.inValueSet !== undefined) {
         const platform = platformMembers.get(opts.inValueSet);
-        if (!platform) throw new WardenXError("NOT_FOUND", "value set not found", 404);
+        if (!platform) throw new ChartWardenError("NOT_FOUND", "value set not found", 404);
         const tenant = opts.orgId
           ? (tenantMembers.get(compoundKey(opts.orgId, opts.inValueSet)) ?? [])
           : [];

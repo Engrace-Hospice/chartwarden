@@ -1,4 +1,4 @@
-// @wardenx/fhir — per-value child Observation projection (§4.11, M28-T04).
+// @chartwarden/fhir — per-value child Observation projection (§4.11, M28-T04).
 //
 // Each value in an M29 `lab_observation.values[]` projects to one FHIR `Observation`. The child IDs use
 // the synthetic `<observation-id>--<value-index>` form (D19) so distinct values within one observation

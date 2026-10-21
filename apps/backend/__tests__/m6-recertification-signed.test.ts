@@ -3,7 +3,7 @@
  * binding identity and the malformed-payload SETTLE (never a retry storm). The DB behaviour is proven by
  * `m6-recertification-signed.live.test.ts`.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
   M6_RECERTIFICATION_SIGNED_CONSUMER,

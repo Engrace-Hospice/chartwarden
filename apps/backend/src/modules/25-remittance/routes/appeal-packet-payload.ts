@@ -3,14 +3,14 @@
 // (tier, claim, denial reason, remittance line, deadline) is read HERE from the appeal case and its denial
 // case under the acting org's RLS - never taken from the request. Only the biller's own narrative and the
 // documents they chose to attach come from the submit input.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type AppealPacketRenderPayload,
   type AppealReconsiderationBlock,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   buildAppealPacketRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { checkQicEvidence } from "../domain";
 import { type AppealSourcePorts, describeEnclosures, loadRemitCopy } from "./appeal-packet-sources";
@@ -71,7 +71,7 @@ export async function loadAppealPacketPayload(
   // packet whose claim cannot be read is refused rather than filed with a reference and no content.
   const claim = await sources.claims().claimCopyForAppeal(appeal.organizationId, appeal.claimId);
   if (!claim) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "APPEAL_CLAIM_UNAVAILABLE",
       "the claim for this appeal cannot be read, so the packet cannot be assembled",
       422,
@@ -95,7 +95,7 @@ export async function loadAppealPacketPayload(
     ? await loadRemitCopy(tx, appeal.organizationId, denial.remittanceLineId)
     : null;
   if (denial.remittanceLineId && !remitCopy) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "APPEAL_REMITTANCE_UNAVAILABLE",
       "the remittance line for this denial cannot be read, so the packet cannot be assembled",
       422,
@@ -152,14 +152,14 @@ async function reconsiderationBlock(
   const given = input.reconsideration ?? {};
   const macName = (given.redeterminationMacName ?? "").trim();
   if (macName === "") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "REDETERMINATION_MAC_REQUIRED",
       "name the MAC that issued the redetermination notice",
       422,
     );
   }
   if (!row.noticeDatedOn) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "REDETERMINATION_NOTICE_DATE_UNKNOWN",
       "this reconsideration has no recorded redetermination notice date, so its request cannot be assembled",
       422,
@@ -175,7 +175,7 @@ async function reconsiderationBlock(
     preclusionAcknowledged: acknowledged,
     redeterminationNoticeDocumentId: noticeDocumentId,
   });
-  if (refusal) throw new WardenXError(refusal, QIC_EVIDENCE_MESSAGES[refusal], 422);
+  if (refusal) throw new ChartWardenError(refusal, QIC_EVIDENCE_MESSAGES[refusal], 422);
   return {
     redeterminationMacName: macName,
     redeterminationNoticeDate: row.noticeDatedOn,

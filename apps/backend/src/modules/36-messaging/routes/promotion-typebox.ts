@@ -8,7 +8,7 @@ import {
   CHART_PROMOTION_STATUSES,
   CHART_PROMOTION_TARGET_KINDS,
   CHART_PROMOTION_TARGET_MODULES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

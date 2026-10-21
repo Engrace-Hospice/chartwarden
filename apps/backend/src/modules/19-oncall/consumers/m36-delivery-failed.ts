@@ -41,7 +41,7 @@ import type {
   ProviderEntityId,
   TriageCallId,
   TriageEscalationTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "../lifecycle/errors";
 import {
   type CoveringShiftCandidate,

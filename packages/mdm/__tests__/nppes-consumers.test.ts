@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T09 M29 NPPES-sync consumer logic (§4.7, §7.11–7.12).
+// @chartwarden/mdm — M40-T09 M29 NPPES-sync consumer logic (§4.7, §7.11–7.12).
 //
 // The §7.11 path: an `m29.nppes.provider_synced` with `changedFields: ['lastName']` applies ONLY
 // the surname (minimum-update), stamps `nppesProvenance`, and emits `m40.canonical_updated`. Also

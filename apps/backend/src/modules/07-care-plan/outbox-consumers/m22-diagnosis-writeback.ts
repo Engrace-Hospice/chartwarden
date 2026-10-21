@@ -20,8 +20,8 @@
 //
 // ONE TRANSACTION: the proposals and the `m7.problem.draft_created_from_extraction` reply commit together.
 // FAIL DIRECTIONS: malformed / cross-tenant payload THROWS (retry → DLQ).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type DocLensDiagnosisOutcome,
   type ExtractionDiagnosisCommitRequestedPayload,
@@ -32,7 +32,7 @@ import {
   diagnosisDedupeKey,
   isSudIcd10Code,
   normalizeIcd10CmShape,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { CarePlanWriteOutboxPort } from "../care-plan-route-service-db";

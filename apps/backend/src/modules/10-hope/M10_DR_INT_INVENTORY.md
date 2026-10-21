@@ -48,7 +48,7 @@ with `lateOverrideReason: "system_outage_bcp"`. 72-hour enforcement is organisat
 
 ### Mobile offline (manifest-exempt — server path only, this task)
 
-`hope_assessment_draft` lives in the shared `@wardenx/mobile-offline` sqlcipher store (SEC-075; AES-256-CBC,
+`hope_assessment_draft` lives in the shared `@chartwarden/mobile-offline` sqlcipher store (SEC-075; AES-256-CBC,
 PBKDF2-SHA256 100k, salt = `org_id || device_id`; evict-PHI-on-logout; no IndexedDB fallback). It is **not**
 in any codePath and is **not** fitness-governed (deferred in Phase 0). M10-T07 builds only the server-side
 submission path; the sync-on-reconnect worker POSTs `synced=0` drafts to
@@ -58,7 +58,7 @@ submission path; the sync-on-reconnect worker POSTs `synced=0` drafts to
 
 | Direction | Counterpart | Mechanism | PHI? |
 |---|---|---|---|
-| **integrate** | **iQIES (CMS, external)** | `@wardenx/iqies-client` adapter (D6) — `submitBatch` / `fetchAcceptanceReport` / `submitCorrection`; the ONLY package allowed to talk to iQIES; per-PE circuit breaker + typed `DegradedError` (§4.10.1) | yes (envelope XML, encrypted at rest in MinIO) |
+| **integrate** | **iQIES (CMS, external)** | `@chartwarden/iqies-client` adapter (D6) — `submitBatch` / `fetchAcceptanceReport` / `submitCorrection`; the ONLY package allowed to talk to iQIES; per-PE circuit breaker + typed `DegradedError` (§4.10.1) | yes (envelope XML, encrypted at rest in MinIO) |
 | publish | M14/M22/M28/M30/M33/M36 | `m10.hope.*` outbox events (§2.4 / events-by-m10.ts) — timepoint signed/expired, J2051 trigger, SFV created/overdue/missed, submission queued/transmitted/accepted/rejected, correction submitted | minimal (ids); submission alerts feed §4.9 M36 |
 | serve | M14 (IDG), M22 (Documents), M30 (HQRP), M32 (AI) | `HopeTimepointProvider` / `HopeJ2051Provider` / `HopeSubmissionProvider` seams (§2 / D10) | yes (ids) |
 | consume | M9 (Assessments) | `LatestAssessmentProvider` seam — PPS/ESAS-r snapshot at HOPE sign (D8); never inline on the capture path (Tier-2 constraint) | yes (ids) |

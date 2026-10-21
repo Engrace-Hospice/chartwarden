@@ -13,9 +13,9 @@ import { type Static, Type } from "@sinclair/typebox";
 //   3. AUDITED: every call writes an org-less platform audit event (who, which filter, how many rows) BEFORE the
 //      response is released, and a failed audit write fails the request — an unaudited cross-tenant read must not
 //      succeed.
-import { type AbacContext, registerPredicateIdempotent, requireAbac } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
-import { UnauthorizedError, ValidationError } from "@wardenx/types";
+import { type AbacContext, registerPredicateIdempotent, requireAbac } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
+import { UnauthorizedError, ValidationError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "./messaging-typebox";

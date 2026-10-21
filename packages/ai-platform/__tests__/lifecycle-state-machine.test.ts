@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AI_CAPABILITY_LIFECYCLE_STATES } from "@wardenx/types";
+import { AI_CAPABILITY_LIFECYCLE_STATES } from "@chartwarden/types";
 import {
   AI_LIFECYCLE_INITIAL_STATE,
   AI_LIFECYCLE_TRANSITIONS,

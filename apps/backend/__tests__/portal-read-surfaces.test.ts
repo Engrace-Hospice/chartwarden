@@ -15,7 +15,7 @@ import type {
   PortalMedicationSummary,
   PortalTriageSummary,
   PortalVisitSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   PORTAL_PATIENT_FACING_DOCUMENT_KINDS,

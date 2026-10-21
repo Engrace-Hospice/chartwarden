@@ -1,5 +1,5 @@
-import { IdgStateError } from "@wardenx/idg";
-import type { IdgMeetingStatus } from "@wardenx/types";
+import { IdgStateError } from "@chartwarden/idg";
+import type { IdgMeetingStatus } from "@chartwarden/types";
 
 /**
  * Child writes are serialized on the parent meeting row by the DB service, then checked here.

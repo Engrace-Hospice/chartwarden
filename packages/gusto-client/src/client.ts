@@ -1,4 +1,4 @@
-// @wardenx/gusto-client — the per-tenant LiveGustoClient SHAPE (mirrors the M30 cahps-vendors `ShpClient`).
+// @chartwarden/gusto-client — the per-tenant LiveGustoClient SHAPE (mirrors the M30 cahps-vendors `ShpClient`).
 //
 // Implements the published {@link GustoClient} contract over the injected raw transport ({@link GustoHttpPort})
 // + token store, with refresh-on-401 (oauth.ts). It performs NO direct network I/O and imports no SDK;

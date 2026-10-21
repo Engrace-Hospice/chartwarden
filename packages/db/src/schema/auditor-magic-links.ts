@@ -1,4 +1,4 @@
-// @wardenx/db — `auditor_magic_link` (M2 Identity, GAP-011). The durable, single-use, time-boxed token an
+// @chartwarden/db — `auditor_magic_link` (M2 Identity, GAP-011). The durable, single-use, time-boxed token an
 // external auditor consumes to start an `auditor`-class session for ONE engagement. Only the sha256 HASH of
 // the token is stored (the `organization_invitation.token_hash` precedent). `engagement_id` is an opaque
 // reference to M3's `auditor_engagement` (no FK: M2 does not depend on M3). Org-scoped, not PHI.

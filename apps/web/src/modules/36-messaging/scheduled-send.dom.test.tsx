@@ -2,7 +2,7 @@
 // every required state (idle, submitting, error, success; loading, empty, error, blocked), cancel and reschedule.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationInbox } from "./conversation-inbox";
 import { ScheduleSendButton } from "./schedule-send-button";

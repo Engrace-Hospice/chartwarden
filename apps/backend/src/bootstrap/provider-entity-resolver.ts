@@ -12,9 +12,9 @@
 // entity if none is active yet (so seed/dev data — a freshly-created 'created' provider — still resolves).
 // Only an org with ZERO provider entities is genuinely unresolvable → fail-closed 503 (the prior deny-stub's
 // contract, unchanged).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */
@@ -36,7 +36,7 @@ export function buildPrimaryProviderEntityResolver(): PrimaryProviderEntityResol
         .orderBy(asc(schema.providerEntities.createdAt));
       const chosen = rows.find((r) => r.status === "active") ?? rows[0];
       if (!chosen) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PROVIDER_ENTITY_UNRESOLVED",
           `no provider entity exists for organization ${organizationId}; cannot stamp provider_entity_id`,
           503,

@@ -24,8 +24,8 @@
 //
 // A `visitId` this org does not recognise (cross-tenant, or a stale redelivery) is a NO-OP, not a
 // dead-letter — the same null-on-miss contract this arc's other M30 upstream consumers already establish.
-import type { DbClient } from "@wardenx/db";
-import { handleEvvVisitVerified } from "@wardenx/quality";
+import type { DbClient } from "@chartwarden/db";
+import { handleEvvVisitVerified } from "@chartwarden/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

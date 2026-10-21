@@ -7,7 +7,7 @@
 -- `transmitted_at`, but that column is NULL while a message sits `queued` — and a partition key that is
 -- part of the PRIMARY KEY must be NOT NULL. So the partition key is `queued_at` (NOT NULL defaultNow,
 -- always present at insert); `transmitted_at` stays a nullable data column. `M29_PARTITIONED_TABLES` in
--- @wardenx/types names `queued_at` to keep the one source of truth honest.
+-- @chartwarden/types names `queued_at` to keep the one source of truth honest.
 --
 -- TENANT-SCOPED (organization_id NOT NULL, canonical app.org_id RLS in 0148). §3.6 denylists payload_cipher
 -- + ack_payload_cipher (kept as *_sha256 digests). FK POLICY: organization_id / feed_id /

@@ -1,4 +1,4 @@
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 
 /** The three existing detail routes currently publish the same OpenAPI summary response. */
 export interface ElectionCertificationResourceDetail {

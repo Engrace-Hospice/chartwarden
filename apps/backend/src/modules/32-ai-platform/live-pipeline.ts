@@ -9,9 +9,9 @@
 // opt-out, token cap (a tenant without `ai_token_budgets` refuses), PHI minimisation (only the DocLens
 // capabilities have a ruleset), routing (only `healthy`/`degraded` registered backends with a bound
 // adapter). Building the pipeline makes a governed call POSSIBLE; it makes none happen.
-import { type ModelBackend, createModelBackendRegistry } from "@wardenx/ai-platform";
-import type { DbClient } from "@wardenx/db";
-import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+import { type ModelBackend, createModelBackendRegistry } from "@chartwarden/ai-platform";
+import type { DbClient } from "@chartwarden/db";
+import type { PlatformBypassAuditor } from "@chartwarden/tenancy";
 import type { M32EventEmitter } from "./events";
 import { createDrizzleAiTenantConsentStore } from "./governance/store-drizzle";
 import { createRuleBasedAiChartContextValidator } from "./invocation/chart-context-rules";

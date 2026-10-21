@@ -8,7 +8,7 @@ import {
   HANDOFF_ITEM_KINDS,
   HANDOFF_ITEM_STATES,
   HANDOFF_STATES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

@@ -10,7 +10,7 @@ import type {
   IsoInstant,
   OrgId,
   SignedUrlDescriptor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { ObjectStorePort } from "./store";
 
 export interface DocumentStorageProviderDeps {

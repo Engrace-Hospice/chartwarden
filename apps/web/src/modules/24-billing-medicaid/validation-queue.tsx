@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the ORG-WIDE VALIDATION WORKLIST (R2, §5.1 #5). The
 // compliance/biller view of every claim sitting in FAILED_VALIDATION or ACK_PARTIAL, grouped by the rule
 // key that is holding it, with a remediation hint per group and a per-claim drill-in.

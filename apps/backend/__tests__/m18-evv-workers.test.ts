@@ -1,9 +1,9 @@
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 // GAP-056 — unit tests for the M18 §4.8 workers' pure pieces: the D9 spoof scorer, the retry backoff, the
 // `retries_exhausted` machine edge, the aggregator-state config parser, the fail-closed ports and the consumers'
 // payload validation. The DB-backed behaviour (sweep, prep, submitter, poller, spoof flag, cross-tenant) is
 // `m18-evv-workers.live.test.ts`.
-import { StateAggregatorRegistry, createDenySandataTransport } from "@wardenx/evv-aggregators";
+import { StateAggregatorRegistry, createDenySandataTransport } from "@chartwarden/evv-aggregators";
 import { describe, expect, it } from "vitest";
 import { transitionAggregatorSubmission } from "../src/modules/18-evv/domain/aggregator-submission";
 import {

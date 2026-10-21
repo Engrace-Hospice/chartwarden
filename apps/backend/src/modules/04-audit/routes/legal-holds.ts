@@ -19,11 +19,11 @@ import {
   encodeCursor,
   isMessagingOnlyCriteria,
   resolveLimit,
-} from "@wardenx/audit";
-import { requirePermission, requireStepUp } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/audit";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -45,7 +45,7 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export type { M4OutboxEmission, M4OutboxPort } from "../messaging-hold-workflow";
@@ -213,7 +213,7 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       const { origin: _origin, ...bodyCriteria } = parsed.criteria;
       const body = { ...parsed, criteria: bodyCriteria };
       if (!hasSelector(body.criteria)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "EMPTY_CRITERIA",
           "legal hold criteria must specify at least one of patientIds, dateRange, resourceKinds, channelIds, or userIds",
           422,

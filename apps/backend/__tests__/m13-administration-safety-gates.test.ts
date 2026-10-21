@@ -1,7 +1,7 @@
 // GAP-020 — the order-context safety gates the production administration write composes from the pure
-// @wardenx/emar deciders. Pure (no database); the live proof is in m13-emar-write.live.test.ts.
-import { evaluateBarcodeScan } from "@wardenx/emar";
-import type { PatientWristbandVerifier, WristbandVerdict } from "@wardenx/types";
+// @chartwarden/emar deciders. Pure (no database); the live proof is in m13-emar-write.live.test.ts.
+import { evaluateBarcodeScan } from "@chartwarden/emar";
+import type { PatientWristbandVerifier, WristbandVerdict } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type EmarAbacResolver,

@@ -1,4 +1,4 @@
-// @wardenx/iqies-client — the per-ProviderEntity circuit breaker (M10-T07, spec §4.10.1 / M10-F17 /
+// @chartwarden/iqies-client — the per-ProviderEntity circuit breaker (M10-T07, spec §4.10.1 / M10-F17 /
 // SD-075). One breaker is instantiated per PE endpoint (one per CCN / per MAC) so a single-PE outage
 // never opens the circuit for other PEs (§4.10 per-PE blast radius). The breaker logic here is PURE and
 // deterministic — `nowInstant` and the rolling-failure window are injected, never read from a clock — so

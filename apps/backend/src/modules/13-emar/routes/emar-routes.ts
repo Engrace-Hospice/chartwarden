@@ -1,5 +1,5 @@
 // apps/backend/src/modules/13-emar/routes/emar-routes.ts — M13-T08 the §4.1 route inventory behind the REAL
-// Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the §4.6 keys M13
+// Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys M13
 // registers into M3's catalog (M13_CONTRIBUTED_PERMISSIONS). Org binding is server-side (`request.context`,
 // never the body). Handlers compose over the injected EmarRouteService (in-memory slice; Drizzle in prod
 // under `withOrgContext` so RLS backstops).
@@ -17,9 +17,9 @@
 // administering clinician) — the service refuses a body patient the order is not for, and consumption on
 // the record route (itself caseload-scoped) re-verifies all three. The controlled-substance witness token
 // rides the `X-Witness-Attestation` header.
-import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import type { ReconciliationDecisionKind } from "@wardenx/types";
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { ReconciliationDecisionKind } from "@chartwarden/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcknowledgeCaregiverRequest,
@@ -51,7 +51,7 @@ import {
 } from "./emar-typebox";
 import type { EmarRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface EmarRouteDeps {

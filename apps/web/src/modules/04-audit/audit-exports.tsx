@@ -10,7 +10,7 @@ import {
   WorkQueueLayout,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/04-audit — Compliance Exports (GAP-003, M4 spec §4.2/§4.3, M04-F04/SEC-052).
 // List + request, over the real routes GET/POST /api/v1/audit/exports via the generated typed
 // client. `downloadUrl` never appears (see apps/backend/.../routes/audit-exports.ts's file header

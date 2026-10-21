@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — §7.1 W1 the DocLens extraction PIPELINE as pure domain logic.
+// @chartwarden/intake-extraction — §7.1 W1 the DocLens extraction PIPELINE as pure domain logic.
 //
 // The canonical "happy path" (D4, D5): classify pages → extract candidate fields → flag discrepancies →
 // build the review session → record per-field decisions → emit chart-writeback intents with provenance.
@@ -16,7 +16,7 @@ import type {
   ExtractionDecisionKind,
   ExtractionDiscrepancyKind,
   ExtractionJobStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   ClassifiedPageResult,
   DocLensCapabilityPort,

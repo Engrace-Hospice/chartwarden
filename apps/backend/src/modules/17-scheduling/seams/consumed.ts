@@ -18,7 +18,7 @@ import type {
   MileagePayrollReader,
   SupervisoryCadenceReader,
   VolunteerComplianceProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /** M8 (Wave E) — authoritative per-clinician mileage; M17's route-actuals reconciliation (D10) reads it. */

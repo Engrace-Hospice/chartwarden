@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — §3.1 the 11 v1 DocLens document types as pure data.
+// @chartwarden/intake-extraction — §3.1 the 11 v1 DocLens document types as pure data.
 //
 // T01 ships the per-type DESCRIPTOR (document type, whether it carries high-risk fields, the writeback
 // target module). The full per-field TypeBox schemas + LangExtract prompt templates + post-processing
@@ -31,7 +31,7 @@ export const INTAKE_DOCUMENT_TYPES = [
  * into and whether the type carries high-risk fields (→ vision verifier + per-field-only review). */
 // F-236 (ADR-0048) — the v1 field sets. The RISK TIER is the registry's, never the model's: a candidate is
 // stored with the tier of the field it matched here. Writeback is a separate, narrower decision
-// (`DOCLENS_M5_WRITEBACK_FIELDS` in @wardenx/types — low-risk contacts only; A1: no medications).
+// (`DOCLENS_M5_WRITEBACK_FIELDS` in @chartwarden/types — low-risk contacts only; A1: no medications).
 const contact = (fieldPath: string, description: string): ExtractionFieldDescriptor => ({
   fieldPath,
   riskLevel: "low",

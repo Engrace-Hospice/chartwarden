@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_escalation` (M19 §3.3 / §2.2.4). D7: the escalation ladder's row. Three of the
+// @chartwarden/db — `triage_escalation` (M19 §3.3 / §2.2.4). D7: the escalation ladder's row. Three of the
 // four trigger kinds are written by the SERVER, not by a human — `red_flag_question` (D5),
 // `mandatory_protocol` (the four platform-locked protocols) and `sla_breach` (the §4.8 callback detector)
 // — which is why a tenant cannot configure any of them away.

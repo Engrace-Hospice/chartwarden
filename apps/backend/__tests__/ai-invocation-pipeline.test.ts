@@ -15,9 +15,9 @@ import {
   createAnthropicModelBackend,
   createEmptyModelBackendRegistry,
   createModelBackendRegistry,
-} from "@wardenx/ai-platform";
-import type { AnthropicDispatch, ModelBackend } from "@wardenx/ai-platform";
-import type { AiConsumerContextRef } from "@wardenx/types";
+} from "@chartwarden/ai-platform";
+import type { AnthropicDispatch, ModelBackend } from "@chartwarden/ai-platform";
+import type { AiConsumerContextRef } from "@chartwarden/types";
 import { VENDOR_ADAPTERS } from "../../../architecture/module-manifest";
 
 import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
@@ -785,7 +785,7 @@ describe("the Anthropic adapter (D19 / §8.4)", () => {
   it("the vendor-adapter mandate points at this package — and the SDK is installed ONLY here (F-236)", () => {
     expect(VENDOR_ADAPTERS["@anthropic-ai/sdk"]).toBe("packages/ai-platform");
     // F-236 (ADR-0048) bound the real transport (`backends/anthropic-sdk.ts`), so the confinement rule is
-    // no longer vacuous: the SDK is a dependency of `@wardenx/ai-platform` and of nothing else — not the
+    // no longer vacuous: the SDK is a dependency of `@chartwarden/ai-platform` and of nothing else — not the
     // root, not the backend app. dependency-cruiser enforces the import side.
     const root = JSON.parse(
       readFileSync(join(import.meta.dirname, "../../../package.json"), "utf8"),

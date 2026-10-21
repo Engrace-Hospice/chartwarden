@@ -1,7 +1,7 @@
-// @wardenx/cost-report — M27 pre-submission validation framework barrel (§1.1, architecture §11.B,
+// @chartwarden/cost-report — M27 pre-submission validation framework barrel (§1.1, architecture §11.B,
 // D9/D16/D20/D21). Re-exports the pure rule model, the 28 platform-default rules, the NGS-J6 additive MAC
 // profile, the rule engine, and the D20 auto-suggestion stub. PURE DOMAIN throughout — no Fastify, no
-// Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`; no PHI (D18).
+// Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`; no PHI (D18).
 
 // The rule model: RuleDef / RuleResult / ValidationContext + the pure result constructors.
 export * from "./types";

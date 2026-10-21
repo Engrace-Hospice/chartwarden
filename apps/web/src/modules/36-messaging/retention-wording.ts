@@ -1,6 +1,6 @@
 // M36 WP 5.6 (ADR-0086, PROPOSED) - every word the retention and legal-hold screen shows. PROVISIONAL pending compliance sign-off. The page shows
 // ids, counts and dates only: never message text. Hold names and reasons are free text written by staff and are rendered as text, never as markup.
-import type { MessageLegalHoldDto, MessageRetentionClass } from "@wardenx/types";
+import type { MessageLegalHoldDto, MessageRetentionClass } from "@chartwarden/types";
 
 export const RETENTION_TITLE = "Retention and legal holds";
 export const RETENTION_BREADCRUMB = "Admin / Messaging";

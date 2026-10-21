@@ -1,4 +1,4 @@
-// @wardenx/db — `terminology_update_log` (M38 Terminology §3.6). Append-only ledger of
+// @chartwarden/db — `terminology_update_log` (M38 Terminology §3.6). Append-only ledger of
 // every terminology change (version load, deprecation, expansion rebuild, embedding,
 // tenant-extension add/remove) with concept counts and a summary blob. Kept beyond the M4
 // audit retention class — it is the operational record of what the loader did. Platform-

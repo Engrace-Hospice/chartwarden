@@ -5,7 +5,7 @@
 // THEMSELF in; a coordinator picks the member and must tick an explicit attestation to record a discipline the member
 // does not hold. Assertions are on the RECORDED POST BODY (the server re-validates; a re-wired control would still render).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AttendanceModal } from "./idg-meeting-modals";
 

@@ -1,10 +1,10 @@
-// ADR-0082 slice S1 - migration 1132, the Drizzle schema, the manifest and the @wardenx/types constants agree. The structural promises
+// ADR-0082 slice S1 - migration 1132, the Drizzle schema, the manifest and the @chartwarden/types constants agree. The structural promises
 // (FORCEd org RLS, UNIQUE message, the once-only update guard, no M19 FK, index-covered FKs) are asserted on the SQL text; the live
 // suite proves the same rules against a real database as wardenx_app.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   ACK_REQUESTS_FLAG_KEY,
   AFTERHOURS_TRIAGE_FLAG_KEY,
@@ -12,7 +12,7 @@ import {
   AFTERHOURS_TRIAGE_REQUIRED_FLAG_KEYS,
   ROLE_SEND_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

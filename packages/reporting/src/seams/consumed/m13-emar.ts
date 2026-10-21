@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M13 (eMAR & Med Administration). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M13 (eMAR & Med Administration). PRESENT producer (§4.4).
 //
 // M33 reads administration + reconciliation aggregates. Bound to the live M13
 // `MedicationAdministrationProvider` / `ReconciliationProvider` via `getSeam` at boot (P2C). Aggregate

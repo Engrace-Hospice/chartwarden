@@ -3,13 +3,13 @@
 // names, priority and concurrency are the §4.4.1 catalog's (`MESSAGING_QUEUE_PARAMETERS`); the tick body is
 // `./delivery-sweep.ts`. Each queue carries ONE repeatable "tick" job on its channel's cadence
 // (`DELIVERY_SWEEP_INTERVAL_MS` — voice/push every 10-15 s, because a Tier-1 page that waits a minute is not a
-// page), and the per-row retry budget + backoff come from the SAME catalog row (see `@wardenx/messaging` retry).
+// page), and the per-row retry budget + backoff come from the SAME catalog row (see `@chartwarden/messaging` retry).
 import {
   DELIVERY_SWEEP_INTERVAL_MS,
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
   type OutOfBandTransportChannel,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type DeliverySweepDeps, runDeliverySweep } from "./delivery-sweep";
 

@@ -1,4 +1,4 @@
-// @wardenx/mdm — Master Data Management (Module 40).
+// @chartwarden/mdm — Master Data Management (Module 40).
 //
 // Public surface of the package. M40-T01 ships the §3.2 enum mirror and the §2.3
 // canonical-vs-overlay dividing line — the shared kind/enum types every later task builds on

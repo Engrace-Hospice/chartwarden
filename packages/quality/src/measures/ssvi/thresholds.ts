@@ -1,4 +1,4 @@
-// @wardenx/quality — Service and Spending Variation Index (SSVI) per-FY thresholds. Pure data. No IO.
+// @chartwarden/quality — Service and Spending Variation Index (SSVI) per-FY thresholds. Pure data. No IO.
 //
 // The SSVI is CMS's claims-only program-integrity scoring tool, introduced in the FY2027 hospice final rule
 // (CMS-1851-F, 91 FR 49118, §III.B.2, Table 9). Nine metrics: eight utilization metrics worth 0 or 1 point,

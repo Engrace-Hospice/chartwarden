@@ -628,7 +628,7 @@ import { patient } from '../patient'
 import { admission } from '../admission'
 import type {
   RequiredQuorum, PacketSnapshot, DisciplineKey, DisciplineViewBlock, IdgDecisionPayload,
-} from '@wardenx/types/idg'
+} from '@chartwarden/types/idg'
 
 export const idgRecurringPolicy = pgTable('idg_recurring_policy', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1138,20 +1138,20 @@ export interface IdgScheduleProvider {
 
 ```ts
 // apps/backend/src/modules/14-idg/boot.ts (consumed seams)
-import type { CaseloadProvider } from '@wardenx/identity/seams'           // M5/M17
-import type { PatientReader } from '@wardenx/patient/seams'               // M5
-import type { AdmissionReader } from '@wardenx/admission/seams'           // M6
-import type { CarePlanReader } from '@wardenx/care-plan/seams'             // M7
-import type { SignedEncountersReader } from '@wardenx/encounter/seams'    // M8
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@wardenx/assessments/seams'  // M9
-import type { HopeTimepointProvider, HopeJ2051Provider } from '@wardenx/hope/seams'  // M10
-import type { OrderProvider } from '@wardenx/orders/seams'                // M11
-import type { MedicationOrderProvider } from '@wardenx/dosespot/seams'    // M12
-import type { AlertEmitter } from '@wardenx/messaging/seams'              // M36
-import type { ConsentEvaluator } from '@wardenx/consent/seams'             // M39
-import type { TerminologyProvider } from '@wardenx/terminology/seams'     // M38
-import type { ExternalPhysicianReader, MdmEntityProvider } from '@wardenx/mdm/seams'  // M40
-import type { NarrativeEnhancementProvider } from '@wardenx/ai-platform/seams'  // M32
+import type { CaseloadProvider } from '@chartwarden/identity/seams'           // M5/M17
+import type { PatientReader } from '@chartwarden/patient/seams'               // M5
+import type { AdmissionReader } from '@chartwarden/admission/seams'           // M6
+import type { CarePlanReader } from '@chartwarden/care-plan/seams'             // M7
+import type { SignedEncountersReader } from '@chartwarden/encounter/seams'    // M8
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from '@chartwarden/assessments/seams'  // M9
+import type { HopeTimepointProvider, HopeJ2051Provider } from '@chartwarden/hope/seams'  // M10
+import type { OrderProvider } from '@chartwarden/orders/seams'                // M11
+import type { MedicationOrderProvider } from '@chartwarden/dosespot/seams'    // M12
+import type { AlertEmitter } from '@chartwarden/messaging/seams'              // M36
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'             // M39
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'     // M38
+import type { ExternalPhysicianReader, MdmEntityProvider } from '@chartwarden/mdm/seams'  // M40
+import type { NarrativeEnhancementProvider } from '@chartwarden/ai-platform/seams'  // M32
 
 export function initM14(reg: SeamRegistry): void {
   // All upstream seams required — every dependency is locked before M14 ships per phase plan
@@ -1912,7 +1912,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    `bodyText` is (`bodyWithheld`), and frozen into `discipline_note_snapshot` with the same elision as the body, so the
    `m14.minutes.signed` / `.amended` / `addendum_recorded` render payloads carry it consistently.
    **Addendum window (window B).** An addendum is accepted only while ALL hold: (1) the meeting is `adjourned`;
-   (2) within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@wardenx/idg` policy) of the meeting's `actual_end`
+   (2) within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@chartwarden/idg` policy) of the meeting's `actual_end`
    (`ADDENDUM_WINDOW_CLOSED` beyond it); (3) for a PATIENT-scoped note, no NEWER ADJOURNED IDG of the org (another
    `idg_meeting` with `status = 'adjourned'` and a later `actual_end`) included the patient, judged by that meeting's
    stored `idg_patient_packet` rows or patient-scoped agenda items (the same two signals as D9 inclusion) —

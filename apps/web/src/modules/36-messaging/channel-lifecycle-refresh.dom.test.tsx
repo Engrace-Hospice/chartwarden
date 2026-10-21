@@ -1,7 +1,7 @@
 // M36 WP 2.11 — archiving while a background channel poll is in flight must not leave the stale list on screen.
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

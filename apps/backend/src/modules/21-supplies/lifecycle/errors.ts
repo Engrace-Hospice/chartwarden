@@ -1,7 +1,7 @@
 // apps/backend/src/modules/21-supplies/lifecycle/errors.ts — M21-T03 (§2.2–§2.7, §2.10).
 //
 // Every guard failure in the M21 supplies domain raises a `SupplyStateError` carrying the machine-readable
-// code the §7 workflow tables and the §4.2 route error blocks name. The error extends the M1 `WardenXError`
+// code the §7 workflow tables and the §4.2 route error blocks name. The error extends the M1 `ChartWardenError`
 // envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify error handler renders
 // the exact code + status with no cross-module import edge. Mirrors the M7 `CarePlanStateError` /
 // M15 `DisciplinePlanStateError` / M16 `BereavementStateError` precedent.
@@ -9,7 +9,7 @@
 // CASING NOTE: §7's edge-case tables spell M21's codes `M21_*` (unlike M16's bare SCREAMING_SNAKE). The six
 // codes the spec writes VERBATIM keep that prefix because the wire code is the contract; the codes the spec
 // only describes in prose follow the same shape so one module speaks one dialect.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7 / §2.10 machine-readable failure-code catalog → HTTP status. */
 export const M21_ERROR_STATUS = {
@@ -153,7 +153,7 @@ export type M21ErrorCode = keyof typeof M21_ERROR_STATUS;
  * exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2 every guard failure
  * surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class SupplyStateError extends WardenXError {
+export class SupplyStateError extends ChartWardenError {
   constructor(code: M21ErrorCode, message: string) {
     super(code, message, M21_ERROR_STATUS[code]);
     this.name = "SupplyStateError";

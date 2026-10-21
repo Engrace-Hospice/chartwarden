@@ -13,7 +13,7 @@ import {
   t,
   useApiClient,
   useDisclosureDismiss,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 
 // apps/web/src/modules/05-patient — the patient chart's header + Overview tab (2026-09-25 redesign,
 

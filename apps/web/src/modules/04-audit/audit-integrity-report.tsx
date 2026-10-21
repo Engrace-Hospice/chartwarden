@@ -7,7 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/04-audit — Audit Integrity Report (GAP-003, M4 spec §4.2/§10.4).
 // Single-panel view over the real route GET /api/v1/audit/integrity/report via the generated typed
 // client. `backupSampling`/`sealChain` are honestly omitted server-side until their jobs are wired

@@ -1,4 +1,4 @@
-// @wardenx/types — Typed alert-payload catalog contracts (M36 Secure Messaging §3.11/§3.12; M36-T05).
+// @chartwarden/types — Typed alert-payload catalog contracts (M36 Secure Messaging §3.11/§3.12; M36-T05).
 //
 // The typed alert-payload registry brings M36's alert catalog inline with M1's
 // outbox-event-catalog (./outbox.ts) and M4's audit-action-catalog discipline: a per-module
@@ -62,7 +62,7 @@ export type ModuleAlertContribution = readonly AlertPayloadEntry[];
 
 /**
  * Persisted projection of a catalog entry into the `alert_payload_catalog` row shape (§3.11.2).
- * Structural (no `@wardenx/db` import) so the leaf stays a leaf — M36's boot slice feeds these
+ * Structural (no `@chartwarden/db` import) so the leaf stays a leaf — M36's boot slice feeds these
  * rows to an injected Drizzle UPSERTer, exactly as M1 does for `outbox_event_catalog`.
  */
 export interface AlertPayloadCatalogRow {

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const thrown = vi.hoisted(() => ({ makeError: null as null | (() => Error) }));
 
-vi.mock("@wardenx/x12-837-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/x12-837-client")>();
+vi.mock("@chartwarden/x12-837-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/x12-837-client")>();
   return {
     ...actual,
     build837iClaim: () => "ISA~",

@@ -4,7 +4,7 @@
 // server-side (the M2-assembled `request.context`, NEVER the body/query) — the single home for that
 // extraction (the M28/M32/M20 precedent). No handler reads an org id, an acting membership id or a step-up
 // flag off the wire.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 
 /** The org-scoped read actor for M29's surfaces. */

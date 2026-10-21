@@ -1,4 +1,4 @@
-// @wardenx/hope — the CMS HOPE pre-submission validator (M10-T04; §2.3, §3, §86). PURE, IO-free,
+// @chartwarden/hope — the CMS HOPE pre-submission validator (M10-T04; §2.3, §3, §86). PURE, IO-free,
 // deterministic — the §9.1 coverage target. Runs the CMS HOPE submission rule set over ONE signed
 // `hope_assessment` and returns a `hope_validation_finding` descriptor per violation; it never throws and
 // never mutates. The recording service (M10-T06) calls this on every signed assessment + on any tenant
@@ -8,9 +8,9 @@
 // pre-submission rules ACCUMULATE findings so the whole assessment is reported at once.
 //
 // Every fact is injected (the value-set oracle pre-resolved from M38 as of target_date; the sibling
-// timepoint dates; the iQIES envelope identifiers) — the engine imports only `@wardenx/types` and this
+// timepoint dates; the iQIES envelope identifiers) — the engine imports only `@chartwarden/types` and this
 // package's own pure helpers, so there is no cross-module schema edge.
-import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@wardenx/types";
+import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@chartwarden/types";
 import { missingRequiredSections } from "../sections/required-items";
 import { HOPE_VALIDATION_RULES, type HopeValidationFindingDescriptor, finding } from "./findings";
 import type { HopeValueSetOracle } from "./value-set-oracle";

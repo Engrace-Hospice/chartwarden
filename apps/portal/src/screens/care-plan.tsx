@@ -1,4 +1,4 @@
-import { Button, Glyph, useApiClient } from "@wardenx/ui";
+import { Button, Glyph, useApiClient } from "@chartwarden/ui";
 // M31 portal care-plan summary: M7 owns the care plan and the backend exposes only a
 // patient-authorized, PHI-minimised projection. This screen never infers goal completion,
 // care status or the contents of server-redacted details.

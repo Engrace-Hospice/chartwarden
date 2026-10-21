@@ -1,4 +1,4 @@
-// @wardenx/reporting — the tile-read TypeBox schemas (M33 §4.2).
+// @chartwarden/reporting — the tile-read TypeBox schemas (M33 §4.2).
 //
 // `TileReadQuery` is the per-request tile filter + scope-override input; `TileReadResponse` is the
 // aggregate-only shape every M33 tile route returns (D6 — `result` carries aggregate rows, NEVER

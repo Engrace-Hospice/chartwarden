@@ -3,8 +3,8 @@
 // FeatureFlagReaderPort (tenant row wins; absent = off) AND requires `messaging.tasks`, cached a few seconds per org. Built
 // from ports so the routes (S2) share one service. Nothing here reads an order or prescribing permission: eligibility is
 // the WP 3.5 recipient rule (messaging read/send, patient read, Part 2 gate).
-import type { MessagingRouteService } from "@wardenx/messaging";
-import { MEDICATION_QUESTION_FLAG_KEY } from "@wardenx/types";
+import type { MessagingRouteService } from "@chartwarden/messaging";
+import { MEDICATION_QUESTION_FLAG_KEY } from "@chartwarden/types";
 import { recipientEligible } from "../handoffs/handoff-eligibility";
 import type { EligibilityPorts } from "../handoffs/handoff-eligibility";
 import type { HintOutboxPort } from "../message-hint-events";

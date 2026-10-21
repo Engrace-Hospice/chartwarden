@@ -23,15 +23,15 @@
 // matters for the same reason it did there: M20's `*_membership_id` columns hold MEMBERSHIP ids and M3's
 // grant store is keyed on USER id, so a direct lookup would return zero grants — denying every legitimate
 // supervisor for the wrong reason.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   MembershipId,
   OrgId,
   ProviderEntityId,
   SafetySosLifecycleState,
   SafetySubscriptionScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, isNull, or } from "drizzle-orm";
 import type {
   SafetyAbacResolver,

@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 1: Providing no Continuous Home Care and no General Inpatient Care (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 1: Providing no Continuous Home Care and no General Inpatient Care (CMS-1851-F Table 9). Pure. No IO.
 //
 // The point is earned when the hospice provided NO CHC and NO GIP day in the period. Rate = election periods with
 // at least one CHC/GIP day ÷ election periods; a rate of 0 earns the point (rule `lte 0`). Source: M6

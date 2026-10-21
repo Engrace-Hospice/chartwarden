@@ -1,4 +1,4 @@
-// @wardenx/db — `promo_code` (M35 §3.3). Mirror of a Stripe coupon + promotion code. PLATFORM-SHARED
+// @chartwarden/db — `promo_code` (M35 §3.3). Mirror of a Stripe coupon + promotion code. PLATFORM-SHARED
 // (no organization_id) — read-all, platform-only write. Listed in check-tenancy's NON_ORG_SCOPED set.
 import {
   bigint,

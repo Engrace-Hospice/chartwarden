@@ -36,7 +36,7 @@ describe("the escalation timer stays inside its lane", () => {
     expect(src).not.toMatch(/status:\s*"failed_unreachable"|toStatus:\s*"failed_unreachable"/);
     expect(src).not.toMatch(/eventType:\s*"(delivery_failed|opened|delivered)"/);
     // No M19 / on-call import: the router is reached through the seam only.
-    expect(src).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/(19|11|12|13)-/);
+    expect(src).not.toMatch(/from "@chartwarden\/(oncall|triage)|modules\/(19|11|12|13)-/);
     // No in-process timers or polling: the clock is injected and the wake-ups are BullMQ's.
     expect(src).not.toMatch(/\bsetTimeout\b|\bsetInterval\b/);
     // Never re-evaluates who owns a request by a clock later: no schedule or shift logic here (ADR-0057).

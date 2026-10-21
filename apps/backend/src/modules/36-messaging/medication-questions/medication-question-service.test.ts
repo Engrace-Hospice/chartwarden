@@ -1,8 +1,8 @@
 // WP 3.10 - the medication-question service over an in-memory task store and a fake send core with the real contract:
 // the hook runs inside the "transaction" and not on a replay, and a hook throw removes the message again. Proves routing,
 // the no-write-on-refusal rule, idempotent replay, unrouted handling and that the question text is never read.
-import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@wardenx/messaging";
-import { WardenXError } from "@wardenx/types";
+import type { MessagingRouteService, ValidatedClinicalLinkInput } from "@chartwarden/messaging";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createMemoryTaskStore } from "../tasks/task-store-memory";
 import {
@@ -105,7 +105,7 @@ const code = async (p: Promise<unknown>): Promise<string> => {
   try {
     await p;
   } catch (e) {
-    if (e instanceof WardenXError) return `${e.statusCode}:${e.code}`;
+    if (e instanceof ChartWardenError) return `${e.statusCode}:${e.code}`;
     throw e;
   }
   return "no-error";
@@ -224,7 +224,7 @@ describe("ask: refusals write nothing", () => {
   it("a link the caller may not make fails before anything is written", async () => {
     const s = setup();
     const refuse: ValidateLinks = async () => {
-      throw new WardenXError("CLINICAL_LINK_NOT_AVAILABLE", "not available", 422);
+      throw new ChartWardenError("CLINICAL_LINK_NOT_AVAILABLE", "not available", 422);
     };
     expect(await code(s.service.ask(actor, ask({ medicationId: MED }), refuse))).toBe(
       "422:CLINICAL_LINK_NOT_AVAILABLE",

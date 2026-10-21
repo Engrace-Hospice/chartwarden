@@ -6,8 +6,8 @@
 // returned (a portal account disclosed the chart to a family member / DPOA); staff reads of the same chart are
 // M4's read-audit trail, not this ledger. The columns projected are ids, the access kind and the instant -
 // never `purpose` / `recipient_class` (audit-denylisted, section 3.6).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte, isNotNull, lte } from "drizzle-orm";
 
 /** A single accounting query never returns more than this many lines; the window narrows the rest. */

@@ -1,4 +1,4 @@
-// @wardenx/db — `cahps_result_summary` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cahps_result_summary` (M30 §3.3; non-partitioned; retention class `compliance`).
 // The ingested CAHPS Hospice results for a reporting period: per-question top-box percentages, the six
 // CMS composites, response counts, and the dedup hash of the vendor payload. ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS). provider_entity_id is a logical FK to M40. No

@@ -36,8 +36,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensurePolicyVersionForConsumer } from "../src/modules/20-field-safety/consumers/schedule-store";

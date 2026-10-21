@@ -1,14 +1,14 @@
-// @wardenx/messaging — Alert Payload Catalog: Foundation Registry + boot validation
+// @chartwarden/messaging — Alert Payload Catalog: Foundation Registry + boot validation
 // (M36-T05; spec §3.11–3.12, M36-F01).
 //
 // The typed alert-payload registry mirrors M1's outbox-event catalog and M4's audit-action
-// catalog: a per-module CONTRIBUTION (`ModuleAlertContribution`, @wardenx/types) is aggregated
+// catalog: a per-module CONTRIBUTION (`ModuleAlertContribution`, @chartwarden/types) is aggregated
 // into one validated catalog, the boot UPSERT projects it into `alert_payload_catalog` (§3.11.2),
 // and dispatch (§4.6.1) validates every emit against the registered TypeBox `payloadSchema`.
 //
 // M36 is FOUNDATION-TIER (M36-F01): its `dependsOn` is `[1,2,3,4]` and it must NOT import any
 // later producer module. So this aggregator NEVER hardcodes a producer's slice (unlike M4's
-// action catalog, whose slices live inside @wardenx/audit). Instead each later module REGISTERS
+// action catalog, whose slices live inside @chartwarden/audit). Instead each later module REGISTERS
 // its contribution at ITS OWN boot via {@link createAlertPayloadRegistry} — no import edge. M36
 // ships the infra + the boot gate; it validates whatever was registered without knowing the
 // producers statically. The build is FAIL-CLOSED: a duplicate `payloadType` or a namespace
@@ -18,8 +18,8 @@ import type {
   AlertPayloadEntry,
   AlertPayloadSeverity,
   ModuleAlertContribution,
-} from "@wardenx/types";
-import { ALERT_PAYLOAD_SEVERITY_ORDER } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ALERT_PAYLOAD_SEVERITY_ORDER } from "@chartwarden/types";
 
 const VALID_SEVERITIES = new Set<AlertPayloadSeverity>(ALERT_PAYLOAD_SEVERITY_ORDER);
 const PAYLOAD_PREFIX = /^(m\d+)\./; // mN.<resource>.<verb> — the owner the prefix implies

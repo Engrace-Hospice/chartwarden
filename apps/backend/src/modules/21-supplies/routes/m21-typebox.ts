@@ -7,13 +7,13 @@
 // `m21-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one — the M21-T01 gotcha, where even the WORD "alerts" in a comment tripped `arch:tables`.
 //
-// The string-literal unions MIRROR the frozen `@wardenx/db` pgEnum value lists (packages/db/src/enums.ts,
+// The string-literal unions MIRROR the frozen `@chartwarden/db` pgEnum value lists (packages/db/src/enums.ts,
 // M21-T01) — the schema wins on conflict. Org / actor / membership binding is server-side
 // (`request.context`): no body or query carries an org id or an acting membership id, which is the DEA
 // chain-of-custody control at the boundary (see routes/actor.ts).
 //
 // THE PER-KIND `data` PAYLOAD IS NOT RE-DECLARED HERE. §4.2.1 sketches a `kindPayload` union inline, but
-// `@wardenx/supplies` already owns the D1 per-kind TypeBox (`SUPPLY_REQUEST_DATA_SCHEMAS`) plus the §2.10
+// `@chartwarden/supplies` already owns the D1 per-kind TypeBox (`SUPPLY_REQUEST_DATA_SCHEMAS`) plus the §2.10
 // cross-field rules TypeBox cannot state. Restating the union in this file would be a second, drifting
 // copy of the contract the write path validates against, so the body types `kindPayload` as a discriminated
 // shell (`{ kind }` + passthrough) and the WRITE service runs `validateSupplyRequestData` — one validator,
@@ -30,7 +30,7 @@ import {
   HospiceCoverageSchema,
   SetHospiceCoverageBodySchema,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type {
   ComfortKitReturnDetail as ServiceComfortKitReturnDetail,
   ComfortKitReturnListItem as ServiceComfortKitReturnListItem,
@@ -428,7 +428,7 @@ export const UpsertTenantSupplyItemBody = Type.Object({
 
 /** One template medication line. `expectedQuantity` is a decimal string; `replenishmentThresholdPct` is a
  *  fraction in [0,1] and a tenant may only RAISE it above the floor (a higher threshold replenishes
- *  sooner = tighter). Enforced by `validateTenantTemplate` in `@wardenx/supplies`. */
+ *  sooner = tighter). Enforced by `validateTenantTemplate` in `@chartwarden/supplies`. */
 export const TemplateMedicationInput = Type.Object({
   rxnorm: Type.String({ minLength: 1, maxLength: 32 }),
   ndc: Type.Optional(Type.String({ maxLength: 32 })),
@@ -627,7 +627,7 @@ import type {
   ComfortKitDispatchedContentPayload as TComfortKitDispatchedContentPayload,
   DeaPerpetualLogEntry as TDeaPerpetualLogEntry,
   RoutingRuleResolved as TRoutingRuleResolved,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
 const Str = Type.String();

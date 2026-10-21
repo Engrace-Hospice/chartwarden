@@ -16,9 +16,9 @@
 // an `UPDATE … WHERE post_action = 'flagged_review'` guard so a concurrent override cannot double-apply.
 // Both commands are org-scoped by RLS and provider-entity-scoped through `actor.providerEntityScope`
 // (out-of-scope = 404).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   type PostingOutcome,
@@ -207,7 +207,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
         const decision = decideManualMatch(line, claim.id, outcome);
         if (decision.kind === "noop") return { matchState: decision.matchState };
         if (decision.kind === "conflict") {
-          throw new WardenXError("INVALID_STATE", decision.reason, 409);
+          throw new ChartWardenError("INVALID_STATE", decision.reason, 409);
         }
         const updated = await tx
           .update(RL)
@@ -228,7 +228,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
           )
           .returning({ id: RL.id });
         if (!updated[0]) {
-          throw new WardenXError("INVALID_STATE", "the line was matched concurrently", 409);
+          throw new ChartWardenError("INVALID_STATE", "the line was matched concurrently", 409);
         }
         await auditPort.record(tx, actor, {
           eventType: "m25.remittance.manual_match",
@@ -310,7 +310,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
         );
         if (decision.kind === "noop") return { postAction: input.newPostAction }; // noop ⇒ already that action
         if (decision.kind === "conflict") {
-          throw new WardenXError("INVALID_STATE", decision.reason, 409);
+          throw new ChartWardenError("INVALID_STATE", decision.reason, 409);
         }
         const updated = await tx
           .update(ADJ)
@@ -324,7 +324,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
           )
           .returning({ id: ADJ.id });
         if (!updated[0]) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_STATE",
             "the adjustment was overridden concurrently",
             409,

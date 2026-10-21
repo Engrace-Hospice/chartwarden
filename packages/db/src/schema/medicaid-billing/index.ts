@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid schema barrel (§3.3, 14 owned tables). Re-exports the shared enums
+// @chartwarden/db — M24 Billing — Medicaid schema barrel (§3.3, 14 owned tables). Re-exports the shared enums
 // plus every table module; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010 / ARCH-011, §3.3): Medicaid billing is per-CCN (ProviderEntity). The tenancy spine

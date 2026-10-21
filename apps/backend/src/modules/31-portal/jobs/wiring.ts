@@ -2,9 +2,9 @@
 // M24/M25/M27/M29/M30/M33/M34 `wireM<N>Tenancy` precedent.
 //
 // The §4.8 `m31.post-discharge-grace.cron` fans out over every active org. That fan-out's active-org source
-// enters `withPlatformContext` under this job id; the id must be on the `@wardenx/tenancy`
+// enters `withPlatformContext` under this job id; the id must be on the `@chartwarden/tenancy`
 // `PLATFORM_CONTEXT_ALLOWLIST` (starts empty → fail-closed) for the enumerator to be admitted.
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 
 /** The platform job id M31's crons enter `withPlatformContext` under to enumerate active orgs. */
 export const M31_PLATFORM_JOB_ID = "m31.platform_crons";

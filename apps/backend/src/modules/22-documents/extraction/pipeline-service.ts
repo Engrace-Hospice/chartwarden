@@ -21,8 +21,8 @@ import {
   buildProvenance,
   planCommitIntents,
   runExtractionPipeline,
-} from "@wardenx/intake-extraction";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/intake-extraction";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   type DocumentFeatureFlagReader,
   EXTRACTION_DISABLED_CODE,
@@ -43,8 +43,8 @@ export interface CommitPlan {
 }
 
 /** Thrown (→ 503 EXTRACTION_DISABLED, `Retry-After: 0`) whenever DocLens is OFF — the Phase-1 default. */
-export function extractionDisabled(): WardenXError {
-  return new WardenXError(
+export function extractionDisabled(): ChartWardenError {
+  return new ChartWardenError(
     EXTRACTION_DISABLED_CODE,
     "WardenLens extraction is not enabled for this tenant (the 'documents.doclens' capability is OFF; Phase 1)",
     503,

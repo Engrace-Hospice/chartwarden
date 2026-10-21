@@ -3,7 +3,7 @@
 // Public surface of the bounded clinical vocabulary: the entry/axis types, the curated corpus + its
 // pinned version, and the pure lookup helpers the HearthNote assembly engine (and M14's IDG aggregator)
 // resolve against. No assembly logic and no IO live here — this is the read-only reference library.
-import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 

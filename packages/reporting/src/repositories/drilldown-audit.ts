@@ -1,11 +1,11 @@
-// @wardenx/reporting · repositories — the drilldown-audit aggregate: `report_drilldown_audit` (the
+// @chartwarden/reporting · repositories — the drilldown-audit aggregate: `report_drilldown_audit` (the
 // INSERT-ONLY trail of drilldown navigations from a tile into an owner-module surface; partitioned
 // monthly by `accessed_at`, composite PK id + accessed_at) (M33 §3.3–§3.4, §3.7). This table is
 // destruction_blocked (retention class `compliance`): there is intentionally NO update / delete here —
 // even with org_admin (§3.5). `query_filters_cipher` is the envelope-encrypted filter context and is
 // DENYLISTED in the M4 write-audit trigger (§3.6). The drilldown emitter writes one row per navigation
 // under `withOrgContext`.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

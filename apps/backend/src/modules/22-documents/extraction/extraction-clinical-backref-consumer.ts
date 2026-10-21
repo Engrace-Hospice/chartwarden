@@ -12,15 +12,15 @@
 // FAIL-CLOSED (the F-235 back-ref's rules): malformed / cross-tenant payload, an unknown review, or a reply
 // whose patient is not the batch's resolved patient THROWS → retry → DLQ. A candidate the reply names that
 // is not one of THIS review's decisions is never stamped (the WHERE ties every stamp to the review).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ClinicalDraftCreatedFromExtractionPayload,
   type DocLensClinicalLineOutcome,
   M5_ALLERGY_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   M12_MEDICATION_HISTORY_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
 

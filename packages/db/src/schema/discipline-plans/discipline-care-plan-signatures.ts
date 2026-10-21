@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_care_plan_signature` (M15 §3.3). One row per signer per version. The CoP
+// @chartwarden/db — `discipline_care_plan_signature` (M15 §3.3). One row per signer per version. The CoP
 // 418.76 CHHA row is an ACKNOWLEDGMENT, not a cosignature (`is_acknowledgment = true`) — the §3.5 D11
 // required-signer set distinguishes the two, and the sign transition is evaluated against the set frozen
 // on the version. Append-only: a re-opened version clears its signatures (§2.2.2).
@@ -33,7 +33,7 @@ export const disciplineCarePlanSignature = pgTable(
       .references(() => disciplineCarePlanVersion.id, { onDelete: "restrict" }),
 
     signerMembershipId: uuid("signer_membership_id").notNull(), // logical FK → M2 membership
-    signerRole: text("signer_role").notNull(), // DisciplineSignerRole (@wardenx/types)
+    signerRole: text("signer_role").notNull(), // DisciplineSignerRole (@chartwarden/types)
     // §3.5 D11: the CHHA Aide-POC row acknowledges, it does not cosign. Spec §3.3 typed this `text`
     // defaulting to 'false' — a slip; the repo convention (and the semantics) is a real boolean.
     isAcknowledgment: boolean("is_acknowledgment").notNull().default(false),

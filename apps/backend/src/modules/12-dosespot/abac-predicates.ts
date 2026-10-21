@@ -27,8 +27,8 @@
 // at the route (it is each clinical key's default ABAC), not by re-registering it. The M11 seam predicate
 // `cosigner_role_match` is owned by M11 (GAP-034 territory). Registration is idempotent: the shared registry is single-owner /
 // no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import type { MedClass } from "@wardenx/types";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import type { MedClass } from "@chartwarden/types";
 import { prescriberEligible, signerEligibleFor } from "./prescriber-eligibility";
 import type { DoseSpotAbacActor, DoseSpotAbacResolver } from "./routes/service";
 

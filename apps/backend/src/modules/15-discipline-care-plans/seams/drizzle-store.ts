@@ -24,8 +24,8 @@
 // the D10 initial clocks and the 418.78 gate derivation run through `../lifecycle` / `../volunteer`
 // (`evaluateInitialClock`, `effectiveStatusFor`) — never re-implemented in SQL — so "day 12 warn / day 14
 // red / day 16 block" has one implementation whichever surface reads it.
-import { type DbClient, schema } from "@wardenx/db";
-import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   ComplianceScope,
   DisciplineAssessmentDto,
@@ -38,7 +38,7 @@ import type {
   IsoInstant,
   MembershipId,
   MswRiskFactor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type AnyColumn,
   and,

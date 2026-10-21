@@ -40,7 +40,7 @@
 //   • THE care_plan_update DECISION beyond `problem_add`. Five of its six mutation ops address M7 plan
 //     elements by uuid (`problemId` / `goalId` / `interventionId`), which needs the plan-element picker
 //     that belongs with the M07 care-plan surface. `problem_add` carries no id and is offered.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 

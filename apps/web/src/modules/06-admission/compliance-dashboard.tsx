@@ -6,7 +6,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Compliance Dashboard (M6 §5.2.11, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md — "Use Dashboard."
 // Org-wide compliance windows (F2F / recert / NOR / late-CTI) read from GET /api/v1/compliance-windows

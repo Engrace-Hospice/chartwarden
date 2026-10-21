@@ -1,6 +1,6 @@
 // M36 WP 2.6 — one row of the Scheduled list: what, where, when (in the viewer's zone), why it was not sent, and the
 // two things the sender can do about it: cancel, or move it to a new time (which also retries a blocked one).
-import { Button, useApiClient } from "@wardenx/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";

@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the `m30.outbreak_detection` PURE processor (§4.8 / §7.8 / D11 WF-18).
+// @chartwarden/quality · workers — the `m30.outbreak_detection` PURE processor (§4.8 / §7.8 / D11 WF-18).
 //
 // The body the `m30.outbreak_detection` worker runs per recorded surveillance event (serialized per org,
 // concurrency 1): re-run the ≥3-events/14d cluster detector over the org's recent events and open an
@@ -11,7 +11,7 @@
 // PURE port-injected orchestration: the detector + normalization are pure (`../infection/*`); the event
 // fetch, the case store, and the outbox emit are injected ports. The outbox emit is the genuinely-missing
 // transactional-outbox infra → LAZY fail-closed at the composition root.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   OUTBREAK_WINDOW_DAYS,
   detectOutbreakClusters,

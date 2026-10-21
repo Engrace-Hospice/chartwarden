@@ -48,9 +48,9 @@
 // triage-escalations.ts`), and the decider's own header names exactly this ("escalate the EXISTING call
 // one rung (`sla_breach` trigger kind, tier 1)"). The recipient is resolved off the SAME covering-shift
 // read the `open_operational_call` path already uses — "tier 1" in this module IS whoever is on-call.
-import { type DbClient, schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OrgId, ProviderEntityId, TriageCallId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OrgId, ProviderEntityId, TriageCallId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildCaseOpenedAlert, buildCoverageGapAlert } from "../alerts";

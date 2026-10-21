@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_phone` (M5 §3.3). E.164-normalized phone numbers. PHI-bearing →
+// @chartwarden/db — `patient_phone` (M5 §3.3). E.164-normalized phone numbers. PHI-bearing →
 // three-column tenancy rule. One primary per patient.
 import { sql } from "drizzle-orm";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";

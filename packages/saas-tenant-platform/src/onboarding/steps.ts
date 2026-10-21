@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · onboarding — the eleven canonical onboarding steps (M34 §2.3 / §3.12).
+// @chartwarden/saas-tenant-platform · onboarding — the eleven canonical onboarding steps (M34 §2.3 / §3.12).
 //
 // The §2.3 machine's STATE FLOOR is data-driven (D3): the authoritative source is the platform-seeded
 // `onboarding_task_template` catalog (§3.12), read at runtime via the OnboardingRepository. This module

@@ -4,11 +4,11 @@
 // imports M17; the registry is the mutable seam). Notification COMPOSITION + recipient resolution is M36's
 // (ADR-0024): M17 emits these deterministic, PHI-free payloads (IDs + structural facts), and M36 resolves
 // recipient PHI per permission scope and never re-templates. The payload TYPES mirror the
-// `SchedulingAlertPayload` discriminated union in @wardenx/types (§4.9). The platform-floor severity/cadence
+// `SchedulingAlertPayload` discriminated union in @chartwarden/types (§4.9). The platform-floor severity/cadence
 // may be TIGHTENED by a tenant, never loosened (D11). check-fitness-gaps.ts enforces the same
 // `mN.<resource>.<verb>` ownership the outbox catalog uses (here only the `m17.` prefix is required).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@wardenx/types";
+import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const orgId = Type.String({ minLength: 1 });
 const id = Type.String({ minLength: 1 });

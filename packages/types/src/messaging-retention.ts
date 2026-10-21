@@ -1,4 +1,4 @@
-// M36 WP 5.6 (ADR-0086, PROPOSED) - message retention and legal hold. The retention periods themselves stay in @wardenx/messaging
+// M36 WP 5.6 (ADR-0086, PROPOSED) - message retention and legal hold. The retention periods themselves stay in @chartwarden/messaging
 // (channel kinds); these are the cross-package names: the permission, the two fresh-step-up operation keys, the reason floor and the
 // M4 destruction-certificate data classes the plan-only retention scan opens.
 

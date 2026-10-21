@@ -1,4 +1,4 @@
-// @wardenx/fhir — bulk-export worker + sweeper decision core (§2.2, §D4, W-FHIR-04, M28-T07).
+// @chartwarden/fhir — bulk-export worker + sweeper decision core (§2.2, §D4, W-FHIR-04, M28-T07).
 //
 // T01 fixed the `fhir_bulk_export_job` FSM edges (`./bulk-export`). This core is the PURE computation the
 // T08 worker (`bulk-export-worker.ts`) and sweeper (`bulk-export-sweeper.ts`) wrap with the real IO — the
@@ -24,7 +24,7 @@ import {
   type FhirBulkExportJobId,
   type FhirBulkExportRequestKind,
   type FhirClientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import type { M28OutboxEvent } from "../outbox-events";
 

@@ -12,14 +12,14 @@
 //
 // Every query runs under `withOrgContext` (RLS); a batch of another tenant is a 404. Values are decrypted
 // here and only here, for the person reviewing them — never logged, never put on an outbox payload.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type IdentityStatus,
   type IntakeDocumentType,
   findExtractionField,
   worstIdentity,
-} from "@wardenx/intake-extraction";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/intake-extraction";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
@@ -27,8 +27,8 @@ import {
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
   NotFoundError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {
@@ -726,7 +726,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
 
     async resolveSud(organizationId, actor, batchId, outcome, reason) {
       if (outcome === "rejected" && !reason) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUD_REJECTION_REASON_REQUIRED",
           "rejecting a SUD detection as a false positive needs a reason",
           422,
@@ -743,7 +743,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         // Idempotent: the same resolution again is a no-op (a double click, a retried request).
         if (b.sudStatus === outcome) return { batchId, sudStatus: b.sudStatus };
         if (b.sudStatus !== "detected") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "SUD_NOT_PENDING",
             `this batch's SUD state is '${b.sudStatus}'; only a pending detection can be resolved`,
             409,
@@ -799,7 +799,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
         if (b.status === "writeback_complete" || b.status === "discarded") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "BATCH_CLOSED",
             `this batch is ${b.status}; its documents can no longer be re-assigned`,
             409,
@@ -816,7 +816,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .limit(1);
         if (!doc) throw new NotFoundError("document in this fax");
         if (doc.status === null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "IDENTITY_NOT_CHECKED",
             "this document has no identity check to resolve (the batch has no patient or referral yet)",
             409,
@@ -844,7 +844,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         throw new DegradedError("doclens-relink", "the patient/referral lookups are not bound");
       }
       if (!to.patientId && !to.referralId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "RELINK_TARGET_REQUIRED",
           "name the patient and/or the referral this fax belongs to",
           422,
@@ -859,7 +859,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         const subject = await identity.ports.referral?.(organizationId, to.referralId);
         if (!subject) throw new NotFoundError("referral");
         if (subject.patientId && patientId && subject.patientId !== patientId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "REFERRAL_PATIENT_CONFLICT",
             "this referral is resolved to a different patient than the one named",
             409,
@@ -889,7 +889,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .for("update");
         if (!b) throw new NotFoundError("intake batch");
         if (b.status === "writeback_complete" || b.status === "discarded") {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "BATCH_CLOSED",
             `this batch is ${b.status}; what it wrote is corrected on the chart, not by moving the fax`,
             409,
@@ -901,7 +901,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "complete")))
           .limit(1);
         if (completed) {
-          throw new WardenXError("BATCH_CLOSED", "this batch's review is already complete", 409);
+          throw new ChartWardenError("BATCH_CLOSED", "this batch's review is already complete", 409);
         }
         const referralId = to.referralId ?? b.referralId;
         if (patientId === b.patientId && referralId === b.referralId) {

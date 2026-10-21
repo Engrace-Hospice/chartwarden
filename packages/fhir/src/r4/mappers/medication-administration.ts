@@ -1,4 +1,4 @@
-// @wardenx/fhir — MedicationAdministration mapper (M13, F-035).
+// @chartwarden/fhir — MedicationAdministration mapper (M13, F-035).
 //
 // The fourth medication-shaped resource in this package and the only one that says a dose was actually
 // GIVEN. `MedicationRequest` is the order, `MedicationStatement` the reconciled history, and this the

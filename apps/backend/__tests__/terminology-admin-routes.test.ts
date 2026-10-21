@@ -18,8 +18,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { CarePlanCodeUsageRecord } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { CarePlanCodeUsageRecord } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

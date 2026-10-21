@@ -40,7 +40,7 @@
 // AbacResolver.
 import { randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_COSIGN_POLICY,
   ORDER_KIND_VERSION,
@@ -63,8 +63,8 @@ import {
   transitionOrder,
   validateOrderData,
   validateVerbalWindowHours,
-} from "@wardenx/orders";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/orders";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   NotFoundError,
@@ -74,8 +74,8 @@ import {
   type OrderStatus,
   type StandingOrderCadence,
   type StandingOrderStatus,
-} from "@wardenx/types";
-import { ValidationError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, gt, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
   RenderPayloadBuildError,

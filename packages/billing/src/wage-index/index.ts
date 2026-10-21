@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 tenant-entered WAGE INDEX domain (F-211). PURE: no Fastify, no Drizzle, no clock (the caller passes
+// @chartwarden/billing — M23 tenant-entered WAGE INDEX domain (F-211). PURE: no Fastify, no Drizzle, no clock (the caller passes
 // `today`).
 //
 // The CMS hospice wage index for a CCN + federal fiscal year is TENANT-ENTERED into the org-scoped `tenant_wage_index`

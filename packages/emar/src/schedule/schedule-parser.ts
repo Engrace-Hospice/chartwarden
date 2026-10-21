@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.3 D2 scheduled-dose materializer (M13-T03). PURE, IO-free, `Date.now()`-free.
+// @chartwarden/emar — §2.3 D2 scheduled-dose materializer (M13-T03). PURE, IO-free, `Date.now()`-free.
 //
 // The §2.3 pipeline: M13 receives `m12.medication_order.active`, reads the order via M12's
 // `MedicationOrderProvider.getMedicationOrder` seam, and materializes `scheduled_dose` rows for the next
@@ -7,7 +7,7 @@
 // the `(dueAtIso, expectedDoseAmount, expectedDoseUnit, expectedRoute)` tuples the worker inserts. No IO;
 // the order's dose/route/frequency + the window + the timezone are passed in, so the math is deterministic
 // and the spec §2.3 DST/edge cases (`atOrderLocalTime` resolves each slot at its own wall instant) hold.
-import type { IsoInstant, LocalDate } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@chartwarden/types";
 import { type MealEvent, type ScheduleFrequency, parseFrequencyCode } from "./frequency";
 import { addCalendarDays, atOrderLocalTime, weekdayKey } from "./time";
 

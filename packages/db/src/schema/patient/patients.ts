@@ -1,4 +1,4 @@
-// @wardenx/db — `patient` (M5 Patient & Demographics §3.3). The patient SPINE: one row per
+// @chartwarden/db — `patient` (M5 Patient & Demographics §3.3). The patient SPINE: one row per
 // real-world person per org, the only thing FKs point to (§2.2 `patient.id` immutable forever).
 // PHI-bearing → the three-column tenancy rule (M05-F04 / ADR-0010 D1): organization_id NOT NULL +
 // provider_entity_id / location_id nullable (the spine is org-level until admission activates them).

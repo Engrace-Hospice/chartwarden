@@ -1,4 +1,4 @@
-// @wardenx/db — Module 28 (FHIR Gateway) schema barrel: the nine `ownedTables`
+// @chartwarden/db — Module 28 (FHIR Gateway) schema barrel: the nine `ownedTables`
 // `architecture/module-manifest.ts` gives M28 (§3.3).
 //
 // TENANT-SCOPED (eight) — organization_id NOT NULL (organization_id IS the PK on tenant_fhir_config),

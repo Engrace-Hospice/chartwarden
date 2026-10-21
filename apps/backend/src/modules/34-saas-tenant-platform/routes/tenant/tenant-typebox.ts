@@ -11,7 +11,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   DownloadUrlView as ServiceDownloadUrlView,
@@ -31,7 +31,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
-// §3 vocab mirrors (string-literal unions; the canonical pgEnum types live in @wardenx/db).
+// §3 vocab mirrors (string-literal unions; the canonical pgEnum types live in @chartwarden/db).
 const SUPPORT_GRANT_SCOPE = ["organization_scoped", "patient_scoped"] as const;
 const DSAR_REQUEST_SOURCE = [
   "patient",

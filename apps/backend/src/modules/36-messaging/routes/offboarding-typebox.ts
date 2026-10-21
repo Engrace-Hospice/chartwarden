@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/offboarding-typebox.ts - WP 5.9 (ADR-0084, PROPOSED) schemas for the workforce-offboarding routes.
 // Counts and fixed keys only: no name, message text or patient.
 import { Type } from "@sinclair/typebox";
-import { OFFBOARDING_ITEM_KEYS, OFFBOARDING_ITEM_STATES } from "@wardenx/types";
+import { OFFBOARDING_ITEM_KEYS, OFFBOARDING_ITEM_STATES } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const literals = <T extends string>(values: readonly T[]) =>

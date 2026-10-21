@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T07 §7.6 merge approval & re-pointing (the redirect-invisible invariant).
+// @chartwarden/mdm — M40-T07 §7.6 merge approval & re-pointing (the redirect-invisible invariant).
 //
 // The headline acceptance: after a merge is approved, every resolve of the OLD duplicate id still
 // returns the survivor — carrying `resolvedFrom` so a consumer MAY patch its FK — WITHOUT any

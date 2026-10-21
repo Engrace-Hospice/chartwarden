@@ -12,7 +12,7 @@
 // (MV refresh / suspend) ENQUEUE the on-PRIMARY `report.mv_refresh` worker and return HTTP 202 with the
 // job id — idempotent via the deterministic `<mvKey>:<op>` job key (BullMQ jobId dedup; §2.4 / §4.8). The
 // refresh never runs on the request thread. Org/actor binding is ALWAYS server-side (request.context).
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";

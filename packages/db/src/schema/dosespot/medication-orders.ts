@@ -1,4 +1,4 @@
-// @wardenx/db — `medication_order` (M12 §3.3). The one root table for every DoseSpot-prescribed
+// @chartwarden/db — `medication_order` (M12 §3.3). The one root table for every DoseSpot-prescribed
 // medication: the per-class TypeBox-validated payload in `data` (discriminated by `med_class`; all clinician
 // free-text — sig_free_text / indication / clinical_justification / notes — lives INSIDE `data`, so the
 // whole `data` jsonb is denylisted from the audit diff, §7.6), the §2.2 D2

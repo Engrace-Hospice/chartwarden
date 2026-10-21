@@ -15,7 +15,7 @@
  * Run:     bun run db:seed
  */
 import { randomBytes } from "node:crypto";
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
 import {
   ACTIVE_KEK_ENV,

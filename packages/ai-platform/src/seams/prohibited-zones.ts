@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — D18's AI-prohibited zone registry and its boot check (M32-T06).
+// @chartwarden/ai-platform — D18's AI-prohibited zone registry and its boot check (M32-T06).
 //
 // Six downstream modules have each declared entity prefixes M32's models may not target: M12 D12
 // (prescribing), M13 D15 (administration), M18 D13 (EVV), M21 D15 (supply + controlled-substance

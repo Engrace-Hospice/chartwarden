@@ -7,9 +7,9 @@
 // 2a deliberately has no `submitted` transition: filing needs the reviewed packet, sign-off and proof of
 // submission that milestone 2b adds. There are no outbox events yet (nothing consumes them); the adr_case
 // write-audit trigger and the adr_case_event history are the trail.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import {
   type AdrReviewType,
@@ -180,16 +180,16 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
     ...buildAdrPacketOps(db, ports),
     async createAdr(actor, input) {
       const macName = input.macName.trim();
-      if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+      if (!macName) throw new ChartWardenError("INVALID_MAC", "the MAC name is required", 422);
       if (!isRealDay(input.requestedOn)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_REQUEST_DATE",
           "the ADR request date is not a real date",
           422,
         );
       }
       if (input.requestedOn > noticeDayOf(new Date())) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "REQUEST_DATE_IN_FUTURE",
           "the ADR request date cannot be in the future",
           422,
@@ -304,7 +304,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
         const cur = rows[0];
         if (!cur) throw new NotFoundError("ADR case");
         if (!canTransitionAdr(cur.state as AdrState, to)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "INVALID_TRANSITION",
             `cannot transition from '${cur.state}' to '${to}'`,
             409,
@@ -358,13 +358,13 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
 
     async upsertMacRule(actor, input) {
       const macName = input.macName.trim();
-      if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+      if (!macName) throw new ChartWardenError("INVALID_MAC", "the MAC name is required", 422);
       if (
         !Number.isInteger(input.responseDays) ||
         input.responseDays < 1 ||
         input.responseDays > 365
       ) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "INVALID_WINDOW",
           "the response window must be 1 to 365 whole days",
           422,
@@ -372,7 +372,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
       }
       for (const day of [input.verifiedOn, input.effectiveFrom]) {
         if (day !== undefined && !isRealDay(day)) {
-          throw new WardenXError("INVALID_RULE_DATE", "a rule date is not a real date", 422);
+          throw new ChartWardenError("INVALID_RULE_DATE", "a rule date is not a real date", 422);
         }
       }
       return withOrgContext(db, actor, async (tx) => {

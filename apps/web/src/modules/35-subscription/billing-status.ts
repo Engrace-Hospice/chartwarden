@@ -6,7 +6,7 @@
 // vocabulary: progress(primary)≈"in flight", success≈healthy, warning≈needs attention,
 // error≈failed/irreversible, neutral≈inert, critical≈the §10 gold reserved for controlled/urgent acts
 // (the day_28_suspend+ dunning stages are the assertive-alert states per §5.5).
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** §2 subscription lifecycle status → §6.6 tone (SubscriptionStatusLit). */
 export const SUBSCRIPTION_TONE: Record<string, StatusTone> = {

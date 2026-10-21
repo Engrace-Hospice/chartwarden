@@ -1,4 +1,4 @@
-// @wardenx/mdm — MDM background jobs (M40-T08, §4.3, §7.5).
+// @chartwarden/mdm — MDM background jobs (M40-T08, §4.3, §7.5).
 // The §4.3 queue catalog (pure descriptors) + the headline NPPES nightly-delta processor and the
 // pure §7.5 drift-detection engine. The remaining §4.3 workers land with their consumers.
 export {

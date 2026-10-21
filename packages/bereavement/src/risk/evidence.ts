@@ -1,4 +1,4 @@
-// @wardenx/bereavement — D3/D17 factor DERIVATION from cross-module evidence (M16-T04).
+// @chartwarden/bereavement — D3/D17 factor DERIVATION from cross-module evidence (M16-T04).
 //
 // `rubric.ts` (M16-T01) scores an already-resolved 8-factor vector. This module is the step before it: the
 // deterministic, reproducible mapping from what M15 / M9 / the M16 roster actually said into that vector.
@@ -25,7 +25,7 @@
 //      still answers `suddenUnexpectedDeath='unknown'`. Sudden-vs-expected is a claim about a SLOPE, so
 //      it needs two comparable captures; anything less is unknowable, not benign.
 //
-// PURE — no IO, `@wardenx/types`-only. The seam resolution that FEEDS this lives in the M16 service layer
+// PURE — no IO, `@chartwarden/types`-only. The seam resolution that FEEDS this lives in the M16 service layer
 // (`apps/backend/src/modules/16-bereavement/risk/extract.ts`).
 
 import type {
@@ -34,7 +34,7 @@ import type {
   BereavementRiskFactorName,
   MswRiskFactor,
   ScaleSeriesPoint,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── The M15 MSW vocabulary → the 8 D17 rubric slots ──────────────────────────────────────────────────
 

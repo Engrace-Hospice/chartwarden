@@ -17,9 +17,9 @@ import { randomUUID } from "node:crypto";
 //
 // The rotation cursor lives in the previous `m36.hash_verify.run` audit row (no table): read through the audit query
 // helper as `wardenx_app`, validated strictly, and a missing or malformed cursor RESTARTS the rotation and says so.
-import { createDbAuditQuery } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import type { HashVerifySampleRow } from "@wardenx/messaging";
+import { createDbAuditQuery } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { HashVerifySampleRow } from "@chartwarden/messaging";
 import { type SQL, and, asc, eq, sql } from "drizzle-orm";
 
 type Db = DbClient;

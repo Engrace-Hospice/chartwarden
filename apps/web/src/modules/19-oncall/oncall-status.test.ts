@@ -1,6 +1,6 @@
 // apps/web/src/modules/19-oncall/oncall-status.test.ts — the M19 presentation vocabulary (§5 / §6.6).
 //
-// The pure helpers live in `oncall-status.ts` (it imports only the `StatusTone` *type* from @wardenx/ui,
+// The pure helpers live in `oncall-status.ts` (it imports only the `StatusTone` *type* from @chartwarden/ui,
 // erased at runtime), so this test is colocated in apps/web — a `packages/` test importing it would create
 // a forbidden package→app dependency-cruiser edge (the M34 saas-status.test.ts precedent).
 //

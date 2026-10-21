@@ -19,7 +19,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { BAA_TONE, lifecycleTone, statusLabel } from "./saas-status";
@@ -110,7 +110,7 @@ export function Account(): JSX.Element {
           }
         >
           <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-            Your organization's WardenX account posture. This page is read-mostly — manage
+            Your organization's ChartWarden account posture. This page is read-mostly — manage
             onboarding, support grants, and exports from the admin navigation.
           </p>
         </PageHeader>
@@ -132,7 +132,7 @@ export function Account(): JSX.Element {
               </Field>
               <Field label="Plan">
                 <span style={{ color: "var(--color-on-surface-variant)" }}>
-                  Managed by WardenX platform operations
+                  Managed by ChartWarden platform operations
                 </span>
               </Field>
             </Card>

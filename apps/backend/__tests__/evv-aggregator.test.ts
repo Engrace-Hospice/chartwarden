@@ -1,11 +1,11 @@
-import type { AggregatorSubmitResult } from "@wardenx/evv-aggregators";
+import type { AggregatorSubmitResult } from "@chartwarden/evv-aggregators";
 import {
   OpenModelAdapter,
   SandataAdapter,
   StateAggregatorRegistry,
   createSandataSandboxTransport,
   eventPairHash,
-} from "@wardenx/evv-aggregators";
+} from "@chartwarden/evv-aggregators";
 // apps/backend/__tests__/evv-aggregator.test.ts — M18-T06 (§2.2.5 D7, §4.5 D1, §4.7, §7.8, §7.9).
 //
 // Covers the M18-T06 headline deliverables with no DB / no network:

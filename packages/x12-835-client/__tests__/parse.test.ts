@@ -1,4 +1,4 @@
-// @wardenx/x12-835-client — adapter unit tests (Phase 2). The wire→typed mappers fail closed on malformed
+// @chartwarden/x12-835-client — adapter unit tests (Phase 2). The wire→typed mappers fail closed on malformed
 // input (degraded envelope, never throw) and map a well-formed sidecar response into the typed structures;
 // the fail-closed default client returns a retryable degraded envelope when no transport is wired.
 import { describe, expect, it } from "vitest";

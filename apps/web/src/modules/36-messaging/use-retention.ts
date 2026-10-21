@@ -1,5 +1,5 @@
 // M36 WP 5.6 (ADR-0086, PROPOSED) - reads the retention overview and the legal-hold list, and runs apply / release-preview / release against
-// /api/v1/messaging/governance (S4 serves them; the contract is in @wardenx/types). Wire keys are snake_case. The calls go through the typed
+// /api/v1/messaging/governance (S4 serves them; the contract is in @chartwarden/types). Wire keys are snake_case. The calls go through the typed
 // client with literal paths, so tsc checks the DTOs against the generated schema. A stale step-up is handed back to the screen; ids are never logged.
 import type {
   ApplyMessageLegalHoldRequest,
@@ -8,9 +8,9 @@ import type {
   MessageLegalHoldReleasePreviewDto,
   ReleaseMessageLegalHoldRequest,
   RetentionOverviewDto,
-} from "@wardenx/types";
-import { RELEASE_PREVIEW_STALE_CODE } from "@wardenx/types";
-import { type ApiClient, isStepUpRequired } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { RELEASE_PREVIEW_STALE_CODE } from "@chartwarden/types";
+import { type ApiClient, isStepUpRequired } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 

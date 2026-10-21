@@ -1,4 +1,4 @@
-import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";

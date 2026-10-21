@@ -7,11 +7,11 @@
 // the composition root (apps/backend/src/index.ts `wireModuleSeams`) invokes it inside the boot gate,
 // after M1's wireSeams() and before validateSeams().
 //
-// The seam's rich interface lives in @wardenx/consent (§4.3 four typed query methods + the per-
-// category redaction-flag shape) — not the leaf @wardenx/types (`leaves-stay-leaves`). So the M1
+// The seam's rich interface lives in @chartwarden/consent (§4.3 four typed query methods + the per-
+// category redaction-flag shape) — not the leaf @chartwarden/types (`leaves-stay-leaves`). So the M1
 // registry holds the instance opaquely (`SeamContracts["ConsentEvaluator"] = unknown`); this file is
 // the typed boundary: `registerConsentSeams` registers the typed impl and `getConsentEvaluator` hands
-// consumers a typed handle. Consumers import the `ConsentEvaluator` TYPE from @wardenx/consent (they
+// consumers a typed handle. Consumers import the `ConsentEvaluator` TYPE from @chartwarden/consent (they
 // already list 39 in dependsOn) and resolve the runtime instance through here.
 //
 // SLICE NOTE: the evaluator is wired over an injected in-memory `ConsentStore` by default (no live
@@ -23,7 +23,7 @@ import {
   type ConsentStore,
   createConsentEvaluator,
   createInMemoryConsentStore,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production adapter for M39's published seam (slice defaults to in-memory). */

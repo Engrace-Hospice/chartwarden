@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the four §4.8 PURE cron processors (the M33 `nightly-cron` precedent).
+// @chartwarden/quality · workers — the four §4.8 PURE cron processors (the M33 `nightly-cron` precedent).
 //
 // The boot scheduler (the backend `m30-crons` adapter) owns the cron tick at the §4.8 UTC times
 // ({@link import("./params").M30_JOB_SCHEDULES}); each handler here owns the WORK. All four run a
@@ -7,7 +7,7 @@
 // per-org enqueue, the candidate fetch, and the alert/outbox emit are injected ports; the decision cores
 // ({@link decideSraReminder}, {@link priorCalendarMonthPeriod}) are total functions unit-asserted apart
 // from the I/O. No clock-derived scheduling here — the cron cadence is the boot scheduler's job.
-import type { M30AlertPayloadType } from "@wardenx/types";
+import type { M30AlertPayloadType } from "@chartwarden/types";
 import {
   type CahpsSampleCandidate,
   type CahpsSamplePeriod,

@@ -1,4 +1,4 @@
-// @wardenx/db — `recurring_visit` (M17 §3.3 / §2.2.3 D4). The source-of-truth policy row for a recurring
+// @chartwarden/db — `recurring_visit` (M17 §3.3 / §2.2.3 D4). The source-of-truth policy row for a recurring
 // cadence: the RFC 5545 RRULE subset (FREQ=DAILY|WEEKLY with BYDAY/INTERVAL/UNTIL/COUNT only — D4), the
 // time-of-day window + tz, and the active → discontinued lifecycle (discontinue cascade-cancels future
 // child visits, §7.7). Concrete visits are materialized as `visit` rows on a rolling 90-day horizon (D4) —

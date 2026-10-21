@@ -1,4 +1,4 @@
-// @wardenx/db — `evv_event` (M18 §3.3 / §2.2.1 D2). The append-only discrete-capture ledger: one row per
+// @chartwarden/db — `evv_event` (M18 §3.3 / §2.2.1 D2). The append-only discrete-capture ledger: one row per
 // check-in and one per check-out (the visit-level EVV bracket is M17's domain, derived from these — D2).
 // PHI-bearing (patient_id / patient_address_id / GPS coords) → ARCH-011: the three tenancy columns are
 // present and provider_entity_id + location_id are NOT NULL (an EVV capture is always a field service at a

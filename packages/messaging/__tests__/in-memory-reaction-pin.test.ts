@@ -2,7 +2,7 @@
  * WP 2.4 on the in-memory service (the dev/slice twin of the DB service): reactions and pins share the channel's
  * access rule, are idempotent, never touch read/ack state, and surface on the message reads.
  */
-import { MAX_PINS_PER_CHANNEL } from "@wardenx/types";
+import { MAX_PINS_PER_CHANNEL } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryMessagingService } from "../src/store/in-memory-service";
 

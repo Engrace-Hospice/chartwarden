@@ -1,4 +1,4 @@
-// @wardenx/fhir — CarePlan mapper (us-core-careplan, M7, M28-T04).
+// @chartwarden/fhir — CarePlan mapper (us-core-careplan, M7, M28-T04).
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { CarePlan, FhirReference } from "../types";

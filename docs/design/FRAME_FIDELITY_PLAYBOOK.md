@@ -48,12 +48,12 @@ Use the Pencil MCP tools (never `Read`/`Grep` on `.pen` files — they're encryp
 
 ### 3. Read the current implementation
 Read the screen component and note what's already there. Most built screens already use the
-`@wardenx/ui` layout kit (`PatientWorkspaceLayout`, `WorkQueueLayout`, `PageHeader`, …) and Lantern
+`@chartwarden/ui` layout kit (`PatientWorkspaceLayout`, `WorkQueueLayout`, `PageHeader`, …) and Lantern
 tokens — prefer **extending** those shared components over re-implementing inline.
 
 ### 4. Match the composition with Lantern primitives
 Rebuild the screen's layout to the frame using **tokens only** (no hex), via `t` / `cardSurface` /
-`ghostBorder` from `@wardenx/ui` (DESIGN.md §2/§3/§10):
+`ghostBorder` from `@chartwarden/ui` (DESIGN.md §2/§3/§10):
 - §6.2 **Lantern cards**: `surface-lowest` + `radius-xl` + `shadow-soft`, **No-Line** (§10.1).
 - Type voices (§3): **Fraunces** for names/titles/empty-states, **Inter** (`tabular-nums`) for data
   and **KPI numerals**, **IBM Plex Mono** for identifiers.

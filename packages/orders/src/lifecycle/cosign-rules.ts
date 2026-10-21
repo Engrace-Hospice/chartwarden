@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.5 cosignature rules (M11-T03). Pure, IO-free.
+// @chartwarden/orders — §2.5 cosignature rules (M11-T03). Pure, IO-free.
 //
 // Three concurrent cosign axes drive whether `pending_signature → active` is blocked behind a cosignature:
 //   1. LPN-cosign-by-RN  (state-law-driven)  — an LPN-drafted clinical kind in the tenant's
@@ -10,7 +10,7 @@
 // Every axis resolves to the same polymorphic `order_signature` row with `signature_kind='cosignature'`;
 // this module decides WHEN a cosignature is required and WHO may attest it. The cosign-attached gate on
 // the `sign` event lives in ./order-machine; the attest-validation plan is `planCosignAttest` below.
-import type { OrderKind } from "@wardenx/types";
+import type { OrderKind } from "@chartwarden/types";
 import { require_ } from "./errors";
 
 /** The §2.5 per-tenant cosign policy (a projection of `order_verbal_policy`; default-filled by the service). */

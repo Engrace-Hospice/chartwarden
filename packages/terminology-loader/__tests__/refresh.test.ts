@@ -1,4 +1,4 @@
-import type { ExpansionRow, ValueSetMemberRow } from "@wardenx/terminology";
+import type { ExpansionRow, ValueSetMemberRow } from "@chartwarden/terminology";
 // M38 loader — refresh_expansions / refresh_embeddings over in-memory ports (GAP-108).
 import { describe, expect, it } from "vitest";
 import { SILENT_LOGGER } from "../src/ports";

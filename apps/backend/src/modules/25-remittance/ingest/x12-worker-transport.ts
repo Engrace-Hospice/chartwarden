@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance/ingest/x12-worker-transport.ts — WX-PR-012 the REAL
 // `X12835HttpPort` transport (the M23 `launch-gateway.ts` `fetchHttp`/`m23LaunchGatewayConfigFromEnv`
-// precedent). `@wardenx/x12-835-client` deliberately holds no network code (architecture §25.14 — the
+// precedent). `@chartwarden/x12-835-client` deliberately holds no network code (architecture §25.14 — the
 // composition root injects a live port); this is that injection. No Python x12-worker sidecar is
 // deployed anywhere in this repo/environment today, so `m25X12WorkerPortFromEnv` returns `undefined`
 // (→ `createX12835Client()`'s fail-closed `NO_X12_835_PORT` default) absent configuration — the SAME
@@ -10,7 +10,7 @@ import type {
   X12835HttpPort,
   X12835HttpRequest,
   X12835HttpResponse,
-} from "@wardenx/x12-835-client";
+} from "@chartwarden/x12-835-client";
 
 export interface M25X12WorkerConfig {
   readonly baseUrl: string;
@@ -48,7 +48,7 @@ export function createFetchX12835HttpPort(config: M25X12WorkerConfig): X12835Htt
       try {
         body = await response.json();
       } catch {
-        // A malformed response is rejected by @wardenx/x12-835-client's own mapper (degraded envelope).
+        // A malformed response is rejected by @chartwarden/x12-835-client's own mapper (degraded envelope).
       }
       return { status: response.status, body };
     },

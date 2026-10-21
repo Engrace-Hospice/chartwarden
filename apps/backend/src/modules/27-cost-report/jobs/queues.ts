@@ -1,9 +1,9 @@
 // apps/backend/src/modules/27-cost-report/jobs/queues.ts — the M27 §4.8 BullMQ queue catalog.
 //
-// @wardenx/cost-report ships the PURE domain (lifecycle reducer, worksheets, allocation, ECR, validation,
-// money/snapshot) but — unlike @wardenx/quality, which ships `M30_QUEUES`/`M30_QUEUE_PARAMS` in the package
+// @chartwarden/cost-report ships the PURE domain (lifecycle reducer, worksheets, allocation, ECR, validation,
+// money/snapshot) but — unlike @chartwarden/quality, which ships `M30_QUEUES`/`M30_QUEUE_PARAMS` in the package
 // `workers/*` subtree — it does NOT ship a queue/param catalog (P1 was "no BullMQ"). So the §4.8 catalog is
-// defined LOCALLY here (the task's "define the M27 queue param catalog locally if not in @wardenx/cost-report"),
+// defined LOCALLY here (the task's "define the M27 queue param catalog locally if not in @chartwarden/cost-report"),
 // distinct from the prose docs. These constants are the single source of truth the worker construction
 // (`m27-jobs.ts`) + the composition-root producer (`routes/write-service-drizzle.ts`'s `RecomputeEnqueuePort`)
 // agree on: a worker on `M27_QUEUES.trialBalancePull` consumes the jobs the write-service enqueues onto the

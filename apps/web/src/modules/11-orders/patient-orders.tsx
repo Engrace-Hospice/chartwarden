@@ -11,7 +11,7 @@ import {
   type StatusTone,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — the patient chart's Orders tab (2026-09-25 redesign, mockup
 // "Orders"). Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace."
 // KPI cards, order-kind tabs, a labeled filter bar, and the orders table (order · type · details ·

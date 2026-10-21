@@ -24,9 +24,9 @@ import {
   buildClaimDocument837iDetail,
   gap,
   repositories,
-} from "@wardenx/billing";
-import type { MbiUnlockReader, PatientAddressReader, PatientReader } from "@wardenx/types";
-import type { Claim837iInput, ClearinghouseContext } from "@wardenx/x12-837-client";
+} from "@chartwarden/billing";
+import type { MbiUnlockReader, PatientAddressReader, PatientReader } from "@chartwarden/types";
+import type { Claim837iInput, ClearinghouseContext } from "@chartwarden/x12-837-client";
 import {
   type Claim837iParties,
   type Rendered837i,

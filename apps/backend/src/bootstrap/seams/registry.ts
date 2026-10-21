@@ -13,7 +13,7 @@
 // check-fitness-gaps.ts (seam-registry sub-check) scans it: the `REQUIRED_SEAMS = [...]`
 // literal and registerSeam/getSeam are the tokens it keys on.
 
-import type { ChartPromotionSourceReader } from "@wardenx/types";
+import type { ChartPromotionSourceReader } from "@chartwarden/types";
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
   admissionCensusReaderDenyStub,
@@ -260,7 +260,7 @@ export const REQUIRED_SEAMS = [
     denyStub: patientAdmissionClearanceReaderDenyStub,
   },
   // M5 — TASK-015/ARCH-018: the M31 `portal_caregiver_is_primary_or_dpoa` ABAC read. Deny-stub only —
-  // no caregiver→user schema link exists (see the interface doc in @wardenx/types).
+  // no caregiver→user schema link exists (see the interface doc in @chartwarden/types).
   {
     key: "PatientCaregiverReader",
     ownerModule: 5,
@@ -825,7 +825,7 @@ export const REQUIRED_SEAMS = [
   // ever returned, same posture as LevelOfCarePeriodReader/DischargeReader above), consumed by M30's
   // nightly measure-recompute worker as a batch pull over `compliance_window`, not an outbox push
   // (`events-by-m6.ts`'s six `m6.compliance.window.*`/`m6.f2f.window_*` entries carry `seamConsumers:
-  // ["m30"]`, not `declaredConsumers`). Opaque rich-seam (`unknown`; interface in @wardenx/quality) per
+  // ["m30"]`, not `declaredConsumers`). Opaque rich-seam (`unknown`; interface in @chartwarden/quality) per
   // the `ClaimLineReader`/`PatientDaysProvider` precedent — phi: false matches those aggregate-only binds.
   {
     key: "ComplianceWindowCountsProvider",
@@ -1118,7 +1118,7 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: supervisoryCadenceReaderDenyStub,
   },
-  // The rest of M15's §4.3 PUBLISHED seams (M15-T05) — leaf-typed in @wardenx/types/discipline-plans. All five
+  // The rest of M15's §4.3 PUBLISHED seams (M15-T05) — leaf-typed in @chartwarden/types/discipline-plans. All five
   // are READ surfaces over M15's `discipline_care_plan` / `discipline_assessment` / `aide_supervisory_visit` /
   // `volunteer_*` rows that forward consumers attach to instead of importing M15's schema (architecture §25.15):
   // `DisciplinePlanReader` — the plan read path M14 (IDG packet) / M22 (plan PDF) / M28 / M31 / M33 consume;

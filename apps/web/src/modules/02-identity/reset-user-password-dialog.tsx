@@ -1,4 +1,4 @@
-import { Button, Modal, ReverifyLink, useApiClient, useToast } from "@wardenx/ui";
+import { Button, Modal, ReverifyLink, useApiClient, useToast } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import type { MemberView } from "./user-management-api";
@@ -183,7 +183,7 @@ export function ResetUserPasswordDialog({
               </div>
             ) : (
               <p style={descriptionStyle}>
-                WardenX will generate a secure temporary password and display it once.
+                ChartWarden will generate a secure temporary password and display it once.
               </p>
             )}
             <label style={confirmationStyle}>

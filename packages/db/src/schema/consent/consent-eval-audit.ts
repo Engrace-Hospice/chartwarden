@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_eval_audit` (M39 Consent §3.3 #10). The consent-version-aware DECISION
+// @chartwarden/db — `consent_eval_audit` (M39 Consent §3.3 #10). The consent-version-aware DECISION
 // audit (D12): one INSERT per evaluate() call carrying the consent-record id + version-at-eval, the
 // allow/deny + reason, the as-of, and the caller/session context — so a Compliance Officer can
 // reconstruct "what the system knew about consent on date X when staff accessed record Y". NOT the

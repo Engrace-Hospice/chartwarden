@@ -1,4 +1,4 @@
-// @wardenx/db — `hl7_inbound_proposal` (M29 §3.3). A low-confidence ADT event staged as a PROPOSAL: M29
+// @chartwarden/db — `hl7_inbound_proposal` (M29 §3.3). A low-confidence ADT event staged as a PROPOSAL: M29
 // never writes an M5 patient or an M6 admission itself — it stages the parsed candidate and an M5/M6
 // reviewer accepts (apply through the owner module) or rejects (§2.2 propose-then-review, W-XI-01..04).
 //

@@ -1,5 +1,5 @@
 import { type RoutingCache, directionsCacheKey, matrixCacheKey } from "./cache";
-// @wardenx/routing-client — the §4.10 D1 OSRM `RoutingProvider` (M17-T07). The ONLY place the routing
+// @chartwarden/routing-client — the §4.10 D1 OSRM `RoutingProvider` (M17-T07). The ONLY place the routing
 // endpoint is called (architecture §25.14 adapter mandate; dependency-cruiser §25.15 check #2 forbids any
 // other module from reaching OSRM directly). Route optimisation stays behind `scheduling.route_optimization`
 // (OFF in Phase 1); when the circuit is open OR OSRM errors, the adapter raises {@link RoutingDegradedError}

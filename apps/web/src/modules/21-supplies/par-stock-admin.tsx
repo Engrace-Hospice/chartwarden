@@ -17,7 +17,7 @@
 // not what changed since the last count, and an adjustment-shaped form drifts from the shelf every time a
 // count is missed. The server derives the delta and runs it through the §2.7 rule, so a count that would
 // drive the shelf negative is a typed refusal rather than a silent clamp.
-import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — Argon2id password hashing (M2 §3.1, AUTH-T04, ADR-0033).
+// @chartwarden/auth · identity — Argon2id password hashing (M2 §3.1, AUTH-T04, ADR-0033).
 //
 // Pure crypto via hash-wasm (WASM — cross-platform, no native binary, frozen-lockfile-safe across CI
 // OSes). Wired into Better Auth's `emailAndPassword.password.{hash,verify}` by createIdentityAuth, so

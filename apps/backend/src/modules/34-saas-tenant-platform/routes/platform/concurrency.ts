@@ -5,7 +5,7 @@
 // Mirrors the M22 routes/concurrency.ts precedent EXACTLY (cursor encodes `(createdAt DESC, id)`; offset
 // pagination is forbidden); the codec shape is base64url JSON in the slice + HMAC-signed in prod — the
 // route surface is stable either way. A malformed cursor is a 400 VALIDATION_FAILED (never page-from-start).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The keyset a cursor encodes — `(createdAt DESC, id)` (§4.1). Opaque to clients. */
 export interface CursorKeyset {
@@ -28,7 +28,7 @@ export function decodeCursor(cursor: string): CursorKeyset {
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
 }
 

@@ -2,7 +2,7 @@
 // legal-hold governance routes. Wire keys are snake_case (the contract in packages/types/src/messaging-retention.ts). Ids, counts, dates and
 // the hold name only: the response schemas carry no message body and no person or patient name, and Fastify strips anything else.
 import { Type } from "@sinclair/typebox";
-import { MESSAGE_RETENTION_CLASSES } from "@wardenx/types";
+import { MESSAGE_RETENTION_CLASSES } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

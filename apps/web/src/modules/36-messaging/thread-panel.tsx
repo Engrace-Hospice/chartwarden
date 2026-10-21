@@ -6,7 +6,7 @@
 // (`drafts`) and survive a switch. Keyboard: focus lands on the panel when it opens; Escape or Close returns focus to
 // whatever opened it, except that Escape does nothing while a draft or an attachment is held (a stray key never loses
 // the text); Tab is never trapped.
-import { Button, EmptyState, Glyph, LoadingSpinner } from "@wardenx/ui";
+import { Button, EmptyState, Glyph, LoadingSpinner } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";

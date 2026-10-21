@@ -20,9 +20,9 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`emar_record` is in REQUIRED_ERASERS); the composition
 // root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before validateErasers(), so a real
 // eraser stands over its stub.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataEraser } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataEraser } from "@chartwarden/types";
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 

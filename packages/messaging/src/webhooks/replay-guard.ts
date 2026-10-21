@@ -1,4 +1,4 @@
-// @wardenx/messaging — webhook timestamp replay window (M36-T08, spec §4.9.1 / SD-056).
+// @chartwarden/messaging — webhook timestamp replay window (M36-T08, spec §4.9.1 / SD-056).
 //
 // Shared by all three inbound webhook handlers (Twilio sms-status / voice-status, Postmark event).
 // Call at the TOP of each handler, BEFORE signature verification — a stale request need not be

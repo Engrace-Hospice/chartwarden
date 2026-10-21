@@ -2,9 +2,9 @@
 // conversation, and re-word the per-section guidance. A tenant can only tighten: the platform floor (1 character per
 // section) is the lowest value offered, and the server refuses anything under it. Hidden when the viewer may not manage
 // templates (403) or SBAR is off for the organization (404); the server decides, this never infers a permission.
-import { SBAR_PLATFORM_FLOOR, SBAR_SECTION_KEYS, SBAR_SECTION_LABELS } from "@wardenx/types";
-import type { SbarSectionKey } from "@wardenx/types";
-import { Button, InlineAlert, Panel, useApiClient } from "@wardenx/ui";
+import { SBAR_PLATFORM_FLOOR, SBAR_SECTION_KEYS, SBAR_SECTION_LABELS } from "@chartwarden/types";
+import type { SbarSectionKey } from "@chartwarden/types";
+import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";

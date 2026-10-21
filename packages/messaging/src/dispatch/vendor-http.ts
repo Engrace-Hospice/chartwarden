@@ -1,4 +1,4 @@
-// @wardenx/messaging — shared HTTP plumbing for the M36 vendor transports (GAP-062).
+// @chartwarden/messaging — shared HTTP plumbing for the M36 vendor transports (GAP-062).
 //
 // One bounded request, classified into the {@link TransportError} contract the delivery sweep already
 // understands: 429 / 5xx / network / timeout are RETRYABLE (the sweep owns retry + backoff, spec §4.4.1 — so this

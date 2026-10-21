@@ -49,7 +49,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import type {
   IsoInstant,
   MembershipId,
@@ -57,7 +57,7 @@ import type {
   ProviderEntityId,
   SafetySosLifecycleState,
   SafetySubscriptionScopeKind,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import { subscriptionScopeCovers } from "./lifecycle/coverage-gap";
 
@@ -270,7 +270,7 @@ export interface SafetyAbacPorts {
   ): Promise<readonly MembershipId[] | null>;
 }
 
-/** The M19 surface this file calls — structurally typed so no `@wardenx/types` seam import edge is taken. */
+/** The M19 surface this file calls — structurally typed so no `@chartwarden/types` seam import edge is taken. */
 interface OnCallProviderShape {
   currentOnCallActors(
     orgId: string,

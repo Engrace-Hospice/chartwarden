@@ -16,7 +16,7 @@
 // Everything platform-ops WRITES goes through the migration-0206 `terminology_loader` SECURITY DEFINER
 // functions: `wardenx_app` has no INSERT/UPDATE grant on any canonical terminology table and must not
 // get one (§7.4 lockdown). The Drizzle adapter is `./terminology-ops-store-db.ts`.
-import type { CodeSystemId, DeprecationMappingResponse } from "@wardenx/terminology";
+import type { CodeSystemId, DeprecationMappingResponse } from "@chartwarden/terminology";
 
 /** One row of the `/api/v1/terminology/value-sets` catalog (§4.1). */
 export interface ValueSetCatalogEntry {

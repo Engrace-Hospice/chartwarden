@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/services/rhc-carry-over-view.ts — the TYPES of the two-tier RHC
 // carry-over as M23 exposes it (claim detail `pricing.perDiemClass.rhcCarryOver`, the hospice-periods read). Split from
 // `rhc-carry-over.ts` so the route-layer view types can name them without importing the resolver (no cycle).
-import type { IsoDate, RhcCarryOverResult } from "@wardenx/billing";
+import type { IsoDate, RhcCarryOverResult } from "@chartwarden/billing";
 
 /** The HETS check a carry-over read, as shown to billers (no MBI — ids + dates only). */
 export interface RhcHetsCheckRef {

@@ -2,7 +2,7 @@
 // validation + AR surface (routes 1–17, 35, 36). Reads gate on the §4.7 key; mutations compose the §4.8 ABAC
 // predicate over the route's `:id` (mapped onto the claim target), the §D12 step-up on submit/replace/void,
 // the §8.6 `actor_kind='ai_*'` reject, and the §F08 Idempotency-Key. Org/actor binding is server-side.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";

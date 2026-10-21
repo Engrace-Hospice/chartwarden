@@ -7,7 +7,7 @@
 import {
   type MedicationOrderRenderPayload,
   assertMedicationOrderRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { Block } from "../doc-model";
 import { PART2_REDISCLOSURE_NOTICE, fmtInstant, humanize } from "../shared";
 import { defineForm } from "./compile";

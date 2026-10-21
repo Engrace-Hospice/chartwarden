@@ -1,4 +1,4 @@
-// @wardenx/ui core — the in-memory hand-off for a search needle (GAP-080).
+// @chartwarden/ui core — the in-memory hand-off for a search needle (GAP-080).
 //
 // WHY A STORE AND NOT A URL PARAM. A patient/global search needle is PHI: it is a patient name or
 // an MRN, typed by a clinician. Carried as `?q=…` — which is how the shell top-nav search reached

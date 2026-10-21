@@ -1,4 +1,4 @@
-// @wardenx/db — `organization` (M1 Foundation §3.3). Root of the tenancy spine:
+// @chartwarden/db — `organization` (M1 Foundation §3.3). Root of the tenancy spine:
 // it DEFINES org scope, so it is NON_ORG_SCOPED in check-tenancy.ts rather than
 // carrying organization_id itself. RLS for this table is the platform/global read
 // policy (added with the initial migration, M1-T04).

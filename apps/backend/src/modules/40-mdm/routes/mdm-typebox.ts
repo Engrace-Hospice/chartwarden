@@ -9,15 +9,15 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { MDM_ENTITY_KINDS } from "@wardenx/mdm";
+import { MDM_ENTITY_KINDS } from "@chartwarden/mdm";
 import type {
   BaaRegisterEntry as ServiceBaaRegisterEntry,
   MdmEntityKind as ServiceMdmEntityKind,
   MdmResolved as ServiceMdmResolved,
   MergeRequestRow as ServiceMergeRequestRow,
   NppesSyncRun as ServiceNppesSyncRun,
-} from "@wardenx/mdm";
-import { ValidationError } from "@wardenx/types";
+} from "@chartwarden/mdm";
+import { ValidationError } from "@chartwarden/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

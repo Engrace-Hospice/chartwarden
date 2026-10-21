@@ -2,8 +2,8 @@
 import {
   HANDOFF_EXPIRY_MIN_MINUTES,
   HANDOFF_EXPIRY_PLATFORM_MINUTES,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   effectiveHandoffMinutes,
@@ -39,9 +39,9 @@ describe("prepareHandoffPolicy", () => {
       prepareHandoffPolicy(v);
       expect.unreachable();
     } catch (e) {
-      expect(e).toBeInstanceOf(WardenXError);
-      expect((e as WardenXError).code).toBe("HANDOFF_POLICY_INVALID");
-      expect((e as WardenXError).statusCode).toBe(422);
+      expect(e).toBeInstanceOf(ChartWardenError);
+      expect((e as ChartWardenError).code).toBe("HANDOFF_POLICY_INVALID");
+      expect((e as ChartWardenError).statusCode).toBe(422);
     }
   });
 });

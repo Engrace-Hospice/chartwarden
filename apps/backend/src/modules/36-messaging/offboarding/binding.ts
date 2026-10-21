@@ -1,8 +1,8 @@
 // M36 WP 5.9 (ADR-0084) - the composition of the workforce-offboarding operation: the standing check, the audit writer and the ordered steps.
 // No table is added: each step recounts the live rows, and the record of what a run did is its audit row (ids and counts only).
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { SupervisorAttentionDeps } from "../ack-escalation/supervisor-attention";
 import type { AckService } from "../ack-requests/ack-service";

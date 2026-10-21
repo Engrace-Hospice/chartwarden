@@ -18,8 +18,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
-import { createDbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/snooze-reminders/reminder-sweep-worker.ts - WP 4.10 (ADR-0077): the BullMQ shell for
 // `messaging.reminder_sweep` (every minute). One repeatable tick fans out over the active orgs (the same fan-out the integrity and
 // handoff-expiry jobs use); a per-row failure is counted inside the org sweep and fails the tick so it is visible.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type M36IntegrityWorkerDeps, fanOutOrgs } from "../jobs/integrity-workers";
 import type { ReminderSweepSummary } from "./reminder-sweep";

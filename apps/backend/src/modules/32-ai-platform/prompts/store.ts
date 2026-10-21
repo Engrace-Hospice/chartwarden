@@ -1,4 +1,4 @@
-import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@wardenx/ai-platform";
+import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@chartwarden/ai-platform";
 // apps/backend/src/modules/32-ai-platform/prompts/store.ts — the `ai_prompt_template` port plus the
 // artifact reader `AIPromptRegistry` resolves bodies through (M32-T05).
 //
@@ -19,9 +19,9 @@ import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@wardenx/
 //   · `getActivePromptForCapability` — needs a body, so it THROWS when the reader cannot resolve one.
 //     Returning `null` would mean "this capability has no active prompt", which is what the invocation
 //     pipeline reads before deciding whether it may dispatch without a template.
-import { type DbClient, schema } from "@wardenx/db";
-import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import type { AiPromptTemplateStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import type { AiPromptTemplateStatus } from "@chartwarden/types";
 import { and, asc, eq, like } from "drizzle-orm";
 import { type M32EventEmitter, capabilityIdentity } from "../events";
 

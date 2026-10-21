@@ -2,7 +2,7 @@
 // addendum; the reviewer writes their own reason; hidden when off or empty; any refusal reads as "no longer available".
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";

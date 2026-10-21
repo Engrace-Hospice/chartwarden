@@ -1,10 +1,10 @@
 // apps/backend/src/modules/37-ipu/routes/actor.ts — M37 route actor binding. Org/actor/membership are
 // ALWAYS server-assembled from `request.context` (the M35 routes/actor.ts precedent), never read off the
 // wire; every authored M37 row is stamped with the server-assembled membership id.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles, all server-assembled. */

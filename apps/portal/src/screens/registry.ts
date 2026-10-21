@@ -1,8 +1,8 @@
-import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@wardenx/types";
-// @wardenx/portal — concrete screen registry (M31 §5.1, Track B / ADR-0030). Binds each metadata entry in
+import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@chartwarden/types";
+// @chartwarden/portal — concrete screen registry (M31 §5.1, Track B / ADR-0030). Binds each metadata entry in
 // PORTAL_SCREEN_MANIFEST to its React component, producing the `portalScreens` module the portal composition
 // root (main.tsx) registers into a registry the shell reads to build its router. Mirrors the M1 web-shell
-// registry contract (`@wardenx/types` ScreenRegistry) so the portal is a first-class, gate-shaped SPA rather
+// registry contract (`@chartwarden/types` ScreenRegistry) so the portal is a first-class, gate-shaped SPA rather
 // than an ad-hoc router.
 import type { ComponentType } from "react";
 import { PortalAcceptInvitation } from "./accept-invitation";

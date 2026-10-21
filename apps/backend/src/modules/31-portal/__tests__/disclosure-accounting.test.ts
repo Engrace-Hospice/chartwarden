@@ -1,6 +1,6 @@
 // GAP-052 - PortalDisclosureAccountingProvider returns the patient's portal-accessor disclosure lines
 // (it used to return [] unconditionally).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { type PortalDisclosureSource, buildDrizzlePortalStore } from "../routes/store";
 

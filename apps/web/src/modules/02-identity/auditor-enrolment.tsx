@@ -5,7 +5,7 @@
 // the first time (and keep ten single-use recovery codes), present the code or a recovery code afterwards.
 // The server owns every decision (stage, lockout, replay); this screen only walks the two steps and explains
 // refusals in plain language. SMS is never offered.
-import { Button, CenteredCardLayout, InlineAlert, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, CenteredCardLayout, InlineAlert, TextField, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -327,7 +327,7 @@ function FactorStep(props: {
       {setup ? (
         <>
           <p style={mutedStyle}>
-            Add WardenX to your authenticator app with this key, then enter the 6-digit code it
+            Add ChartWarden to your authenticator app with this key, then enter the 6-digit code it
             shows.
           </p>
           <code style={keyStyle} aria-label="Authenticator setup key">

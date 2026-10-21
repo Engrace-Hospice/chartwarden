@@ -16,8 +16,8 @@ import {
   BLOCKING_VOLUNTEER_GATE_KINDS,
   VOLUNTEER_GATE_EXPIRY_POLICY,
   volunteerGateAlertSeverity,
-} from "@wardenx/discipline-plans";
-import type { IsoInstant } from "@wardenx/types";
+} from "@chartwarden/discipline-plans";
+import type { IsoInstant } from "@chartwarden/types";
 import {
   type InitialClockFacts,
   evaluateInitialClock,
@@ -31,7 +31,7 @@ import {
   gatesToExpire,
 } from "../volunteer/index";
 
-/** The @wardenx/tenancy platform-job id the active-org enumeration of the M15 crons runs under. */
+/** The @chartwarden/tenancy platform-job id the active-org enumeration of the M15 crons runs under. */
 export const M15_PLATFORM_JOB_ID = "m15-discipline-plan-cron";
 
 export const M15_QUEUES = {

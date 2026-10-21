@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — the parser registry: one pure `file bytes → rows` function per system.
+// @chartwarden/terminology-loader — the parser registry: one pure `file bytes → rows` function per system.
 import { bundleFromBytes } from "../bytes";
 import { LoaderDataError } from "../errors";
 import type { LoadableSystemId, ParsedSource, SourceBundle } from "../types";

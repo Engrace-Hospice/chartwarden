@@ -1,4 +1,4 @@
-// @wardenx/types — Module 14 (Interdisciplinary Group / IDG) leaf contracts (M14-T01).
+// @chartwarden/types — Module 14 (Interdisciplinary Group / IDG) leaf contracts (M14-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M14 spec's references to
 // `packages/domain/idg/{seams,decision-payload,packet,alerts}.ts` resolve their TYPE surface HERE so the
@@ -13,7 +13,7 @@
 // M14-T02), the §4.10 typed M36 alert payloads, the §2.6 D4 canonical decision discriminated union, the
 // §2.4 D1 `PacketSnapshot` + §2.5 D7 `DisciplineViewBlock` shapes, and the §4.8 published-seam interfaces
 // + read DTOs. The §2.5 `DISCIPLINE_VIEW_POLICY` + the §1.1 `IDG_REQUIRED_QUORUM` / §2.2 D2
-// `IDG_SCHEDULE_POLICY` pure-data constants live in the `@wardenx/idg` FEATURE package. This file is
+// `IDG_SCHEDULE_POLICY` pure-data constants live in the `@chartwarden/idg` FEATURE package. This file is
 // type-only and importable by everyone with no edge.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
@@ -29,7 +29,7 @@ import type {
 } from "./care-plan";
 import type { ClinicalLinkSource } from "./clinical-link";
 
-// ── M14-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M14-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type IdgRecurringPolicyId = string;
 export type IdgAttendanceId = string;
 export type IdgAgendaItemId = string;
@@ -575,7 +575,7 @@ export interface PacketSnapshot {
 }
 
 // ── §4.10 M36 typed alert payloads (the deterministic messages M14 emits; M36 doesn't re-template) ────
-// M14 emits typed alerts through M36's dispatch seam. The builders land in `@wardenx/idg` / M14-T06; this
+// M14 emits typed alerts through M36's dispatch seam. The builders land in `@chartwarden/idg` / M14-T06; this
 // discriminated union is the shape M36 type-checks against. No free-text PHI in the payloads — IDs +
 // structural facts + a deterministic `bodyTemplate`; M36 resolves recipient PHI per permission scope.
 

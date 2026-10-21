@@ -28,7 +28,7 @@
 // documented system writer, alongside that cron. `cosigned_by_user_id`/`cosigned_at` stay null and
 // `reason_narrative_redacted` stays null for both `patient_opt_out_pre_death` and
 // `patient_opt_out_post_creation`: neither reason is in `COSIGN_REQUIRED_CLOSURE_REASONS`
-// (`@wardenx/bereavement`), so the §3.3.7 CHECK constraints requiring a cosign + a ≥40-char narrative on
+// (`@chartwarden/bereavement`), so the §3.3.7 CHECK constraints requiring a cosign + a ≥40-char narrative on
 // the five D7 reasons do not apply — matching `decidePatientOptOutFlip`'s own doc comment ("D7 does not
 // apply: this is honoring a directive the patient already gave, not a clinical judgment call").
 //
@@ -49,9 +49,9 @@
 // answers `already_closed` for any of the four closed/legal-hold states, so a redelivery after the first
 // delivery already closed the plan is a silent no-op — no separate uniqueness guard is needed beyond
 // `berv_closure_unique_plan` (a structural backstop, never expected to fire here).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@chartwarden/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { decidePatientOptOutFlip } from "../lifecycle/cascades";

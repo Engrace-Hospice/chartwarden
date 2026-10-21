@@ -7,8 +7,8 @@
 // unconsumed auditor magic links are revoked through an injected port (M2 owns that table; M3 does not
 // depend on M2 — the composition root binds `revokeAuditorMagicLinksForEngagement`). Idempotent: the
 // UPDATEs are guarded by the status predicate, and a revoke of an already-revoked link is a no-op.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray, lte } from "drizzle-orm";
 import type { M3OutboxPublisher } from "../authz-ports";
 

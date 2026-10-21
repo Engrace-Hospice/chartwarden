@@ -3,8 +3,8 @@ import {
   type SbarIssue,
   richBodyMentions,
   richBodyToPlainText,
-} from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+} from "@chartwarden/types";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import { apiErrorCode, toSentAttachments } from "./attachment-utils";

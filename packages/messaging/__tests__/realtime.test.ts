@@ -8,7 +8,7 @@ import {
   fieldSafetyRoom,
   orgRoom,
   userRoom,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // M36-T08 — Socket.IO room-set computation + event-contract invariants (M36 spec §4.3, §7.9).
 //
 // Accept: `computeRoomSet` is pure (sorted, de-duplicated), every user joins user+org, channel

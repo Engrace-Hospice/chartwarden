@@ -1,4 +1,4 @@
-// @wardenx/quality — operational (non-CMS) measure calculators barrel (§3.1). The eighteen CoP/operational
+// @chartwarden/quality — operational (non-CMS) measure calculators barrel (§3.1). The eighteen CoP/operational
 // quality measures M30 tracks alongside the CMS HQRP measures. Each is a PURE numerator/denominator/rate
 // function over a declared already-fetched input type.
 export * from "./verbal_order_signature_on_time";

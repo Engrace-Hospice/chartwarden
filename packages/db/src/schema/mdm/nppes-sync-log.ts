@@ -1,4 +1,4 @@
-// @wardenx/db — `nppes_sync_log` (M40 MDM §3.5, §4.3). The append-only run record for each
+// @chartwarden/db — `nppes_sync_log` (M40 MDM §3.5, §4.3). The append-only run record for each
 // NPPES sync — mode (nightly_delta/weekly_full/on_demand), counters (looked-up/changed/
 // deactivated/errors), and outcome. The nightly delta is the Phase-1 authoritative sync path
 // (M40-T08); this log is what §7.5 drift detection and §7.12/§7.13 fallback reasoning read.

@@ -3,7 +3,7 @@
 // The Drizzle reads/writes the five M15 crons run INSIDE a `withOrgContext` transaction (RLS scopes by
 // app.org_id; every predicate still carries the explicit organization_id as the second wall). Dumb on
 // purpose: no business rule lives here — the decisions are the pure planners in `./index`.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import type { GateStatusFlip } from "./types";
 

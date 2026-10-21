@@ -17,7 +17,7 @@
 // Registration is idempotent (the shared registry is single-owner / no-clear): re-boot (tests) guards on
 // `abacRegistry.has`. The predicates consume the M17 visit read path ONLY through the injected resolver — no
 // direct M17 schema import (D14), no `dependsOn` edge.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 
 /** §4.7 — the default EVV capture window: 2h before the scheduled start, 4h after the scheduled end. */
 export const DEFAULT_EVV_WINDOW_BEFORE_MS = 2 * 60 * 60 * 1000;

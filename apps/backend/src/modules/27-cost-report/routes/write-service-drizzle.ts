@@ -8,7 +8,7 @@
 // `withOrgContext(db, {organizationId, userId}, …)` transaction on the PRIMARY so Postgres RLS scopes each
 // statement to `app.org_id` (the M30 routes/write-service-drizzle precedent). Org/actor/owner binding is
 // ALWAYS the server-assembled {@link M27WriteActor} (never the body). The lifecycle methods do NOT
-// re-implement state logic — they drive the pure @wardenx/cost-report reducer (`canTransition` /
+// re-implement state logic — they drive the pure @chartwarden/cost-report reducer (`canTransition` /
 // `applyTransition` over `COST_REPORT_TRANSITIONS`) and persist the result with the §2.5 version check
 // (`updateWithVersion` → VERSION_CONFLICT). The §4.10 `m27.*` events are emitted through the injected
 // {@link WriteOutboxPort} in the SAME unit of work as the mutation (transactional outbox); the §4.8 worker
@@ -41,10 +41,10 @@ import {
   canTransition,
   contentHashSha256,
   resolveWorksheetSchema,
-} from "@wardenx/cost-report";
-import type { DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/cost-report";
+import type { DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M27WriteActor } from "./actor";
 import type {
   BadDebtRecordView,
@@ -305,7 +305,7 @@ export function buildDrizzleM27WriteService(
   /** §D14 server-side step-up gate (override / approve / submit / reopen). Fail-closed. */
   const requireStepUp = (actor: M27WriteActor): void => {
     if (!actor.stepUpRecent) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "STEP_UP_REQUIRED",
         "this action requires a recent step-up re-authentication",
         403,
@@ -331,7 +331,7 @@ export function buildDrizzleM27WriteService(
   ): CostReportState => {
     if (!canTransition(from, event, ctx)) {
       if (event === "approve_for_submit") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "GUARD_FAILED",
           "approve_for_submit requires zero unresolved blocking validation failures",
           422,
@@ -349,14 +349,14 @@ export function buildDrizzleM27WriteService(
    */
   const assertTwoPersonControl = (report: schema.CostReport, actor: M27WriteActor): void => {
     if (!report.approvedByMembershipId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "APPROVER_NOT_RECORDED",
         "this cost report has no recorded approver; return it to draft and approve it again before submitting",
         409,
       );
     }
     if (report.approvedByMembershipId === actor.membershipId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "TWO_PERSON_CONTROL_VIOLATION",
         "the membership that approved this cost report cannot also submit it",
         403,
@@ -373,7 +373,7 @@ export function buildDrizzleM27WriteService(
   ): Promise<schema.CostReport> => {
     const res = await new CostReportRepository(tx).updateWithVersion(id, expectedVersion, patch);
     if (!res.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VERSION_CONFLICT",
         `the cost report was modified concurrently (current version ${res.currentVersion ?? "unknown"})`,
         409,
@@ -598,7 +598,7 @@ export function buildDrizzleM27WriteService(
         // §2.3 per-code TypeBox validation — refuse a payload that does not match the worksheet schema.
         const tschema = resolveWorksheetSchema(worksheetCode as DomainWorksheetCode);
         if (!Value.Check(tschema, args.data)) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             `the worksheet ${worksheetCode} payload is invalid`,
             422,
@@ -625,7 +625,7 @@ export function buildDrizzleM27WriteService(
         }
         const res = await repo.updateWithVersion(existing.id, args.expectedVersion, { data });
         if (!res.ok) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VERSION_CONFLICT",
             `the worksheet was modified concurrently (current version ${res.currentVersion ?? "unknown"})`,
             409,
@@ -1283,7 +1283,7 @@ export function buildDrizzleM27WriteService(
         const isAccept = typeof args.mcrefAcknowledgmentNumber === "string";
         const isReject = typeof args.mcrefRejectionCode === "string";
         if (isAccept === isReject) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VALIDATION_FAILED",
             "exactly one of an acknowledgment number or a rejection code must be supplied",
             422,

@@ -8,7 +8,7 @@
 //
 // The scope drives the lookback (§7.1): HIPAA §164.528 is clamped to a 6-year window (§14 D7);
 // Part 2 §2.13 is the patient's lifetime (no clamp). The route owns that policy and hands the
-// resolved window to the @wardenx/audit accounting query (the only sanctioned `audit_event`
+// resolved window to the @chartwarden/audit accounting query (the only sanctioned `audit_event`
 // reader — never a direct schema SELECT). The accounting request is ITSELF audited at the
 // matching retention class (§2.6 side effect): `compliance` for HIPAA, `compliance_42cfr_part2`
 // for Part 2 / all — through the mandated `audit()` surface (the field denylist runs there).
@@ -18,14 +18,14 @@ import {
   type AuditExecutor,
   type AuditQuery,
   audit,
-} from "@wardenx/audit";
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+} from "@chartwarden/audit";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AUDIT_ACCOUNTING_SCOPE_PREDICATE } from "../abac/audit-accounting-predicate";
 import { AccountingParamsSchema, AccountingQuerySchema, parse } from "./audit-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for the accounting route (mirrors `AuditRouteDeps`). */

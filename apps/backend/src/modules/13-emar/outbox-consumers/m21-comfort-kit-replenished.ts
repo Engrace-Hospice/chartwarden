@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/outbox-consumers/m21-comfort-kit-replenished.ts — the §2.7 comfort-kit
 // replenishment intake, live for the first time (F-166, #248).
 //
-// `applyKitReplenishment` (`@wardenx/emar`, `comfort-kit/comfort-kit.ts`, added this pass — no pure core
+// `applyKitReplenishment` (`@chartwarden/emar`, `comfort-kit/comfort-kit.ts`, added this pass — no pure core
 // for "apply a physically-arrived replenishment to a drawdown" existed anywhere before now) tops an
 // existing `comfort_kit_drawdown.remaining_quantity` up by the delivered amount, CAPPED at the drawdown's
 // own `expected_quantity` (the deployed capacity) — a kit's tracked remaining can never honestly exceed
@@ -39,10 +39,10 @@
 // already prevents an exact-same-row redelivery from re-invoking `handle()` at all — the residual risk is
 // only a SECOND, distinct `m21.comfort_kit.replenished` event racing a still-in-flight first one, which
 // the capped-add tolerates safely.
-import { type DbClient, schema } from "@wardenx/db";
-import { applyKitReplenishment } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { M21ComfortKitReplenishedPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { applyKitReplenishment } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { M21ComfortKitReplenishedPayload } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const DRAWDOWN = schema.comfortKitDrawdowns;

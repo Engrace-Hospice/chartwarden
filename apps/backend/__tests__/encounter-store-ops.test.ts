@@ -1,6 +1,6 @@
 // GAP-069 / GAP-070 — the Drizzle EncounterReaderStore no longer runs render / mileage / draft-insert on an
 // in-memory default, and the EVV bracket state has ONE NULL-handling rule.
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { describe, expect, it, vi } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import { deriveEvvAtSign, evvStateOrMissing } from "../src/modules/08-encounters/evv-at-sign";

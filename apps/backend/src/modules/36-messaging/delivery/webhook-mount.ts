@@ -15,8 +15,8 @@
 // BODY PARSING: Twilio posts `application/x-www-form-urlencoded`. The parser below lives in an ENCAPSULATED
 // scope (no `@fastify/formbody` dependency, no effect on any other route) and yields the flat string map the
 // HMAC is computed over.
-import type { DbClient } from "@wardenx/db";
-import { WebhookError } from "@wardenx/messaging";
+import type { DbClient } from "@chartwarden/db";
+import { WebhookError } from "@chartwarden/messaging";
 import type { FastifyInstance } from "fastify";
 import {
   type MessagingWebhookService,

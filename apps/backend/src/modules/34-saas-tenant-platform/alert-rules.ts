@@ -9,7 +9,7 @@
 // to M34. M34 stays the PRODUCER — it emits the typed `m34.*` outbox events (events-by-m34.ts); M36
 // is the live alerts consumer that matches an emitted `eventType` to the firing `alert_rule`s and
 // fans out via the registered resolvers (§4.8). M34 `dependsOn` stays `[1,2,3,4,36]` — this file
-// imports ONLY `@wardenx/messaging` (M36) types, never the inverse.
+// imports ONLY `@chartwarden/messaging` (M36) types, never the inverse.
 //
 // SEED SHAPE (§4.8 ↔ M36 §3.6/§3.10): each rule below is an M36 platform-default `alert_rule` row
 // (organization_id NULL) keyed on the `m34.<resource>.<verb>` outbox `eventType` the engine matches
@@ -30,7 +30,7 @@
 // losslessly in `specSeverity` on each rule below so the seed can be re-projected without re-reading
 // the spec. See the typed TODO at the foot of this file.
 
-import type { RecipientResolverFn } from "@wardenx/messaging";
+import type { RecipientResolverFn } from "@chartwarden/messaging";
 
 // ── M34's two registered recipient resolvers (§4.8) ──────────────────────────────────────────────
 
@@ -179,7 +179,7 @@ function floorOf(spec: M34SpecSeverity): M34AlertSeverityFloor {
  * to M34's two registered resolvers. UPSERTed as M36 platform-default rows at boot.
  */
 /** The M3 RBAC role key the platform-ops console gates on (`tenant_lifecycle_platform_ops`). Literal on purpose (this
- *  file imports no runtime code); a test pins it to `@wardenx/auth`'s PLATFORM_OPS_ROLE_KEY, the single source. */
+ *  file imports no runtime code); a test pins it to `@chartwarden/auth`'s PLATFORM_OPS_ROLE_KEY, the single source. */
 export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
 
 /**
@@ -187,7 +187,7 @@ export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
  * Rules emitted under a TENANT org route at this key, never at `platform_ops`: binding `platform_ops` there would
  * hand operators `user.password.reset` / `user.deactivate` over the tenant's users.
  */
-// Literal on purpose (this file imports no runtime code); a test pins it to `@wardenx/auth`.
+// Literal on purpose (this file imports no runtime code); a test pins it to `@chartwarden/auth`.
 export const TENANT_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
 
 export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [

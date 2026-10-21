@@ -1,4 +1,4 @@
-// @wardenx/auth · roles - what `membership_role.scope` means and how it is enforced (M3 spec §2.4, §3.4, §4.2; GAP-007).
+// @chartwarden/auth · roles - what `membership_role.scope` means and how it is enforced (M3 spec §2.4, §3.4, §4.2; GAP-007).
 //
 // WHAT WAS MISSING. `membership_role.scope` and `role.scope_level` were write-only: the assign route stored any
 // object in `scope`, and no authorization decision read it. Scoping a grant to a location did nothing, a

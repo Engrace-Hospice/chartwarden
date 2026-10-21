@@ -6,8 +6,8 @@
 // row (never from the link) and must still exist: the message must be in that channel, in this organisation and not deleted.
 // Returns ids only. Every miss (absent, malformed, someone else's, another tenant's, an alert with no messaging target, a deleted
 // message) is the same `null`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const ND = schema.notificationDeliveries;

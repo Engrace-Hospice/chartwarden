@@ -11,8 +11,8 @@
 // platform reply panel, the announcement tools. A markdown-kind body is sent as hostile TEXT only: it is shown as plain
 // text, so no markdown rendering is claimed for it.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { XSS_CORPUS } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { XSS_CORPUS } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertInboxProvider } from "../../shell/alert-inbox";

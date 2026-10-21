@@ -1,17 +1,17 @@
-import { INITIAL_ASSESSMENT_CLOCKS } from "@wardenx/discipline-plans";
+import { INITIAL_ASSESSMENT_CLOCKS } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/initial-clock.ts — M15-T03 (§1.1 D10,
 // §7.2, §7.3).
 //
 // The per-kind initial-assessment clocks: the MSW 5-day psychosocial clock (CoP 418.54(c)), the chaplain
 // 5-day spiritual clock that a typed DECLINATION also satisfies (§7.3), the Aide POC 14-day signed-version
 // clock, and the volunteer plan's 5-BUSINESS-day finalize clock. The catalog itself (anchor, days,
-// business-vs-calendar, warn mark, satisfier) is pure data in `@wardenx/discipline-plans`
+// business-vs-calendar, warn mark, satisfier) is pure data in `@chartwarden/discipline-plans`
 // (`INITIAL_ASSESSMENT_CLOCKS`); this module owns the DAY MATH and the satisfaction verdict, so the daily
 // overdue crons (M15-T06), the plan-detail banner and the M30 on-time-rate measure all read one answer.
 //
 // PURE & deterministic — `now` and every plan column are injected, no `Date.now()`, no IO. Business days
 // are Mon–Fri (agency holidays are a Phase-4 calendar concern; the spec names business days, not holidays).
-import type { DisciplinePlanKind, IsoInstant } from "@wardenx/types";
+import type { DisciplinePlanKind, IsoInstant } from "@chartwarden/types";
 
 const MS_PER_DAY = 86_400_000;
 

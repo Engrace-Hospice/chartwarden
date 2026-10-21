@@ -12,8 +12,8 @@ import type {
   IntakeBatchStatus,
   IntakeBatchSudStatus,
   OrgId,
-} from "@wardenx/types";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
 import type { ClinicalWritebackSummary } from "../extraction/writeback-commit-clinical-db";
 import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
@@ -760,7 +760,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async patchDocument(organizationId, _actor, documentId, patch) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
           "the document is under an active legal hold",
           409,
@@ -776,13 +776,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async linkDocument(organizationId, _actor, documentId, patch) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
           "the document is under an active legal hold",
           409,
         );
       if (patch.patientId === undefined && patch.admissionId === undefined) {
-        throw new WardenXError("VALIDATION_FAILED", "at least one link field is required", 422);
+        throw new ChartWardenError("VALIDATION_FAILED", "at least one link field is required", 422);
       }
       if (patch.patientId !== undefined) r.patientId = patch.patientId;
       if (patch.admissionId !== undefined) r.admissionId = patch.admissionId;
@@ -802,7 +802,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async addTag(organizationId, _actor, documentId, tag) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
           "the document is under an active legal hold",
           409,
@@ -823,7 +823,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async removeTag(organizationId, _actor, documentId, tagId) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
-        throw new WardenXError(
+        throw new ChartWardenError(
           "LEGAL_HOLD_ACTIVE",
           "the document is under an active legal hold",
           409,
@@ -989,7 +989,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       // §2.5 optimistic concurrency — the caller's If-Match version must match the current.
       if (ifVersion !== overlayVersion) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VERSION_MISMATCH",
           "the overlay was modified since you read it",
           412,

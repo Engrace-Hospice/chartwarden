@@ -4,7 +4,7 @@
 // plugin composes (the M27 cost-report/routes/guards.ts precedent: a local `P(...)` RBAC wrapper + per-
 // predicate ABAC wrappers over the §4.7 chain M23 owns, the §D14 step-up assertion, and the
 // service-to-service `requireSystemPrincipal` gate for the §4.1 internal seam routes #39/#40). Each guard is
-// cast to the local {@link PreHandler} (a @wardenx/auth `GuardHandler` is structurally a Fastify preHandler).
+// cast to the local {@link PreHandler} (a @chartwarden/auth `GuardHandler` is structurally a Fastify preHandler).
 //
 // ABAC TARGETING (§4.7): every M23 predicate resolves its provider/caseload/role/rule facts SERVER-SIDE from
 // the route's ids — never the request body. The `getTarget` mappers below project the route's `:id`/query/
@@ -17,9 +17,9 @@
 //                                          .../custom — nothing exists yet to load by id, TASK-051)
 // `notFoundOnDeny:true` realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404).
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
-import { requireAbac, requireAnyAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { canonicalRuleKey } from "@wardenx/billing";
-import { ForbiddenError } from "@wardenx/types";
+import { requireAbac, requireAnyAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { canonicalRuleKey } from "@chartwarden/billing";
+import { ForbiddenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** A structural request shape carrying the ABAC target sources (params/query/body); GuardRequest is assignable. */

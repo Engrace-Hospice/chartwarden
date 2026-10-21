@@ -1,6 +1,6 @@
 import type { Clock } from "./adapters/sandata-adapter";
 import { eventPairHash } from "./event-pair-hash";
-// @wardenx/evv-aggregators — the open-model (no-aggregator) adapter (M18-T06, §4.5 D1, §8.5).
+// @chartwarden/evv-aggregators — the open-model (no-aggregator) adapter (M18-T06, §4.5 D1, §8.5).
 //
 // For non-mandate states and open-model states that allow any alt-EVV vendor conforming to the state's data
 // spec, there is no central aggregator to submit to: the EVV record is its own substantiation artifact. This

@@ -13,7 +13,7 @@ import type {
   PortalAccountRelationship,
   PortalDataCategory,
   PortalScopeSet,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { PortalStateError, requirePortal } from "./errors";
 import { validateScopeSet } from "./scope-set";
 

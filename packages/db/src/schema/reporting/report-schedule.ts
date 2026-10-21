@@ -1,4 +1,4 @@
-// @wardenx/db — `report_schedule` (M33 §3.3). A cron-driven scheduled render of a saved view to a
+// @chartwarden/db — `report_schedule` (M33 §3.3). A cron-driven scheduled render of a saved view to a
 // recipient list, evaluated in the tenant's IANA timezone. ORG-SCOPED: carries organization_id
 // NOT NULL → standard app.org_id RLS (writes additionally require report.schedule.write; recipients
 // must be active memberships in the same org, §3.5). `report_view_id` refs report_view; owner +

@@ -1,4 +1,4 @@
-// @wardenx/reporting · refresh — the `report.mv_refresh` WORKER (M33 §2.2–§2.6 / §4.8 W-R-06).
+// @chartwarden/reporting · refresh — the `report.mv_refresh` WORKER (M33 §2.2–§2.6 / §4.8 W-R-06).
 //
 // The handler the `report.mv_refresh` BullMQ worker runs per dequeued job: open a `report_run` ledger row
 // (queued → running), execute `REFRESH MATERIALIZED VIEW CONCURRENTLY <schema>.<mv_key>` on the PRIMARY (NOT

@@ -2,9 +2,9 @@
 //
 // `POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override` records ONE prominent M4 `audit_event` in
 // the same transaction as the override and stamps its id onto the NOT-NULL `validation_override.m4_audit_event_id`.
-// M23 may not write `audit_event` itself (a HELPER_ONLY table: only `@wardenx/audit` may), so the composition root (this file lives at the app
+// M23 may not write `audit_event` itself (a HELPER_ONLY table: only `@chartwarden/audit` may), so the composition root (this file lives at the app
 // root, not in bootstrap/ or a module, because module-1-boundary forbids bootstrap -> module imports and M23 may not import
-// @wardenx/audit) binds this adapter over the sanctioned helper (`auditReturningId`) — the same convention M25's `m4RemittanceAuditPort` uses.
+// @chartwarden/audit) binds this adapter over the sanctioned helper (`auditReturningId`) — the same convention M25's `m4RemittanceAuditPort` uses.
 //
 // WHAT IT RECORDS: ids, the rule key, the applied role and the reason LENGTH, with the request's correlation id, request id,
 // source IP and user agent (the same correlation id is set as the transaction's `app.correlation_id`, so the row-level
@@ -12,7 +12,7 @@
 // `validation_override.reason` (org-scoped, RLS, append-only). Migration 1062 makes the row-level trigger scrub it as well
 // (`audit_scrub` writes "<changed>"), so it reaches NO audit_event, outbox payload or log. The helper additionally redacts
 // through the audit denylist.
-import { auditReturningId } from "@wardenx/audit";
+import { auditReturningId } from "@chartwarden/audit";
 import type { AuditEventPort } from "./modules/23-billing-medicare/routes";
 
 /** The audit event type for an applied M23 validation override. */

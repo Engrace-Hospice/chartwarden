@@ -42,11 +42,11 @@ import {
   type AbacTarget,
   registerPredicateIdempotent,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import type { CostReportDb, CostReportState } from "@wardenx/cost-report";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { ElevatedApprovalReader } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { CostReportDb, CostReportState } from "@chartwarden/cost-report";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { ElevatedApprovalReader } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 
@@ -154,7 +154,7 @@ export const denyStubM27AbacResolver: ReadingM27AbacResolver = {
 
 /**
  * The REAL Drizzle-backed `ReadingM27AbacResolver`. Each fact load opens ONE
- * `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @wardenx/tenancy helper) so Postgres RLS
+ * `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @chartwarden/tenancy helper) so Postgres RLS
  * scopes every statement to `app.org_id` — the M30 resolver precedent. The `cost_report` row is point-read
  * by id (org + RLS scope the row); the membership's provider scope is read from `membership`.
  *

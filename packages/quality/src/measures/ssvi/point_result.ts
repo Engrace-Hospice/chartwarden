@@ -1,4 +1,4 @@
-// @wardenx/quality — the shared reduction for the eight SSVI 0-or-1-point metrics. Pure. No IO.
+// @chartwarden/quality — the shared reduction for the eight SSVI 0-or-1-point metrics. Pure. No IO.
 //
 // The SSVI inverts the HCI's polarity: a metric that crosses its cut EARNS a point of CONCERN. To keep the
 // platform-wide result contract honest (`thresholdMet === true` means "fine", band green; a breach is red), an

@@ -5,7 +5,7 @@
 // are implemented here. `provider_entity` and `location` are M1-owned tables: M2 serves the routes but reaches
 // them through M1's `SiteAdminRepository` (`bootstrap/site-admin-repository.ts`) rather than its Drizzle schema
 // (arch:tables). {@link OrgAdminStore} is simply the two halves behind one port the routes depend on.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { asc, eq, ilike, or } from "drizzle-orm";
 import {
   type LocationDetail,

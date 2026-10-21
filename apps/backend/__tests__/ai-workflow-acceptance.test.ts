@@ -43,7 +43,7 @@ import {
   type ModelBackend,
   aiTokenBudgetFor,
   createModelBackendRegistry,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import { MODULES } from "../../../architecture/module-manifest";
 
 import {

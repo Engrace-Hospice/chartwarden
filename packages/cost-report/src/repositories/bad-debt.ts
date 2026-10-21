@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the opt-in bad-debt log: `bad_debt_record` (the un-collectible
+// @chartwarden/cost-report · repositories — the opt-in bad-debt log: `bad_debt_record` (the un-collectible
 // portion of Medicare deductibles/coinsurance claimed under PRM I Ch 3-4; add/edit only while the parent
 // is draft/populating; SOFT-DELETE — a `deleted_at` tombstone preserves the row for audit — D7) (M27
 // §3.3). ORG-SCOPED; the bad-debt service wraps these in `withOrgContext` and owns the parent-state guard
 // + the `cost_report.bad_debt_claimed` opt-in. `amount_cents` is integer cents (bigint, mode number; D8).
 // No PHI (D18) — `period_label` is a month bucket, not a patient.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq, isNull, sum } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

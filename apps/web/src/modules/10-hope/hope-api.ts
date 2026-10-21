@@ -25,7 +25,7 @@
 //     why it is offered from the caller's own roles rather than as a free choice.
 //   • §2.3 / D9 Section Q, and the whole CMS pre-submission rule set. The client renders the findings
 //     `GET /validation` returns; it computes none of them.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ export async function skipSchedule(
 // F-072 built the two §4.10 stages behind it, so the pipeline is real end to end — assemble, transmit,
 // reconcile — and every planner in it now has a production caller.
 //
-// What is still missing is the TRANSPORT. `@wardenx/iqies-client` ships only its deny-stub adapter,
+// What is still missing is the TRANSPORT. `@chartwarden/iqies-client` ships only its deny-stub adapter,
 // because the CMS endpoint, its auth flow and the HOPE submission XML schema are not in this repository.
 // So a batch assembled today is transmitted by a worker whose adapter refuses, the job DLQs, and the
 // operator sees an alert. That is the honest behaviour, and it is exactly why an "Assemble batch" button

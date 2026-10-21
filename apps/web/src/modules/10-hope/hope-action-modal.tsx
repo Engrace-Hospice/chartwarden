@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextAreaField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextAreaField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — the small §4.1 write ceremonies (#91).
 //
 // The recording modal (`hope-record-modal.tsx`) is its own component because it captures the CMS

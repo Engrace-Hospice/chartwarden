@@ -1,4 +1,4 @@
-// @wardenx/hope — §4.9 / §4.9.1 M36 typed-alert builders (M10-T06).
+// @chartwarden/hope — §4.9 / §4.9.1 M36 typed-alert builders (M10-T06).
 //
 // M10 emits typed alerts through M36's dispatch seam (M36 §4.9 — "M10 emits the deterministic message;
 // M36 doesn't re-template"). This module is the single, pure place that constructs each §4.9 payload and
@@ -14,7 +14,7 @@
 //
 // No DB / M36 / outbox import — the caller (route service / `hope:alerts` dispatcher) wraps the returned
 // payload in the outbox envelope and M36 selects the per-channel builder before calling Twilio / VAPID.
-// The §4.9 alert SHAPES live in the leaf `@wardenx/types` (`hope.ts`); this builder is the only producer.
+// The §4.9 alert SHAPES live in the leaf `@chartwarden/types` (`hope.ts`); this builder is the only producer.
 
 import type {
   HopeAlertPayload,
@@ -22,15 +22,15 @@ import type {
   HopeSfvAlert,
   HopeSubmissionDeadlineAlert,
   HopeTimepointWindowAlert,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** M36 severity tiers M10 routes alerts at (mirrors M36's dispatch vocabulary). */
 export type HopeAlertSeverity = "info" | "warning" | "clinical_urgent" | "critical";
 
 /** The static, PHI-free template strings carried out-of-band per §4.9.1 (no patient identifiers). */
 export const OUT_OF_BAND_TEMPLATES = {
-  timepoint_window_state: "HOPE timepoint action required — open WardenX",
-  sfv_obligation: "Symptom Follow-Up Visit due — open WardenX",
+  timepoint_window_state: "HOPE timepoint action required — open ChartWarden",
+  sfv_obligation: "Symptom Follow-Up Visit due — open ChartWarden",
 } as const;
 
 // ── §4.9 typed-alert builders (the deterministic payloads M10 hands to M36) ────────────────────────────

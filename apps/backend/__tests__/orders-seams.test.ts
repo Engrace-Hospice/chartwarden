@@ -1,4 +1,4 @@
-import type { OrderDiscontinuationDto, OrderRecordDto } from "@wardenx/types";
+import type { OrderDiscontinuationDto, OrderRecordDto } from "@chartwarden/types";
 // apps/backend/__tests__/orders-seams.test.ts — M11-T05 (§2.8 D14 OrderSignatureProvider + §4.3
 // OrderProvider). Both seams are pure orchestration over an injected OrderSeamStore; these cover the
 // polymorphic signature-write primitive (a fixture M12 caller signing a `target_kind='medication_order'`

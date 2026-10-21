@@ -1,4 +1,4 @@
-// @wardenx/messaging — Socket.IO room grammar + connect-time room-set computation (M36-T08, §4.3).
+// @chartwarden/messaging — Socket.IO room grammar + connect-time room-set computation (M36-T08, §4.3).
 //
 // Pure, infra-free room-name builders and the one-shot room-set computation the Socket.IO handshake
 // runs at connect (§4.3): given the authenticated user's current channel memberships, on-call

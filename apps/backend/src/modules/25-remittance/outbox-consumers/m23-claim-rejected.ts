@@ -10,7 +10,7 @@
 // dispatcher's own envelope (`DispatchableOutboxEvent.createdAt`, the outbox row's insertion instant) — the
 // closest honest proxy this consumer has, since the catalog carries no finer-grained rejection timestamp.
 // `providerEntityId` is resolved via a direct read of M23's OWN `claim` table
-// (`@wardenx/billing`'s `ClaimRepository.findById`) rather than a new cross-module seam: M25's manifest
+// (`@chartwarden/billing`'s `ClaimRepository.findById`) rather than a new cross-module seam: M25's manifest
 // `dependsOn` already includes 23 (architecture/module-manifest.ts), and `packages/billing` is M23's own
 // codePath, so importing it crosses no boundary `arch:boundaries` polices — the identical legality
 // `23-billing-medicare/cost-report-seams.ts` already relies on for its own `repositories.*` reads. M23's
@@ -29,9 +29,9 @@
 // redelivery against an already-seeded idempotency key, by design, so the publish step is never retried
 // either. This is inherited from `DenialOpenedEmission`'s existing "the caller forwards to the outbox after
 // a NEW seed" contract, not introduced here.
-import { repositories } from "@wardenx/billing";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { repositories } from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DENY_DENIAL_TERMINOLOGY,
   type DenialSeedStore,

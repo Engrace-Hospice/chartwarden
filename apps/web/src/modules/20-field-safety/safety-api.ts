@@ -30,7 +30,7 @@
 //
 // The server stays the only authorization point: nothing here decides what a caller may see. An
 // out-of-scope row is a non-leaking 404 from the server, never a frontend hide.
-import { type ApiClient, BACKGROUND_REQUEST_HEADERS, type operations } from "@wardenx/ui";
+import { type ApiClient, BACKGROUND_REQUEST_HEADERS, type operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
 
@@ -214,7 +214,7 @@ export function writeHeaders(version?: number | null): Record<string, string> {
  * read identically to a 500. The cast hid it from tsc and no test asserted a rendered message.
  *
  * `code` is the discriminator rather than an HTTP status, because the status never reaches this function:
- * the read helpers return `{ data, error }` and drop `res.response`. The catalog in @wardenx/types maps
+ * the read helpers return `{ data, error }` and drop `res.response`. The catalog in @chartwarden/types maps
  * code → status in one auditable place, so matching on code loses nothing.
  *
  * The server's own `message` wins for DOMAIN codes — M20 writes those for humans ("this route requires an

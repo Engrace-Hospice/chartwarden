@@ -1,4 +1,4 @@
-// @wardenx/db — `sia_calculation` (M23 Billing-Medicare §3.3; append-only, 0..1 with `claim`;
+// @chartwarden/db — `sia_calculation` (M23 Billing-Medicare §3.3; append-only, 0..1 with `claim`;
 // non-partitioned; retention class `compliance`). Captures the Service Intensity Add-on math for the
 // last-7-days-of-life window (`window_start` = deceased date − 6 days, inclusive): the qualifying RN/MSW
 // visits, total qualifying minutes, and the computed add-on amount. ORG-SCOPED: organization_id NOT

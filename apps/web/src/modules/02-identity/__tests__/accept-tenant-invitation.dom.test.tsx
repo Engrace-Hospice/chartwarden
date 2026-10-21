@@ -4,8 +4,8 @@
 // This page redeems the token at POST /api/v1/public/tenant-invitations/:token/accept (which creates the user +
 // first org_admin membership) and then sends the standard password-reset email so the admin can set a password.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

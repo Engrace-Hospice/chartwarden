@@ -1,4 +1,4 @@
-// @wardenx/quality · workers — the `m30.cahps_export` PURE processor (§4.8 / §7.2 W-14).
+// @chartwarden/quality · workers — the `m30.cahps_export` PURE processor (§4.8 / §7.2 W-14).
 //
 // The body the `m30.cahps_export` worker runs per dequeued job: render (and optionally push) one month's
 // decedent sample to the org's CAHPS-Hospice survey vendor. It opens with the §4.8 `processing_log`
@@ -12,7 +12,7 @@
 // PURE port-injected orchestration: the only infra-touching code is the bound adapters/repos/outbox the
 // backend injects. The PHI-decrypt + vendor-config ports are the genuinely-missing M1 envelope-DEK infra,
 // so they are LAZY fail-closed (the M33 drilldown-encrypt precedent: deny + fail rather than leak/no-op).
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { CahpsDecedentSampleRow, CahpsVendor, CahpsVendorAdapter } from "../cahps/adapter";
 import { M30_QUEUE_PARAMS } from "./params";
 import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort } from "./ports";

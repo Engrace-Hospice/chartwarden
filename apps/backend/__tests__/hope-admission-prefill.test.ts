@@ -1,4 +1,4 @@
-import type { PatientCoverage, PatientHopeAdmissionPrefillFacts } from "@wardenx/types";
+import type { PatientCoverage, PatientHopeAdmissionPrefillFacts } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   buildHopeAdmissionPrefillAnswers,

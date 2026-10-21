@@ -19,7 +19,7 @@ import type {
   SignedEncounterDigest,
   SkilledNursingDayTotal,
   SkilledVisitDay,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The billability-relevant facts the store hands the {@link BillableEncounterReader} for ONE encounter

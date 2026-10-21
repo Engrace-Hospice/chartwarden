@@ -7,7 +7,7 @@
 // id, gets the one not-found); accountability stays with the sender until an item is accepted. It is flag-independent -
 // the routes gate `messaging.handoffs`. It never writes another module's data: the only cross-aggregate write is the
 // module's own communication task, reassigned through the task store when its handoff item is accepted.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   HANDOFF_MAX_ITEMS,
   HANDOFF_MAX_PATIENTS,
@@ -18,8 +18,8 @@ import {
   isPastDeadline,
   prepareHandoffPolicy,
   validateOfferShape,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ForbiddenError,
   type HandoffDto,
@@ -27,8 +27,8 @@ import {
   type HandoffItemState,
   type HandoffPolicyView,
   NotFoundError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";
@@ -119,8 +119,8 @@ const MS_PER_MINUTE = 60_000;
 
 /** One refusal for missing / not a participant: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("clinical_handoff");
-const typed = (code: string, message: string, status: number): WardenXError =>
-  new WardenXError(code, message, status);
+const typed = (code: string, message: string, status: number): ChartWardenError =>
+  new ChartWardenError(code, message, status);
 const recipientInvalid = () =>
   typed("HANDOFF_RECIPIENT_INVALID", "this person cannot receive a handoff", 422);
 const itemInvalid = () =>

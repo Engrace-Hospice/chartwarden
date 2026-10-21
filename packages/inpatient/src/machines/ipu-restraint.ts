@@ -1,9 +1,9 @@
-// @wardenx/inpatient — M37-T08, §2.10 D11. The pure restraint policy core: application validation, the
+// @chartwarden/inpatient — M37-T08, §2.10 D11. The pure restraint policy core: application validation, the
 // reassessment cadence clock, and the active → released state machine. Default IPU posture is
 // restraint-free; a restraint requires the step-up `m37.restraint.apply` permission, a ≥100-char
 // justification, and a physician order (CoP 418.110, required even in emergency). IO-free — the route
 // (M37-T11) resolves the permission/step-up and injects the facts.
-import type { IpuRestraintEventState, IpuRestraintReassessmentOutcome } from "@wardenx/types";
+import type { IpuRestraintEventState, IpuRestraintReassessmentOutcome } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../errors";
 
 /** §2.10 — the reassessment-interval platform floors (minutes): 15 behavioral, 120 medical. Tighten-only. */

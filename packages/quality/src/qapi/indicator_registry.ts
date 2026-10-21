@@ -1,4 +1,4 @@
-// @wardenx/quality — QAPI indicator data-path registry + threshold-band evaluation (M30-P2a). Pure,
+// @chartwarden/quality — QAPI indicator data-path registry + threshold-band evaluation (M30-P2a). Pure,
 // IO-free.
 //
 // A `qapi_indicator.data_path` (V-9) binds a tracked indicator to its data source: either a platform
@@ -8,7 +8,7 @@
 // green threshold band, and (4) enforces the tenant-tighten-only rule — a tenant may make a threshold
 // STRICTER than the platform floor but never LOOSER. No IO; the registry is a const catalog the route
 // projects from.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { MeasureId } from "../contracts";
 
 /** The traffic-light band an indicator's current value falls into (yellow→red is the breach edge, WF-07). */
@@ -75,7 +75,7 @@ export interface ParsedDataPath {
 
 /**
  * Parse + validate a `qapi_indicator.data_path` (V-9). The legal forms are `measure:<code>` and
- * `custom:<key>`, each with a non-empty ref. Throws {@link WardenXError} `QAPI_INVALID_DATA_PATH` on an
+ * `custom:<key>`, each with a non-empty ref. Throws {@link ChartWardenError} `QAPI_INVALID_DATA_PATH` on an
  * unknown prefix or empty ref.
  */
 export function parseDataPath(dataPath: string): ParsedDataPath {
@@ -83,7 +83,7 @@ export function parseDataPath(dataPath: string): ParsedDataPath {
   const prefix = sep === -1 ? "" : dataPath.slice(0, sep);
   const ref = sep === -1 ? "" : dataPath.slice(sep + 1).trim();
   if ((prefix !== "measure" && prefix !== "custom") || ref.length === 0) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "QAPI_INVALID_DATA_PATH",
       `'${dataPath}' is not a valid indicator data_path (expected 'measure:<code>' or 'custom:<key>')`,
       422,
@@ -94,14 +94,14 @@ export function parseDataPath(dataPath: string): ParsedDataPath {
 
 /**
  * Resolve a `measure:`-bound data path to its underlying {@link MeasureId}. Throws
- * {@link WardenXError} `QAPI_INDICATOR_NOT_REGISTERED` if the data path is a `measure:` path that is not
+ * {@link ChartWardenError} `QAPI_INDICATOR_NOT_REGISTERED` if the data path is a `measure:` path that is not
  * in {@link QAPI_INDICATOR_REGISTRY}, or `QAPI_DATA_PATH_NOT_MEASURE_BOUND` for a `custom:` path (which
  * has no platform measure binding). The ref of an unregistered `measure:` path is NOT trusted.
  */
 export function resolveMeasureId(dataPath: string): MeasureId {
   const parsed = parseDataPath(dataPath);
   if (parsed.kind === "custom") {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "QAPI_DATA_PATH_NOT_MEASURE_BOUND",
       `'${dataPath}' is a custom indicator and is not bound to a platform measure`,
       422,
@@ -109,7 +109,7 @@ export function resolveMeasureId(dataPath: string): MeasureId {
   }
   const binding = QAPI_INDICATOR_REGISTRY[dataPath];
   if (binding === undefined) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "QAPI_INDICATOR_NOT_REGISTERED",
       `'${dataPath}' is not a registered platform indicator`,
       422,
@@ -140,14 +140,14 @@ export function evaluateBand(value: number, thresholds: IndicatorThresholds): Th
  * never LOOSER (the platform floor is a survey-mandated minimum). For `higher_is_better`, "stricter"
  * means RAISING both boundaries (demanding a higher value to stay out of yellow/red); for
  * `lower_is_better`, "stricter" means LOWERING both boundaries. The direction must match the floor.
- * Throws {@link WardenXError} `QAPI_INDICATOR_THRESHOLD_LOOSENED` if the tenant band loosens the floor.
+ * Throws {@link ChartWardenError} `QAPI_INDICATOR_THRESHOLD_LOOSENED` if the tenant band loosens the floor.
  */
 export function assertTenantTighten(
   platformFloor: IndicatorThresholds,
   tenant: IndicatorThresholds,
 ): void {
   if (tenant.direction !== platformFloor.direction) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "QAPI_INDICATOR_THRESHOLD_LOOSENED",
       "a tenant threshold may not change the platform-floor direction",
       422,
@@ -158,7 +158,7 @@ export function assertTenantTighten(
       ? tenant.yellow < platformFloor.yellow || tenant.red < platformFloor.red
       : tenant.yellow > platformFloor.yellow || tenant.red > platformFloor.red;
   if (loosened) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "QAPI_INDICATOR_THRESHOLD_LOOSENED",
       "a tenant may only tighten (never loosen) an indicator's platform-floor threshold",
       422,

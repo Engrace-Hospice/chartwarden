@@ -1,6 +1,6 @@
 import type { StateCode } from "./contracts";
 import { MedicaidAdapterError } from "./errors";
-// @wardenx/medicaid-adapters — shared deny-stub factory for non-implemented Phase-1 states (D14). The
+// @chartwarden/medicaid-adapters — shared deny-stub factory for non-implemented Phase-1 states (D14). The
 // registry registers WA/ID/CA/NV deny-stubs so its existence proof is testable without committing to a
 // state's wire format until a paying customer lands. Every I/O method throws a structured
 // MedicaidAdapterError(code='ADAPTER_DENY_STUB'); metadata is conservative (all gates closed). The vendor

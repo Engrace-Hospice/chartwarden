@@ -1,6 +1,6 @@
 // apps/backend/src/modules/04-audit/jobs — M4-T11 BullMQ wiring for the audit jobs (§4.4).
 //
-// The thin, infra-touching adapter that turns @wardenx/audit's pure job descriptors into running
+// The thin, infra-touching adapter that turns @chartwarden/audit's pure job descriptors into running
 // BullMQ workers + the two repeatable schedules. All job LOGIC lives in the package (and is
 // unit-tested there against in-memory ports); this module only constructs `Worker`/`Queue` over a
 // Redis/Valkey connection, so it is exercised in production wiring — never at import or in tests
@@ -10,7 +10,7 @@ import {
   AUDIT_QUEUES,
   type AuditJobAdapters,
   auditJobDescriptors,
-} from "@wardenx/audit";
+} from "@chartwarden/audit";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 /** Deps for wiring the audit workers: the Redis/Valkey connection + the bound infra adapters. */

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { JSX } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";

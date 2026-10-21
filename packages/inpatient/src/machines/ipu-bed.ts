@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T03, §2.12 D13. The pure `ipu_bed.cleaning_status` turnover state machine plus
+// @chartwarden/inpatient — M37-T03, §2.12 D13. The pure `ipu_bed.cleaning_status` turnover state machine plus
 // the turnover-SLA and reservation-hold clocks. IO-free and deterministic: the service/route layer
 // (M37-T11) loads the bed under RLS, checks the `If-Match` version, calls `transitionBedCleaning`, then
 // writes the returned `ipu_bed_cleaning_event` row + the new status + any outbox in one tx. Per-event facts
@@ -13,7 +13,7 @@
 //   discharged_dirty ─startCleaning→ cleaning    (housekeeping check-in)
 //   cleaning ─completeCleaning→ ready       (housekeeping check-out)
 //   ready ─retire────────→ retired          (Org Admin) ; retired is terminal
-import type { IpuBedCleaningStatus } from "@wardenx/types";
+import type { IpuBedCleaningStatus } from "@chartwarden/types";
 import { IpuStateError, requireIpu } from "../errors";
 
 /** The bed a room seeds at (§2.12 initial state). */

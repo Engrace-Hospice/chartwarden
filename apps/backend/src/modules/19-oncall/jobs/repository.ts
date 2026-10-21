@@ -7,7 +7,7 @@
 // file's own header (`packages/db/src/schema/oncall/on-call-roster-sync-queue.ts`) for why a TRUE
 // reset-the-delay debounce needs this rather than the dosespot/measure-recompute "collapse onto pending"
 // shape.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, sql } from "drizzle-orm";
 
 type OnCallRosterSyncQueueRow = schema.OnCallRosterSyncQueueRow;

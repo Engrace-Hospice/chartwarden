@@ -1,11 +1,11 @@
 // apps/backend/src/modules/35-subscription/billing-runtime/drizzle-stores.ts - GAP-059.
 //
-// Drizzle implementations of the `@wardenx/subscription-billing` store PORTS, each bound to ONE open
+// Drizzle implementations of the `@chartwarden/subscription-billing` store PORTS, each bound to ONE open
 // transaction (the caller owns `withOrgContext` / the platform runner, the §2.5 row locks and the outbox
 // publication). The workers drive the package's pure services (DunningStateMachineService,
 // SubscriptionLifecycleService, InvoiceMirrorService, RevenueRecognitionService) over these.
-import { type DbClient, schema } from "@wardenx/db";
-import { contributesToMrr, normalizeMonthlyCents } from "@wardenx/subscription-billing";
+import { type DbClient, schema } from "@chartwarden/db";
+import { contributesToMrr, normalizeMonthlyCents } from "@chartwarden/subscription-billing";
 import type {
   DunningStateRecord,
   DunningStore,
@@ -17,7 +17,7 @@ import type {
   RevenueStore,
   SubscriptionRecord,
   SubscriptionStore,
-} from "@wardenx/subscription-billing";
+} from "@chartwarden/subscription-billing";
 import type {
   BillingCadence,
   BillingYearMonth,
@@ -28,7 +28,7 @@ import type {
   PlanTier,
   SubscriptionId,
   SubscriptionStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 /** An open transaction handle (org-scoped or platform) the stores run their statements on. */

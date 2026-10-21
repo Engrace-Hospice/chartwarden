@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";

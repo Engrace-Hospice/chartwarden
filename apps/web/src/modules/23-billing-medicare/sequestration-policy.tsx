@@ -10,7 +10,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the SEQUESTRATION POLICY timeline (R2,
 // §5.1 admin / §4.1 #32-33, D11). The per-ProviderEntity sequestration-percentage timeline: enter a
 // provider entity, read the effective-dated policy rows (GET /billing/sequestration-policies?providerEntityId=)

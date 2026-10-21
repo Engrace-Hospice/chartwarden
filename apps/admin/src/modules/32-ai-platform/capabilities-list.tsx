@@ -4,8 +4,8 @@ import {
   interactiveRowProps,
   useApiClient,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.1 capability registry overview
 // (`/admin/ai-platform/capabilities`, `ai.capability.read`). The AI Safety Owner's front door: every
 // registered capability with its lifecycle state, risk tier, active backend and re-approval clock.

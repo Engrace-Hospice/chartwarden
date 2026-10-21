@@ -20,7 +20,7 @@ const fakes = vi.hoisted(() => ({
   acks: [] as Record<string, unknown>[],
 }));
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
+vi.mock("@chartwarden/billing", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   const repos = original.repositories as Record<string, unknown>;
   const versioned = (table: Map<string, Row>) =>
@@ -65,7 +65,7 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
   };
 });
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (
     _db: unknown,
     _ctx: { organizationId: string; userId: string },

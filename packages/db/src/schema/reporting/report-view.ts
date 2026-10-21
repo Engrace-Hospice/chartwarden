@@ -1,4 +1,4 @@
-// @wardenx/db — `report_view` (M33 §3.3). A saved view over a definition version: owner, pinned
+// @chartwarden/db — `report_view` (M33 §3.3). A saved view over a definition version: owner, pinned
 // filters, share scope (private/role/org), and the org-default flag. ORG-SCOPED: carries
 // organization_id NOT NULL → standard app.org_id RLS (writes additionally require report.view.write
 // + ownership / org_admin for org-default, §3.5). `definition_version_id` refs

@@ -36,14 +36,14 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import {
   PLATFORM_DEFAULT_ALERT_RULES,
   createAlertEmitter,
   toNewAlertRuleRows,
-} from "@wardenx/messaging";
-import type { OffboardingDto, OffboardingItemKey } from "@wardenx/types";
+} from "@chartwarden/messaging";
+import type { OffboardingDto, OffboardingItemKey } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { Client } from "pg";

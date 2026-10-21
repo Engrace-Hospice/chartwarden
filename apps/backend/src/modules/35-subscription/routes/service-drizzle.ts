@@ -13,7 +13,7 @@
 // platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   PaymentMethodRejectedError,
   type PaymentMethodVerifier,
@@ -21,14 +21,14 @@ import {
   type VerifiedPaymentMethod,
   checkRefundRequest,
   committedRefundCents,
-} from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   NotFoundError,
   type OrganizationReader,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
@@ -102,7 +102,7 @@ export interface WriteOutboxPort {
 export type PlatformRunner = <T>(fn: (tx: WriteTx) => Promise<T>) => Promise<T>;
 
 const failClosedPlatformRunner: PlatformRunner = async () => {
-  throw new WardenXError(
+  throw new ChartWardenError(
     "PLATFORM_CONTEXT_UNAVAILABLE",
     "the platform-ops billing surface requires a bound platform credential",
     503,
@@ -191,18 +191,18 @@ function meterView(mIn: MeterRow | undefined): MeterAdminView {
 }
 
 /** GAP-061 — map a failed {@link checkRefundRequest} onto the typed error the route replies with. */
-function refundRejection(verdict: Extract<RefundRequestCheck, { ok: false }>): WardenXError {
+function refundRejection(verdict: Extract<RefundRequestCheck, { ok: false }>): ChartWardenError {
   if (verdict.reason === "invoice_not_paid") {
-    return new WardenXError("REFUND_INVOICE_NOT_PAID", "only a paid invoice can be refunded", 422);
+    return new ChartWardenError("REFUND_INVOICE_NOT_PAID", "only a paid invoice can be refunded", 422);
   }
   if (verdict.reason === "amount_invalid") {
-    return new WardenXError(
+    return new ChartWardenError(
       "VALIDATION_FAILED",
       "the refund amount must be a positive integer",
       400,
     );
   }
-  return new WardenXError(
+  return new ChartWardenError(
     "REFUND_EXCEEDS_REFUNDABLE",
     `the refund exceeds what remains refundable on the invoice (${verdict.refundableCents} cents)`,
     422,
@@ -212,7 +212,7 @@ function refundRejection(verdict: Extract<RefundRequestCheck, { ok: false }>): W
 /** Narrow a `.returning()` / point-read result, or fail (a write must return exactly one row). */
 function req<T>(row: T | undefined, what = "row"): T {
   if (row === undefined)
-    throw new WardenXError("PERSIST_FAILED", `expected a ${what} but got none`, 500);
+    throw new ChartWardenError("PERSIST_FAILED", `expected a ${what} but got none`, 500);
   return row;
 }
 
@@ -716,7 +716,7 @@ export function buildDrizzleM35RouteService(
             )
             .limit(1);
           if (!ownPm) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "PAYMENT_METHOD_NOT_FOUND",
               "the payment method does not belong to this organization",
               422,
@@ -740,7 +740,7 @@ export function buildDrizzleM35RouteService(
             startedAt: at,
           })
           .returning();
-        if (!sub) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+        if (!sub) throw new ChartWardenError("PERSIST_FAILED", "the write returned no row", 500);
         await tx.insert(SH).values({
           subscriptionId: sub.id,
           organizationId: actor.organizationId,
@@ -789,7 +789,7 @@ export function buildDrizzleM35RouteService(
           const startMs = sub.currentPeriodStart?.getTime() ?? null;
           const withinGrace = startMs !== null && now().getTime() - startMs <= 7 * 86400000;
           if (!withinGrace && !actor.roles.includes("platform_admin")) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "PLAN_CHANGE_OUTSIDE_GRACE",
               "always_invoice proration outside the 7-day grace window requires platform_admin",
               403,
@@ -950,7 +950,7 @@ export function buildDrizzleM35RouteService(
       // GAP-100 — no stripe-dispatcher worker exists to provision a SetupIntent (and the webhook ingest is
       // unbound), so `{clientSecret: null, status: "pending"}` was a permanent fake-pending that no poll
       // ever resolves. Refuse 503 until the Stripe transport is bound; nothing is promised.
-      throw new WardenXError(
+      throw new ChartWardenError(
         "STRIPE_DISPATCHER_UNAVAILABLE",
         "card setup is unavailable: the Stripe dispatcher is not configured for this deployment",
         503,
@@ -963,7 +963,7 @@ export function buildDrizzleM35RouteService(
       // mirror Stripe's metadata, not the client's. No verifier bound => refuse rather than trust.
       const verifier = deps.paymentMethodVerifier;
       if (!verifier) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "STRIPE_UNAVAILABLE",
           "payment methods cannot be attached: the Stripe transport is not configured for this deployment",
           503,
@@ -991,9 +991,9 @@ export function buildDrizzleM35RouteService(
         });
       } catch (err) {
         if (err instanceof PaymentMethodRejectedError) {
-          throw new WardenXError("PAYMENT_METHOD_REJECTED", err.message, 422);
+          throw new ChartWardenError("PAYMENT_METHOD_REJECTED", err.message, 422);
         }
-        throw new WardenXError(
+        throw new ChartWardenError(
           "STRIPE_UNAVAILABLE",
           "the payment method could not be verified with Stripe; try again shortly",
           503,
@@ -1587,7 +1587,7 @@ export function buildDrizzleM35RouteService(
             status: "requested",
           })
           .returning();
-        if (!ref) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+        if (!ref) throw new ChartWardenError("PERSIST_FAILED", "the write returned no row", 500);
         await emit(
           tx,
           "m35.refund.requested",
@@ -1614,7 +1614,7 @@ export function buildDrizzleM35RouteService(
         if (ref.status !== "requested") throw new ConflictError("refund is not in requested state");
         // §4.8 four-eyes: the approver must differ from the requester.
         if (ref.requestedByMembershipId === actor.membershipId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "REFUND_FOUR_EYES",
             "the approver must differ from the requester",
             403,

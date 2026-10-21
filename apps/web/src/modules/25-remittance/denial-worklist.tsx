@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the DENIAL WORKLIST (R2, §5 / §1.1). The operational heart: the
 // CARC/RARC denial cases with their plain-language action, assignee, aging bucket, and dollar value. Reads
 // are org-scoped + provider-scoped server-side (RLS + provider_entity_scope); the server is the only authz

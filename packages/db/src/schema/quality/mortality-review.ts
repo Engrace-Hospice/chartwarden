@@ -1,4 +1,4 @@
-// @wardenx/db — `mortality_review` (M30 §3.3; PARTITIONED monthly by `death_at`; retention class
+// @chartwarden/db — `mortality_review` (M30 §3.3; PARTITIONED monthly by `death_at`; retention class
 // `phi`). The structured post-death review (clinical / satisfaction / compliance dimensions) created
 // once per admission via an idempotent death event. Registers a §3.7 eraser (redact the free-text
 // dimension members; retain the structured compliance record). ORG-SCOPED: organization_id NOT NULL

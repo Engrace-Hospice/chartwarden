@@ -1,6 +1,6 @@
 // M23 — the facility spans G8 is read from: M37 (the system of record for an inpatient stay) wins for the stays it
 // knows; M5's facility residence spans only stand in for stays M37 has no record of.
-import { facilityPostalCodeForInpatientDates } from "@wardenx/billing";
+import { facilityPostalCodeForInpatientDates } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { composeFacilitySpans, toFacilitySpans } from "../services/claim-cbsa";
 

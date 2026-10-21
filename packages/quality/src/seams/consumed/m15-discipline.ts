@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M15 (Discipline Care Plans). ABSENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M15 (Discipline Care Plans). ABSENT producer (§4.4).
 //
 // M15 is not yet implemented → forward-seam DENY-STUB. M30 consumes `DisciplineComplianceProvider` for
 // the supervisory-on-time / MSW-assessment-on-time / chaplain-assessment-on-time / volunteer-compliance

@@ -1,7 +1,7 @@
 // M36 WP 3.10 - the composer's "Ask a nurse about a medication" action, beside Poll. It renders nothing unless the
 // options route says the entry is on AND the conversation is a patient's care-team conversation (any 401/403/404 or
 // failure reads as hidden); the server stays the authority. The outcome stays on screen in a focusable status.
-import { Button } from "@wardenx/ui";
+import { Button } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {

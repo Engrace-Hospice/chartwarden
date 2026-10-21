@@ -1,5 +1,5 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { Button, CenteredStatusLayout, Glyph, useCorrelationId } from "@wardenx/ui";
+import type { ScreenRegistryModule } from "@chartwarden/types";
+import { Button, CenteredStatusLayout, Glyph, useCorrelationId } from "@chartwarden/ui";
 // apps/admin/src/shell — System / Utility Pages (M1 cross-cutting, ADR-0030). Ported from
 // apps/web/src/shell/system-pages.tsx, trimmed to the three states this app's guard actually
 // produces (RequireChrome → /login, /403, /error — no idle-lock/maintenance-banner machinery here).

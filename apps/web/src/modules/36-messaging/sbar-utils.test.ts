@@ -1,4 +1,4 @@
-import { SBAR_PLATFORM_FLOOR, validateSbar } from "@wardenx/types";
+import { SBAR_PLATFORM_FLOOR, validateSbar } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   buildSbarBody,

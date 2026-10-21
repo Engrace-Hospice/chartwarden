@@ -1,4 +1,4 @@
-import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
+import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 // packages/hearthnote/__tests__/assembly.test.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 // Layer-1 deterministic core: byte-identical assembly, template-order rendering, verbatim free-text,
 // numeric-direct interpolation, and the D11 vocab-pin / legal-pair / unknown-code guards.

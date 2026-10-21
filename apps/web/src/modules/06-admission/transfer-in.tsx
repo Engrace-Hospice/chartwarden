@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Transfer-in (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER "Transfer-in
 // (separate entry)"; M6 W-DC-03 / D9, POST /api/v1/admissions/:id/transfer-in). Records that this
 // admission continues another hospice's benefit period: the carried sequence becomes the ACTIVE period

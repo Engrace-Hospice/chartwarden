@@ -24,9 +24,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbActorEnrichmentReader, createDbSessionContextStore } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbActorEnrichmentReader, createDbSessionContextStore } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

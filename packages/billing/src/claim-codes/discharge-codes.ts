@@ -1,4 +1,4 @@
-// @wardenx/billing — the discharge-driven claim codes on a Medicare hospice claim (TOB 81x): the patient
+// @chartwarden/billing — the discharge-driven claim codes on a Medicare hospice claim (TOB 81x): the patient
 // discharge status (UB-04 FL 17 / 837I CL103), the condition codes (FL 18-28 / HI*BG) and the occurrence
 // codes with their dates (FL 31-34 / HI*BH). PURE: no I/O, no clock, no PHI (codes + dates only).
 //

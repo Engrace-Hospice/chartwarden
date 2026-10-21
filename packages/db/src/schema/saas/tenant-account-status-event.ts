@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_account_status_event` (M34 §3.3). The append-only audit ledger of every
+// @chartwarden/db — `tenant_account_status_event` (M34 §3.3). The append-only audit ledger of every
 // tenant lifecycle transition (from_status → to_status, with reason, actor, and the side effects
 // recorded at the transition). ORG-SCOPED: per M34-F02 / ADR-0010 (§10.1 Expand/Contract) it carries
 // its own `organization_id` NOT NULL so the canonical app.org_id RLS predicate applies directly

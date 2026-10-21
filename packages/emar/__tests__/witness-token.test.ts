@@ -1,4 +1,4 @@
-// @wardenx/emar — §7.4 witness-attestation token security — M13-T04.
+// @chartwarden/emar — §7.4 witness-attestation token security — M13-T04.
 import { describe, expect, it } from "vitest";
 import {
   WITNESS_TOKEN_TTL_MS,

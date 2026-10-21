@@ -1,4 +1,4 @@
-// @wardenx/mdm — M40-T08 NPPES drift detection + the nightly-delta processor (§4.3, §7.5).
+// @chartwarden/mdm — M40-T08 NPPES drift detection + the nightly-delta processor (§4.3, §7.5).
 //
 // The §7.5 headline: a deactivated NPI is caught by the nightly delta → the canonical flips to
 // `deactivated`, every tenant with that physician preferred/active is alerted via M36, and the run

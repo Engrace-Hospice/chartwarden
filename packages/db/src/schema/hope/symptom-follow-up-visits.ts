@@ -1,4 +1,4 @@
-// @wardenx/db — `symptom_follow_up_visit` (M10 §3.3, D4). One row per J2051-triggered SFV: the
+// @chartwarden/db — `symptom_follow_up_visit` (M10 §3.3, D4). One row per J2051-triggered SFV: the
 // open→completed/overdue/missed lifecycle (§2.2.3), the visit_date+2-calendar-day due window (ADR-0018
 // D1), and the alert cadence. PHI-bearing → the three-column tenancy rule (PE/location denormalized
 // from the triggering assessment, §3.3 tenancy note). RLS keys on app.org_id alone. Cross-module refs

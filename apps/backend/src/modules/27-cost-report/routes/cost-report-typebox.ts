@@ -9,13 +9,13 @@
 // body/query carries an org id or an authoring/approving membership id (the attestation membership ids are
 // the only identities a submit body attests to; the route still stamps the acting principal from the actor).
 //
-// VOCAB NOTE: the string-literal unions mirror the FROZEN `@wardenx/db` pgEnum value lists
-// (packages/db/src/schema/cost-report/*) and the @wardenx/cost-report value unions; schema wins on conflict.
+// VOCAB NOTE: the string-literal unions mirror the FROZEN `@chartwarden/db` pgEnum value lists
+// (packages/db/src/schema/cost-report/*) and the @chartwarden/cost-report value unions; schema wins on conflict.
 // M27 carries NO PHI (D18); every money field is INTEGER CENTS (D8).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import type { CursorPage } from "./concurrency";
 import type {
   BadDebtRecordView,
@@ -61,7 +61,7 @@ const uuid = () => Type.String({ format: "uuid" });
 const isoInstant = () => Type.String({ format: "date-time" });
 const isoDate = () => Type.String({ format: "date" });
 
-// ── §3 vocab mirrors (canonical pgEnums live in @wardenx/db / @wardenx/cost-report contracts) ───────────
+// ── §3 vocab mirrors (canonical pgEnums live in @chartwarden/db / @chartwarden/cost-report contracts) ───────────
 const COST_REPORT_STATE = [
   "draft",
   "populating",

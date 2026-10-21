@@ -37,9 +37,9 @@
 // fabricating a call to an M4 write-API this codebase does not have.
 import { randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrmRequestedPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrmRequestedPayload } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 

@@ -20,7 +20,7 @@
 // It parks the call in `documented_pending_encounter` and invokes M8's `EncounterCreator`; `documented`
 // arrives only when `m8.encounter.signed` lands for the linked encounter (D8). That intermediate state is
 // also where §2.7's degraded class D-B strands a call when M8 is unreachable — which is why
-// `TRIAGE_CALL_OPEN_STATES` (@wardenx/types, M19-T01) deliberately includes it: a call the supervisor can
+// `TRIAGE_CALL_OPEN_STATES` (@chartwarden/types, M19-T01) deliberately includes it: a call the supervisor can
 // no longer see is a call nobody will rescue.
 import type {
   IsoInstant,
@@ -29,8 +29,8 @@ import type {
   TriageDisposition,
   TriageDispositionData,
   TriageEscalationTier,
-} from "@wardenx/types";
-import { TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES } from "@chartwarden/types";
 import {
   type SelectableDisposition,
   assertDispositionInScope,
@@ -114,7 +114,7 @@ export const TRIAGE_CALL_EDGES: readonly TriageCallEdge[] = [
 ];
 
 /** The states no command advances out of (§2.2.1). Mirrors `TRIAGE_CALL_TERMINAL_STATES` in
- *  @wardenx/types; asserted equal by the §9 contract test. */
+ *  @chartwarden/types; asserted equal by the §9 contract test. */
 const TERMINAL: readonly TriageCallState[] = ["closed", "abandoned"];
 
 /** Resolve the edge for `(from, command)`, or refuse. `.find()` is safe here — the table above has no

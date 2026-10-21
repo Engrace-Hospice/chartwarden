@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 10: Visits Near Death (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 10: Visits Near Death (§1.1). Pure. No IO.
 //
 // CMS criterion: the proportion of decedents who received visits in the days immediately preceding death
 // is HIGH (higher is better). Numerator = decedents with qualifying near-death visits; denominator =

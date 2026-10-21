@@ -9,8 +9,8 @@
 // this file binds their ports. Platform sweeps run inside ONE audited `withPlatformContext` transaction and publish
 // their outbox events in that same transaction (the event commits atomically with the write). The pure `run*`
 // functions take plain dependency bags so they are unit-testable without a database.
-import { auditPlatformEvent } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
+import { auditPlatformEvent } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type ActivationOutcome,
   type BaaExpirySweepResult,
@@ -25,8 +25,8 @@ import {
   runBaaExpirySweep,
   runOnboardingAdvance,
   shouldAlertActivationRefusal,
-} from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";

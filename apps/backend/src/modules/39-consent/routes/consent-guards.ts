@@ -10,9 +10,9 @@
 //
 // Every guard on a MUTATING route opts out of the break-glass bypass (`breakGlassBypassable: false`):
 // an emergency grant is proof of emergency access to READ, never to author, sign, revoke or administer.
-import { BREAK_GLASS_ATTRIBUTE, requireAbac } from "@wardenx/auth";
-import type { ConsentRouteService } from "@wardenx/consent";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { BREAK_GLASS_ATTRIBUTE, requireAbac } from "@chartwarden/auth";
+import type { ConsentRouteService } from "@chartwarden/consent";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentDisciplineScope, ConsentStaffActor } from "../access-scope";
 

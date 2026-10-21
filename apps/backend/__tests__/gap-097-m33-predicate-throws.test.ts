@@ -1,7 +1,7 @@
 // GAP-097 review follow-up — a registered ABAC predicate must catch its OWN throws: the registry does not,
 // so a resolver that rejects (an invalid uuid in the route `:id` raising 22P02, a transient DB error) would
 // surface as a 500 instead of the documented non-leaking deny. M33's two resolver-backed predicates deny.
-import type { AbacContext } from "@wardenx/auth";
+import type { AbacContext } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   type ReportingAbacResolver,

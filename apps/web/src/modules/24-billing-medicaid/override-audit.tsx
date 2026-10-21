@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the OVERRIDE AUDIT VIEW (R2, §5.1 #17). The compliance /
 // surveyor read of every validation override applied in the organization: actor, claimed role, rule key,
 // full rationale, and the claim it unblocked. This is the surface a surveyor asks for, so nothing is

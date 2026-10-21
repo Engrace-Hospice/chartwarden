@@ -1,8 +1,8 @@
-// @wardenx/billing — shared pure-domain test fixtures for the M23 validation-rule tests. Builds a fully
+// @chartwarden/billing — shared pure-domain test fixtures for the M23 validation-rule tests. Builds a fully
 // PASSING `ValidationContext` (every applicable default rule passes; the cap + sia rules SKIP because
 // their seams/inputs are intentionally absent — a non-blocking deny-stub skip). PURE plain-data: no DB,
 // no Fastify, no clock, no PHI/MBI (D13). Each builder returns a FRESH object so tests can mutate freely.
-import { CMS_HOSPICE_MODIFIER_VALUE_SET, type ValidationContext } from "@wardenx/billing";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, type ValidationContext } from "@chartwarden/billing";
 
 /**
  * A fully-passing `ValidationContext` for a single routine-home-care TOB-812 first-interim claim:

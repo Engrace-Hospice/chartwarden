@@ -1,4 +1,4 @@
-// @wardenx/terminology-loader — byte-level helpers: sha256, a lazy line iterator, and a minimal ZIP reader.
+// @chartwarden/terminology-loader — byte-level helpers: sha256, a lazy line iterator, and a minimal ZIP reader.
 //
 // The ZIP reader exists because the vendors ship zips (NCHS, FDA, NLM, SNOMED) and the loader must not
 // shell out to `unzip` inside a worker. It supports exactly what those archives use — STORED and DEFLATE

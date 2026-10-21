@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the `medication_order_transmission` enqueue + outcome planners (M12-T06, spec §2.2 /
+// @chartwarden/dosespot — the `medication_order_transmission` enqueue + outcome planners (M12-T06, spec §2.2 /
 // §4.10 / §5.1 W-MR-01 / D8). PURE decision logic the `enqueue-transmission` service + `transmit-newrx`
 // worker (M12-T08) execute: it never touches the DB or the DoseSpot adapter — it returns the row descriptors
 // and the orthogonal `dosespot_send_state` / `medication_order_status` transitions as data. The lifecycle
@@ -9,7 +9,7 @@ import type {
   M12AlertPayload,
   M12EventName,
   MedicationOrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §4.10 — the BullMQ job-level retry budget for a NewRx transmission (distinct from the per-call backoff in
  * `client/retry.ts`). On the 5th failed attempt the row flips to `transmission_failed` + a high-sev M36 alert. */
@@ -22,7 +22,7 @@ export type TransmissionFailedAlert = Extract<
 >;
 
 /** §3.3 — the `medication_order_transmission` insert the enqueue step writes (a leaf projection of the row;
- * the service binds it to the Drizzle insert — this package never imports `@wardenx/db`). */
+ * the service binds it to the Drizzle insert — this package never imports `@chartwarden/db`). */
 export interface PlannedTransmissionInsert {
   readonly medicationOrderId: string;
   readonly idempotencyKey: string;

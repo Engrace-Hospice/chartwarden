@@ -2,7 +2,7 @@
 //
 // Each is bound at the composition root (apps/backend/src/index.ts): M28 imports no other module's code or
 // schema (architecture §25.15), and the object store is M22's adapter, so M28 declares the slice it needs.
-import type { FhirReadDisclosureEnvelope } from "@wardenx/types";
+import type { FhirReadDisclosureEnvelope } from "@chartwarden/types";
 
 /** The active-org fan-out (`buildActiveOrgEnumerator` over the audited platform pool). */
 export interface ActiveOrgListPort {

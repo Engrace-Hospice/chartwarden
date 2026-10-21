@@ -11,8 +11,8 @@
 // attached to a claim line, and un-billing it is the claim void/replace path (§2.2), not this one. A
 // `voided` day is never touched, so the sweep (which skips any date holding a row) never regenerates it.
 // Every read/write is under `withOrgContext` with the tenant from the dispatcher envelope.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   MS_PER_DAY,

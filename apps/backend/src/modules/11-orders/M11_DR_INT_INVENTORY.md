@@ -36,7 +36,7 @@ or not-yet-bound) the cross-module reference check is skipped so authoring never
 
 ### Mobile offline (manifest-exempt — server path only, this task)
 
-Per architecture §25.10, an order draft captured offline lives in the shared `@wardenx/mobile-offline`
+Per architecture §25.10, an order draft captured offline lives in the shared `@chartwarden/mobile-offline`
 sqlcipher store and syncs via `POST /api/v1/orders` with the device draft id as the `Idempotency-Key`. It is
 **not** a codePath and **not** fitness-governed (deferred in Phase 0). M11-T08 builds only the server-side
 read screens (Track B) + the destruction-cert eraser; the offline-draft sync worker is a later task.

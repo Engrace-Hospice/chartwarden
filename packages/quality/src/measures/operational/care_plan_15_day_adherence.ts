@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: care-plan 15-day adherence (CoP 418.56). Pure. No IO.
+// @chartwarden/quality — operational measure: care-plan 15-day adherence (CoP 418.56). Pure. No IO.
 // Rate of care plans updated within the required 15-day cycle (higher is better). Source: M7
 // `CarePlanComplianceProvider.fifteenDayAdherenceForPatient`.
 import type { ComputeMeasureInput, QualityMeasureValueResult, ThresholdRule } from "../result";

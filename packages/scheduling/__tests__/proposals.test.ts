@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.4 / §7.7 D5 frequency parser + frequency-driven proposal domain — M17-T04.
+// @chartwarden/scheduling — §2.2.4 / §7.7 D5 frequency parser + frequency-driven proposal domain — M17-T04.
 import { describe, expect, it } from "vitest";
 import {
   type FrequencyProposalInput,

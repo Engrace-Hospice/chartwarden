@@ -1397,15 +1397,15 @@ export interface EncounterEventPublisher {
 ```ts
 // Seams CONSUMED — these are interfaces M8 expects to find in the seam registry
 
-import type { CarePlanReader } from '@wardenx/care-plan/seams'    // M7
-import type { LatestAssessmentProvider } from '@wardenx/assessments/seams'  // M9 (deny-stub until M9 lands)
-import type { HopeTimepointProvider } from '@wardenx/hope/seams'  // M10 (deny-stub until M10 lands)
-import type { ConsentEvaluator } from '@wardenx/consent/seams'    // M39
-import type { CaseloadProvider } from '@wardenx/identity/seams'   // M5/M17
-import type { NarrativeEnhancementProvider } from '@wardenx/ai-platform/seams' // M32
-import type { TerminologyProvider } from '@wardenx/terminology/seams'  // M38
-import type { EvvBracketResolver } from '@wardenx/evv/seams'      // M18 (deny-stub until M18 lands; EVV-missing path operative)
-import type { FaceToFaceWriter } from '@wardenx/admission/seams'  // M6 (for D1 dual-write)
+import type { CarePlanReader } from '@chartwarden/care-plan/seams'    // M7
+import type { LatestAssessmentProvider } from '@chartwarden/assessments/seams'  // M9 (deny-stub until M9 lands)
+import type { HopeTimepointProvider } from '@chartwarden/hope/seams'  // M10 (deny-stub until M10 lands)
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'    // M39
+import type { CaseloadProvider } from '@chartwarden/identity/seams'   // M5/M17
+import type { NarrativeEnhancementProvider } from '@chartwarden/ai-platform/seams' // M32
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'  // M38
+import type { EvvBracketResolver } from '@chartwarden/evv/seams'      // M18 (deny-stub until M18 lands; EVV-missing path operative)
+import type { FaceToFaceWriter } from '@chartwarden/admission/seams'  // M6 (for D1 dual-write)
 ```
 
 At M8 init:

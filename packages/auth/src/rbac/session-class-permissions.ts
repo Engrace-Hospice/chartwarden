@@ -1,4 +1,4 @@
-// @wardenx/auth · rbac — permissions held by SESSION CLASS, not by membership (M31 §4.6 / M2 §3.6).
+// @chartwarden/auth · rbac — permissions held by SESSION CLASS, not by membership (M31 §4.6 / M2 §3.6).
 //
 // WHY THIS EXISTS. The effective-permission resolver (resolve.ts / drizzle-store.ts) answers from
 // `membership ⋈ membership_role ⋈ role_permission`. A portal caregiver, a patient-self portal user and a
@@ -19,7 +19,7 @@
 //   • a portal-class session whose context carries no `portalAccountId` (a half-bound session) gets nothing.
 //   • the sets are an explicit allow-list by key, not a prefix match, so a new `portal.admin.*` key added later
 //     is staff-only until someone puts it here on purpose.
-import type { HttpRequestContext } from "@wardenx/types";
+import type { HttpRequestContext } from "@chartwarden/types";
 import { isPortalSessionClass } from "../identity/session-classes";
 import type { EffectivePermissionResolver } from "./require-role";
 

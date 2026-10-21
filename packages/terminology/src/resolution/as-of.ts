@@ -1,4 +1,4 @@
-// @wardenx/terminology — the as-of-date resolution engine (M38-T04, spec §2.1, §7.1–7.2).
+// @chartwarden/terminology — the as-of-date resolution engine (M38-T04, spec §2.1, §7.1–7.2).
 //
 // The pure, DB-agnostic core of the read path. Given every loaded concept *row* for a
 // (system, code) — rows from two coexisting versions never get deleted (§7.2) — pick the

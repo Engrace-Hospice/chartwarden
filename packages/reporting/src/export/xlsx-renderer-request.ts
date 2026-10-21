@@ -1,4 +1,4 @@
-// @wardenx/reporting · export — the XLSX export render-request handler (M33 §4.8 `report.export_render` / D10).
+// @chartwarden/reporting · export — the XLSX export render-request handler (M33 §4.8 `report.export_render` / D10).
 //
 // The body of the `report.export_render` worker for `format=xlsx`: emit the §1.1
 // `m33.scheduled_report.render_requested` handshake to M22 (its file pipeline turns the M33 snapshot result into

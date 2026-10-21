@@ -1,4 +1,4 @@
-// @wardenx/db — `account` (M1 Foundation §3.8, Better Auth table). Per-provider
+// @chartwarden/db — `account` (M1 Foundation §3.8, Better Auth table). Per-provider
 // credential record owned by a user (password hash / OAuth tokens). Cross-org and
 // NON_ORG_SCOPED in check-tenancy.ts. Secret material is stored encrypted at rest.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

@@ -18,7 +18,7 @@ import {
   type RegistryRowUpserter,
   bootOrganizationSettingsRegistry,
   schema,
-} from "@wardenx/db";
+} from "@chartwarden/db";
 
 /** Idempotent `organization_settings_registry` row UPSERTer (insert-or-update on `settings_key`). */
 export function buildDbOrganizationSettingsUpserter(db: DbClient): RegistryRowUpserter {

@@ -1,6 +1,6 @@
 // The three non-list states of the message timeline (error with retry, loading, empty), moved out of
 // conversation-thread.tsx unchanged in WP 2.7a to keep that file under the line ceiling.
-import { Button, EmptyState, Glyph } from "@wardenx/ui";
+import { Button, EmptyState, Glyph } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { SkeletonRows } from "./skeleton-rows";
 

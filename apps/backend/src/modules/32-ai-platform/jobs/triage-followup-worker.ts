@@ -11,7 +11,7 @@
 //   3. raises the §4.9 `ai.hallucination_triage_escalation` alert for every action but `none` (system-locked).
 // Jobs carry `organizationId` (the report is tenant-scoped); a failed demotion throws so BullMQ retries and the
 // DLQ keeps the evidence - a half-executed incident response must be loud, not swallowed.
-import type { AiHallucinationFollowUpPlan } from "@wardenx/ai-platform";
+import type { AiHallucinationFollowUpPlan } from "@chartwarden/ai-platform";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type AiAlertPort, emitAiAlert } from "../alerts";
 import { type AiGovernanceServiceDeps, transitionAiCapability } from "../governance/service";

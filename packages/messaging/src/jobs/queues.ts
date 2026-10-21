@@ -1,4 +1,4 @@
-// @wardenx/messaging — messaging job queue catalog + full BullMQ parameters (M36-T08, §4.4/§4.4.1).
+// @chartwarden/messaging — messaging job queue catalog + full BullMQ parameters (M36-T08, §4.4/§4.4.1).
 //
 // The canonical names + the §4.4.1 parameter table (priority / attempts / backoff / concurrency /
 // DLQ name / idempotency) for every M36 queue (M36-F12 / SD-059 / SD-060 / ARCH-262 / OPS-035) as

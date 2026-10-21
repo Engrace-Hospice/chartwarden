@@ -2,7 +2,7 @@
 // READ time through the owning module's seam (like clinical links, ADR-0059). A handoff stores pointers only, so what an
 // item currently looks like (visit status, refill status, follow-up still open, task status) is never a stale copy and
 // never a second PHI store. Ids, status codes and instants only. A failing seam yields `unavailable` for that one item.
-import type { HandoffItemKind, HandoffItemSummary } from "@wardenx/types";
+import type { HandoffItemKind, HandoffItemSummary } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { HANDOFF_SOURCE_CONCURRENCY, mapLimit } from "./handoff-sources";
 

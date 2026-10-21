@@ -1,4 +1,4 @@
-import type { HopeJ2051Event, HopeSubmissionStatusView, HopeTimepointStatus } from "@wardenx/types";
+import type { HopeJ2051Event, HopeSubmissionStatusView, HopeTimepointStatus } from "@chartwarden/types";
 // apps/backend/__tests__/hope-seams.test.ts — M10-T05 (§2 / D10 HopeTimepointProvider + HopeJ2051Provider
 // + HopeSubmissionProvider). All three seams are pure orchestration over an injected HopeSeamStore; these
 // cover the open-window narrowing (status === "open"), the per-admission timeline (full set), the J2051

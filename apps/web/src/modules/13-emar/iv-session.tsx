@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — IV continuous session (M13 §4.1/§6.1 #5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
 // (limited Phase-1 utility; primary value lands at M37). The session's ordered segment sequence
@@ -15,7 +15,7 @@ import {
 // F-031 / #134 — this screen was read-only, and correctly so: `administration_record.iv_session_id` was
 // written NOWHERE, so no session could exist, this route 404'd for every input, and the §2.11 D11 ordering
 // graph and titration bounds (`assertIvSegmentLegal` / `checkIvRateBounds`, both real and unit-tested in
-// @wardenx/emar) were called by nothing. The producer exists now — `iv_continuous_start` mints the session
+// @chartwarden/emar) were called by nothing. The producer exists now — `iv_continuous_start` mints the session
 // and every continuation names it — so the CTAs are real.
 //
 // The buttons offered are the ones `IV_SESSION_GRAPH` accepts from the session's PUBLISHED state, not all

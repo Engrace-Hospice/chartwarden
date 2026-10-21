@@ -32,14 +32,14 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import {
   ReportDefinitionRepository,
   ReportScheduleRepository,
   ReportViewRepository,
-} from "@wardenx/reporting";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/reporting";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

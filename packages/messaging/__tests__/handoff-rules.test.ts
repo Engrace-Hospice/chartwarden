@@ -1,6 +1,6 @@
 // WP 3.5 - the pure handoff rules: the per-item transition table, the derived handoff outcome, the policy-capped
 // deadline, who may do what, and the offer shape limits.
-import type { HandoffItemState } from "@wardenx/types";
+import type { HandoffItemState } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   HANDOFF_MAX_ITEMS,

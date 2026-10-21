@@ -2,7 +2,7 @@
 //
 // `packages/types/src/oncall.ts` says its enum mirrors are "kept in lock-step with
 // `packages/db/src/enums.ts`". A comment does not keep anything in lock-step. These tests are where the
-// claim is actually enforced: `@wardenx/types` is a LEAF and cannot import `@wardenx/db`, so the two
+// claim is actually enforced: `@chartwarden/types` is a LEAF and cannot import `@chartwarden/db`, so the two
 // sides can only be compared somewhere that already depends on both — the backend, which is exactly the
 // consumer that would ship the drift. The failure mode being prevented is the one M30 already paid for:
 // a wire type that says one thing while the column accepts another, with every gate green.
@@ -23,7 +23,7 @@ import {
   triageEscalationTrigger,
   triageProtocolAnswerType,
   triageRiskBand,
-} from "@wardenx/db/schema";
+} from "@chartwarden/db/schema";
 import {
   M19_AUDIT_DENYLIST,
   M19_AUDIT_RETENTION_CLASS,
@@ -46,7 +46,7 @@ import {
   type TriageEscalationTrigger,
   type TriageProtocolAnswerType,
   type TriageRiskBand,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { MODULES } from "../../../architecture/module-manifest";
 
 /** Each pair is (the pgEnum's runtime values, the leaf union's members). The second element is written
@@ -184,7 +184,7 @@ const MIRRORS = [
   ],
 ] as const;
 
-describe("§3.2 enum mirrors — pgEnum ↔ @wardenx/types", () => {
+describe("§3.2 enum mirrors — pgEnum ↔ @chartwarden/types", () => {
   it.each(MIRRORS.map(([name, pg, ts]) => [name, pg, ts] as const))(
     "%s carries the same members in the same order on both sides",
     (_name, pgValues, tsValues) => {

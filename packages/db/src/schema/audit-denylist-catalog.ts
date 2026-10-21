@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_denylist_catalog` (M4 Audit §3.5, §5.1). Platform-shared registry of
+// @chartwarden/db — `audit_denylist_catalog` (M4 Audit §3.5, §5.1). Platform-shared registry of
 // high-sensitivity columns each module declares: the write-audit trigger generator (M4-T02)
 // resolves a table's `denylistCategories` against this catalog to know which column values to
 // scrub to a change-marker. `conditional_check` carries the row-conditional expression for the

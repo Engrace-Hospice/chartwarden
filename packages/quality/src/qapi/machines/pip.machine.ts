@@ -1,5 +1,5 @@
-import type { schema } from "@wardenx/db";
-// @wardenx/quality — §2.2 QAPI PIP (Performance Improvement Project) lifecycle state machine (M30-P2a).
+import type { schema } from "@chartwarden/db";
+// @chartwarden/quality — §2.2 QAPI PIP (Performance Improvement Project) lifecycle state machine (M30-P2a).
 // Pure, IO-free.
 //
 // The `qapi_pip` aggregate lifecycle (§2.2):
@@ -16,8 +16,8 @@ import type { schema } from "@wardenx/db";
 //
 // Mirrors the M11 order-machine convention: a transition is a PURE function `(state, event) -> next
 // state` that validates the §2.2 graph then runs the enumerated guards (a guard failure throws a
-// `WardenXError` with the precise code). No IO; every fact a guard needs is injected on the event.
-import { WardenXError } from "@wardenx/types";
+// `ChartWardenError` with the precise code). No IO; every fact a guard needs is injected on the event.
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * The PIP lifecycle phase — derived from the FROZEN `qapi_pip.status` pgEnum (no drift). The PIP phase
@@ -80,7 +80,7 @@ export const QAPI_PIP_GRAPH: Readonly<Record<QapiPipPhase, ReadonlyArray<QapiPip
 };
 
 /**
- * V-11 — the PIP-closure two-person co-sign guard (D12 / M30-F03 / ADR-0022). Throws a {@link WardenXError}
+ * V-11 — the PIP-closure two-person co-sign guard (D12 / M30-F03 / ADR-0022). Throws a {@link ChartWardenError}
  * if the closure co-sign is not split across two distinct people, or if either cosigner is the charterer.
  * Pure; the actual role checks (QAPI Coordinator vs Medical Director) are enforced at the backend route —
  * here we enforce the SPLIT-ACTOR invariant the schema CHECK can express only structurally.
@@ -90,14 +90,14 @@ export function assertPipClosureCosign(cosign: PipClosureCosign): void {
     cosign.qapiCoordinatorMembershipId.length === 0 ||
     cosign.medicalDirectorMembershipId.length === 0
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PIP_CLOSE_COSIGN_INCOMPLETE",
       "concluding a PIP requires both a QAPI Coordinator and a Medical Director co-signer",
       422,
     );
   }
   if (cosign.qapiCoordinatorMembershipId === cosign.medicalDirectorMembershipId) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PIP_CLOSE_REQUIRES_DISTINCT_COSIGNERS",
       "the PIP closure co-signers must be two distinct individuals (QAPI Coordinator + Medical Director)",
       422,
@@ -107,7 +107,7 @@ export function assertPipClosureCosign(cosign: PipClosureCosign): void {
     cosign.charteredByMembershipId === cosign.qapiCoordinatorMembershipId ||
     cosign.charteredByMembershipId === cosign.medicalDirectorMembershipId
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "PIP_CLOSE_COSIGNER_IS_CHARTERER",
       "a PIP closure co-signer may not be the person who chartered the PIP (separation of duties)",
       422,
@@ -116,13 +116,13 @@ export function assertPipClosureCosign(cosign: PipClosureCosign): void {
 }
 
 /**
- * Apply a `qapi_pip` lifecycle event (§2.2). Throws {@link WardenXError} `ILLEGAL_QAPI_PIP_TRANSITION` if
+ * Apply a `qapi_pip` lifecycle event (§2.2). Throws {@link ChartWardenError} `ILLEGAL_QAPI_PIP_TRANSITION` if
  * the event is not accepted from `from`, or the specific §2.2 guard code on a guard failure. Returns the
  * next phase; the route executes the persistence/audit/outbox around this pure core.
  */
 export function transitionQapiPip(from: QapiPipPhase, event: QapiPipEvent): QapiPipPhase {
   if (!QAPI_PIP_GRAPH[from].includes(event.type)) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "ILLEGAL_QAPI_PIP_TRANSITION",
       `qapi_pip cannot ${event.type} from '${from}'`,
       409,
@@ -135,7 +135,7 @@ export function transitionQapiPip(from: QapiPipPhase, event: QapiPipEvent): Qapi
 
     case "beginIntervention":
       if (!event.rootCauseDocumented) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "QAPI_PIP_ROOT_CAUSE_REQUIRED",
           "the root-cause analysis must be documented before the intervention begins",
           422,
@@ -148,7 +148,7 @@ export function transitionQapiPip(from: QapiPipPhase, event: QapiPipEvent): Qapi
 
     case "conclude":
       if (event.conclusionText.trim().length === 0) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "QAPI_PIP_CONCLUSION_REQUIRED",
           "concluding a PIP requires a documented conclusion",
           422,
@@ -159,7 +159,7 @@ export function transitionQapiPip(from: QapiPipPhase, event: QapiPipEvent): Qapi
 
     case "suspend":
       if (event.reason.trim().length < QAPI_PIP_SUSPEND_REASON_MIN_CHARS) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "QAPI_PIP_SUSPEND_REASON_TOO_SHORT",
           `suspending a PIP requires a reason of at least ${QAPI_PIP_SUSPEND_REASON_MIN_CHARS} characters`,
           422,

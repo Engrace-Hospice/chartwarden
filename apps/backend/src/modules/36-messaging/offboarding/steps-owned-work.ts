@@ -2,9 +2,9 @@
 // deactivation event already runs (idempotent), and acknowledgment requests move through the ADR-0078 supervisor reassign, so the state machine,
 // the eligibility checks (active, can view, Part 2) and the event history stay in one place. A request nobody can take stays where it is, in the
 // supervisors' unacknowledged queue, AND raises the shared supervisor attention alert (ADR-0079), once per request and version.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type { AckSupervisorReasonCode } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import type { AckSupervisorReasonCode } from "@chartwarden/types";
 import { type SQL, and, count, eq, gte, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import {
   type SupervisorAttentionDeps,

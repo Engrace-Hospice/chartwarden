@@ -1,6 +1,6 @@
 // GAP-049 — M36 consumes M30's quality events and raises the §4.9 alerts (sentinel / abuse allegation, outbreak,
 // threshold breach, CAHPS sample). Before this nothing consumed any m30.* event.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import {

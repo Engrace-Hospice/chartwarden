@@ -1,8 +1,8 @@
 // apps/backend/src/modules/36-messaging/polls/poll-views.ts - WP 2.10: what a reader sees of a poll. One grouped read
 // per page of messages (no N+1), used by `hydrateMessages` for every message read, and by the poll service for the
 // answer to a vote / close. Counts and the viewer's own vote only; who voted is the poll detail read.
-import { schema } from "@wardenx/db";
-import type { PollOptionView, PollView, PollVoterView } from "@wardenx/types";
+import { schema } from "@chartwarden/db";
+import type { PollOptionView, PollView, PollVoterView } from "@chartwarden/types";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { MessageBodyCipher, Tx } from "../messaging-write-core";
 

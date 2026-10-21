@@ -8,9 +8,9 @@
 // only that row and a concurrent route that moved it first turns the item into a skip, not an error. The
 // system actor is the typed NULL actor (`userId: ""` + `systemActor: true`, the M33/M16/M19-encounter-signed
 // precedent): the audit trigger's actor FK targets "user", so no fabricated id.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant } from "@chartwarden/types";
 import type { TriageCallFacts } from "../lifecycle/triage-call";
 import type { WriteOutboxPort } from "../routes/write-service";
 import type { ActiveOrgListPort } from "./worker";

@@ -1,6 +1,6 @@
 // FY2027 SSVI — the M30 recompute input resolvers (ssvi-resolvers.ts) over fake seams, end to end through the
 // pure calculators, plus the M6 DischargeReader `ssviDischargeCounts` reduction over a fake scoped db.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   FORWARD_SEAM_UNAVAILABLE,
   type MeasureRegistration,
@@ -16,7 +16,7 @@ import {
   computeSsviScore,
   isDataUnavailable,
   ssviPointsOf,
-} from "@wardenx/quality";
+} from "@chartwarden/quality";
 import { describe, expect, it } from "vitest";
 import { createDischargeReader } from "../src/modules/06-admission/index";
 import {

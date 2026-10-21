@@ -12,7 +12,7 @@
  * Scope: the six floor-bearing `system_locked` templates this task ships (the ≈60
  * `system_default` templates carry an empty floor — Appendix A, CI-checked elsewhere).
  */
-import { ROLE_TEMPLATES, type RoleTemplate, resolveEffectivePermissions } from "@wardenx/auth";
+import { ROLE_TEMPLATES, type RoleTemplate, resolveEffectivePermissions } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 /**

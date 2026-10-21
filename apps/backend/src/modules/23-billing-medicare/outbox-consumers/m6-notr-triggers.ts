@@ -51,8 +51,8 @@
 //
 // Event names are STRING literals and no M6 schema is imported; the admission facts arrive through an
 // INJECTED port the composition root binds to M6's org-explicit `admissionSchedulingContextForOrg`.
-import { deriveControlNumber, repositories } from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
+import { deriveControlNumber, repositories } from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { BillingDb, WriteOutboxPort } from "../services/claim-state-service";
 
 /** §418.26 — the NOTR filing window, in calendar days from the termination effective date. */

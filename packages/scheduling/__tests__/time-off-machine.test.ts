@@ -1,4 +1,4 @@
-// @wardenx/scheduling — §2.2.6 D7 time_off lifecycle + §2.2.5 availability validator — M17-T03.
+// @chartwarden/scheduling — §2.2.6 D7 time_off lifecycle + §2.2.5 availability validator — M17-T03.
 import { describe, expect, it } from "vitest";
 import {
   TIME_OFF_GRAPH,

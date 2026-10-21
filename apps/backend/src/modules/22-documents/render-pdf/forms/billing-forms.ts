@@ -13,7 +13,7 @@ import {
   assertMedicaidClaimAcknowledgmentRenderPayload,
   assertNoeReceiptRenderPayload,
   assertNotrReceiptRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { fmtInstant, humanize, shortId } from "../shared";
 import { defineForm } from "./compile";
 

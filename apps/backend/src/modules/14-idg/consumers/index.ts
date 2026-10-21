@@ -2,7 +2,7 @@
 // spec §4.5). Each entry binds an event another module emits to the M14 consumer that handles it. Two effect
 // shapes: (1) ACTION-ITEM AUTO-CLOSE (D8) — an M7/M8/M11/M12 absorbing-state event closes every open
 // `idg_action_item` whose `linked_artifact_kind` matches the source; the pure `transitionActionItem(_,
-// {type:'autoClose'})` engine in @wardenx/idg drives it (this file maps the source event → linked kind);
+// {type:'autoClose'})` engine in @chartwarden/idg drives it (this file maps the source event → linked kind);
 // (2) the per-patient "since last IDG" PROJECTION CACHE (Valkey, 30-day TTL) the M9/M10/M11/M12 events feed
 // and the M22 PDF back-ref. The cache + Drizzle effects run in the live boot wiring when the M14 backend is
 // mounted; the pure mapping ships + is testable here.
@@ -18,8 +18,8 @@
 // M22's renderer emits. Every consumed event
 // name is a STRING literal (no cross-module schema import): M14 reads other modules solely through the
 // foundation outbox, so this task adds NO new edge to M14's manifest `dependsOn` (§1.1).
-import { type ActionItemEvent, transitionActionItem } from "@wardenx/idg";
-import type { IdgActionItemLinkedKind } from "@wardenx/types";
+import { type ActionItemEvent, transitionActionItem } from "@chartwarden/idg";
+import type { IdgActionItemLinkedKind } from "@chartwarden/types";
 
 export {
   M14_AUTO_CLOSE_LINKED_KIND,

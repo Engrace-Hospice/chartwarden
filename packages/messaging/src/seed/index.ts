@@ -1,4 +1,4 @@
-// @wardenx/messaging — platform seed barrel (M36-T05; spec §3.10, §7.4). The platform-default
+// @chartwarden/messaging — platform seed barrel (M36-T05; spec §3.10, §7.4). The platform-default
 // alert rules (with the three §7.4 `system_locked` floors) the boot slice UPSERTs into
 // `alert_rule`, plus the §7.4 invariant validators.
 export {

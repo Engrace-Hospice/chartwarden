@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam barrel (M30 §4.4).
+// @chartwarden/quality — consumed-seam barrel (M30 §4.4).
 //
 // Every upstream module's read seam M30 consumes through the M1 SeamRegistry (`getSeam`) — no import
 // edge. PRESENT producers (M5–M14, M17, M18, and M33's published MetricsProvider) expose a

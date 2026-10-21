@@ -8,7 +8,7 @@
 // consumer/worker write is the empty actor (`""`, which the trigger records as a NULL actor — see
 // `m20-safety-visit-cancellation.ts`, `05-patient/deceased-db.ts`).
 
-import { type OrgContext, systemOrgContext } from "@wardenx/tenancy";
+import { type OrgContext, systemOrgContext } from "@chartwarden/tenancy";
 
 export const M17_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
 

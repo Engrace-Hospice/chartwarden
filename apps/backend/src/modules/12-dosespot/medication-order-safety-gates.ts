@@ -13,12 +13,12 @@
 //     opaquely through the M1 registry and cast to the locally-declared minimum {@link ConsentGatePort}.
 //   · Allergy — M5's `PatientAllergyReader` seam. Every non-`entered_in_error` row counts, UNVERIFIED rows
 //     included. Matching is by normalized generic (brand -> generic), by drug class ("opioids",
-//     "penicillins") and by documented cross-reactivity — the pure matcher in `@wardenx/dosespot`
+//     "penicillins") and by documented cross-reactivity — the pure matcher in `@chartwarden/dosespot`
 //     (`allergy/`). A conflict is NOT a hard stop: a prescriber-eligible actor with a FRESH step-up may
 //     acknowledge it with a written reason (spec §6 "Allergy banner"); unreadable data is never overridable.
-import { isSudTreatmentDrug } from "@wardenx/dosespot";
-import { type AllergyMatch, matchDrugToAllergy } from "@wardenx/dosespot";
-import { type PatientAllergyReader, WardenXError } from "@wardenx/types";
+import { isSudTreatmentDrug } from "@chartwarden/dosespot";
+import { type AllergyMatch, matchDrugToAllergy } from "@chartwarden/dosespot";
+import { type PatientAllergyReader, ChartWardenError } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
 /** The M12-side structural projection of M39's `ConsentEvaluator.evaluateForInternalAccess`. */
@@ -37,7 +37,7 @@ const CONSENT_CALLER_MODULE = "m12";
 const CONSENT_CALLER_ROUTE = "POST /api/v1/medication-orders/:id/request-signature";
 
 /**
- * SUD-treatment medications (the §7.8 / spec §6 Part 2 table): the list lives in `@wardenx/dosespot`
+ * SUD-treatment medications (the §7.8 / spec §6 Part 2 table): the list lives in `@chartwarden/dosespot`
  * (`classes/sud-treatment-drugs.ts`, the single source of truth shared with the 0340 backfill migration);
  * `medication_order.is_sud_treatment` is derived from it.
  */
@@ -194,16 +194,16 @@ export function resolveAllergyOverride(
 /** The 422 for an unacknowledged conflict / unreadable list. Class wording only: the allergy text is PHI. */
 export function allergyGateError(
   gate: Exclude<AllergyGateResult, { status: "clear" }>,
-): WardenXError {
+): ChartWardenError {
   if (gate.status === "unreadable")
-    return new WardenXError(
+    return new ChartWardenError(
       "ALLERGY_CHECK_NOT_PASSED",
       "the patient's allergy list could not be read, so the allergy check cannot pass",
       422,
     );
   const labels = [...new Set(gate.matches.map((m) => m.label ?? "the ordered drug"))];
   const severe = gate.matches.some((m) => m.severity === "severe");
-  return new WardenXError(
+  return new ChartWardenError(
     "ALLERGY_CHECK_NOT_PASSED",
     `the ordered drug conflicts with a recorded allergy (${labels.join(", ")}${severe ? "; severe" : ""}); ` +
       `a prescriber may acknowledge it by supplying allergyOverrideReason (minimum ${ALLERGY_OVERRIDE_MIN_REASON_LENGTH} characters, recent step-up required)`,

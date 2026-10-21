@@ -9,7 +9,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — M25, the TPE PROGRAM TRACKER (hospice ADR/TPE/QIC PRD, milestone 5). Leadership
 // sees, per provider entity and MAC: the current round (of 3), the MAC's reported error rate against the exit threshold
 // this organization recorded for that MAC, the earliest date the next round may start, and an advisory referral-risk

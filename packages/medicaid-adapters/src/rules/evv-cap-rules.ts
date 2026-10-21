@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — §4.6 EVV (D9, tighter than M23) + cap-coherence rules. PURE: read ctx only.
+// @chartwarden/medicaid-adapters — §4.6 EVV (D9, tighter than M23) + cap-coherence rules. PURE: read ctx only.
 import { fail, pass, skip } from "./types";
 import type { MedicaidRule } from "./types";
 

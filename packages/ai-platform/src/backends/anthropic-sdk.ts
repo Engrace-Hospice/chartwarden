@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — the `@anthropic-ai/sdk` TRANSPORT behind the Anthropic adapter (F-236, ADR-0048).
+// @chartwarden/ai-platform — the `@anthropic-ai/sdk` TRANSPORT behind the Anthropic adapter (F-236, ADR-0048).
 //
 // `./anthropic.ts` owns the D19 / §8.4 invariant (no dispatch without a resolved, unexpired ZDR contract)
 // and takes the transport as a port. This file is that port's one real binding: `messages.create` on the
@@ -13,7 +13,7 @@
 //     actually served, which the ledger records even if it differs from the registry's expectation.
 //   · a `responseSchema` is sent as `output_config.format` (structured outputs); the caller still parses.
 import Anthropic from "@anthropic-ai/sdk";
-import type { AiBackendHealthStatus } from "@wardenx/types";
+import type { AiBackendHealthStatus } from "@chartwarden/types";
 import type { AnthropicDispatch } from "./anthropic";
 
 /** The vendor answered, but not with a usable completion. Its `name` is what the ledger records. */

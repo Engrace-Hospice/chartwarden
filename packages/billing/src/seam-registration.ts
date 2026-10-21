@@ -1,4 +1,4 @@
-// @wardenx/billing — boot-time seam registration + consumed-seam binding (§4.3 / §4.4).
+// @chartwarden/billing — boot-time seam registration + consumed-seam binding (§4.3 / §4.4).
 //
 // Mirrors M27/M30's M1-bootstrap posture: the FIVE published-seam contracts are registered into the M1
 // SeamRegistry; consumed seams are resolved through it. M23 takes NO `apps/backend` edge here — the
@@ -10,7 +10,7 @@
 //     providers are supplied by the caller once the §3 services + adapters are wired (P3).
 //  2. CONSUME — the §4.4 consumed-seam names. LIVE producers: M2/M5/M6/M8/M18/M36/M38/M40 (M5 now
 //     includes `MbiUnlockReader`, the HETS 270 MBI unlock) + the M23-owned `X12WorkerClient` (housed in
-//     `@wardenx/x12-837-client`). FORWARD-SEAM DENY-STUB today:
+//     `@chartwarden/x12-837-client`). FORWARD-SEAM DENY-STUB today:
 //       • `CapProjectionProvider` (M26, D8) — degrades to `status:"unavailable"` so the cap rules WARN
 //         rather than throw; tightens to `error` when M26 locks (NOT a hard fail-closed).
 //     `makeMbiUnlockDenyStub` stays as the package-local fail-closed THROW stub for tests / slices.
@@ -90,7 +90,7 @@ export const M23_REQUIRED_SEAMS = [
   "TerminologyProvider",
   // M40 — master data / NPI
   "MdmEntityProvider",
-  // M23-owned vendor adapter (housed in @wardenx/x12-837-client)
+  // M23-owned vendor adapter (housed in @chartwarden/x12-837-client)
   "X12WorkerClient",
 ] as const;
 

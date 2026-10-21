@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 ABAC predicate-NAME catalog (§4.7).
+// @chartwarden/billing — M23 ABAC predicate-NAME catalog (§4.7).
 //
 // The four named ABAC predicates M23 registers into M3's named-predicate registry (the backend
 // abac-predicates.ts provides the resolvers in P3). `inOrg` is the RE-USED M3 base predicate every M23

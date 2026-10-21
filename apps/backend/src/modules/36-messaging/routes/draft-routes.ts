@@ -9,9 +9,9 @@
 // `channel_visibility` predicate every channel route uses (read to see a draft, send to write one). The draft is the
 // caller's alone: the service keys every statement on the request-context user, never a param or body user id, and RLS
 // enforces the owner a second time. The body is sealed at rest; responses are never cached.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import type { MessageDraftService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { MessageDraftService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { DraftQuerySchema, SaveDraftBodySchema } from "./draft-typebox";
 import { CHANNEL_VISIBILITY_PREDICATE } from "./messaging-routes";

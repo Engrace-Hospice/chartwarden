@@ -32,7 +32,7 @@ invariant is satisfied, and the dangling seams/phantom contracts are resolved.
 | M17-F12 | MINOR | The module-local "5 PTO/hour" limit expressed as **platform rate-limiter** config (SEC-019, S10). |
 | M17-F13 | MINOR | **Cursor pagination** on PHI list routes (`GET /visits`, time-off lists) — SD-052 (ADR-0021). |
 | M17-F14 | MINOR | OSRM added to the SD topology / VM allocation and the DR plan (placement, OSM-extract backup, health probe) — DR-073. |
-| M17-F15 | MINOR | The phantom `MileagePayrollReader` from `@wardenx/encounters` is reconciled (ADR-0023): M17 reads actual mileage via an **M8-published event/seam that actually exists**, or the contract is retired. |
+| M17-F15 | MINOR | The phantom `MileagePayrollReader` from `@chartwarden/encounters` is reconciled (ADR-0023): M17 reads actual mileage via an **M8-published event/seam that actually exists**, or the contract is retired. |
 | M17-F16 | MINOR | DR tier declared: routing Tier 4; the day-view/roster read path is **Tier-1-supporting** (M18/M19 anchor on it) with a documented degraded-mode offline roster read (ADR-0021). |
 | M17-F17 | MINOR | Caregiver reminder payloads carry **no PHI toward SMS/email** — deep-link-only (INT-018); M36's builder enforces it and M17's typed payload no longer implies content delivery. |
 | M17-F18 | MINOR | New partitioned tables registered with the ops **`partition.rotate`** weekly job (OPS-021). |
@@ -379,7 +379,7 @@ packages/scheduling/             # shared domain types
 ```typescript
 // packages/db/src/schema/scheduling/visits.ts
 import { pgTable, uuid, timestamp, text, bigint, integer, date, jsonb, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organization, membership } from '@wardenx/db/schema/m1m2'
+import { organization, membership } from '@chartwarden/db/schema/m1m2'
 import { visitStatus, visitPurpose, visitSetting, evvBracketState } from './enums'
 
 export const visit = pgTable('visit', {
@@ -826,7 +826,7 @@ export const CreateRecurringVisitRequest = Type.Object({
 
 ```typescript
 // packages/scheduling/src/seams.ts
-import type { OrgId, PatientId, VisitId, MembershipId, IsoDateTime, IsoDate } from '@wardenx/domain/ids'
+import type { OrgId, PatientId, VisitId, MembershipId, IsoDateTime, IsoDate } from '@chartwarden/domain/ids'
 
 export interface VisitReader {
   // For M8 encounter authoring context
@@ -877,16 +877,16 @@ export function setVisitMetricsProvider(p: VisitMetricsProvider): void
 
 ```typescript
 // Consumed at boot — registered by their owning modules; verified by validateSeams()
-import type { CaseloadProvider } from '@wardenx/auth/seams'              // M5/M17 (we contribute to M5 via outbox)
-import type { PatientAddressReader } from '@wardenx/patient/seams'        // M5
-import type { CarePlanReader } from '@wardenx/care-plan/seams'            // M7
-import type { VolunteerComplianceProvider, SupervisoryCadenceReader } from '@wardenx/discipline-plans/seams'  // M15
-import type { CredentialReader, MembershipReader } from '@wardenx/identity/seams'   // M2
-import type { SignedEncountersReader, BillableEncounterReader, MileagePayrollReader } from '@wardenx/encounters/seams'  // M8
-import type { FacilityReader } from '@wardenx/mdm/seams'                  // M40
-import type { ConsentEvaluator } from '@wardenx/consent/seams'            // M39 (for portal scope)
-import type { TerminologyProvider } from '@wardenx/terminology/seams'     // M38
-import type { RoutingProvider } from '@wardenx/routing-client'             // M17-owned adapter (OSRM)
+import type { CaseloadProvider } from '@chartwarden/auth/seams'              // M5/M17 (we contribute to M5 via outbox)
+import type { PatientAddressReader } from '@chartwarden/patient/seams'        // M5
+import type { CarePlanReader } from '@chartwarden/care-plan/seams'            // M7
+import type { VolunteerComplianceProvider, SupervisoryCadenceReader } from '@chartwarden/discipline-plans/seams'  // M15
+import type { CredentialReader, MembershipReader } from '@chartwarden/identity/seams'   // M2
+import type { SignedEncountersReader, BillableEncounterReader, MileagePayrollReader } from '@chartwarden/encounters/seams'  // M8
+import type { FacilityReader } from '@chartwarden/mdm/seams'                  // M40
+import type { ConsentEvaluator } from '@chartwarden/consent/seams'            // M39 (for portal scope)
+import type { TerminologyProvider } from '@chartwarden/terminology/seams'     // M38
+import type { RoutingProvider } from '@chartwarden/routing-client'             // M17-owned adapter (OSRM)
 ```
 
 At M17 init:
@@ -1127,8 +1127,8 @@ export interface RoutingProvider {
 }
 
 // packages/routing-client/src/osrm-adapter.ts
-import { CircuitBreaker } from '@wardenx/foundation/circuit-breaker'
-import { sha256 } from '@wardenx/foundation/crypto'
+import { CircuitBreaker } from '@chartwarden/foundation/circuit-breaker'
+import { sha256 } from '@chartwarden/foundation/crypto'
 
 export class OsrmRoutingProvider implements RoutingProvider {
   constructor(

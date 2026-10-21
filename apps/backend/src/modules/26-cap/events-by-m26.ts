@@ -6,7 +6,7 @@
 // against the TypeBox payloadSchema inside the SAME transaction as the mutation (transactional outbox).
 //
 // NO PHI/MBI in any payload (D13) — IDs + cents + dates + bands only. The pure payload schemas live in
-// @wardenx/cap-management (events.ts); this file binds them to declared consumers + the module-owner tag.
+// @chartwarden/cap-management (events.ts); this file binds them to declared consumers + the module-owner tag.
 import {
   AccrualRecordedPayload,
   ProjectionUpdatedPayload,
@@ -17,8 +17,8 @@ import {
   YearClosedPayload,
   YearClosingPayload,
   YearOpenedPayload,
-} from "@wardenx/cap-management";
-import type { ModuleEventContribution } from "@wardenx/types";
+} from "@chartwarden/cap-management";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
   {

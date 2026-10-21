@@ -14,8 +14,8 @@
 //   • {@link CancelCountdown} — SC 1.4.1's non-colour-only countdown: the ring AND the sentence "N seconds
 //     to cancel", announced through an assertive live region so a screen-reader user gets the same
 //     realtime feedback a sighted one does (SC 4.1.3).
-import { Modal as SharedModal, StatusPill, t } from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
   CHECK_IN_STATUS_TONE,
@@ -476,7 +476,7 @@ export function ChipMultiSelect({
 }
 
 /** The §5 modal shell — backdrop + dialog + footer actions. Every M20 ceremony reuses it. Delegates
- * to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
+ * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
  * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
 export function Modal({
   title,

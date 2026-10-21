@@ -1,4 +1,4 @@
-// @wardenx/types -- GAP-020: the patient wristband payload codec + verdict vocabulary.
+// @chartwarden/types -- GAP-020: the patient wristband payload codec + verdict vocabulary.
 //
 // A wristband encodes an OPAQUE, random, per-generation token -- never an MRN, name or DOB. The shape is
 //   WXB1.<26 Crockford-base32 chars = 128 random bits>.<4 hex CRC-16>      (36 ASCII chars)
@@ -7,7 +7,7 @@
 // instead of reporting a wrong patient; the server CRC-checks first and answers `malformed`, so a damaged
 // barcode is never mistaken for a wrong-patient safety event.
 //
-// PURE and crypto-free (leaf package; `apps/web` does not depend on `@wardenx/shared`). The server-side digest
+// PURE and crypto-free (leaf package; `apps/web` does not depend on `@chartwarden/shared`). The server-side digest
 // (org-salted SHA-256, `node:crypto`) lives with its only user, M5.
 
 /** The codec version carried in every payload. */

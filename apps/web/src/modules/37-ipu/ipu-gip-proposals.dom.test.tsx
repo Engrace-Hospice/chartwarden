@@ -5,7 +5,7 @@
 // patient or show the clinical criteria, render nothing when there are none, and say so — not go silently
 // empty — when the read fails.
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

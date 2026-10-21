@@ -2,7 +2,7 @@
 // Proves M5 registers the REAL clinical_record eraser over the Phase-0 deny-stub (validateErasers
 // passes at boot), and the eraser deletes the patient subtree + tombstones the row (patient_merge
 // preserved). Plus the m5 audit-catalog action.
-import { ACTION_CATALOG, M5_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
+import { ACTION_CATALOG, M5_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

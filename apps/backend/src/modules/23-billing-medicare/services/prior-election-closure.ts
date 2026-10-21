@@ -10,10 +10,10 @@
 //
 // Two consumers: M23's own NOE-submit guard (`submitNoe`) and, through an injected port bound at the composition root,
 // M6's readmission context (M6 may not import M23).
-import type { BillingDb } from "@wardenx/billing";
-import * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import type { BillingDb } from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 
 const NOTR = schema.notrRecord;
@@ -87,7 +87,7 @@ export interface PriorLiveEndedStayPort {
 }
 
 /** 409 PRIOR_ELECTION_NOT_CLOSED — the readmission's NOE would be rejected by Medicare. */
-export class PriorElectionNotClosedError extends WardenXError {
+export class PriorElectionNotClosedError extends ChartWardenError {
   constructor(priorAdmissionId: string) {
     super(
       "PRIOR_ELECTION_NOT_CLOSED",

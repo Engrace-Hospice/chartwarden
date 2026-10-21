@@ -5,7 +5,7 @@
  * stay when the underlying M6 admission discharges — the FIRST outbox consumer this module has ever had,
  * for real, under RLS.
  *
- * `transitionAdmission`'s `discharge` case (`@wardenx/inpatient`) has been the SAME pure machine the
+ * `transitionAdmission`'s `discharge` case (`@chartwarden/inpatient`) has been the SAME pure machine the
  * route-driven `discharge()` op already calls since M37-T04; nothing had ever bound it to
  * `m6.admission.discharged`, so an M6 discharge never closed the corresponding IPU stay.
  *
@@ -23,7 +23,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

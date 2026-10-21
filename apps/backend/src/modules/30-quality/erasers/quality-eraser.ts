@@ -10,18 +10,18 @@
 // straight to the package's pure `eraseTenantQuality(orgId, store)`. The patient-scoped PHI redaction of
 // the four partitioned PHI tables is a SEPARATE per-table eraser path (§3.7), not this offboarding eraseFn.
 //
-// The pure eraseFn + its narrow store port + the in-memory store live in `@wardenx/quality` (eraser.ts);
+// The pure eraseFn + its narrow store port + the in-memory store live in `@chartwarden/quality` (eraser.ts);
 // this backend wrapper only adapts them to the M1 `DataEraser` contract and registers the REAL eraser over
 // the Phase-0 deny-stub via the composition-root hook (after wireErasers(), before validateErasers() — the
 // same M22/M33/M34/M36/M40 registration shape).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type QualityEraseStore,
   createInMemoryQualityEraseStore,
   eraseTenantQuality,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DataClass, DataEraser } from "@wardenx/types";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DataClass, DataEraser } from "@chartwarden/types";
 import { eq, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { registerEraser } from "../../../bootstrap/index";
@@ -29,7 +29,7 @@ import { registerEraser } from "../../../bootstrap/index";
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 /**
- * The M30 destruction data class. NOT yet a member of the `@wardenx/types` `DataClass` union (M4-owned);
+ * The M30 destruction data class. NOT yet a member of the `@chartwarden/types` `DataClass` union (M4-owned);
  * the Integrate phase adds `"quality_class"` to that union + to `REQUIRED_ERASERS`
  * (apps/backend/src/bootstrap/erasers/registry.ts) so boot fails closed if M30's real eraser is never
  * registered. Kept here as the single string literal so that wiring lands in one place.
@@ -199,7 +199,7 @@ export function createQualityEraser(store: QualityEraseStore): DataEraser {
  * compliance-class COUNT under the offboarding org's tenancy context) so the eraser runs against the real
  * M30 tables.
  *
- * TODO(M30 boot-wiring, Integrate phase): (1) add `"quality_class"` to the `@wardenx/types` `DataClass`
+ * TODO(M30 boot-wiring, Integrate phase): (1) add `"quality_class"` to the `@chartwarden/types` `DataClass`
  * union + `REQUIRED_ERASERS` so the deny-stub exists to register over; (2) wire the §3.7 `decisionCert`
  * co-sign gate once the M4 cert-driven destruction binding lands. The four partitioned-PHI per-table
  * erasers (patient-scoped redaction) register separately.

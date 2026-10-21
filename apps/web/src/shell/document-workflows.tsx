@@ -6,8 +6,8 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, JSX, ReactNode } from "react";
 import { lifecycleTone } from "./document-lifecycle-tone";

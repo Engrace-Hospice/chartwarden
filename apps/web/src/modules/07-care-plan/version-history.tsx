@@ -9,7 +9,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";

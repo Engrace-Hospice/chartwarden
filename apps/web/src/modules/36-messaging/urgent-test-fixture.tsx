@@ -1,6 +1,6 @@
 // Shared by the WP 4.1 urgent tests: an options answer, an SBAR policy answer, a client double and a mount helper.
 import { render } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";

@@ -1,6 +1,6 @@
 import type { ClaimValueCodes } from "../cbsa";
 import type { DischargeClaimCodes } from "../claim-codes";
-// @wardenx/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
+// @chartwarden/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
 // equivalent" promise: every claim is run through a set of typed predicates before it can leave READY.
 // This file is the MODEL only — the 17 platform-default rules live in `./_registry` + one file per rule
@@ -15,7 +15,7 @@ import type { DischargeClaimCodes } from "../claim-codes";
 // it. This keeps rules deterministic + unit-testable with a plain object and keeps all I/O at the service
 // boundary. The context carries ids + aggregate facts only; NO MBI and no free-text PHI (D13 / §3.6).
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. Types,
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`, no clock. Types,
 // pure functions, constants only.
 import type {
   AdmissionId,

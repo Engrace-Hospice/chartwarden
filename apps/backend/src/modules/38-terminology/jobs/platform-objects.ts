@@ -5,8 +5,8 @@
 // release) must not be copied around. M38 may not import M22's S3 client (architecture §25.15), so the SigV4 store is
 // declared STRUCTURALLY here and the composition root passes M22's real adapter. The bucket itself is an ops
 // prerequisite: nothing here creates it, and a missing bucket surfaces as an upload/read failure, not a silent skip.
-import { SourceNotFoundError } from "@wardenx/terminology-loader";
-import type { PlatformObjectPort } from "@wardenx/terminology-loader";
+import { SourceNotFoundError } from "@chartwarden/terminology-loader";
+import type { PlatformObjectPort } from "@chartwarden/terminology-loader";
 import type { PlatformUploadSigner } from "../jobs-ports";
 
 /** The subset of M22's `ObjectStorePort` this adapter calls (structurally compatible with it). */

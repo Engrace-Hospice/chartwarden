@@ -1,4 +1,4 @@
-// @wardenx/messaging - the "no PHI in saved replies" lint (M36 WP 2.8).
+// @chartwarden/messaging - the "no PHI in saved replies" lint (M36 WP 2.8).
 //
 // Deterministic and server-side: it runs on every template save (personal, shared and overlay) and again when a stored
 // template is resolved for a picker, so a rule set that is tightened later also covers rows saved under the old one.

@@ -2,12 +2,12 @@
 // GATED + AUDITED withPlatformContext entry, and is REFUSED when its job id is not allowlisted (fail-closed).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,
   PlatformContextDeniedError,
   registerPlatformJob,
-} from "@wardenx/tenancy";
+} from "@chartwarden/tenancy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 

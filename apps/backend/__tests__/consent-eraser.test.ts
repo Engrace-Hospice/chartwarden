@@ -8,7 +8,7 @@ import {
   type ConsentSubjectSummary,
   createInMemoryConsentEraseStore,
   eraseConsentForSubject,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

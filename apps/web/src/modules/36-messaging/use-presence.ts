@@ -3,7 +3,7 @@
 // Nothing is requested, and nothing renders, while the tenant flag `messaging.presence_enabled` is off (the default). A 403
 // (flag turned off, access ended) or 404 from any call stops this conversation's presence for good; a transient error backs
 // off. Hidden tabs make no requests. Names come from the channel's own member list (the presence read returns ids only).
-import { BACKGROUND_REQUEST_HEADERS, useApiClient, useFeatureFlag } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient, useFeatureFlag } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import { type LoopOutcome, startPresenceLoop } from "./presence-loop";
 import {

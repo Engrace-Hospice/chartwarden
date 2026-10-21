@@ -2,7 +2,7 @@
 // projection bind (D8). M23's §11.A `aggregate_cap_projection` / `ipu_cap_projection` rules consume the
 // M23-shaped `CapProjectionProvider`; M26 publishes its own rich interface (date-keyed projection reads).
 // This adapter wraps the M1-registry seam (cast to a minimal M26-facing VIEW — the opaque rich-seam pattern,
-// no @wardenx/cap-management import / no compile edge) and maps it to M23's consumer contract.
+// no @chartwarden/cap-management import / no compile edge) and maps it to M23's consumer contract.
 //
 // DEGRADE, never throw (D8): a deny-stub throw (M26 db-unbound) or an absent projection resolves to
 // `status:"unavailable"` so the cap rules WARN-degrade rather than block claim submission. M26 is the
@@ -11,8 +11,8 @@ import type {
   CapOrgProjectionResult,
   CapPatientProjectionResult,
   CapProjectionProvider,
-} from "@wardenx/billing";
-import { RegulatoryDecimal, fromDecimal } from "@wardenx/shared/money";
+} from "@chartwarden/billing";
+import { RegulatoryDecimal, fromDecimal } from "@chartwarden/shared/money";
 import { getSeam } from "../../../bootstrap/index";
 
 /** The minimal M26 `CapProjectionProvider` surface M23 consumes (date-keyed; M23 has the claim service date). */

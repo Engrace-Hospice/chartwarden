@@ -6,8 +6,8 @@
 // `level_of_care_period` is RLS-scoped on `app.org_id`, and M24's `assembleClaim` calls this OUTSIDE its own
 // org-context transaction, so the unset GUC made the policy's `::uuid` cast fail and every Medicaid claim
 // assembly 500'd. Like `level-of-care-period-reader.ts`, each call opens its own `withOrgContext`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
 
 const LOC = schema.levelOfCarePeriods;

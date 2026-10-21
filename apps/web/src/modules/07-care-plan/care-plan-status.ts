@@ -2,7 +2,7 @@
 // §6.6 badge taxonomy: care-plan lifecycle statuses (plan / version / problem / goal / intervention)
 // map to a StatusPill tone. The server owns every status; the UI only chooses a tone. Unknown values
 // fall back to neutral. Imported by care-plan-view + version-history so the mapping never diverges.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 const STATUS_TONE: Record<string, StatusTone> = {
   draft: "neutral",

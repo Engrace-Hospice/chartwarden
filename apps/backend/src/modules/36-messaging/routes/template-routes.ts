@@ -17,9 +17,9 @@
 // is sent through the ordinary send route. Nothing server-side links a message to the template it came from.
 // Org and actor are always the server-side request context. A PHI-lint or platform-floor refusal is a 422 that names the
 // field and the reason code, never the text.
-import { requirePermission } from "@wardenx/auth";
-import type { TemplateService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import type { TemplateService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { REQUIRE_IDEMPOTENCY_KEY } from "./messaging-routes";
 import { parse } from "./messaging-typebox";

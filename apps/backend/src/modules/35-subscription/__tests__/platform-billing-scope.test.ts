@@ -6,8 +6,8 @@
  * lock-step with the catalog. This test exercises the real predicate resolver (not a parallel copy) and
  * pins that `PLATFORM_BILLING_ROLES` is re-derived from `PLATFORM_OPS_ROLE_KEYS` so the two never drift.
  */
-import type { AbacContext } from "@wardenx/auth";
-import { PLATFORM_OPS_ROLE_KEYS } from "@wardenx/auth";
+import type { AbacContext } from "@chartwarden/auth";
+import { PLATFORM_OPS_ROLE_KEYS } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { buildM35AbacPredicates } from "../abac-predicates";
 

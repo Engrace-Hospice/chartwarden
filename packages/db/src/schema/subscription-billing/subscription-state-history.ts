@@ -1,4 +1,4 @@
-// @wardenx/db — `subscription_state_history` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143).
+// @chartwarden/db — `subscription_state_history` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143).
 // Append-only §2.2 transition ledger. `subscription_id` is a REAL FK. `organization_id` is a logical uuid
 // (M35-F04). `actor_membership_id` is NULL for system transitions.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

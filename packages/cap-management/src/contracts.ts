@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the §4.2 request/response TypeBox contracts (the OpenAPI shapes the backend
+// @chartwarden/cap-management — the §4.2 request/response TypeBox contracts (the OpenAPI shapes the backend
 // routes bind in P3). Monetary fields cross the wire as integer cents; percentages as numbers. The §4.2 spec
 // wrote some money fields as numeric strings — the canonical posture here is integer cents (the schema is
 // BIGINT cents, §2.3), with the seam read-views (seams.ts) doing the cents-as-string conversion for

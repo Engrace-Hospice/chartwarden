@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `intake_records_request_fax` (M22, F-238 / 0315). One attempt to fax a records request's cover
+// @chartwarden/db — `intake_records_request_fax` (M22, F-238 / 0315). One attempt to fax a records request's cover
 // sheet + letter through M22's outbound-fax port: `sending` → `sent` (provider + message id) | `failed`.
 // At most one `sending`/`sent` row per request (partial unique index) — the send is idempotent per request.
 // PHI by association → the three tenancy columns, FORCEd RLS, audit trigger with the destination number and

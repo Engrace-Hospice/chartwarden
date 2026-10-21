@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · repositories — signup-intent data port: `tenant_signup_intent` +
+// @chartwarden/saas-tenant-platform · repositories — signup-intent data port: `tenant_signup_intent` +
 // `tenant_signup_token` (M34 §3.9).
 //
 // The Phase-3 self-serve / platform-ops-manual PRE-PROVISION funnel. Both tables are DELIBERATELY
@@ -13,7 +13,7 @@
 // returned once to the caller and value-capture-denylisted in the audit projection, §3.10). The
 // platform 24h floor (`expires_at <= issued_at + interval '24 hours'`) is a DB CHECK (migration 0051);
 // the service must not issue a longer TTL.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { desc, eq } from "drizzle-orm";
 
 const I = schema.tenantSignupIntent;

@@ -7,12 +7,12 @@
 // `Value` → M1's VALIDATION_FAILED envelope. Org/actor/membership binding is ALWAYS server-side
 // (request.context) — no body/query carries an org id or an authoring/approving membership id.
 //
-// VOCAB NOTE: the string-literal unions MIRROR the FROZEN `@wardenx/db` pgEnum value lists
-// (packages/db/src/schema/subscription-billing/*) and the leaf `@wardenx/types` unions; schema wins on
+// VOCAB NOTE: the string-literal unions MIRROR the FROZEN `@chartwarden/db` pgEnum value lists
+// (packages/db/src/schema/subscription-billing/*) and the leaf `@chartwarden/types` unions; schema wins on
 // conflict. M35 carries NO PHI (§8.5); every money field is INTEGER CENTS.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

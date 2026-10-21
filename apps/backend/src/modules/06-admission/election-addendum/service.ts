@@ -6,9 +6,9 @@
 //
 // Source reads (non-covered determinations, diagnoses, patient identity) happen BEFORE the write transaction:
 // they cross module boundaries through injected readers that open their own org-scoped reads.
-import { audit } from "@wardenx/audit";
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { audit } from "@chartwarden/audit";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AddendumDiagnosesReader,
   type ElectionAddendumAcknowledgementSource,
@@ -17,8 +17,8 @@ import {
   type ElectionAddendumFurnishMethod,
   type ElectionAddendumSignerKind,
   type NonCoveredItemsReader,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
 import { ResourceNotFoundError } from "../routes/service";
@@ -629,7 +629,7 @@ export function createElectionAddendumService(
     input: { readonly documentId: string; readonly documentVersionId: string },
   ): Promise<void> {
     if (!deps.documentValidator) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "ADMISSION_EVIDENCE_DOCUMENT_VALIDATOR_UNBOUND",
         "Attaching a scanned addendum requires the M22 document-version validator.",
         503,

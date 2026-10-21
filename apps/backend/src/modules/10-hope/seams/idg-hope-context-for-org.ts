@@ -16,8 +16,8 @@
 // EVERY requested patient gets an entry (an empty context is a TRUE "nothing due", not "unknown") — an
 // unbound/failed seam is the "unknown" case and is the CALLER's null. No assessment answers, no clinician, no
 // free text cross this seam: enums, instants and a count only. RLS scopes by `app.org_id`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, ne } from "drizzle-orm";
 
 const SCHED = schema.hopeTimepointSchedules;

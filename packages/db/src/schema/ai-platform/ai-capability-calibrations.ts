@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_capability_calibration` (M32 §3.2.3). The per-(capability, backend) threshold set
+// @chartwarden/db — `ai_capability_calibration` (M32 §3.2.3). The per-(capability, backend) threshold set
 // and the baseline metrics drift is measured AGAINST. W6 promotes a new calibration; W7's drift monitor
 // compares live metrics to `baseline_metrics`.
 //

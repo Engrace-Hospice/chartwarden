@@ -3,10 +3,10 @@
 // no DELETE; the event table takes INSERT only. Transitions take the row FOR UPDATE and carry the expected version, so two
 // racing writers serialise and the loser sees the winner's state (a repeat or a conflict), never a lost update. The database
 // triggers (migration 1107) refuse any transition off the table, whatever this code does.
-import { type DbClient, schema } from "@wardenx/db";
-import { UNROUTED_MAX_RECORDS, UNROUTED_PROBE_WINDOW_MS } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { ACK_OPEN_STATUSES } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { UNROUTED_MAX_RECORDS, UNROUTED_PROBE_WINDOW_MS } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { ACK_OPEN_STATUSES } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import {

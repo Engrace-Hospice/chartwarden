@@ -2,7 +2,7 @@
 // the administration-policy save. A stale session answers 403 STEP_UP_REQUIRED; the screen must send the
 // user to the existing /step-up route with returnTo, and keep what they typed for the return trip.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

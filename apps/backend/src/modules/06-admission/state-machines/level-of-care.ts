@@ -3,7 +3,7 @@
 // The LevelOfCarePeriod lifecycle: [*] → assigning → active → ended. The transient `assigning` state
 // exists ONLY for IRC/GIP to gap the round-trip to M37 for an IPU bed; RHC/CHC go straight to `active`
 // (§2.3.5). GIP needs uncontrolled-symptom / end-of-life documentation (R-LCP-01). Pure transition.
-import type { LevelOfCare, LocalDate } from "@wardenx/types";
+import type { LevelOfCare, LocalDate } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
 import { TEXT_MINIMUMS } from "./validation";

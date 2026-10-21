@@ -14,14 +14,14 @@
 //
 // FAIL-CLOSED: a malformed payload, a cross-tenant payload, or a reply whose patient is not the one the
 // commit targeted (the batch's `patient_id`) THROWS → retry → DLQ. Never a guessed stamp.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type DocLensFieldOutcome,
   type DraftCreatedFromExtractionPayload,
   M5_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
   M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
 

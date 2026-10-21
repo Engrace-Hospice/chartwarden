@@ -1,9 +1,9 @@
 // apps/backend/src/modules/36-messaging/snooze-reminders/binding.ts - WP 4.10 (ADR-0077): the composition-root binding for snooze and
 // reminders. The ops flag `messaging.notification_policy` (tenant row wins; absent = off) gates the routes and the sweep, read through
 // the platform's FeatureFlagReaderPort and cached a few seconds per org (a kill switch lands within that window).
-import type { DbClient } from "@wardenx/db";
-import type { AlertEmitter } from "@wardenx/messaging";
-import { SNOOZE_REMINDER_FLAG_KEY } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { SNOOZE_REMINDER_FLAG_KEY } from "@chartwarden/types";
 import { cacheFlagRead } from "../presence/binding";
 import {
   type ReminderSweepDeps,

@@ -1,9 +1,9 @@
-// @wardenx/reporting · repositories — the view-share aggregate: `report_share` (an explicit share
+// @chartwarden/reporting · repositories — the view-share aggregate: `report_share` (an explicit share
 // grant for a saved view — to a role key, or rarely a specific membership) (M33 §3.3–§3.4). The share
 // SERVICE wraps these in `withOrgContext` and enforces `report.share.write` / `report.share.org`
 // (org_admin) at the route; `revokeByMembership` backs the M34 recipient-revocation cascade (§4.3
 // ScheduledReportProvider sibling — a revoked membership loses its explicit shares too).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

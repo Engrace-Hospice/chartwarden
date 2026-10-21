@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T07, §2.3 D3. Evaluates the coverage grid against the alert horizon: the
+// @chartwarden/inpatient — M37-T07, §2.3 D3. Evaluates the coverage grid against the alert horizon: the
 // forward-gap projection (`m37.shift.coverage_gap_projected`), the block-severity current-hour check
 // (`m37.shift.rn_uncovered` → the ABAC `m37.ipu.rn_coverage_active`), and the 168h unit-activation gate.
 // Pure & IO-free. The horizon is schema-bounded to [8, 168] hours (the inpatient_unit CHECK; architecture

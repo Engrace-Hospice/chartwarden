@@ -1,4 +1,4 @@
-// @wardenx/messaging — the notification policy (M36 WP 4.6, ADR-0073).
+// @chartwarden/messaging — the notification policy (M36 WP 4.6, ADR-0073).
 //
 // Pure: no I/O, no clock (the evaluation instant is an argument). It decides, for ONE recipient and ONE alert, which
 // out-of-band channels are planned, which are suppressed and why. It sits on top of the M20-era engine in ./preferences and
@@ -24,7 +24,7 @@ import {
   severityAtLeast,
 } from "./preferences";
 
-/** The acknowledgment classes (ADR-0069). Mirrors `AckClass` in @wardenx/types; this package has no import edge to it. */
+/** The acknowledgment classes (ADR-0069). Mirrors `AckClass` in @chartwarden/types; this package has no import edge to it. */
 export type PolicyAckClass = "important" | "urgent" | "critical";
 
 /** Shift state of a recipient at the instant. `unknown` is the only value any seam can give today (M19's router is a deny-stub). */

@@ -11,7 +11,7 @@
  * Re-run (to a NEW migration number) when the catalog gains keys; existing rows are never overwritten.
  */
 import { writeFileSync } from "node:fs";
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 
 const target = process.argv[2];
 if (!target) throw new Error("usage: generate-permission-mirror-migration.ts <output.sql>");

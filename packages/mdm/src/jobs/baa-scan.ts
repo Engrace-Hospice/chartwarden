@@ -1,4 +1,4 @@
-// @wardenx/mdm — the pure §4.3 `mdm.baa_expiration_scan` planner (GAP-173, spec §4.3 / §7.7).
+// @chartwarden/mdm — the pure §4.3 `mdm.baa_expiration_scan` planner (GAP-173, spec §4.3 / §7.7).
 //
 // Decides, for a tenant's BAA rows and a calendar date, which 90 / 30 / 0-day expiration alerts are due. Pure:
 // no clock, no I/O — the worker reads the rows and injects `today`. Idempotency is the CALLER's: every plan

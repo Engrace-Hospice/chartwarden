@@ -6,8 +6,8 @@
 // all) is one whose captures will record `no_geofence_baseline`. Counts only — no address or coordinate leaves
 // this function, so the result is not PHI. (A visit pinned to a non-primary address is approximated by the
 // primary one; the count is a rollout signal, not an audit of every visit.)
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 
 export interface ActivePatientGeocodeCount {

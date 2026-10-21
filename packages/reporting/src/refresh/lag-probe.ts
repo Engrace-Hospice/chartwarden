@@ -1,4 +1,4 @@
-// @wardenx/reporting · refresh — the `report.lag_probe` SINGLETON worker (M33 §2.4 / §4.8 / D14).
+// @chartwarden/reporting · refresh — the `report.lag_probe` SINGLETON worker (M33 §2.4 / §4.8 / D14).
 //
 // Every 30s (singleton, concurrency 1) the probe samples the worst replica replay lag from
 // `pg_stat_replication` and derives the `data_freshness_seconds` the dashboard tiles surface in their

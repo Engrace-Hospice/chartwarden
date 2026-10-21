@@ -1,4 +1,4 @@
-// @wardenx/db — `bereavement_plan` (M16 §3.3.1). The D1 program ROOT: exactly one row per
+// @chartwarden/db — `bereavement_plan` (M16 §3.3.1). The D1 program ROOT: exactly one row per
 // discharged-by-death admission, carrying the single 13-month CoP 418.64(d) clock and the counselor
 // caseload entry. Created `eligible` on `m6.bereavement.eligible` (BOTH D16 source branches), `initiating`
 // once a counselor is assigned, `active` once the roster + schedule seed; the four closes are distinct on
@@ -10,14 +10,14 @@
 // TENANCY (ARCH-011 / ADR-0010): organization_id + provider_entity_id NOT NULL, location_id nullable —
 // denormalized from the admission at intake so the §4.6 BereavementComplianceProvider rolls up per CCN /
 // location without joining through the M5/M6 schemas (the M15-F05 precedent; `BereavementScope` in
-// @wardenx/types already declares the same pair). location_id is nullable because the decedent's service
+// @chartwarden/types already declares the same pair). location_id is nullable because the decedent's service
 // location is an admission-time attribute that post-death transfers can leave unresolved — matching the
 // already-published `BereavementPlanView.locationId: LocationId | null`. RLS pivots on organization_id ALONE.
 //
 // CROSS-MODULE FK POLICY (architecture wins): only organization_id / provider_entity_id / location_id (M1
 // core) carry real FK constraints. patient_id (M5), admission_id (M6), care_plan_version_id_at_discharge
 // (M7), legal_hold_id (M4) and both `*_user_id` assignment columns (M2 membership ids — the spec's `user_id`
-// NAME is kept, but @wardenx/types already types them `MembershipId`) are LOGICAL uuid, app-validated at
+// NAME is kept, but @chartwarden/types already types them `MembershipId`) are LOGICAL uuid, app-validated at
 // the write boundary. RLS + grants + the M4 write-audit trigger land in migration 0102.
 import { sql } from "drizzle-orm";
 import {
@@ -97,7 +97,7 @@ export const bereavementPlan = pgTable(
     currentRiskComputedAt: timestamp("current_risk_computed_at", { withTimezone: true }),
 
     // D16 provenance — NULL for internal-clinician-recorded deaths. Shape locked by
-    // `BereavementExternalSourceMetadata` in @wardenx/types. Read-only after insert EXCEPT the D18
+    // `BereavementExternalSourceMetadata` in @chartwarden/types. Read-only after insert EXCEPT the D18
     // cosign-receipt update, which flips `cosignStatus` to 'cosigned' and stamps the medical director.
     externalSourceMetadata: jsonb("external_source_metadata"),
 

@@ -6,7 +6,7 @@ import {
   TextField,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — the §2.8 D17 "SEND TO PRESCRIBER" ceremony (F-031).
 //
 // A reconciliation decision of `new_order` (or a `carry_forward` of a home medication into this setting)

@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, the SETTLEMENT WORKSHEET (R2, §5.1.6). The final cap calculation for the
 // period in settlement: final paid, final cap, overage/underage, and the owed direction. Resolves the period
 // currently in_settlement (or the latest), then reads its worksheet. Propose/finalize are server-authoritative

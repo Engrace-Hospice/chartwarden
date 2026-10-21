@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — the §2.6 D7 WITNESS ceremony (M13 §4.1 route 2; F-031).
 //
 // The other half of a controlled-substance administration, and the half that has to live on a different

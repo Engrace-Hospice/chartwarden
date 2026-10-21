@@ -30,9 +30,9 @@
 // takes on its own unresolvable death-fact cases, not a bug in THIS consumer. Whether an unconfirmed
 // contact's consent revocation should instead be a no-op (matching `opted_out`/`deceased`) or drive some
 // other transition is a product decision this pass does not make.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { BereavedContactId, ConsentId, IsoInstant } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { BereavedContactId, ConsentId, IsoInstant } from "@chartwarden/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { decideConsentRevocationCascade } from "../lifecycle/cascades";
 import { transitionBereavedContact } from "../lifecycle/index";

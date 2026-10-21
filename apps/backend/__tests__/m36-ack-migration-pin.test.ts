@@ -3,7 +3,7 @@
 // change in one place without the others fails here. The live suite proves the same rules against a real database.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ACK_TRANSITIONS } from "@wardenx/messaging";
+import { ACK_TRANSITIONS } from "@chartwarden/messaging";
 import {
   ACK_CLASSES,
   ACK_DEADLINE_POLICY,
@@ -12,7 +12,7 @@ import {
   ACK_STATUSES,
   ACK_SUPERVISOR_REASON_CODES,
   type AckStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");

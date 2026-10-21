@@ -1,4 +1,4 @@
-// @wardenx/db — `on_call_shift` (M19 §3.3 / §2.2.2). D2/D3/D7: one row per covered window per
+// @chartwarden/db — `on_call_shift` (M19 §3.3 / §2.2.2). D2/D3/D7: one row per covered window per
 // ProviderEntity per discipline. This is the single most survey-load-bearing row M19 writes — it is the
 // CoP 418.100(c)(2) proof that a nurse was reachable at 2 a.m. — which is why its audit rows carry the
 // `compliance` retention class even though the row itself holds no patient data.

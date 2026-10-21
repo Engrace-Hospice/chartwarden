@@ -15,9 +15,9 @@ import {
   humanizeIdentifier,
   useApiClient,
   useToast,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 
-import type { paths } from "@wardenx/ui";
+import type { paths } from "@chartwarden/ui";
 
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
 
@@ -72,7 +72,7 @@ interface PatientSummary {
 
 // Module-nav-rail icons. The P0 frame (wardenx-P0-foundation.pen `fQjjh`) pairs every rail row with a
 
-// Material-Symbols glyph; the shared @wardenx/ui Glyph kit is a small curated set without these
+// Material-Symbols glyph; the shared @chartwarden/ui Glyph kit is a small curated set without these
 
 // per-module icons, so this is a module-local 24×24 stroke set mirroring the frame's intent. Nav
 

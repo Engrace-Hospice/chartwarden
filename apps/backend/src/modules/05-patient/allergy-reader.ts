@@ -9,9 +9,9 @@
 // Fail-closed shape: a patient that is not readable under the caller's org (unknown / cross-tenant) yields
 // `null`, NOT `[]` — "cannot check" must not read as "no allergies". Reads run under `withOrgContext`, so RLS
 // scopes them; the explicit `organization_id` predicate is the belt behind it.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientAllergyEntry, PatientAllergyReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientAllergyEntry, PatientAllergyReader } from "@chartwarden/types";
 import { and, eq, ne } from "drizzle-orm";
 
 /** The empty-acting-user sentinel the other seam readers use (the M4 audit trigger maps "" to NULL). */

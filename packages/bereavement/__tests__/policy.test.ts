@@ -1,4 +1,4 @@
-// @wardenx/bereavement — M16-T01 policy / cadence / rubric / gate unit tests.
+// @chartwarden/bereavement — M16-T01 policy / cadence / rubric / gate unit tests.
 //
 // The CoP 418.64(d) invariants the whole module rests on: the D4 13-month death-anchored window and its
 // tighten-only cadence floor, the D3/D17 `unknown`-aware deterministic scorer (including the §7.3 worked
@@ -6,7 +6,7 @@
 // external-source first-contact gate.
 import { describe, expect, it } from "vitest";
 
-import type { BereavementRiskFactorInputs } from "@wardenx/types";
+import type { BereavementRiskFactorInputs } from "@chartwarden/types";
 
 import {
   BEREAVEMENT_CADENCE_FLOOR,

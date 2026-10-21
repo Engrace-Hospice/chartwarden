@@ -15,7 +15,7 @@
 // PURE: the byte size, declared MIME, and a small magic-byte prefix are passed in; no I/O, no MinIO SDK. The
 // route (T07) reads the prefix off the stream and streams the body to M22's presigned URL; this core decides
 // accept/reject and which event to emit.
-import type { PatientId } from "@wardenx/types";
+import type { PatientId } from "@chartwarden/types";
 import { requirePortalWrite } from "./errors";
 
 /** §7.8 / §2.3 — the platform-floor upload size ceiling (50 MB). A tenant may TIGHTEN, never loosen. */

@@ -8,7 +8,7 @@
  *
  * Run:   bun run scripts/backfill-tenant-buckets.ts
  */
-import { createDbClient, schema } from "@wardenx/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import {
   createS3TenantStorageProvisioner,
   s3ObjectStoreConfigFromEnv,

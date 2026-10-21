@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — M37 GIP criteria + IRC cap (§2.4/§2.5, §3.3): gip_admission_criteria, its per-encounter
+// @chartwarden/db — M37 GIP criteria + IRC cap (§2.4/§2.5, §3.3): gip_admission_criteria, its per-encounter
 // reassessment ledger, the irc_episode 5-day cap tracker, and the ipu_remote_inpatient_episode
 // (CoP 418.112 arranged-inpatient tracking). TENANT-SCOPED, RLS on app.org_id. `data`/`rationale`/
 // notes/reason free-text is PHI-denylisted for audit scrubbing (D11, §3.6). Cross-module ids

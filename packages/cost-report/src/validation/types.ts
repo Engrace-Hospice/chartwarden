@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 pre-submission validation RULE MODEL (§2.1 `cost_report_validation_rule`,
+// @chartwarden/cost-report — M27 pre-submission validation RULE MODEL (§2.1 `cost_report_validation_rule`,
 // architecture §11.B, D9/D16/D20/D21). The configurable rule library is the CONTENT validation framework
 // (distinct from the §2.3 schema/service-layer domain invariants): every cost report runs through a set
 // of `RuleDef`s before submission, each a deterministic PURE predicate over an injected
@@ -13,7 +13,7 @@
 // penny-exact and reproducible. No PHI (D18) — the context carries aggregate financial/statistical
 // figures and structural flags only; never a patient identifier.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. Types, pure
 // functions, constants only.
 import type {
   BadDebtKind,

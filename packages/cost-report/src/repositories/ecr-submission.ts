@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the submission record: `ecr_submission` (one row per submission
+// @chartwarden/cost-report · repositories — the submission record: `ecr_submission` (one row per submission
 // attempt; ECR + PI files generated via M22 and the manual MCReF upload/acknowledgment; M27 holds the
 // M22 document back-references — no MinIO code — D11) (M27 §3.3). ORG-SCOPED; the submission service wraps
 // these in `withOrgContext` and owns the lifecycle (`generating → generated → uploaded → accepted |
 // rejected`) + the snapshot binding. `mcref_acknowledgment_number` / `mcref_rejection_code` are mutually
 // exclusive (DB CHECK). No PHI (D18) — the ECR file format carries no patient identifiers.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

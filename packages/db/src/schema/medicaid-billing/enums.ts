@@ -1,8 +1,8 @@
-// @wardenx/db — M24 Billing — Medicaid: shared pgEnum declarations (spec §3.3). The enums live in this
+// @chartwarden/db — M24 Billing — Medicaid: shared pgEnum declarations (spec §3.3). The enums live in this
 // single home so the fan-out table files import them without ever redeclaring a pgEnum (check-ddl-legality
 // rule 3). Filename intentionally avoids the substring "schema" (table-ownership/tenancy heuristic gotcha).
 //
-// CONVENTIONS (mirror @wardenx/db billing M23 / remittance M25 / cap M26 / cost-report M27 — the proven
+// CONVENTIONS (mirror @chartwarden/db billing M23 / remittance M25 / cap M26 / cost-report M27 — the proven
 // precedent): every DB ENUM type name is `m24_`-prefixed so it can never collide with another module's enum;
 // the exported Drizzle const is camelCase `m24X`. Spec §3.3 wrote bare names (medicaid_claim_state, …); the
 // `m24_` prefix is the repo-wide anti-collision posture and supersedes the spec's bare names (convention wins).

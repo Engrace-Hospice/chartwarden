@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the minimal X12 interchange tokenizer + date helpers the HETS 270/271 codec
+// @chartwarden/x12-837-client — the minimal X12 interchange tokenizer + date helpers the HETS 270/271 codec
 // shares. Pure (no IO). ADR-0037: X12 parsing is TypeScript in this M23-owned package, not a sidecar.
 //
 // The delimiters are read from the ISA header itself (X12.5 / TR3 005010X279A1): the element separator is

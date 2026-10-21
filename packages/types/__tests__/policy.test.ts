@@ -1,4 +1,4 @@
-// @wardenx/types — M2-T04 unit tests (M2 spec §2.2.4/D1 SESSION_POLICY, §4.3.1/D9
+// @chartwarden/types — M2-T04 unit tests (M2 spec §2.2.4/D1 SESSION_POLICY, §4.3.1/D9
 // STEP_UP_POLICY).
 //
 // These constants are the platform floor that M2's step-up route/resolver, M3's

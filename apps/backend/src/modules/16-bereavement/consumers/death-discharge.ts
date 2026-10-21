@@ -33,7 +33,7 @@
 // F-227 (#248): M6 now models HL7-external death intake (`discharge_event.source`/`source_proposal_id`/
 // cosign columns), so the seam returns real provenance and external-source plans are created with their D18
 // cosign gate and the REAL proposal id.
-import { localDateInTimeZone } from "@wardenx/shared/dates";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type {
   AdmissionId,
   BereavementExternalSourceMetadata,
@@ -41,7 +41,7 @@ import type {
   IsoInstant,
   MembershipId,
   PatientId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getDeathDischargeReader } from "../seams/index";
 
 /**

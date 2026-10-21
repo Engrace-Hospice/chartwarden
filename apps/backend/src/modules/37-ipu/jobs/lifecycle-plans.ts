@@ -8,8 +8,8 @@ import {
   INSPECTION_DUE_WARN_DAYS,
   RESERVATION_HOLD_HOURS,
   isReservationExpired,
-} from "@wardenx/inpatient";
-import type { IpuAdmissionKind, IpuAdmissionState, IpuShiftRole } from "@wardenx/types";
+} from "@chartwarden/inpatient";
+import type { IpuAdmissionKind, IpuAdmissionState, IpuShiftRole } from "@chartwarden/types";
 import { WATCHDOG_REMINDER_WINDOW_MS, daysBetweenIsoDates, reminderCycle } from "./watchdog-plans";
 
 // ── §4.8 queue catalog (no ':' in a BullMQ queue name) ───────────────────────────────────────────────────
@@ -195,7 +195,7 @@ export function planEquipmentInspection(
 /** §5.14 — the cron fires "end of each shift + 30 min grace". */
 export const NURSING_NOTE_GRACE_MS = 30 * MINUTE_MS;
 
-/** RN-equivalent roles (`@wardenx/inpatient` `RN_EQUIVALENT_ROLES`) — the nurses a q-shift note is owed by. */
+/** RN-equivalent roles (`@chartwarden/inpatient` `RN_EQUIVALENT_ROLES`) — the nurses a q-shift note is owed by. */
 export const NURSING_NOTE_ROLES: readonly IpuShiftRole[] = ["rn", "charge_rn", "np_in_rn_role"];
 
 export interface EndedShiftFact {

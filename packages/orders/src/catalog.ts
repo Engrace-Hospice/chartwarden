@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.1 Order-Kind catalog (M11-T01 domain layout).
+// @chartwarden/orders — §2.1 Order-Kind catalog (M11-T01 domain layout).
 //
 // The single source of per-kind metadata the lifecycle + signer-eligibility + standing-order machines
 // (land M11-T03/T04) read instead of re-deriving the rules inline: which disciplines may sign a kind,
@@ -6,10 +6,10 @@
 // written order ab initio), whether the kind is standing-order-eligible (§2.4 — only lab / supply /
 // ancillary_service), the §2.2 completion shape, and the downstream `m11.*` outbox events a sign emits.
 //
-// PURE DATA — no IO, `@wardenx/types`-only. The per-kind TypeBox `data` schemas + cross-field validators
+// PURE DATA — no IO, `@chartwarden/types`-only. The per-kind TypeBox `data` schemas + cross-field validators
 // + terminology bindings land per-folder in `kinds/<kind>/` in later tasks (§3.1).
 
-import type { M11EventName, OrderKind } from "@wardenx/types";
+import type { M11EventName, OrderKind } from "@chartwarden/types";
 
 /**
  * The clinical disciplines the §2.1 signer matrix references. `lpn` appears as a drafter only (an

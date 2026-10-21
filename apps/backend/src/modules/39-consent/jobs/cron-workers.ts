@@ -2,7 +2,7 @@
 // construction for M39's §4.9 `m39.consent_expiration` / `m39.expiration_reminder` hourly crons and the GAP-171 `m39.revocation_cascade_retry` sweep (F-216;
 // the M14/M20 `jobs/cron-workers.ts` template). The per-org bodies are `./expiration.ts`; this file is only
 // the BullMQ shell + the fail-closed dep bag.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { ConsentWriteOutboxPort } from "../consent-store-db";
 import { type M39AlertPort, runCascadeRetryCron } from "./cascade-retry";

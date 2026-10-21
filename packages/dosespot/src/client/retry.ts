@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the per-call exponential backoff schedule (M12-T06, spec §4.10). The §4.10 adapter
+// @chartwarden/dosespot — the per-call exponential backoff schedule (M12-T06, spec §4.10). The §4.10 adapter
 // `call()` wraps each DoseSpot request in `retryable(..., { maxAttempts: 3, baseDelayMs: 250 })`: a 429 or a
 // 5xx raises {@link RetryableError} and the call re-attempts at 250ms / 500ms / 1000ms before the third
 // exhaust converts to a `retryable: true` {@link DegradedError}. The delay schedule is PURE and deterministic

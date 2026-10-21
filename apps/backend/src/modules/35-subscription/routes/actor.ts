@@ -6,10 +6,10 @@
 // M35 row (subscription transition, payment-method change, refund request/approval, promo application) is
 // stamped with the server-assembled membership id, never one supplied by the client. M35 carries NO PHI
 // (§8.5) — every fact is ids + financial lifecycle state.
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles, all server-assembled from `request.context`. */

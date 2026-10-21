@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the two 42 CFR §418.309 beneficiary-counting methodologies (D2). Both are pure;
+// @chartwarden/cap-management — the two 42 CFR §418.309 beneficiary-counting methodologies (D2). Both are pure;
 // the choice is locked per cap period at first accrual (cap_period_methodology_lock).
 //
 //   STREAMLINED  — each beneficiary who elected hospice with this provider during the cap year counts ONCE
@@ -9,7 +9,7 @@
 //                  provider during the cap year (weight ∈ (0,1]). Allocated cap = per-beneficiary cap ×
 //                  weight. Cross-hospice election days come from M6/M40; when unavailable the weight falls
 //                  back to 1.0 (lifetime treatment within the tenant — §4.4 degraded path).
-import { RegulatoryDecimal, fromDecimal } from "@wardenx/shared/money";
+import { RegulatoryDecimal, fromDecimal } from "@chartwarden/shared/money";
 import { clamp, roundCents } from "../money";
 import type { Methodology } from "./types";
 

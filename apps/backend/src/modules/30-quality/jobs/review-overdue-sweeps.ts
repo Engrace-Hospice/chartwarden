@@ -7,8 +7,8 @@
 // a request), picks the rows past their due date and raises the M36 alert through `AlertEmitter`. The alert
 // correlation id carries a cadence bucket, so a re-run inside the bucket dedupes (alert is UNIQUE on
 // (organization_id, correlation_id)) and a new bucket re-pages. Payloads are ids and instants only — no PHI.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 

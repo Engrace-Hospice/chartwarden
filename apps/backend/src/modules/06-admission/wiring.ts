@@ -1,4 +1,4 @@
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob } from "@chartwarden/tenancy";
 import { M6_PLATFORM_JOB_ID } from "./jobs/index";
 
 /**

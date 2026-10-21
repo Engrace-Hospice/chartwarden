@@ -1,4 +1,4 @@
-// @wardenx/db — `care_plan_version` (M7 §3.3). The immutable-after-signed snapshot ledger: one row
+// @chartwarden/db — `care_plan_version` (M7 §3.3). The immutable-after-signed snapshot ledger: one row
 // per draft→in_review→signed→superseded cycle of a care plan (§2.2.2). PHI-bearing → three-column
 // tenancy rule (provider_entity_id + location_id NOT NULL, denormalized from the plan). `stateSnapshot`
 // is null until in_review, immutable after signed; `requiredSignerSet` is the D5 quorum captured at

@@ -1,4 +1,4 @@
-// @wardenx/db — `feature_flag` + `feature_flag_evaluation` (M1 Foundation §3.10).
+// @chartwarden/db — `feature_flag` + `feature_flag_evaluation` (M1 Foundation §3.10).
 // Feature flags support four governance patterns (enums.featureFlagKind):
 //   - 'product'     — long-lived behavior toggle (e.g. ai.hearthnote_layer2_enabled)
 //   - 'rollout'     — percentage-based rollout (rollout_percent, deterministic bucket)

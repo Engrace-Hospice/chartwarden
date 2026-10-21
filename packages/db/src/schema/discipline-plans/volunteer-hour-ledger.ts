@@ -1,4 +1,4 @@
-// @wardenx/db — `volunteer_hour_ledger` (M15 §3.3). The materialized numerator of the 42 CFR §418.78(e)
+// @chartwarden/db — `volunteer_hour_ledger` (M15 §3.3). The materialized numerator of the 42 CFR §418.78(e)
 // 5% volunteer-time ratio: ONE row per (provider_entity_id, fiscal_year) holding the summed minutes and the
 // `as_of_at` watermark the nightly aggregator advances (§2.2.7).
 //

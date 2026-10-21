@@ -19,7 +19,7 @@
 // forever, while declaring none means the row IS the durable record and dispatches immediately. M23 adds
 // itself here in the same diff that binds the handler.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 export const M40_OUTBOX_EVENTS: ModuleEventContribution = [
   {

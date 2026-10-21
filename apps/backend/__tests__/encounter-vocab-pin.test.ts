@@ -14,7 +14,7 @@ import {
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   narrativeVocabReleaseById,
-} from "@wardenx/narrative-vocab";
+} from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
 import { createInMemoryEncounterBackend } from "../src/modules/08-encounters/index";
 import { requiredSectionSelections } from "./_hearthnote-fixtures";

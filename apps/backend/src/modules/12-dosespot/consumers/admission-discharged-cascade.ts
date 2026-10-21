@@ -8,7 +8,7 @@
 // which writes the discontinuation, flips status, audits, and publishes `m12.medication_order.discontinued` in
 // one transaction. The consumed event name is a STRING literal only (no M6 schema import): M12 reads M6
 // solely through the foundation outbox, never via a `dependsOn` edge (§4 boundary rule).
-import type { MedicationOrderStatus } from "@wardenx/types";
+import type { MedicationOrderStatus } from "@chartwarden/types";
 
 /** The `m6.admission.discharged` payload subset M12 reads (M6 owns the canonical wire shape). */
 export interface AdmissionDischargedPayload {

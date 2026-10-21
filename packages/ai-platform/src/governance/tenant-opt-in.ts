@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §5.3 / W4 tenant opt-in rules (M32-T03).
+// @chartwarden/ai-platform — §5.3 / W4 tenant opt-in rules (M32-T03).
 //
 // The tenant admin's decision to let one AI capability run against their agency's charts, and the
 // evidence they had in front of them when they took it. Pure: every fact the gate needs is an ARGUMENT
@@ -44,7 +44,7 @@ import type {
   AiRoutingMode,
   AiRoutingPreference,
   AiTenantOptInStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 

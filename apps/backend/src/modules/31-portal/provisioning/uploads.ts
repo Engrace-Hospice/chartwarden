@@ -8,9 +8,9 @@
 //
 // The caller's account + patient come from the SESSION; a row that is not this account's is a 404.
 import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
 import type { PortalPhiCipher } from "../portal-crypto";
 import { planDocumentUpload } from "../write-paths/document-upload";
@@ -154,12 +154,12 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
       const outcome = await inOrg(input.organizationId, input.actingUserId, async (tx) => {
         const row = await ownUpload(tx, input.portalAccountId, input.patientId, input.uploadId);
         if (row.status === "submitted" || row.status === "rejected" || row.status === "expired") {
-          throw new WardenXError("UPLOAD_CLOSED", `this upload is already ${row.status}`, 409);
+          throw new ChartWardenError("UPLOAD_CLOSED", `this upload is already ${row.status}`, 409);
         }
         if (row.expiresAt.getTime() <= now().getTime()) {
           await tx.update(UP).set({ status: "expired" }).where(eq(UP.id, row.id));
           return {
-            refusal: new WardenXError(
+            refusal: new ChartWardenError(
               "UPLOAD_EXPIRED",
               "this upload window has closed; start again",
               410,
@@ -232,7 +232,7 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
         };
       }
       if (row.status !== "staged" || !row.contentCipher) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "UPLOAD_NOT_STAGED",
           row.status === "initiated"
             ? "no file has been uploaded for this request yet"
@@ -241,7 +241,7 @@ export function createPortalUploads(deps: PortalUploadsDeps): PortalUploads {
         );
       }
       if (!deps.intake) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PORTAL_UPLOAD_INTAKE_UNAVAILABLE",
           "Documents cannot be filed right now. Your upload is saved; please try again later.",
           503,

@@ -1,4 +1,4 @@
-// @wardenx/db — `per_diem_rate_calculation` (M23 Billing-Medicare §3.3; append-only, 1:1 with `claim`;
+// @chartwarden/db — `per_diem_rate_calculation` (M23 Billing-Medicare §3.3; append-only, 1:1 with `claim`;
 // non-partitioned; retention class `compliance`). Captures the reproducible HIPPS payment math for a
 // claim: the 5-char HIPPS code, the per-diem rate, and the wage-index SNAPSHOT (CCN + fiscal year +
 // factor stored as text, NOT a pointer — the platform-shared `wage_index_factor` file can be re-loaded,

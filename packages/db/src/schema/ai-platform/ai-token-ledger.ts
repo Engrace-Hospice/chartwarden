@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_token_ledger` (M32 §3.2.9). The per-tenant token/cost accrual W2's hard cap reads.
+// @chartwarden/db — `ai_token_ledger` (M32 §3.2.9). The per-tenant token/cost accrual W2's hard cap reads.
 //
 // TENANT-SCOPED: organization_id NOT NULL, RLS keyed ONLY on app.org_id (0116). No provider_entity_id /
 // location_id and no patient column — this table holds token counts and dollars, not clinical content;

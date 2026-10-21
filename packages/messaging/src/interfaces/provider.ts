@@ -1,11 +1,11 @@
-// @wardenx/messaging — the §4.6 published seam CONTRACTS (the surfaces every consumer imports).
+// @chartwarden/messaging — the §4.6 published seam CONTRACTS (the surfaces every consumer imports).
 //
 // M36-T06. These are the interfaces clinical/billing modules import to consume messaging without
 // a direct schema edge (ADR-0005 D1): the IMPLEMENTATION is injected at boot into the M1 seam
 // registry and validated by validateSeams(); consumers resolve a typed handle through the
 // module-36 accessor (apps/backend/src/modules/36-messaging/seams.ts). Like M38's
 // `TerminologyProvider`, the rich shapes live HERE in the feature package (not the leaf
-// @wardenx/types, which `leaves-stay-leaves` forbids importing them) — so the M1 registry holds
+// @chartwarden/types, which `leaves-stay-leaves` forbids importing them) — so the M1 registry holds
 // the instance opaquely and this file is the typed boundary.
 //
 // SCOPE (T06): this task ships the published TYPES + the boot-validated `AlertEmitter` (its real
@@ -14,7 +14,7 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
-import type { MessageReactionSummary, MessageUrgency, PollView, RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, MessageUrgency, PollView, RichBody } from "@chartwarden/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME

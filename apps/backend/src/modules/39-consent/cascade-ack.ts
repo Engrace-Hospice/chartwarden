@@ -15,9 +15,9 @@
 // failed" alert that is always true, and an alarm that is always true is ignored. Such a consumer goes in
 // {@link CASCADE_DEFERRED_CONSUMERS} (empty today) until it gains a binding (no data migration: rows keep every
 // key, the arbiter just filters).
-import { CASCADE_MAX_ATTEMPTS, nextCascadeStatus } from "@wardenx/consent";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { CASCADE_MAX_ATTEMPTS, nextCascadeStatus } from "@chartwarden/consent";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const REV = schema.consentRevocation;

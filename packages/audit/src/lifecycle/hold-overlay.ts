@@ -1,4 +1,4 @@
-// @wardenx/audit - the legal-hold OVERLAY materialiser (M4 spec §2.6 / §10.6; GAP-008; ADR-0051).
+// @chartwarden/audit - the legal-hold OVERLAY materialiser (M4 spec §2.6 / §10.6; GAP-008; ADR-0051).
 //
 // A hold cannot flip `audit_event.retention_class` (the column is in the integrity hash and `wardenx_app` has no UPDATE on the
 // table), so a hold is recorded as rows in the append-only `legal_hold_audit_event` overlay: one per (hold, audit row). This
@@ -19,8 +19,8 @@
 //
 // OVERLAP. Each pass re-scans the last `RESCAN_OVERLAP_MS` before `materialised_through`: an audit row can commit slightly after
 // its `created_at` (async writers, clock skew), and ON CONFLICT DO NOTHING makes the re-scan free of duplicates.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { LegalHoldCriteriaShape } from "./legal-hold-match";
 

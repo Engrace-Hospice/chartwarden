@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — the §2.2/§2.3/§2.5/§2.7 write ceremonies the M12 queues are for (#91).
 //
 // Four of this module's nine screens are QUEUES whose entire reason to exist is an action they did not

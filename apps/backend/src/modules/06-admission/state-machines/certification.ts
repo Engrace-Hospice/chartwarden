@@ -4,7 +4,7 @@
 // (awaiting_attending →) signed → superseded|voided. The branch after hospice-MD sign depends on
 // period 1 + an attending physician on file (§2.3.3). Pure transition over already-resolved facts
 // (the M38 ICD-10 check, the M40 NPI match, the §2.4 CTI validators).
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { AdmissionStateError, require_ } from "./errors";
 import {

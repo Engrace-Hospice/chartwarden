@@ -6,7 +6,7 @@
 // check on the whole authenticated frame, not a per-screen nav filter. Pure (no React/DOM) so it
 // stays unit-testable. The server is ALWAYS the authoritative enforcer; this only drives what the
 // shell renders.
-import type { paths } from "@wardenx/ui";
+import type { paths } from "@chartwarden/ui";
 import type { Session, SessionStatus } from "./session-types";
 
 /** The wire shape of `GET /api/v1/auth/context` (generated contract) — identical across every app. */

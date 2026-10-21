@@ -1,4 +1,4 @@
-// @wardenx/db — `triage_paper_reentry_worklist` (M19 §3.3 / §2.7, added by the M19-F08 BCP amendment —
+// @chartwarden/db — `triage_paper_reentry_worklist` (M19 §3.3 / §2.7, added by the M19-F08 BCP amendment —
 // this is the TENTH owned table the spec's §12/§13 checklists predate). DR-013/066: when the platform is
 // down, after-hours calls are taken on paper. On recovery the system computes which on-call shifts
 // overlapped the outage window and writes one row per shift, so the DON has a bounded, assignable list of

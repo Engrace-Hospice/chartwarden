@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — Module 31 telehealth vendor-adapter package (M31 §4.5 D1).
+// @chartwarden/telehealth-client — Module 31 telehealth vendor-adapter package (M31 §4.5 D1).
 //
 // M31-T01 landed the type-only `TelehealthProvider` contract (the layout). M31-T05 lands the live Daily.co
 // adapter (the enabled default), the Twilio + native-WebRTC scaffold swap-paths behind the same interface, the

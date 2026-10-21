@@ -7,15 +7,15 @@
 // order); a repeat request replays, an edited message supersedes. M36 NEVER decides accepted/rejected: it records the outcome
 // the owning module reports (applyOutcome), which is the only way result_ref is ever set. Flag-independent: the routes gate
 // the `messaging.promotions` flag. It writes no M8/M14 table and calls no mutating seam (m36-promotion-no-foreign-writes).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   allowedPromotionActions,
   applyPromotionOutcome as decideOutcome,
   decidePromotionRequest,
   derivePatient,
   promotionActorRole,
-} from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type ChartPromotionDto,
   type ChartPromotionOutcome,
@@ -25,9 +25,9 @@ import {
   type ChartPromotionTargetModule,
   ForbiddenError,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   isChartPromotionTarget,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { gateAdmits } from "../handoffs/handoff-eligibility";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Part2ChannelGate } from "../part2-channel-gate";
@@ -126,18 +126,18 @@ export interface PromotionServiceDeps {
 
 /** One refusal for missing / not visible / no longer permitted / message gone / Part 2: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("chart_promotion_request");
-const targetInvalid = (): WardenXError =>
-  new WardenXError("PROMOTION_TARGET_INVALID", "that chart target is not available", 422);
-const suggestedInvalid = (): WardenXError =>
-  new WardenXError("PROMOTION_SUGGESTED_REF_INVALID", "the suggested meeting is not valid", 422);
-const notPatientLinked = (): WardenXError =>
-  new WardenXError(
+const targetInvalid = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_TARGET_INVALID", "that chart target is not available", 422);
+const suggestedInvalid = (): ChartWardenError =>
+  new ChartWardenError("PROMOTION_SUGGESTED_REF_INVALID", "the suggested meeting is not valid", 422);
+const notPatientLinked = (): ChartWardenError =>
+  new ChartWardenError(
     "PROMOTION_SOURCE_NOT_PATIENT_LINKED",
     "only a message in a patient's channel can be proposed for the chart",
     422,
   );
-const stateConflict = (): WardenXError =>
-  new WardenXError(
+const stateConflict = (): ChartWardenError =>
+  new ChartWardenError(
     "PROMOTION_STATE_CONFLICT",
     "the request is not in a state that allows this",
     409,

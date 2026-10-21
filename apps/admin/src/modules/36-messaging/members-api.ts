@@ -1,6 +1,6 @@
 // apps/admin/src/modules/36-messaging — channel-member API module.
 // Member list/add/remove over the generated client.
-import type { ApiClient } from "@wardenx/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { type ReadResult, toReadResult } from "./ui";
 
 export const MEMBER_ROLES = ["owner", "member", "read_only", "portal_caregiver"] as const;

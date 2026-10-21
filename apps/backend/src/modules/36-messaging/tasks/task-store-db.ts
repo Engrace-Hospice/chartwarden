@@ -5,9 +5,9 @@
 // statement names the organization on top of RLS. `wardenx_app` may UPDATE only the status columns and has no DELETE.
 // The partial unique index is the idempotency arbiter for create; transitions lock the row first, so two racing
 // transitions serialise and the loser sees the winner's state (replay or conflict), never a lost update.
-import { type DbClient, schema } from "@wardenx/db";
-import { type TaskActorRole, decideTransition, taskActorRole } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type TaskActorRole, decideTransition, taskActorRole } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   TASK_ACTIVE_STATUSES,
   TASK_CLOSED_STATUSES,
@@ -16,7 +16,7 @@ import {
   type TaskReassignSource,
   type TaskSourceKind,
   type TaskStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 

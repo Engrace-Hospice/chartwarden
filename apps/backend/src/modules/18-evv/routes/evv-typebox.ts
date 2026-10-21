@@ -8,8 +8,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@wardenx/types";
-import { ValidationError } from "@wardenx/types";
+import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import type {
   ArrivalView as ServiceArrivalView,
   CheckResultView as ServiceCheckResultView,
@@ -354,7 +354,7 @@ export const EvvOfflineSyncV2Response = Type.Object({
   }),
 });
 
-// The bracket M8's EvvBracketResolver reads (mirrors the @wardenx/types EvvBracketDto: nullable check-in /
+// The bracket M8's EvvBracketResolver reads (mirrors the @chartwarden/types EvvBracketDto: nullable check-in /
 // check-out events + the nested §4.3 EvvMissingResolutionDto, which carries `resolvedAt` the flat route view
 // omits).
 export const EvvBracketMissingResolutionView = Type.Object({

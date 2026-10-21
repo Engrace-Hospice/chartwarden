@@ -3,8 +3,8 @@
 // Flags are read once per bound organization (after sign-in and org selection); until then, or on any failure, the map is
 // empty so every flag reads false (fail closed — the server stays the authority). An explicit `flags` prop (tests,
 // stories) wins and issues no read.
-import { FeatureFlagProvider, useApiClient } from "@wardenx/ui";
-import type { FeatureFlags } from "@wardenx/ui";
+import { FeatureFlagProvider, useApiClient } from "@chartwarden/ui";
+import type { FeatureFlags } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useSession } from "./session";

@@ -8,8 +8,8 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.4 invocation search (`/admin/ai-platform/invocations`,
 // `ai.invocation.read`). Also embedded, pre-filtered, as the capability detail's Invocations tab.
 //

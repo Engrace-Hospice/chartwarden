@@ -2,7 +2,7 @@
 // prospect's PCP / hospital for older records, and recognising the records when they come back.
 //
 // A request belongs to an M6 referral (the route validated the caller can see it, through the M6
-// ReferralReader seam) and carries a short code (`RR-` + 6 + a check character; @wardenx/intake-extraction
+// ReferralReader seam) and carries a short code (`RR-` + 6 + a check character; @chartwarden/intake-extraction
 // `generateRecordsRequestCode`) printed on the cover sheet. The intake job finds that code on the returned
 // fax pages / e-mail subject and files the batch under the request's referral (./inbound-match.ts).
 //
@@ -10,8 +10,8 @@
 // route tests. Production binds the Drizzle service (./records-request-db.ts) under `withOrgContext`, so RLS
 // scopes every read and write by `app.org_id`.
 import { randomBytes, randomUUID } from "node:crypto";
-import { generateRecordsRequestCode } from "@wardenx/intake-extraction";
-import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import { generateRecordsRequestCode } from "@chartwarden/intake-extraction";
+import { NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
 
 export const RECORDS_REQUEST_KINDS = [
   "history_and_physical",
@@ -238,14 +238,14 @@ export const newRecordsRequestCode = (): string =>
   generateRecordsRequestCode((n) => randomBytes(n));
 
 export const notExtendable = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_NOT_EXTENDABLE",
     "only an open or expired records request can be extended",
     409,
   );
 
 export const notCancellable = () =>
-  new WardenXError(
+  new ChartWardenError(
     "RECORDS_REQUEST_NOT_CANCELLABLE",
     "this records request can no longer be cancelled",
     409,
@@ -253,7 +253,7 @@ export const notCancellable = () =>
 
 /** In-memory slice (route tests). Org-scoped: another org's request is a non-leaking 404. */
 export const cancelledRequest = () =>
-  new WardenXError("RECORDS_REQUEST_CANCELLED", "this records request was cancelled", 409);
+  new ChartWardenError("RECORDS_REQUEST_CANCELLED", "this records request was cancelled", 409);
 
 export function createInMemoryRecordsRequestService(
   opts: { now?: () => Date; code?: () => string } = {},

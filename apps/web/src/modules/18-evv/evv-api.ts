@@ -38,7 +38,7 @@
 //     past it. The form states the floor; the server enforces it and answers 422.
 //   • §2.3 — the correction-of-record and the D6 supervisor override require fresh M2 step-up, resolved
 //     from the session. Nothing here asserts it.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 

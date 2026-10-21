@@ -2,7 +2,7 @@
 //
 // `generateOutreachSchedule` (§4.3): turn the D4 death-anchored cadence FLOOR — merged with whatever the
 // tenant tightened — into the concrete `bereavement_outreach` rows the plan opens with. The floor itself,
-// the tenant-tighten validator and the modality ladder are pure policy in `@wardenx/bereavement`; this
+// the tenant-tighten validator and the modality ladder are pure policy in `@chartwarden/bereavement`; this
 // module is the materialization: floor item + `death_date` → `due_at`, `late_grace_until`, the anniversary
 // mark, and the per-contact modality the survivor's stated preferences resolve to.
 //
@@ -27,13 +27,13 @@ import {
   effectiveCadence,
   isOutreachDueAtWithinCeiling,
   validateTenantCadence,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavementAnniversaryMark,
   BereavementOutreachKind,
   BereavementRiskTier,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 
 const MS_PER_DAY = 86_400_000;

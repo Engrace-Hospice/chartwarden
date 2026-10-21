@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const txHolder: { tx: unknown } = { tx: undefined };
-vi.mock("@wardenx/tenancy", async (orig) => ({
+vi.mock("@chartwarden/tenancy", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(txHolder.tx),

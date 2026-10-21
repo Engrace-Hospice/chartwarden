@@ -1,7 +1,7 @@
 // GAP-066: the staff revoke route must derive actor class server-side. A staff session claiming
 // `patient_self_via_portal` must not skip the >=40-char reason + evidence document rule.
-import { validateRevocation } from "@wardenx/consent";
-import { WardenXError } from "@wardenx/types";
+import { validateRevocation } from "@chartwarden/consent";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { deriveStaffRevocationAttribution } from "../src/modules/39-consent/routes/consent-route-support";
 
@@ -15,12 +15,12 @@ describe("deriveStaffRevocationAttribution", () => {
   });
 
   it("rejects a claimed patient_self_via_portal on the staff route", () => {
-    expect(() => deriveStaffRevocationAttribution("patient_self_via_portal")).toThrow(WardenXError);
+    expect(() => deriveStaffRevocationAttribution("patient_self_via_portal")).toThrow(ChartWardenError);
   });
 
   it("rejects platform_admin_break_glass on the staff route", () => {
     expect(() => deriveStaffRevocationAttribution("platform_admin_break_glass")).toThrow(
-      WardenXError,
+      ChartWardenError,
     );
   });
 

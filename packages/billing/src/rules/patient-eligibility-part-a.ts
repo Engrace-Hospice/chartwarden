@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `patient_eligibility_part_a_active` (eligibility, error, regulatory). The
+// @chartwarden/billing — §4.5 rule `patient_eligibility_part_a_active` (eligibility, error, regulatory). The
 // patient must have active Medicare Part A as-of the claim's service-from (the §1.3 first gate of FFS
 // hospice billing). Reads the precomputed `eligibility` snapshot (the service layer resolved the most-
 // recent `eligibility_check`); `active_part_a` passes, `inactive_part_a` BLOCKS, and an indeterminate /

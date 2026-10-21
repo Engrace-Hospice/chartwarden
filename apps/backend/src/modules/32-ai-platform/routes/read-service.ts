@@ -42,7 +42,7 @@ import type {
   AiInvocationHitlOutcome,
   AiInvocationStatus,
   AiRoutingDecision,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import type { AiEvaluationRunRowProjection } from "../safety/store";
 

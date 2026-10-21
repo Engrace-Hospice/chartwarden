@@ -1,4 +1,4 @@
-// @wardenx/messaging — the PHI sanitization wrapper (M36-T06, spec §4.7 / §7.2).
+// @chartwarden/messaging — the PHI sanitization wrapper (M36-T06, spec §4.7 / §7.2).
 //
 // THE SINGLE CHOKEPOINT between in-perimeter PHI-bearing structures (`Alert` / `Message`) and
 // outbound vendors (SMS / email / push / voice). Every out-of-band dispatcher MUST take its
@@ -96,7 +96,7 @@ export function setOutOfBandFallbackObserver(
 const SMS_MAX_CHARS = 160;
 
 /** The fixed voice script (§4.7) — a pre-recorded text-to-speech line, never PHI. */
-const VOICE_SCRIPT = "WardenX field safety alert. Please open the app.";
+const VOICE_SCRIPT = "ChartWarden field safety alert. Please open the app.";
 
 // ── GAP-032: the SOS terminus emergency-contact call (spec §4.7 amendment) ─────────────────────────────
 //
@@ -147,10 +147,10 @@ export function sanitizeForEmergencyContactCall(input: {
 
 /** The one generic line (WP 4.7). Names no patient, no clinical content and no sender; the link, when
  *  present, is appended by the renderer and opens only inside an authenticated session. */
-const GENERIC_SHORT = "You have a new notification in WardenX. Sign in to view.";
-const URGENT_SHORT = "You have a new urgent request in WardenX. Sign in to view.";
-const SAFETY_SHORT = "WardenX safety alert. Sign in to view.";
-const MESSAGE_SHORT = "You have a new message in WardenX. Sign in to view.";
+const GENERIC_SHORT = "You have a new notification in ChartWarden. Sign in to view.";
+const URGENT_SHORT = "You have a new urgent request in ChartWarden. Sign in to view.";
+const SAFETY_SHORT = "ChartWarden safety alert. Sign in to view.";
+const MESSAGE_SHORT = "You have a new message in ChartWarden. Sign in to view.";
 
 /** Generic, PHI-free `short` per alert category (§4.7: "no category specifics beyond the generic short").
  *  Urgency level is the only thing a category may add; it identifies no one. */
@@ -242,8 +242,8 @@ export interface RenderedOutOfBand {
   readonly id: string;
 }
 
-const PUSH_TITLE = "WardenX";
-const EMAIL_SUBJECT = "WardenX notification";
+const PUSH_TITLE = "ChartWarden";
+const EMAIL_SUBJECT = "ChartWarden notification";
 
 /**
  * WP 4.7 render-time guard: the ONLY place out-of-band subject / title / body text is composed. A notification

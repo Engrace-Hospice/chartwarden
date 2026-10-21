@@ -12,8 +12,8 @@
 // exact. A period M37 does not know is simply absent — the caller falls back or leaves G8 unresolved. Returns ids
 // only (no PHI). Same cross-module precedent as `restraintAdmissionSitingForOrg`: an org-explicit `…ForOrg` function
 // in M37's own `seams/` directory IS the seam surface a consumer imports.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 
 const ADMISSION = schema.ipuAdmission;

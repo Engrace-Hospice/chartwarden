@@ -74,7 +74,7 @@ describe("urgent code does not page, escalate, time or acknowledge", () => {
     );
     expect(src).not.toMatch(/acknowledg(e|ment)_request|acknowledgeMessage|\backnowledg\w*\(/i);
     expect(src).not.toMatch(/urgencyHint|urgency_hint/);
-    expect(src).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/19-/);
+    expect(src).not.toMatch(/from "@chartwarden\/(oncall|triage)|modules\/19-/);
   });
 
   it("the service and consumer never read message text (no body, plainText or bodyDoc inspection)", () => {

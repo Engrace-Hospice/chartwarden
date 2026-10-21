@@ -6,10 +6,10 @@
 // This is the live Drizzle implementation over the M3-owned `break_glass_event` table, run inside
 // `withOrgContext` (org-bound list/invoke/find) / `withOrgContextFromRequest` (by-id get/cosign/revoke)
 // so RLS (policy `break_glass_event_org`, migration 0009) scopes every row by `app.org_id`. M3 may import
-// @wardenx/db + @wardenx/tenancy (dependsOn 1), so the store lives in the module dir (the role-store precedent).
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+// @chartwarden/db + @chartwarden/tenancy (dependsOn 1), so the store lives in the module dir (the role-store precedent).
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { and, desc, eq, gt, inArray, ne } from "drizzle-orm";
 import {
   BreakGlassCosignError,

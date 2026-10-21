@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `tenant_wage_index` (M23 Billing-Medicare; F-211, migration 0280). The TENANT-ENTERED, append-only CMS
+// @chartwarden/db — `tenant_wage_index` (M23 Billing-Medicare; F-211, migration 0280). The TENANT-ENTERED, append-only CMS
 // hospice wage index for a CCN + federal fiscal year. ORG-SCOPED (organization_id NOT NULL, canonical app.org_id RLS,
 // ENABLED + FORCED). No PHI.
 //

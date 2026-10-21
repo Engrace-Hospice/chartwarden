@@ -18,17 +18,17 @@
 // the former compromise (3) is retired — every primary sign / cosignature / addendum-sign now writes an
 // `encounter_signature` provenance row (see the §3.3/D13 block below) and the HearthNote selection /
 // Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
-import { isStepUpRecent } from "@wardenx/auth";
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
+import { isStepUpRecent } from "@chartwarden/auth";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
   enhanceNarrative,
   templateKey as hearthnoteTemplateKey,
   requiredScalesFor,
-} from "@wardenx/hearthnote";
-import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/hearthnote";
+import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
@@ -42,7 +42,7 @@ import {
   type StepUpFactor,
   UnauthorizedError,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type SQL,
   and,
@@ -242,7 +242,7 @@ async function resolveSignatureProvenance(
  * real id refuses every signature; comparing it to itself passes unconditionally, which is the F-051
  * defect one level down).
  *
- * `@wardenx/narrative-vocab` now carries the `(version → uuid)` registry the column always needed, and
+ * `@chartwarden/narrative-vocab` now carries the `(version → uuid)` registry the column always needed, and
  * this resolves the running build's release through it. The pin is the CORPUS release, not an M38
  * `code_system_version` row: architecture §10.5.2 makes Layer-1 assembly a pure function of
  * (selections × template × that package), M38 has no single active-version pointer to hold, and
@@ -657,7 +657,7 @@ export function createDbEncounterRouteService(
   // it: the §2.3 machine has emitted `{ kind: "persist_assembled_output" }` on every finalize since
   // M8-T04 — `encounter-lifecycle.test.ts` asserts that it does — and no service performed the effect. So
   // the note was reassembled from `hearthnote_selection` at every read, which defeats the D11 vocabulary
-  // pin at the last step: a `@wardenx/narrative-vocab` release that edits a phrase would change the
+  // pin at the last step: a `@chartwarden/narrative-vocab` release that edits a phrase would change the
   // rendered text of an ALREADY-SIGNED encounter, and the `${patient}` slot (a literal today) will change
   // every historical note the day M8 binds an M5 reader. For a 42 CFR 418.104 legal record, "we can
   // rebuild it" is not the claim "here is what it said".
@@ -1439,7 +1439,7 @@ export function createDbEncounterRouteService(
     },
 
     /**
-     * F-063 — the authoring menu. `@wardenx/narrative-vocab`'s `entriesFor` is documented as "the
+     * F-063 — the authoring menu. `@chartwarden/narrative-vocab`'s `entriesFor` is documented as "the
      * entries a `(encounterType, discipline)` menu surfaces … so the selection UI and the template
      * engine see the same deterministic ordering", and no route ever surfaced it — so there was no
      * selection UI. Derived from the encounter's OWN type/discipline (never from the caller), so the

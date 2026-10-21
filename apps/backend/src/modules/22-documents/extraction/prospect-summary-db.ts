@@ -8,14 +8,14 @@
 // Available only once the review is complete (409 REVIEW_NOT_COMPLETE before): approvals can still change
 // while a review is open, and a summary built to be copied out of the screen must not present a picture the
 // reviewer has not finished attesting.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   DegradedError,
   type DocLensBatchSudStatus,
   NotFoundError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import {
@@ -94,7 +94,7 @@ export function createProspectSummaryService(deps: ProspectSummaryDeps): Prospec
             .orderBy(desc(ER.closedAt))
             .limit(1);
           if (!review) {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "REVIEW_NOT_COMPLETE",
               "the prospect summary is built from reviewer-approved values and is available once the review is complete",
               409,

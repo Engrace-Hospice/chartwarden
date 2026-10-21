@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 /**
  * WardenX — re-seal ONE tenant's legacy message bodies under the M34 ring DEK (M36 WP 2.13 / ADR-0058 P1).
  *

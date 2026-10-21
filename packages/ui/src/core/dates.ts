@@ -1,4 +1,4 @@
-// @wardenx/ui core — date-ONLY helpers (PARAM-004). `new Date("1950-03-15")` parses a bare
+// @chartwarden/ui core — date-ONLY helpers (PARAM-004). `new Date("1950-03-15")` parses a bare
 // `YYYY-MM-DD` string as a UTC INSTANT (midnight UTC), and every local getter (`getFullYear()`,
 // `getMonth()`, `getDate()`) then reads it back in the BROWSER's local timezone. In any
 // negative-UTC-offset timezone (every US timezone), UTC midnight on a date is still the PREVIOUS

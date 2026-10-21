@@ -3,8 +3,8 @@
 // screen, so an expired invitation meant a database edit. The card lists the tenant's invitations and resends or
 // revokes one; a resend issues a fresh single-use link to the same address.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { InvitationCard } from "./invitation-card";
 

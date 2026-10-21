@@ -1,4 +1,4 @@
-// @wardenx/db — `permission` (M3 Authorization §3.3). The read-only **mirror** of the
+// @chartwarden/db — `permission` (M3 Authorization §3.3). The read-only **mirror** of the
 // code-owned permission catalog (packages/auth/src/permissions/catalog.ts — the source
 // of truth). The table exists for admin-UI listing and as the FK target for
 // `role_permission.permission_key`; it is refreshed from the catalog on deploy via

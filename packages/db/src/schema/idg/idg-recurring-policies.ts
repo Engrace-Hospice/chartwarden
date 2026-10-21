@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_recurring_policy` (M14 §3.3.1). Per-location IDG cadence config: the §2.2 recurring
+// @chartwarden/db — `idg_recurring_policy` (M14 §3.3.1). Per-location IDG cadence config: the §2.2 recurring
 // meeting template (cadence/anchor/start-time/duration), the §2.3 post-discharge wrap-up window, and the
 // default coordinator. Org+location-scoped (NOT patient-bearing → no three-column PHI rule). Actor refs
 // (default_coordinator_membership_id → M1 membership) are plain uuid app-validated, NOT cross-module FKs;

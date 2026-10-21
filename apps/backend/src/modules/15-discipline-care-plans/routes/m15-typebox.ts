@@ -6,14 +6,14 @@
 // `m15-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one.
 //
-// The string-literal unions MIRROR the frozen `@wardenx/db` pgEnum value lists (packages/db/src/enums.ts,
+// The string-literal unions MIRROR the frozen `@chartwarden/db` pgEnum value lists (packages/db/src/enums.ts,
 // M15-T01) — the schema wins on conflict. Org / actor / membership binding is server-side
 // (`request.context`): no body or query carries an org id or an acting membership id, which is the §8.6
 // (S) spoofing control at the boundary.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import type { CursorPage } from "./concurrency";
 import type { RedactedCategory } from "./disclosure";
 import type {

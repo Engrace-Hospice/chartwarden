@@ -9,7 +9,7 @@
 // a `new_patient` proposal routes to the create/match path. Wiring M29 later (W-M5-15 full accept,
 // W-M5-16 partial accept, W-M5-18 merge-redirect, W-M5-19 ambiguous SSN-last4) is just binding the
 // outbox handler to {@link decideProposalApply} + the PatientMutator.
-import type { PatientMutationPatch } from "@wardenx/types";
+import type { PatientMutationPatch } from "@chartwarden/types";
 
 /** The parsed PID candidate carried on an accepted M29 proposal (§4.10.1, minimal projection). */
 export interface ProposedPatientCandidate {

@@ -43,8 +43,8 @@ import {
   assertVendorBindingActive,
   assertVendorPayloadMinimized,
   minimizeForVendor,
-} from "@wardenx/triage-vendors";
-import type { OrgId, TriageCallId } from "@wardenx/types";
+} from "@chartwarden/triage-vendors";
+import type { OrgId, TriageCallId } from "@chartwarden/types";
 import {
   type TriageVendorAdapterRegistry,
   TriageVendorAdapterUnavailableError,

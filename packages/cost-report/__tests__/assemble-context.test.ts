@@ -1,4 +1,4 @@
-// @wardenx/cost-report — the pure ValidationContext assembler (§11.B) unit tests. No DB / no registry:
+// @chartwarden/cost-report — the pure ValidationContext assembler (§11.B) unit tests. No DB / no registry:
 // proves the worksheet-jsonb → context field extraction, the cap/MAC composition, the deadline math, and the
 // seam-gating (M23 fields unavailable → the dependent rules SKIP; cap bound vs null flips the cap rules).
 // Aligned to Form CMS-1984-14: Worksheets B-1 (statistical basis), C (per-diem), F (balance sheet) — no D/E-1.

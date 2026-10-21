@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.5/§2.7 D14 admission-discharge + patient-deceased cascade (M13-T05). PURE, IO-free.
+// @chartwarden/emar — §2.5/§2.7 D14 admission-discharge + patient-deceased cascade (M13-T05). PURE, IO-free.
 //
 // On `m6.admission.discharged` (death, revocation, transfer-out) — and as a redundant safety signal on
 // `m5.patient.deceased`, which "signals comfort-kit return" per the M5 dependency — M13's `cancel-future-
@@ -19,7 +19,7 @@ import type {
   PatientId,
   ScheduledDoseId,
   ScheduledDoseStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The discharge-cascade source — both route into the same D14 plan; death is itself a discharge reason. */
 export type CascadeSource = "admission_discharged" | "patient_deceased";

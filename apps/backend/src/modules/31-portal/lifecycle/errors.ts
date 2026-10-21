@@ -2,7 +2,7 @@
 //
 // Every guard failure in the M31 portal/telehealth domain raises a `PortalStateError` carrying the
 // machine-readable code the §7 workflow tables and the §4.2 route error blocks name. The error extends the
-// M1 `WardenXError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
+// M1 `ChartWardenError` envelope base (packages/types — NOT the banned packages/foundation) so the M1 Fastify
 // error handler renders the exact code + status with no cross-module import edge. Mirrors the M19
 // `TriageStateError` / M20 `SafetyStateError` / M16 `BereavementStateError` precedent.
 //
@@ -14,7 +14,7 @@
 // session produces a refusal, never a default-allow. The bereaved flip is the one place the answer is a
 // *lateral* re-scope rather than a refusal (§7.5), so it raises no error for the expected transition — only
 // for an incoherent one (a flip asked for a grant that is already revoked).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The §2.3 / §7 / §8.1 machine-readable failure-code catalog → HTTP status. */
 export const M31_ERROR_STATUS = {
@@ -112,7 +112,7 @@ export type M31ErrorCode = keyof typeof M31_ERROR_STATUS;
  * screens can render an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per
  * §2.2 every guard failure surfaces as one of these — never a raw PG exception or a generic error.
  */
-export class PortalStateError extends WardenXError {
+export class PortalStateError extends ChartWardenError {
   constructor(code: M31ErrorCode, message: string) {
     super(code, message, M31_ERROR_STATUS[code]);
     this.name = "PortalStateError";

@@ -1,5 +1,5 @@
-import { type DbClient, schema } from "@wardenx/db";
-import type { HopeDischargeReason } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { HopeDischargeReason } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { normalizeHopeAnswerValue } from "./hope-answer-service";
 

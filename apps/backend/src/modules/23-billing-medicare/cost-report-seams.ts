@@ -9,15 +9,15 @@
 // resolves the live billed-and-accepted patient-day aggregate via `getSeam` over the fail-closed deny-stub.
 // The read runs under `withOrgContext` (RLS-scoped to the caller's org via a synthetic system actor); the
 // aggregate is a single day count — no patient row, no MBI (D13/D18). No db → the M1 deny-stub stands.
-import { repositories } from "@wardenx/billing";
+import { repositories } from "@chartwarden/billing";
 import type {
   BilledDaysAggregate,
   ClaimLineRollup,
   ClaimMatchCandidateRow,
-} from "@wardenx/billing";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AppealClaimCopy } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AppealClaimCopy } from "@chartwarden/types";
 import { registerSeam } from "../../bootstrap/index";
 
 /** The M23 → M27 billed-census seam contract. Opaque in the M1 registry (`unknown`); M27 casts to its own

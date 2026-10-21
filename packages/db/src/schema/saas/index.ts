@@ -1,4 +1,4 @@
-// @wardenx/db — M34 SaaS Tenant Platform schema barrel (§3.3, 17 tables). Re-exported from the
+// @chartwarden/db — M34 SaaS Tenant Platform schema barrel (§3.3, 17 tables). Re-exported from the
 // central schema barrel (../index.ts). Ordering follows FK dependency: tenant_account (1:1 with
 // organization) → its status-event ledger + the platform→first-admin invitation + key_ring (+
 // destruction_log) + support consent/session(/event) + the DSAR/export job pairs + the platform BAA

@@ -16,7 +16,7 @@
 // (`mintPseudonymKeyMaterial`) — a CSPRNG mint, the identical mechanism `tenant-kek.ts#mintAndWrapDek`
 // already uses for every tenant DEK on this platform; no human chooses or reviews the bytes, only the
 // KEK that wraps them is operator-configured (`M35_PSEUDONYM_KEY_KEK`).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   PseudonymKekError,
   type PseudonymKekRing,
@@ -24,7 +24,7 @@ import {
   mintPseudonymKeyMaterial,
   openPseudonymKeyMaterial,
   sealPseudonymKeyMaterial,
-} from "@wardenx/subscription-billing";
+} from "@chartwarden/subscription-billing";
 import { eq } from "drizzle-orm";
 
 const PPK = schema.patientPseudonymKey;

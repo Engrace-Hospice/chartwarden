@@ -8,7 +8,7 @@
 // A caller that is NOT a human session says so with `SYSTEM_ORDER_ACTOR` (an explicit, frozen marker). A plain
 // actor can never claim it by omission: the default (`EMPTY_ORDER_DETAIL_ACTOR`) holds no discipline and covers
 // no patient, so it is refused.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { assertDisciplineHeld } from "./server-derived-facts";
 

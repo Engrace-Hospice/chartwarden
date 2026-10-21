@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/26-cap — M26, CAP PERIOD MANAGEMENT (R2, §5.1.3). The current + historical cap periods
 // with status badges (open/active/in_settlement/settled/reopened). GAP-079 wires close (open/active/reopened) and
 // reopen (settled; step-up + a recorded reason) here; the server stays authoritative for cap.period.manage, the

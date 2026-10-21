@@ -9,7 +9,7 @@
 // only. The pure payload schemas are declared inline (the medicaid-adapters pure package owns no event-payload
 // module); they bind to declared consumers + the module-owner tag here.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const OrgId = Type.String({ minLength: 1 });

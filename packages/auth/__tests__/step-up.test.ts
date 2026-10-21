@@ -5,7 +5,7 @@
  * FAIL CLOSED: no step-up, a non-qualifying factor, a future-dated stamp, or an expired window
  * all deny. The platform floor `STEP_UP_POLICY` (webauthn/totp, 300s) is the baseline.
  */
-import { STEP_UP_POLICY, type SessionStepUpFields } from "@wardenx/types";
+import { STEP_UP_POLICY, type SessionStepUpFields } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { isStepUpRecent } from "../src/index";
 

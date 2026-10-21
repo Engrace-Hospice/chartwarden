@@ -4,7 +4,7 @@
 // The four platform-ops route plugins (tenants / tenant-invitations / key-ring / onboarding-templates)
 // compose over this service. Mirrors the M22 routes/service.ts precedent EXACTLY:
 //   - READ/LIST methods are fully live: in the slice they read the in-memory dataset; PRODUCTION injects
-//     a Drizzle-backed service whose reads run under `withPlatformContext` (M1 @wardenx/tenancy — the
+//     a Drizzle-backed service whose reads run under `withPlatformContext` (M1 @chartwarden/tenancy — the
 //     separately-pooled, RLS-bypass, AUDITED cross-tenant platform read path, F03/F09) so the Phase-3
 //     platform-ops screens get real cross-tenant data. A missing tenant is a non-leaking 404.
 //   - COMMAND methods (provision / transition / offboard / shred / dek-rotate / invite issue+revoke)
@@ -12,7 +12,7 @@
 //     the live BullMQ worker construction + the real lifecycle-transition wiring is Phase 2D (the TODO at
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
-import { NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
+import { NotFoundError, type OrgId, ChartWardenError } from "@chartwarden/types";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
@@ -26,7 +26,7 @@ export type M34QueueName =
 
 /**
  * The thin worker-trigger port the command routes call. In the slice it records the enqueue (so the
- * route tests assert the job was scheduled); PRODUCTION binds it to the @wardenx/shared transactional
+ * route tests assert the job was scheduled); PRODUCTION binds it to the @chartwarden/shared transactional
  * outbox / the BullMQ producer (Phase 2D). Keeping it injected keeps the route layer free of any
  * BullMQ/Valkey import while the live worker construction is still pending.
  */
@@ -764,7 +764,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     async offboardTenant(orgSlug, _actorUserId, args) {
       const r = loadTenant(orgSlug);
       if (r.status !== "active" && r.status !== "suspended" && r.status !== "at_risk") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ILLEGAL_TENANT_TRANSITION",
           `tenant cannot offboard from '${r.status}'`,
           409,
@@ -783,7 +783,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     async requestShred(orgSlug, actorMembershipId, args) {
       const r = loadTenant(orgSlug);
       if (r.status !== "destruction_pending") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ILLEGAL_TENANT_TRANSITION",
           "shred requires status='destruction_pending'",
           409,
@@ -824,7 +824,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     },
     async retryProvision(orgSlug) {
       loadTenant(orgSlug);
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PROVISION_JOB_MISSING",
         "no provisioning job exists to retry in this slice",
         409,
@@ -911,9 +911,9 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       const grant = grants.get(args.supportConsentGrantId);
       // §7.4 step 3 — the grant must exist + be active.
       if (!grant)
-        throw new WardenXError("SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found", 404);
+        throw new ChartWardenError("SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found", 404);
       if (grant.expiresAt <= now()) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUPPORT_GRANT_INACTIVE",
           "the consent grant is revoked or expired",
           409,
@@ -921,7 +921,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       }
       // D16 — defense-in-depth: the platform-ops actor cannot be the grantor (alongside the §4.6 ABAC).
       if (grant.grantorMembershipId === args.actorMembershipId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUPPORT_SESSION_ACTOR_NOT_DISTINCT",
           "the support-session actor must differ from the consent-grant grantor (D16)",
           403,
@@ -958,7 +958,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     async elevateSession(args) {
       const s = sessions.get(args.supportSessionId);
       if (!s || s.closedAt !== null || s.status !== "open") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "SUPPORT_SESSION_NOT_OPEN",
           "the support session is closed or expired",
           409,
@@ -1007,7 +1007,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       const i = intents.get(intentId);
       if (!i) throw new NotFoundError("signup intent");
       if (i.intentStatus !== "new") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ILLEGAL_INTENT_TRANSITION",
           `intent cannot qualify from '${i.intentStatus}'`,
           409,
@@ -1033,7 +1033,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       const i = intents.get(intentId);
       if (!i) throw new NotFoundError("signup intent");
       if (i.intentStatus !== "new") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "ILLEGAL_INTENT_TRANSITION",
           `intent cannot reject from '${i.intentStatus}'`,
           409,
@@ -1068,7 +1068,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           b.tenantAccountId === args.tenantAccountId &&
           b.addendumVersion === args.addendumVersion
         ) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "DUPLICATE_BAA_RECORD",
             "a BAA record for this addendum version exists",
             409,
@@ -1137,14 +1137,14 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       // SEC-052 second-actor property — the slice enforces the same distinct-approver rule as the
       // Drizzle service so route tests can exercise the refusal.
       if (job.requestingMembershipId === actorMembershipId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TENANT_EXPORT_SELF_APPROVAL",
           "oversized-hold approval requires a platform-ops actor distinct from the export requestor",
           403,
         );
       }
       if (job.status !== "generating") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "TENANT_EXPORT_NOT_HELD",
           "the bundle is not awaiting oversized-hold approval",
           409,
@@ -1217,7 +1217,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
   return { service, enqueue: enqueuePort, inspect };
 }
 
-// TODO(Phase 2D — live workers): bind the {@link EnqueuePort} to the @wardenx/shared transactional outbox
+// TODO(Phase 2D — live workers): bind the {@link EnqueuePort} to the @chartwarden/shared transactional outbox
 // + the real BullMQ producer (the §4.3 `tenant.provision` / `tenant.dek_rotate` / `tenant.shred` /
 // `tenant.export` queues), and replace the in-memory command bodies with the Drizzle-backed service that
 // runs the §2.2 `transitionTenant(...)` machine inside the tenant_account's optimistic-locked transaction

@@ -9,8 +9,8 @@
 // health/ready/version + system-status + feature-flag routes (§4.1–4.2). Every external
 // dependency (DB/Valkey readers, the auth hook) is INJECTED with a safe slice default, so
 // the host boots and is testable with no live infra; production supplies the real adapters.
-import type { DbClient } from "@wardenx/db";
-import type { IdempotencyStore } from "@wardenx/shared";
+import type { DbClient } from "@chartwarden/db";
+import type { IdempotencyStore } from "@chartwarden/shared";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { wireErasers } from "./erasers/providers";
 import { validateErasers } from "./erasers/registry";
@@ -355,7 +355,7 @@ export * from "./plugins/error-handler";
 export * from "./plugins/security";
 export * from "./plugins/idempotency";
 // The M1 deny-stub guards (requireSession/requireRole/requirePermission/requireAbac) were a
-// forward-seam until M3 landed; M3-T10 flipped every route to the REAL @wardenx/auth contract,
+// forward-seam until M3 landed; M3-T10 flipped every route to the REAL @chartwarden/auth contract,
 // so the deny-stub is retired (no `./plugins/guards` re-export).
 export * from "./routes/health";
 export * from "./routes/system";

@@ -1,5 +1,5 @@
 import { periodsOverlappingClaim } from "./_util";
-// @wardenx/billing — §4.5 rule `cti_signed_per_period` (cert, error, regulatory). A signed Certification
+// @chartwarden/billing — §4.5 rule `cti_signed_per_period` (cert, error, regulatory). A signed Certification
 // of Terminal Illness (CTI) must exist for every election period the claim's service window touches; for
 // period 1 the attending physician's co-signature is required when the patient has an attending (42 CFR
 // §418.22). Reads the resolved `electionPeriods` + `certifications` snapshots. PURE: reads ctx only.

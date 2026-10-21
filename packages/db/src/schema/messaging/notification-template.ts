@@ -1,4 +1,4 @@
-// @wardenx/db — `notification_template` (M36 Secure Messaging §3.13, ADR-0024 — moved from
+// @chartwarden/db — `notification_template` (M36 Secure Messaging §3.13, ADR-0024 — moved from
 // M14). The versioned notification-copy catalog: a title/body template keyed by
 // (organization_id, template_key, version), bound to a catalog `default_payload_type` and a
 // default recipient resolver. A NULL organization_id row is the platform-floor template.

@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
-// The thin, infra-touching adapter that turns the @wardenx/billing PURE domain (the claim/noe/notr lifecycle
+// The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
 // reducers, the validation rule registry, the HIPPS/SIA/sequestration/TOB calculators, the control-number
-// deriver) into running BullMQ `Worker`s + the cron-schedule `Queue`s. @wardenx/billing ships NO BullMQ
+// deriver) into running BullMQ `Worker`s + the cron-schedule `Queue`s. @chartwarden/billing ships NO BullMQ
 // catalog (P1/P2 = pure), so this file holds BOTH the worker construction AND the processor LOGIC — mirroring
 // apps/backend/src/modules/27-cost-report/jobs/m27-jobs.ts file-for-file in posture:
 //   • `new Worker(queue, processor, { connection, concurrency })` + `new Queue(...)`; injected connection; the
@@ -21,15 +21,15 @@
 //     `bindCallerModule("m23")`).
 //
 // IMPORT BOUNDARY (the M23 kernel lesson — differs from M27): M23 `dependsOn = [6,8,22,38,40]` does NOT include
-// M1, so this module may NOT import the `@wardenx/db` ROOT barrel. The Drizzle handle is the package-kernel
+// M1, so this module may NOT import the `@chartwarden/db` ROOT barrel. The Drizzle handle is the package-kernel
 // `repositories.BillingDb`; the one row/insert TYPE it needs is DERIVED from the repo's own method param
-// (`NewClaimAck`) so the module takes no `@wardenx/db/schema` leaf import at all.
+// (`NewClaimAck`) so the module takes no `@chartwarden/db/schema` leaf import at all.
 //
 // M23 carries NO PHI and NEVER the MBI digit (D13 / §3.6 / §8.7) — every payload is IDs + aggregate billing
 // facts only. The MBI is unlocked + zeroed entirely inside the bound HETS seam, never crossing into this file.
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
-// AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
+// AI-BLOCK (D13): no `@chartwarden/ai-platform` import anywhere here; a background job has no acting user.
 import { createHash, randomUUID } from "node:crypto";
 import {
   type ClaimDocument837i,
@@ -46,9 +46,9 @@ import {
   parseControlNumber,
   reduce as reduceClaim,
   repositories,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { type HospiceHistory, assertNoMbi } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
@@ -173,7 +173,7 @@ export interface WorkerOutboxPort {
   publish(tx: BillingDb, input: WorkerOutboxInput): Promise<void>;
 }
 
-/** The §4.9 M36 typed-alert dispatcher (the alert rules in `@wardenx/billing` alerts fire through M36). */
+/** The §4.9 M36 typed-alert dispatcher (the alert rules in `@chartwarden/billing` alerts fire through M36). */
 export interface WorkerAlertPort {
   dispatch(input: {
     readonly alertCode: string;
@@ -189,7 +189,7 @@ export interface X12ClientPort {
     readonly organizationId: string;
     readonly claimId: string;
     readonly claimControlNumber: string;
-    /** The claim facts the gateway renders (`@wardenx/billing` `ClaimDocument837i`): today the TOB, the
+    /** The claim facts the gateway renders (`@chartwarden/billing` `ClaimDocument837i`): today the TOB, the
      *  service window and the CMS Pub. 100-04 Ch. 11 §30.3 discharge codes → CL103 / HI*BG / HI*BH. */
     readonly claimDocument: ClaimDocument837i;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
@@ -204,7 +204,7 @@ export interface X12ClientPort {
     readonly notrControlNumber: string;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
   /** The 8xC / 8xD transfer notice (`POST /generate-transfer-notice`); the reference rendering is
-   *  `build837iTransferNotice` in `@wardenx/x12-837-client`. Optional so older bindings stay valid —
+   *  `build837iTransferNotice` in `@chartwarden/x12-837-client`. Optional so older bindings stay valid —
    *  an absent binding fails the job closed (`unboundWorkerPort`). */
   generateTransferNotice?: GenerateTransferNotice;
   parse999(input: {
@@ -272,7 +272,7 @@ export interface MacPortalPort {
 
 /**
  * The hospice election / benefit-period history derived from a HETS 271 (Companion Guide §7.16). Built by
- * `deriveHospiceHistory` in `@wardenx/x12-837-client`; carries no MBI (NPIs + dates + codes only).
+ * `deriveHospiceHistory` in `@chartwarden/x12-837-client`; carries no MBI (NPIs + dates + codes only).
  */
 export type HetsHospiceHistory = HospiceHistory;
 

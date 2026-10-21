@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the GL-account → cost-center mapping: `cost_center_mapping`
+// @chartwarden/cost-report · repositories — the GL-account → cost-center mapping: `cost_center_mapping`
 // (per-(tenant, provider_entity, fiscal_year); platform defaults seeded, tenant overrides/extensions
 // layer on top; versioned per FY so a 2027 re-mapping does not alter the 2026 report; UNIQUE per
 // (org, provider, fy, xero_account_code) — no double-mapping of one GL account in one FY — D5) (M27 §3.3).
 // ORG-SCOPED; the mapping service wraps these in `withOrgContext` and owns the read-only-when-parent-locked
 // guard. `cms_cost_center_code` is an M38 value-set member (`cms_cost_center_v1984_14`). No PHI (D18).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, eq } from "drizzle-orm";
 import type { CostReportDb } from "./db";
 

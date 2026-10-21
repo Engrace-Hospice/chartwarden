@@ -18,8 +18,8 @@ import type {
   ProblemKind,
   ProblemSource,
   RequiredSignerSet,
-} from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/types";
+import { NotFoundError } from "@chartwarden/types";
 import {
   type AuthoringDisciplineScope,
   assertDisciplineScope,

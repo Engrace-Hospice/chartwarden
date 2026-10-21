@@ -1,8 +1,8 @@
 // The shared name cache: remounts and sibling hook instances share one request per id, concurrency is capped,
 // and the cache is per api client.
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePatientNames } from "./patient-names";

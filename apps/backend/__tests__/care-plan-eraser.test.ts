@@ -2,7 +2,7 @@
 // + the m7 audit-catalog actions (§8.1). Proves M7 registers the REAL care_plan_record eraser over the
 // Phase-0 deny-stub (validateErasers passes at boot), the eraser deletes the care-plan subtree +
 // tombstones the care_plan root, and the m7 action catalog is well-formed (namespace + uniqueness).
-import { ACTION_CATALOG, M7_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
+import { ACTION_CATALOG, M7_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/21-supplies/routes/read-service-drizzle.ts — the Drizzle-backed M21 READ service
 // (§4.1's GET rows).
 //
@@ -17,10 +17,10 @@ import { type DbClient, schema } from "@wardenx/db";
 // `created_at` / `dispatched_at`. The LIST reads order by exactly those columns, so a page walks partitions
 // in order and PostgreSQL prunes; the DETAIL reads are id-only and fan out, which is the right trade for a
 // single row (a caller with an id has no window, and inventing one would 404 last month's kit).
-import { parStockSeverity } from "@wardenx/supplies";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
-import type { ComfortKitDispatchedContentPayload, DeaPerpetualLogEntry } from "@wardenx/types";
+import { parStockSeverity } from "@chartwarden/supplies";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
+import type { ComfortKitDispatchedContentPayload, DeaPerpetualLogEntry } from "@chartwarden/types";
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { M21ReadActor } from "./actor";
 import {

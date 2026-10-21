@@ -222,7 +222,7 @@ erDiagram
         text template_filesystem_ref "packages/prompts/templates/hearthnote/layer2_enhancement_v2.txt"
         text template_content_hash "sha-256 of the rendered template"
         jsonb compatible_backend_keys "string[] — which backends this template targets"
-        text input_schema_ref "TypeBox schema name in @wardenx/ai-platform/prompts/schemas"
+        text input_schema_ref "TypeBox schema name in @chartwarden/ai-platform/prompts/schemas"
         text output_schema_ref "TypeBox schema name"
         text output_entity_target_prefix "e.g. encounter_narrative, doclens_extraction_candidate — used by AIPromptRegistry.getActivePromptsTargeting() per D13/D18"
         text output_type_prefix "e.g. narrative_text, structured_extraction — used by getActivePromptsWithOutputType()"
@@ -1453,7 +1453,7 @@ M32 reads from upstream seams during routing decisions, PHI minimization, and fe
 
 ```typescript
 // apps/backend/src/modules/32-ai-platform/boot.ts
-import type { SeamRegistry, BootContext } from '@wardenx/seams';
+import type { SeamRegistry, BootContext } from '@chartwarden/seams';
 import { resolveAiPlatform } from './services';
 
 export async function bootModule32(ctx: BootContext, reg: SeamRegistry): Promise<void> {
@@ -1815,7 +1815,7 @@ Embedded in the clinician's profile preferences page (`/me/preferences`); a dedi
 Consumer modules render this widget via an exported React component from `packages/ai-platform-ui`:
 
 ```tsx
-import { AIReportButton } from '@wardenx/ai-platform-ui';
+import { AIReportButton } from '@chartwarden/ai-platform-ui';
 
 <AIReportButton
   invocationId={invocation.id}

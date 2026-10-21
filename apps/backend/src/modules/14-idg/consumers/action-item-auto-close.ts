@@ -1,8 +1,8 @@
 // apps/backend/src/modules/14-idg/consumers/action-item-auto-close.ts — the PURE §4.5 D8 mapping and
 // planner. Split out of `./index.ts` (F-104) so `./bindings.ts` can import it without going through the
 // barrel that re-exports the bindings — which `arch:boundaries` correctly reports as a cycle.
-import type { ActionItemEvent } from "@wardenx/idg";
-import type { IdgActionItemLinkedKind } from "@wardenx/types";
+import type { ActionItemEvent } from "@chartwarden/idg";
+import type { IdgActionItemLinkedKind } from "@chartwarden/types";
 
 /**
  * §4.5 D8 — the source events whose absorbing state auto-closes a linked `idg_action_item`, mapped to the

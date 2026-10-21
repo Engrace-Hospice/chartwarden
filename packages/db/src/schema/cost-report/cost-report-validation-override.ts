@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report_validation_override` (M27 §3.3, D9/D14; non-partitioned; retention
+// @chartwarden/db — `cost_report_validation_override` (M27 §3.3, D9/D14; non-partitioned; retention
 // `compliance`). A per-result override of a failing rule, requiring elevated approval + step-up + a
 // reason (the override is an attack surface — the auditor needs who-overrode-what-rule-when). UNIQUE per
 // validation_result_id (one override per failure). INSERT-only in practice. ORG-SCOPED. No PHI (D18).

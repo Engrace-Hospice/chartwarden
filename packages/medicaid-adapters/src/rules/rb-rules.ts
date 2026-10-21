@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — §4.6 Room & Board rules (42 CFR §418.302/.310/.318). PURE: read ctx only.
+// @chartwarden/medicaid-adapters — §4.6 Room & Board rules (42 CFR §418.302/.310/.318). PURE: read ctx only.
 import { fail, pass, skip } from "./types";
 import type { MedicaidRule } from "./types";
 

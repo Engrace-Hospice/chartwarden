@@ -1,4 +1,4 @@
-import type { PatientIdentity, PatientReader } from "@wardenx/types";
+import type { PatientIdentity, PatientReader } from "@chartwarden/types";
 // apps/backend/src/modules/29-external-interfaces/__tests__ — M29-T04 patient-match cascade unit tests
 // (§4.6 D6, W-XI-01/W-XI-02). ≥95% branch on the named-critical service — every level, every fall-through,
 // merge-redirect depth, and the fail-fast timeout.

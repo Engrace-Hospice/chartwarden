@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/jobs/queues.ts — the M23 §4.8 BullMQ queue catalog.
 //
-// @wardenx/billing ships the PURE domain (the claim/noe/notr lifecycle reducers, the HIPPS/SIA/sequestration/
-// TOB calculators, the validation rule registry, the control-number deriver) but — like @wardenx/cost-report
-// (M27) and unlike @wardenx/quality (M30) — it does NOT ship a BullMQ queue/param catalog. So the §4.8
+// @chartwarden/billing ships the PURE domain (the claim/noe/notr lifecycle reducers, the HIPPS/SIA/sequestration/
+// TOB calculators, the validation rule registry, the control-number deriver) but — like @chartwarden/cost-report
+// (M27) and unlike @chartwarden/quality (M30) — it does NOT ship a BullMQ queue/param catalog. So the §4.8
 // catalog is defined LOCALLY here, the single source of truth the worker construction (`m23-jobs.ts`) and the
 // composition-root producer (`routes/write-service-drizzle.ts`'s `JobEnqueuePort`) agree on.
 //

@@ -14,7 +14,7 @@
 //
 // The gate is on encounter SIGNING, never chart access — a clinician always reads/documents; the system
 // only blocks committing the visit until the plan is (re)signed. Pure & deterministic: `now` is injected.
-import type { CarePlanId, CarePlanOverdueStatus, IsoInstant, PatientId } from "@wardenx/types";
+import type { CarePlanId, CarePlanOverdueStatus, IsoInstant, PatientId } from "@chartwarden/types";
 
 /** Days past `initial_due_at` (day 5) before the initial-version sign gate engages — day 6 (§2.6 D2). */
 export const INITIAL_GATE_GRACE_DAYS = 1;

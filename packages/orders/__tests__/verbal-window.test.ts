@@ -1,4 +1,4 @@
-// @wardenx/orders — §2.3 D3 verbal-order workflow + 48h timer — M11-T04.
+// @chartwarden/orders — §2.3 D3 verbal-order workflow + 48h timer — M11-T04.
 import { describe, expect, it } from "vitest";
 import type { OrderSideEffect } from "../src/lifecycle/effects";
 import { OrderStateError } from "../src/lifecycle/errors";

@@ -1,4 +1,4 @@
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -104,7 +104,7 @@ export function RequiredPasswordChange(): JSX.Element {
         <div style={{ textAlign: "center" }}>
           <h1 style={{ margin: 0, fontSize: "1.3rem" }}>Change Your Password</h1>
           <p style={descriptionStyle}>
-            For security reasons, you need to set a new password before accessing WardenX.
+            For security reasons, you need to set a new password before accessing ChartWarden.
           </p>
         </div>
         {checking ? (

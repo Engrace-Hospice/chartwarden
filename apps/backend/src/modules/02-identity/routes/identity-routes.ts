@@ -21,21 +21,21 @@
 //
 // Every route sits BEHIND the REAL Authorization Contract (as of M3-T10): admin routes gate on
 // the §4.7 permission keys via `requirePermission`, and the per-patient collaborator route on
-// the `caseload_membership` ABAC predicate via `requireAbac` (both from @wardenx/auth, a
+// the `caseload_membership` ABAC predicate via `requireAbac` (both from @chartwarden/auth, a
 // foundation-helper package every module may consume). The M1 deny-stub forward-seam is retired.
 // Every mutation is audited at `compliance` retention through the mandated audit() helper (the
 // field denylist runs there — the invitee email is redacted). Org binding is server-side only:
 // an admin route additionally asserts the session's bound org === the path org, so a token
 // replay with an altered org cannot act cross-tenant (§7.12).
-import type { AuditContext, AuditExecutor } from "@wardenx/audit";
+import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
 import {
   hasOrgWideScope,
   requireAbac,
   requirePermission,
   requireSession,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditInvitationRescinded,
@@ -68,25 +68,25 @@ import {
 
 /** Spec §4.2 / §7.12 domain errors carried in the standard envelope (code + status). */
 const noActiveMembership = () =>
-  new WardenXError("NO_ACTIVE_MEMBERSHIP", "no active membership in the chosen org", 403);
+  new ChartWardenError("NO_ACTIVE_MEMBERSHIP", "no active membership in the chosen org", 403);
 const orgAlreadyBound = () =>
-  new WardenXError("ORG_ALREADY_BOUND", "session already org-scoped; re-login to switch", 409);
+  new ChartWardenError("ORG_ALREADY_BOUND", "session already org-scoped; re-login to switch", 409);
 const organizationNotActive = () =>
-  new WardenXError(
+  new ChartWardenError(
     "ORGANIZATION_NOT_ACTIVE",
     "this organization is not active; sign-in is refused (§11 D19 auth-time enforcement)",
     403,
   );
 const pendingInviteExists = () =>
-  new WardenXError("PENDING_INVITE_EXISTS", "a pending invite already exists for this email", 409);
+  new ChartWardenError("PENDING_INVITE_EXISTS", "a pending invite already exists for this email", 409);
 const invitationEmailMismatch = () =>
-  new WardenXError(
+  new ChartWardenError(
     "INVITATION_EMAIL_MISMATCH",
     "this invitation was issued to a different email address than the signed-in account",
     403,
   );
 const lastAdminLockout = () =>
-  new WardenXError(
+  new ChartWardenError(
     "LAST_ADMIN",
     "refusing to leave the org with zero active admins (platform_ops override required)",
     409,
@@ -151,7 +151,7 @@ function readStringArray(body: unknown, field: string): string[] {
 /** Assert the acting admin's bound org matches the path org (server-side org binding, §7.12). */
 function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
   if (request.context.organizationId !== pathOrgId) {
-    throw new WardenXError("FORBIDDEN", "admin actions are scoped to the bound org", 403);
+    throw new ChartWardenError("FORBIDDEN", "admin actions are scoped to the bound org", 403);
   }
 }
 
@@ -175,8 +175,8 @@ async function deliverInvite(
     try {
       await deps.emailTransport.send({
         to: email,
-        subject: "You're invited to WardenX",
-        text: `You've been invited to join ${orgName} on WardenX. Accept your invitation using this link (it expires in 72 hours):\n\n${inviteUrl}\n\nIf you weren't expecting this, you can ignore this email.`,
+        subject: "You're invited to ChartWarden",
+        text: `You've been invited to join ${orgName} on ChartWarden. Accept your invitation using this link (it expires in 72 hours):\n\n${inviteUrl}\n\nIf you weren't expecting this, you can ignore this email.`,
       });
     } catch {
       // Swallow: see the doc comment above.
@@ -194,7 +194,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     await resolveActor(deps, request); // real Better Auth session required; pre-org is allowed
     const token = request.__csrfCookieToken;
     if (typeof token !== "string") {
-      throw new WardenXError("CSRF_BOOTSTRAP_UNAVAILABLE", "CSRF protection is unavailable", 503);
+      throw new ChartWardenError("CSRF_BOOTSTRAP_UNAVAILABLE", "CSRF protection is unavailable", 503);
     }
     reply.header("Cache-Control", "no-store, max-age=0");
     reply.header("Pragma", "no-cache");
@@ -360,11 +360,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     const roster = await deps.invitations.list(orgId);
     const target = roster.find((i) => i.invitationId === invId);
-    if (!target) throw new WardenXError("NOT_FOUND", "invitation not found", 404);
+    if (!target) throw new ChartWardenError("NOT_FOUND", "invitation not found", 404);
 
     const reminted = await deps.invitations.resend(invId);
     if (!reminted) {
-      throw new WardenXError("NOT_FOUND", "invitation is no longer pending", 404);
+      throw new ChartWardenError("NOT_FOUND", "invitation is no longer pending", 404);
     }
     await auditUserInvited(
       deps.audit,
@@ -537,7 +537,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const actor = await resolveActor(deps, request);
 
     const removed = await deps.invitations.rescind(invId);
-    if (!removed) throw new WardenXError("NOT_FOUND", "invitation not found", 404);
+    if (!removed) throw new ChartWardenError("NOT_FOUND", "invitation not found", 404);
 
     await auditInvitationRescinded(
       deps.audit,
@@ -578,7 +578,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     const membership = await deps.memberships.get(mId);
     if (!membership || membership.organizationId !== orgId) {
-      throw new WardenXError("NOT_FOUND", "membership not found", 404);
+      throw new ChartWardenError("NOT_FOUND", "membership not found", 404);
     }
 
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -595,7 +595,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       // revived in place. GAP-001's atomic deactivate also relies on this: it serializes against new
       // membership INSERTs (FK lock on the user row), not against status UPDATEs out of `revoked`.
       if (membership.status === "revoked") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "MEMBERSHIP_REVOKED",
           "a revoked membership cannot be reinstated; send a new invitation instead",
           409,
@@ -606,7 +606,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       // not a second activation path that would skip the accept flow's credential/MFA onboarding.
       // `pending` is a real `membership_status` value the port union omits, hence the string compare.
       if ((membership.status as string) === "pending") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "MEMBERSHIP_PENDING",
           "a pending membership cannot be suspended or activated here; it becomes active when the invitation is accepted, or revoke it instead",
           409,
@@ -663,7 +663,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     const membership = await deps.memberships.get(mId);
     if (!membership || membership.organizationId !== orgId) {
-      throw new WardenXError("NOT_FOUND", "membership not found", 404);
+      throw new ChartWardenError("NOT_FOUND", "membership not found", 404);
     }
     if (membership.isAdmin) {
       const admins = await deps.memberships.activeAdminCount(orgId);
@@ -698,7 +698,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   // The step-up requirement lives where the spec puts it — on M27's submit/reopen actions themselves.)
   const requireElevatedApprovals = () => {
     const service = deps.elevatedApprovals;
-    if (!service) throw new WardenXError("NOT_FOUND", "not found", 404);
+    if (!service) throw new ChartWardenError("NOT_FOUND", "not found", 404);
     return service;
   };
 
@@ -707,7 +707,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     assertOrgMatch(request, orgId);
     const membership = await deps.memberships.get(mId);
     if (!membership || membership.organizationId !== orgId) {
-      throw new WardenXError("NOT_FOUND", "membership not found", 404);
+      throw new ChartWardenError("NOT_FOUND", "membership not found", 404);
     }
     return membership;
   }
@@ -807,11 +807,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const reason = readString(request.body, "reason");
 
     const orgId = request.context.organizationId;
-    if (!orgId) throw new WardenXError("NOT_FOUND", "user not found", 404);
+    if (!orgId) throw new ChartWardenError("NOT_FOUND", "user not found", 404);
     const outcome = await deps.users.deactivateFromOrg({ userId, organizationId: orgId, reason });
-    if (outcome === "not_member") throw new WardenXError("NOT_FOUND", "user not found", 404);
+    if (outcome === "not_member") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
     if (outcome === "member_elsewhere") {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "USER_IN_OTHER_ORGS",
         "the user belongs to other organizations; revoke their membership in this org instead",
         409,

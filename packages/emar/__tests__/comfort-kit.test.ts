@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.7 D5 comfort-kit deployment + drawdown + return reconciliation — M13-T05.
+// @chartwarden/emar — §2.7 D5 comfort-kit deployment + drawdown + return reconciliation — M13-T05.
 import { describe, expect, it } from "vitest";
 import {
   CONTROLLED_DISCREPANCY_FRACTION,

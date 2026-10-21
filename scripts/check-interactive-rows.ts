@@ -113,7 +113,7 @@ export function inspect(src: string, file: string): RowFinding[] {
         line,
         detail:
           "<tr onClick> with no keyboard path — a <tr> is not focusable, so whatever this opens is " +
-          "unreachable without a pointer. Spread interactiveRowProps() from @wardenx/ui.",
+          "unreachable without a pointer. Spread interactiveRowProps() from @chartwarden/ui.",
       });
       continue;
     }

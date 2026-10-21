@@ -1,4 +1,4 @@
-import type { OrmRequestedPayload } from "@wardenx/types";
+import type { OrmRequestedPayload } from "@chartwarden/types";
 // apps/backend/src/modules/29-external-interfaces/__tests__ — M29-T06 outbound ORM unit tests (§4.12,
 // W-XI-07/08/09). Every pure core: the ORM^O01 wire builder (D8 OBR-2, HL7 escaping, NTE, PHI-free summary),
 // the BAA-gated dispatch planner (dispatch vs pre-persist refuse), the ACK correlation (AA / AR / AE /

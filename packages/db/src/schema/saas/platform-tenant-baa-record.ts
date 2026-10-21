@@ -1,4 +1,4 @@
-// @wardenx/db — `platform_tenant_baa_record` (M34 SaaS Tenant Platform §3.8). The
+// @chartwarden/db — `platform_tenant_baa_record` (M34 SaaS Tenant Platform §3.8). The
 // platform↔tenant Business Associate Agreement execution state: one row per
 // (tenant_account, addendum_version) capturing BAA status, executed/effective/expires
 // dates, breach-notification contacts, the subcontractor disclosure set, and the

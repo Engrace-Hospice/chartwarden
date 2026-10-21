@@ -1,4 +1,4 @@
-// @wardenx/types — Module 13 (eMAR & Med Administration) leaf contracts (M13-T01).
+// @chartwarden/types — Module 13 (eMAR & Med Administration) leaf contracts (M13-T01).
 //
 // Per ADR-0005 D1/D2 the cross-module CONTRACTS live in this leaf package: the M13 spec's references to
 // `packages/domain/administration/seams.ts` (the §2.12 D16 `MedicationAdministrationProvider` /
@@ -11,7 +11,7 @@
 // §4.4 `m13.*` outbox event names, the §7.6 / §3.6 audit denylists (the M4 trigger arguments for M13-T02),
 // the §4.9 typed alert payloads, the §2.12 owned-seam interfaces + read DTOs, and the FHIR/portal read
 // projections. The §2.1 per-mode `ADMINISTRATION_MODE_CATALOG` metadata + the pure lifecycle machines /
-// schedule-parser / five-rights validators live in the `@wardenx/emar` FEATURE package. This file is
+// schedule-parser / five-rights validators live in the `@chartwarden/emar` FEATURE package. This file is
 // type-only and importable by everyone with no edge.
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
@@ -19,7 +19,7 @@
 import type { AdmissionId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 
-// ── M13-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M13-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type AdministrationRecordId = string;
 export type ScheduledDoseId = string;
 export type PrnAdministrationId = string;
@@ -235,7 +235,7 @@ export const M13_EVENT_NAMES = [
 export type M13EventName = (typeof M13_EVENT_NAMES)[number];
 
 // ── §4.9 M36 typed alert payloads (the deterministic messages M13 emits; M36 doesn't re-template) ─────
-// M13 emits typed alerts through M36's dispatch seam. The builders land in `@wardenx/emar` (M13-T08); this
+// M13 emits typed alerts through M36's dispatch seam. The builders land in `@chartwarden/emar` (M13-T08); this
 // discriminated union is the shape M36 type-checks against. No PHI in the payloads — only IDs + structural
 // facts; M36 resolves PHI per recipient permission scope (§4.9).
 

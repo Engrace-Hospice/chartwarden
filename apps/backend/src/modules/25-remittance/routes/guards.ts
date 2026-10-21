@@ -8,7 +8,7 @@
 // object-level check returns 404, not 403). The §D15 step-up gate composes on adjustment-override /
 // appeal.submit / denial.close_with_write_off (the operation key is the permission key so M3-T07 resolves
 // the per-op freshness policy).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { PreHandler } from "./actor";
 
 type TargetRequest = { readonly params?: unknown; readonly body?: unknown };

@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_assessment` (M15 §3.3). The per-discipline assessment instrument (D6 taxonomy:
+// @chartwarden/db — `discipline_assessment` (M15 §3.3). The per-discipline assessment instrument (D6 taxonomy:
 // msw_psychosocial · chaplain_spiritual · aide_environmental · volunteer_relationship) — explicitly DISTINCT
 // from M9's clinician instruments. Append-only correction-of-record (M9 D9): an amendment is a NEW row
 // pointing at the original via `amends_assessment_id`, never an in-place edit.
@@ -8,7 +8,7 @@
 // index cannot coexist with a `captured_at` RANGE partition (the partition key would have to be in the
 // constraint, which would let a second "initial" land in another month). Per-plan volumes are trivial.
 //
-// `data` holds the per-kind TypeBox-validated payload (@wardenx/discipline-plans §3.4). Its free-text
+// `data` holds the per-kind TypeBox-validated payload (@chartwarden/discipline-plans §3.4). Its free-text
 // branches (notes / narrativeRef / safetyConsiderations / focuses / concerns / bereavementRiskFactors) are
 // re-scrubbed inside the M4 write-audit trigger — a top-level column denylist would miss them (§3.6).
 //

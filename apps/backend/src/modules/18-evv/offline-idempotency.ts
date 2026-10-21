@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { EvvEventKind } from "@wardenx/types";
+import type { EvvEventKind } from "@chartwarden/types";
 
 export const EVV_OFFLINE_FINGERPRINT_KEY_ENV = "EVV_OFFLINE_FINGERPRINT_KEY";
 export const EVV_OFFLINE_FINGERPRINT_KEY_ID = "v1";

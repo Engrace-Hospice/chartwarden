@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 2: Gaps in Skilled Nursing visits (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 2: Gaps in Skilled Nursing visits (§1.1). Pure. No IO.
 //
 // CMS criterion: the proportion of elections with a skilled-nursing visit gap exceeding the CMS-defined
 // interval is LOW (lower is better). Numerator = elections with ≥ 1 qualifying SN gap; denominator =

@@ -1,6 +1,6 @@
-// @wardenx/discipline-plans — §3.5 / D11 Aide POC required-signer set (M15-T01).
+// @chartwarden/discipline-plans — §3.5 / D11 Aide POC required-signer set (M15-T01).
 
-import type { DisciplinePlanVersionKind, DisciplineRequiredSignerSet } from "@wardenx/types";
+import type { DisciplinePlanVersionKind, DisciplineRequiredSignerSet } from "@chartwarden/types";
 
 /** The quorum for one plan kind, keyed by the version kind it applies to. `interim_revision` reuses the
  *  `initial` set; the auto-built `discharge` version is signed by the system actor and carries no quorum. */

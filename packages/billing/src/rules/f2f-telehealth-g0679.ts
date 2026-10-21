@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `f2f_telehealth_g0679` (f2f, error, regulatory) + the pure G0679 line
+// @chartwarden/billing — §4.5 rule `f2f_telehealth_g0679` (f2f, error, regulatory) + the pure G0679 line
 // derivation claim assembly uses. CR 14495 (Pub 100-04 Transmittal 13944, MLN MM14495), Medicare Claims
 // Processing Manual ch. 11 § 30.3, implementing 42 CFR 418.22(a)(4)(ii) as revised by CMS-1851-F: from
 // dates of service 2027-01-01 a hospice reports each recertification face-to-face encounter conducted via

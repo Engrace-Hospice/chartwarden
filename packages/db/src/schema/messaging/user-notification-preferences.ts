@@ -1,4 +1,4 @@
-// @wardenx/db — `user_notification_preferences` (M36 Secure Messaging §3.6). A user's per-org
+// @chartwarden/db — `user_notification_preferences` (M36 Secure Messaging §3.6). A user's per-org
 // routing map (category → severity → channels), quiet hours, and bounded vacation forwarding.
 // A NULL organization_id row is the user's cross-tenant default. RLS + the M4 write-audit trigger
 // land in M36-T03.

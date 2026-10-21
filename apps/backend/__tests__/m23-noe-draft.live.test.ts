@@ -27,9 +27,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { claimLateNoeSpans, noeTimeliness5d, repositories } from "@wardenx/billing";
-import { createDbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { claimLateNoeSpans, noeTimeliness5d, repositories } from "@chartwarden/billing";
+import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

@@ -1,4 +1,4 @@
-// @wardenx/dosespot — IAL2 identity-proofing status tracker + expiry alerts (§2.4 §1311.115, M12-T05).
+// @chartwarden/dosespot — IAL2 identity-proofing status tracker + expiry alerts (§2.4 §1311.115, M12-T05).
 // Pure, IO-free.
 //
 // 21 CFR §1311.115 requires IAL2 identity proofing before a prescriber may sign for controlled substances.
@@ -11,7 +11,7 @@
 //   • `classifyIal2ExpiryStage` — the `none | warn | critical` stage for days-remaining-to-expiry.
 //   • `planIal2ExpiryAlert` — the §2.4/§4.9 side-effect plan (outbox + typed M36 alert) for a stage.
 // Every fact (status, expiry instant, `now`) is injected as data — no `Date.now()`, no DB.
-import type { Ial2Status } from "@wardenx/types";
+import type { Ial2Status } from "@chartwarden/types";
 import type { EpcsSideEffect } from "./effects";
 import { requireEpcs } from "./errors";
 

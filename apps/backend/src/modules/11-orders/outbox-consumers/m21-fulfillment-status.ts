@@ -37,9 +37,9 @@
 // ever replies — so what "M11 releases the source order" (M21's own catalog gloss on `.cancelled`) would
 // mean for a request cancelled through some OTHER path (never through M11's cascade) is a genuine, open
 // question this pass does not guess at.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { OrderKind } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { OrderKind } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 

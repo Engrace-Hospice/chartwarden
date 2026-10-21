@@ -1,5 +1,5 @@
 // Shared by the WP 3.4 task tests: one task row in the shape the API returns.
-import type { TaskDto } from "@wardenx/types";
+import type { TaskDto } from "@chartwarden/types";
 
 export const TASK_FIXTURE: TaskDto = {
   id: "t1",

@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/32-ai-platform — M32 §5.2–§5.4 tenant screen registration (Track A, ADR-0030,
 // GAP-049). The three TENANT-facing AI-platform surfaces: the Compliance Officer view, the tenant
 // admin's opt-in board and routing panel, and the clinician's personal opt-out.

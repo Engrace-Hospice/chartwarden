@@ -1,5 +1,5 @@
 import type { NewOrganizationSettingsRegistryEntry } from "../schema/organization-settings-registry";
-// @wardenx/db — Organization-settings registry boot UPSERT (M1 Foundation §3.15.2).
+// @chartwarden/db — Organization-settings registry boot UPSERT (M1 Foundation §3.15.2).
 //
 // Projects the validated ORGANIZATION_SETTINGS_REGISTRY into the rows persisted in the
 // `organization_settings_registry` table (which the trigger reads at write time). The

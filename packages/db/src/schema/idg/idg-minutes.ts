@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_minutes` (M14 §3.3.1 / D10). One row per meeting (uniqueIndex on org+meeting): the
+// @chartwarden/db — `idg_minutes` (M14 §3.3.1 / D10). One row per meeting (uniqueIndex on org+meeting): the
 // append-only-while-`in_progress`, immutable-on-`final` minutes record with attendance/decision/action-item
 // snapshots frozen at finalize and the M22 rendered-PDF back-ref. Org-scoped child of idg_meeting (NOT
 // patient-bearing — snapshots are structural jsonb). FK to the meeting (cascade) + the tenancy spine;

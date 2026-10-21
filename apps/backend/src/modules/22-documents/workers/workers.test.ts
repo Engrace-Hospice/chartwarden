@@ -1,6 +1,6 @@
 // GAP-140 / GAP-141 — the M22 worker helpers that need no database: failure classification, the fan-out's
 // per-org failure isolation, and the nightly ai-block tick (alert-then-fail).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { UnknownTemplateError } from "../seams/renderer";
 import { runAiBlockValidatorTick } from "./ai-block-validator-worker";

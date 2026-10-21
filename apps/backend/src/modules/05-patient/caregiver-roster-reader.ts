@@ -9,9 +9,9 @@
 // Current links only (`involvement_to IS NULL`), the primary caregiver first, then by creation order so the roster
 // is stable across reads. Runs under `withOrgContext` (RLS scopes by `app.org_id`) with an org-explicit predicate on
 // top — the caller is an HTTP route or an outbox consumer.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientCaregiverRosterEntry, PatientCaregiverRosterReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientCaregiverRosterEntry, PatientCaregiverRosterReader } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 
 export function buildPatientCaregiverRosterReader(db: DbClient): PatientCaregiverRosterReader {

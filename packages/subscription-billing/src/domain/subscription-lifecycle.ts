@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §2.2 subscription state machine (pure kernel, M35-T01).
+// @chartwarden/subscription-billing — §2.2 subscription state machine (pure kernel, M35-T01).
 //
 // The D7 status graph as pure data: `trialing → active → past_due → at_risk → suspended → canceled`
 // with the lateral `paused` state reachable on `m2.organization.suspended`. This adjacency is the single
@@ -8,7 +8,7 @@
 // §2.3 rule: `canceled` is terminal — a "reactivation" creates a NEW subscription row, never a transition
 // back out of `canceled`.
 
-import type { SubscriptionStatus } from "@wardenx/types";
+import type { SubscriptionStatus } from "@chartwarden/types";
 
 /** The allowed forward/lateral transitions per §2.2. A transition NOT listed here is rejected by the
  *  T05 XState guard (which additionally re-checks preconditions under the `SELECT ... FOR UPDATE` lock). */

@@ -18,7 +18,7 @@
 // leaves the old name excluded (safe direction; compacting means a full rebuild). Cost is bounded: pairs (token x channel) per statement
 // and per tick are capped, and the pending list is resumable across ticks and crashes. A reindex starts only after the writers' cache
 // TTL has passed, so a replica that has not yet seen the digest cannot index it behind the pass.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type ExcludedTokens,
   type SearchKeyProvider,
@@ -27,8 +27,8 @@ import {
   nameTokenDigest,
   tagForWord,
   tokenizeForSearch,
-} from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import { ensureIndexState } from "./index-state";

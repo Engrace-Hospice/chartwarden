@@ -3,7 +3,7 @@
  * (`buildM13AdmissionDischargedCascadeConsumer`) actually cancels future scheduled doses and flags
  * active comfort-kit deployments for return, for real, under RLS.
  *
- * `planDischargeCascade` (`@wardenx/emar`) has been complete, pure, unit-tested since M13-T05, and
+ * `planDischargeCascade` (`@chartwarden/emar`) has been complete, pure, unit-tested since M13-T05, and
  * `M13_OUTBOX_SUBSCRIPTIONS` has named `m6.admission.discharged` with a real consumer
  * (`m13.admission-discharged-cascade`) since the list was written — nothing has ever bound it, and no
  * discharge has ever cancelled a future dose or flagged a comfort kit for return in any deployment.
@@ -19,7 +19,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";

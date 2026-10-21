@@ -1,4 +1,4 @@
-// @wardenx/db — `comfort_kit_returned_content` (M21 §3.1.10). D8: the inbound half of the DEA 21 CFR §1304
+// @chartwarden/db — `comfort_kit_returned_content` (M21 §3.1.10). D8: the inbound half of the DEA 21 CFR §1304
 // perpetual log. One row per dispatched line, closing the accounting:
 //
 //     quantity_unaccounted = dispatched_quantity − quantity_returned − quantity_disposed_at_home

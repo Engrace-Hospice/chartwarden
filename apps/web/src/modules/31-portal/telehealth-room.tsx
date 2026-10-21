@@ -6,7 +6,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/31-portal - M31 clinician telehealth room (GAP-054, spec section 5.2): the roster of the
 // organisation's telehealth visits (GET /api/v1/admin/telehealth/visits) and the clinician-side join / end over
 // POST /api/v1/telehealth/visits/{visitId}/join|end. The vendor room is framed from the join ticket; the join url

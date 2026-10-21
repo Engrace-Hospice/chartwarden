@@ -1,6 +1,6 @@
 // GAP-049 - the repeat planner + run loop (pure, no DB), and the zero-recipient fallback the consumer and the sweep share.
-import type { AlertEmitter } from "@wardenx/messaging";
-import { M30_REPEAT_CADENCES } from "@wardenx/types";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { M30_REPEAT_CADENCES } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   type OpenAlertItem,

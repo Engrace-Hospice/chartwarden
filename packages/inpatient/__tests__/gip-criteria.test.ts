@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05 unit tests for the §2.4 GIP criteria validators + reassessment clock.
+// @chartwarden/inpatient — M37-T05 unit tests for the §2.4 GIP criteria validators + reassessment clock.
 import { describe, expect, it } from "vitest";
 import {
   GIP_REASSESSMENT_MIN_HOURS,

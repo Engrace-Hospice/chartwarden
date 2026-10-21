@@ -1,6 +1,6 @@
 // WP 3.10 - the medication-question pure rules: the body keeps the text verbatim, and routing never sends a question back
 // to its asker or to someone ineligible.
-import { RICH_BODY_LIMITS, sanitizeRichBody } from "@wardenx/types";
+import { RICH_BODY_LIMITS, sanitizeRichBody } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { buildMedicationQuestionBody, resolveMedicationQuestionAssignee } from "../src";
 

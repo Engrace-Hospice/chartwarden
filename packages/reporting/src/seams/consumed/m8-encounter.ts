@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M8 (Encounters & Visit Notes). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M8 (Encounters & Visit Notes). PRESENT producer (§4.4).
 //
 // M33 reads encounter-statistics + billable-encounter aggregates. Bound to the live M8
 // `EncounterStatisticsProvider` / `BillableEncounterReader` via `getSeam` at boot (P2C). Aggregate only.

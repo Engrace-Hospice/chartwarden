@@ -1,7 +1,7 @@
 // apps/backend/src/modules/27-cost-report/consumers — barrel for the §4.10 / D3 upstream-event consumers.
 //
 // The PURE, port-injected inbound half of M27: the topic→effect subscription map (the single source of
-// truth for the §4.10 fan-out), one pure handler per subscribed topic. Mirrors the M30 `@wardenx/quality`
+// truth for the §4.10 fan-out), one pure handler per subscribed topic. Mirrors the M30 `@chartwarden/quality`
 // consumers barrel. GAP-205: the former `registerM27Consumers` registrar was dead scaffolding (no caller, no dispatcher took a registrar) and is deleted; the LIVE bindings are the `OutboxConsumerBinding`s under `../outbox-consumers/` (wired from apps/backend/src/index.ts, proven by `arch:outbox-bindings`).
 export * from "./subscription-map";
 export * from "./handlers";

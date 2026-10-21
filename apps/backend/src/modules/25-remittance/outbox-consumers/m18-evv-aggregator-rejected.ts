@@ -39,8 +39,8 @@
 // TWO-PHASE, NOT FULLY ATOMIC — see m23-claim-rejected.ts's header for the identical, inherited caveat
 // (the seed INSERT and the outbox publish(es) run in separate transactions because `DenialSeedStore
 // .seedDenial`'s pre-existing signature takes no `tx`).
-import type { DbClient } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { getSeam } from "../../../bootstrap/index";
 import {
   DENY_DENIAL_TERMINOLOGY,

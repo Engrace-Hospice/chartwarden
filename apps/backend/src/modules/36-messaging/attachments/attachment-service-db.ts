@@ -18,11 +18,11 @@
 // Everything runs under `withOrgContext` (RLS on app.org_id is the backstop); org and actor always come from the
 // server-side request context. The service never logs a URL, a file name or an object key.
 import { createHash, randomUUID } from "node:crypto";
-import { type AuditExecutor, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import type { MessageAttachmentView } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MessageAttachmentView } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError, NotFoundError, RateLimitedError, ChartWardenError } from "@chartwarden/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
   activeLiveHolds,
@@ -262,7 +262,7 @@ async function assertNotErasing(tx: Tx, orgId: string): Promise<void> {
     .where(eq(EB.organizationId, orgId))
     .limit(1);
   if (blocked) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "TENANT_ERASURE_IN_PROGRESS",
       "this organization's messaging data is being erased; attachments cannot be uploaded",
       409,
@@ -313,7 +313,7 @@ export async function bindAttachmentsInTx(
 ): Promise<void> {
   const ids = [...new Set(args.attachmentIds)];
   const refuse = () =>
-    new WardenXError(
+    new ChartWardenError(
       "ATTACHMENT_NOT_BINDABLE",
       "one or more attachments cannot be attached to this message",
       422,
@@ -759,7 +759,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
         if (channel.isArchived) {
-          throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
         }
         // The tenant is being erased: no new object may be created (migration 1076; holds a SHARED lock to commit).
         await assertNotErasing(tx, orgId);
@@ -831,7 +831,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             ),
           );
         if ((flagged?.n ?? 0) >= MAX_QUARANTINED_UPLOADS_PER_USER) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TOO_MANY_QUARANTINED_UPLOADS",
             "too many of your recent uploads were blocked by the scanner; try again later",
             429,
@@ -853,7 +853,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             ),
           );
         if ((open?.n ?? 0) >= MAX_OPEN_UPLOADS_PER_USER) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "TOO_MANY_OPEN_UPLOADS",
             `at most ${MAX_OPEN_UPLOADS_PER_USER} uploads may be open at once; send or wait for the others first`,
             429,
@@ -884,7 +884,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             ),
           );
         const quotaExceeded = (scope: "user" | "organization", limit: number) =>
-          new WardenXError(
+          new ChartWardenError(
             "ATTACHMENT_QUOTA_EXCEEDED",
             scope === "user"
               ? `your attachment storage allowance (${formatBytes(limit)}) is full; it frees up when stored files are destroyed (after the retention period following a message delete or a block) and when unsent uploads lapse`
@@ -941,7 +941,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         // After the upload URL's TTL the row stops counting toward the open cap; if it could still be completed, a user
         // could hold more than the cap of open completed rows. An expired upload is final: start a new one.
         if (!row.uploadExpiresAt || row.uploadExpiresAt.getTime() <= now().getTime()) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "UPLOAD_EXPIRED",
             "the upload window has expired; start a new upload",
             410,
@@ -958,7 +958,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             )
           : null;
         if (!found) {
-          throw new WardenXError("ATTACHMENT_NOT_UPLOADED", "the file has not been uploaded", 409);
+          throw new ChartWardenError("ATTACHMENT_NOT_UPLOADED", "the file has not been uploaded", 409);
         }
         if (
           found.byteSize !== row.byteSize ||
@@ -968,7 +968,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           // The bytes are not what was authorized: destroy them now (best effort; the reaper retries the row later) so a
           // wrong-size/wrong-type object never sits in the tenant bucket until the orphan window.
           await destroyQuietly(orgId, row);
-          throw new WardenXError(
+          throw new ChartWardenError(
             "ATTACHMENT_UPLOAD_MISMATCH",
             "the uploaded file does not match what was authorized",
             422,

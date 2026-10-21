@@ -8,12 +8,12 @@
 // driven from the composition root's wireModuleSeams(). Both share ONE injected DoseSpotSeamStore (in-memory
 // slice here; Drizzle in prod, reads under the consumer's RLS) — mirrors the M9/M10/M11 seams/index.ts
 // precedents. Neither seam is a mutate path: M12 owns the medication-order lifecycle internally.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type {
   MedicationOrderProvider,
   NonCoveredItemsReader,
   RefillInboxProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import type {
   DoseSpotConsentValidator,
@@ -99,7 +99,7 @@ export function getRefillInboxProvider(): RefillInboxProvider {
 // the M40 master-data surface (the prescribing physician + dispensing pharmacy + the prescriber's DEA roster),
 // and the M39 consent surface (the §7.8 SUD-treatment-medication disclosure gate). Each is resolved from the
 // M1 registry here and injected into the service (seed.terminology / seed.mdm / seed.consent). M38 / M40 are
-// already in M12's `dependsOn`; M39's `ConsentEvaluator` is an OPAQUE rich seam (interface in @wardenx/consent,
+// already in M12's `dependsOn`; M39's `ConsentEvaluator` is an OPAQUE rich seam (interface in @chartwarden/consent,
 // `SeamContracts["ConsentEvaluator"] = unknown`) consumed via the M1 registry with NO schema import — so these
 // getters narrow to the minimal validator subsets the service uses (the M11 `getOrderMdmValidator` pattern),
 // and no new manifest edge is introduced (the seam is already in REQUIRED_SEAMS, owner M39).

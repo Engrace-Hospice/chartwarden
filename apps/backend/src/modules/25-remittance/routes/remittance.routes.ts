@@ -3,7 +3,7 @@
 // admin replay, the manual-match write, and the step-up-gated adjustment override. Reads gate on
 // `remittance.read` (provider_entity_scope default); manual-match composes `claim_assigned_to_actor`;
 // the override composes the §D15 step-up. Org/actor binding is server-side (actorOf/writeActorOf).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { clampLimit, requireIdempotencyKey } from "./concurrency";

@@ -151,7 +151,7 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
         "`checkVocabVersion` in the finalize path, which compares the corpus recorded on the draft's " +
         "`hearthnote_selection.template_version` against the running build's release and raises §2.7's " +
         "409 VOCAB_VERSION_MISMATCH. That function had existed since M8-T04 and was called by nothing. " +
-        "The pin itself is no longer a sentinel: `@wardenx/narrative-vocab`'s release registry resolves " +
+        "The pin itself is no longer a sentinel: `@chartwarden/narrative-vocab`'s release registry resolves " +
         "a real, decodable uuid per corpus version (see `releases.ts` for why the pin is the CORPUS " +
         "release and not an M38 `code_system_version` row — architecture §10.5.2 over spec §2.7).",
     },

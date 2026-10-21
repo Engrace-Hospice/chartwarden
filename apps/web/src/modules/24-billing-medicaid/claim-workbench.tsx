@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID CLAIM WORKBENCH (R2, §5.1 #2). The biller's
 // filterable claim list (state · kind · service state · MCO · patient) over the cursor-paginated
 // GET /api/v1/medicaid-claims. Per §5.1 the only bulk actions are validate-now and abandon; both are

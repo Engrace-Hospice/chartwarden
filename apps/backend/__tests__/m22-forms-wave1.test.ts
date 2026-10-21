@@ -3,8 +3,8 @@
 // the regulatory elements appear verbatim, a missing required signature or patient identity fails closed,
 // PHI stays out of file metadata and the visible footer, unknown payload keys are never drawn, Part 2 is
 // handled, and long documents paginate with the signature kept together.
-import { findFormTemplate } from "@wardenx/forms";
-import { RenderPayloadError } from "@wardenx/types";
+import { findFormTemplate } from "@chartwarden/forms";
+import { RenderPayloadError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { ABN_PRESCRIBED_TEXT } from "../src/modules/22-documents/render-pdf/forms";
 import { COMPILED_FORMS, providedFieldIds } from "../src/modules/22-documents/render-pdf/forms";

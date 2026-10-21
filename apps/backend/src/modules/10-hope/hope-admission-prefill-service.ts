@@ -1,11 +1,11 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type {
   PatientAddressReader,
   PatientCoverage,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillFacts,
   PatientHopeAdmissionPrefillReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";

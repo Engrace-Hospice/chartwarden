@@ -24,7 +24,7 @@
 // — unlike the lag probe's single platform-wide `database_replication` row, a MAC-portal outage is scoped
 // to ONE jurisdiction's submission channel, not the whole platform, so collapsing every jurisdiction onto
 // one component id would report an unrelated jurisdiction's outage as a platform-wide one.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { PlatformDispatchableOutboxEvent } from "../outbox-dispatcher";
 
 const MAC_PORTAL_COMPONENT_PREFIX = "mac_portal:";

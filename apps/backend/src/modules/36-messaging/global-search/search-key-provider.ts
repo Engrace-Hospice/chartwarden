@@ -9,7 +9,7 @@
 //   * `createUnavailableSearchKeyProvider` always throws (nothing can be indexed or searched); kept for tests/unwired boots.
 //   * `createLegacyTestSearchKeyProvider` derives K_search from the legacy HKDF DEK (label "legacy"). TEST ONLY: under the
 //     legacy scheme there is no tenant key to destroy, which is exactly why the ADR gates production on P1.
-import { type SearchKeyProvider, deriveOrgDek, deriveSearchKey } from "@wardenx/messaging";
+import { type SearchKeyProvider, deriveOrgDek, deriveSearchKey } from "@chartwarden/messaging";
 import type { RingDekCache } from "../body-key-ring";
 
 export const LEGACY_TEST_KEY_VERSION = "legacy";

@@ -3,7 +3,7 @@
 // `referenceData` adapter binds (`hospiceRateTableEffectiveForOrg`, the F-121 org-explicit seam-function pattern:
 // boot-time closures have no ambient request context, so each read opens its own `withOrgContext`).
 //
-// Validation is layered: the pure rules in `@wardenx/billing` (`validateRateTableEntry`) run first for a precise
+// Validation is layered: the pure rules in `@chartwarden/billing` (`validateRateTableEntry`) run first for a precise
 // 422; the overlap pre-check names the conflicting version for a precise 409; migration 0279's EXCLUDE constraint is
 // the race-safe backstop (a concurrent writer that slips past the pre-check surfaces as the same 409, never as two
 // live rows). Rates are append-only: a correction SUPERSEDES the old version (it stays readable as history) and
@@ -14,10 +14,10 @@ import {
   dateRangesOverlap,
   repositories,
   validateRateTableEntry,
-} from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateRateTableBody,
@@ -116,7 +116,7 @@ export function buildDrizzleRateTableService(
   function validated(body: CreateRateTableBody | SupersedeRateTableBody): string {
     const v = validateRateTableEntry(body);
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "RATE_TABLE_INVALID",
         `invalid rate table: ${v.errors.join("; ")}`,
         422,
@@ -125,8 +125,8 @@ export function buildDrizzleRateTableService(
     return v.effectiveTo;
   }
 
-  function overlapError(clash: schema.HospiceRateTable): WardenXError {
-    return new WardenXError(
+  function overlapError(clash: schema.HospiceRateTable): ChartWardenError {
+    return new ChartWardenError(
       "RATE_TABLE_OVERLAP",
       `the effective window overlaps live rate table ${clash.id} (${clash.effectiveFrom}..${clash.effectiveTo ?? "open"}); supersede that version instead of entering a second one`,
       409,
@@ -179,7 +179,7 @@ export function buildDrizzleRateTableService(
       });
     } catch (err) {
       if (isExclusionViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "RATE_TABLE_OVERLAP",
           "the effective window overlaps a live rate table entered concurrently",
           409,
@@ -207,7 +207,7 @@ export function buildDrizzleRateTableService(
           throw new NotFoundError("rate table");
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RATE_TABLE_ALREADY_SUPERSEDED",
             `rate table ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -218,7 +218,7 @@ export function buildDrizzleRateTableService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "RATE_TABLE_ALREADY_SUPERSEDED",
             `rate table ${id} was already superseded`,
             409,

@@ -1,4 +1,4 @@
-// @wardenx/reporting · drilldown — consent narrowing of a drilldown URL (M33 §4.4 / W-R-05 / D16).
+// @chartwarden/reporting · drilldown — consent narrowing of a drilldown URL (M33 §4.4 / W-R-05 / D16).
 //
 // Step 2 of the drilldown emit: consult M39's `ConsentEvaluator.evaluateForReporting` over the patient cohort
 // the tile's dimension context resolves to, and NARROW the candidate URL to exclude any patient the actor may

@@ -1,9 +1,9 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/32-ai-platform — M32 §5.1 AI Safety Owner console registration (ADR-0030,
 // GAP-049). The eight platform-ops screens contributed into the M34 admin shell.
 //
 // Each `requiredPermission` is a REAL §4.4 M32 key the matching `/api/v1/ai/*` route gates on
-// (M32_CONTRIBUTED_PERMISSIONS in @wardenx/auth) — the server stays the authoritative enforcer; this only
+// (M32_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the authoritative enforcer; this only
 // gates nav visibility. M34 owns the apps/admin shell; M32 owns this slice and registers into it at
 // composition (apps/admin/src/main.tsx), never importing the shell's internals.
 //

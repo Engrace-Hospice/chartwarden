@@ -1,4 +1,4 @@
-// @wardenx/quality — HCI indicator 4: Late Live Discharges (§1.1). Pure. No IO.
+// @chartwarden/quality — HCI indicator 4: Late Live Discharges (§1.1). Pure. No IO.
 //
 // CMS criterion: the rate of LIVE discharges occurring late in the stay is LOW (lower is better).
 // Numerator = late live discharges; denominator = all discharges. Source: M6 `DischargeReader`.

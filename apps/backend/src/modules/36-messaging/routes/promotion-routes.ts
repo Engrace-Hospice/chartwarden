@@ -14,8 +14,8 @@
 // non-reader are ONE 404. M36 never decides accepted/rejected: that arrives from the owning module as an outbox event.
 // No `Idempotency-Key`: idempotency is the partial unique index (one proposed request per message and target), so no
 // request header is read here.
-import { requirePermission } from "@wardenx/auth";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PromotionActorRef, PromotionService } from "../promotions/promotion-service";
 import { ThreadParamsSchema, parse } from "./messaging-typebox";

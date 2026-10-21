@@ -1,4 +1,4 @@
-// @wardenx/audit — PHI denylist category catalog (M4-T07, M4 spec §5.1, §5.2, D10).
+// @chartwarden/audit — PHI denylist category catalog (M4-T07, M4 spec §5.1, §5.2, D10).
 //
 // The code-owned mirror of the platform-shared `audit_denylist_catalog` table (§3.5): the
 // per-table registry that resolves the three named denylist categories (`pii_high_sensitivity`,

@@ -1,7 +1,7 @@
 // M36 WP 3.2 - what the web knows about a clinical link: the kinds, their labels, the tenant flag, and the PORT that
 // supplies candidate records to the composer's link picker. M36 owns no list route for candidate records (the owning
 // modules do), so the picker never fetches by itself: it asks a `ClinicalLinkCandidateSource`.
-import type { ClinicalLinkKind } from "@wardenx/types";
+import type { ClinicalLinkKind } from "@chartwarden/types";
 
 export const CLINICAL_LINKS_FLAG_KEY = "messaging.clinical_links";
 

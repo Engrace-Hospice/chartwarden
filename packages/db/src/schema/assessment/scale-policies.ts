@@ -1,4 +1,4 @@
-// @wardenx/db — `scale_policy` (M9 §3.3, D2). Per-tenant scale configuration: whether a scale is
+// @chartwarden/db — `scale_policy` (M9 §3.3, D2). Per-tenant scale configuration: whether a scale is
 // enabled, and tenant-tightened significant-change thresholds + reassessment cadence (the service
 // enforces the floor — overrides may only TIGHTEN a platform default, never loosen it). Org-level
 // policy config, NOT patient PHI → carries organization_id only (the ARCH-011 org-level carve-out).

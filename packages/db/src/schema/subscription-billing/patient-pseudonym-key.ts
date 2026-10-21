@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `patient_pseudonym_key` (M35 §3.3). M35-private catalog of the active + historic HMAC
+// @chartwarden/db — `patient_pseudonym_key` (M35 §3.3). M35-private catalog of the active + historic HMAC
 // keys used for patient/user pseudonym computation. PLATFORM-ONLY (no organization_id) — never exposed
 // to tenant queries; read+write via wardenx_admin only (0143). The key bytes are envelope-encrypted at
 // the application layer (KMS-wrapped). §3.6 requests FULL AUDIT EXCLUSION — the key-rotation timeline

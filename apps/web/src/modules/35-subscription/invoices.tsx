@@ -5,7 +5,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 invoices list (§5.1 `/billing/invoices`).
 // Cursor-paged invoice list over GET /api/v1/invoices with a status filter (open/paid/void); each row
 // links to the invoice detail and (where present) the Stripe-hosted page. Amounts are integer cents from

@@ -297,7 +297,7 @@ describe("Web Push transport", () => {
     expect(headers["Content-Encoding"]).toBe("aes128gcm");
     expect(JSON.parse(decryptAes128gcm(Buffer.from(call.init.body as Uint8Array), rx))).toEqual({
       id: "d-1",
-      title: "WardenX",
+      title: "ChartWarden",
       short: NOTIFICATION.short,
       deepLink: NOTIFICATION.deepLink,
     });

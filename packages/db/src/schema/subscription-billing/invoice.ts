@@ -1,4 +1,4 @@
-// @wardenx/db — `invoice` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Stripe-authoritative
+// @chartwarden/db — `invoice` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Stripe-authoritative
 // mirror. `organization_id` is a logical uuid (M35-F04). `subscription_id` is a REAL FK (nullable —
 // one-off invoices). On tenant offboarding the eraser COPIES these rows into `platform_retained_invoice`
 // (7-year retention) then deletes them (§3.7, copy-then-delete).

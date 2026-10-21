@@ -1,13 +1,13 @@
 // M10's live M6 admission/discharge consumer. M6 owns admission state; M10 owns the HOPE workflow
 // ledger materialized from those facts.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_ORG_TIME_ZONE,
   planAdmissionTimepoints,
   planDischargeTimepoint,
-} from "@wardenx/hope";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { AdmissionStatusReader, LocalDate } from "@wardenx/types";
+} from "@chartwarden/hope";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { AdmissionStatusReader, LocalDate } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { anchorDateOf } from "../scheduling/schedule-writer";
 

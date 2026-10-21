@@ -58,7 +58,7 @@
  *
  * Rule 2 can only attribute schemas imported by RELATIVE path — those resolve to a file whose
  * directory can be compared to the route's. Two kinds of schema cannot be placed this way: consts
- * declared locally in enrichments.ts, and imports from workspace packages (`@wardenx/billing`).
+ * declared locally in enrichments.ts, and imports from workspace packages (`@chartwarden/billing`).
  * Those are not silently dropped — the run prints how many route→schema pairs went unattributed and
  * why. A gate that quietly skipped a third of its input while reporting OK would be the same class
  * of lie this file exists to catch.
@@ -371,7 +371,7 @@ function main(): void {
       `OK openapi-provenance: ${report.checked}/${total} route→schema pairs attributed to a source file, all from the route's own directory or an ancestor; no duplicate aliases; ${routeKeys} route keys each declared exactly once`,
     );
     console.log(
-      `   ${report.unattributed} pair(s) not placeable by directory (${report.unattributedNames.length} distinct: local consts in enrichments.ts and @wardenx/* package imports) — reported, not silently skipped`,
+      `   ${report.unattributed} pair(s) not placeable by directory (${report.unattributedNames.length} distinct: local consts in enrichments.ts and @chartwarden/* package imports) — reported, not silently skipped`,
     );
     return;
   }

@@ -1,5 +1,5 @@
 // apps/backend/src/modules/18-evv/routes/evv-routes.ts — M18-T06 the §4.1 route inventory behind the REAL
-// Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) over the §4.6 keys M18
+// Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) over the §4.6 keys M18
 // registers into M3's catalog (`M18_CONTRIBUTED_PERMISSIONS`). Org binding is server-side (`request.context`,
 // never the body). Handlers compose over the injected {@link EvvRoutePort} (in-memory slice; Drizzle in prod
 // under `withOrgContext` so RLS backstops every read/write).
@@ -15,14 +15,14 @@ import {
   DEVICE_ATTESTATION_ATTRIBUTE,
   requireAbac,
   requirePermission,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { clinicianCapture } from "../capture-guards";
@@ -55,7 +55,7 @@ import {
 } from "./evv-typebox";
 import type { EvvRoutePort, OfflineCaptureResult } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface EvvRouteDeps {
@@ -429,7 +429,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
         );
       } catch (error) {
         results[index] =
-          error instanceof WardenXError && error.statusCode < 500
+          error instanceof ChartWardenError && error.statusCode < 500
             ? {
                 localId: event.localId,
                 status: "rejected",

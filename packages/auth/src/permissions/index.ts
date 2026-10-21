@@ -1,4 +1,4 @@
-// @wardenx/auth · permissions (M3 — Authorization). Owned per module-manifest.ts
+// @chartwarden/auth · permissions (M3 — Authorization). Owned per module-manifest.ts
 // codePath `packages/auth/src/permissions`. The code-owned permission catalog (the
 // source of truth mirrored to the DB `permission` table) ships in ./catalog (M3-T01).
 export {

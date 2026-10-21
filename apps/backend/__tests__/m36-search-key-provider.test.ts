@@ -3,7 +3,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type RingBodyDek, deriveSearchKey } from "@wardenx/messaging";
+import { type RingBodyDek, deriveSearchKey } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import { buildGlobalSearchRateLimit } from "../src/bootstrap/plugins/global-search-rate-limit";
 import type { RateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";

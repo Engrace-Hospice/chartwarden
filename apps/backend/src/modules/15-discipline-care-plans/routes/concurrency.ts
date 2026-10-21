@@ -11,7 +11,7 @@
 //     spec's `{ data, next_cursor, has_more, total_count? }` — NOT the `{items, nextCursor}` shape other
 //     modules use, because §4.6.1 pins this one.
 //   • §F08 idempotency — every mutating route requires a client-supplied `Idempotency-Key`.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** §F08 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */
@@ -20,7 +20,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,
@@ -34,7 +34,7 @@ export function rejectOffsetPagination(): PreHandler {
   return async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
     if (query.offset !== undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "OFFSET_PAGINATION_FORBIDDEN",
         "offset pagination is not supported on PHI list routes; use ?cursor= (§4.6.1)",
         400,
@@ -57,7 +57,7 @@ export function ifMatchVersion(
   const n = Number(cleaned);
   const parsed = cleaned !== "" && Number.isInteger(n) && n >= 0 ? n : null;
   if (parsed === null && required) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IF_MATCH_REQUIRED",
       "this route requires an If-Match header carrying the row version you read (§2.5)",
       428,

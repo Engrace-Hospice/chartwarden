@@ -7,7 +7,7 @@
 // `m11.order.suggestion_state_changed` so the patient-chart banner refreshes. Critically, M11 NEVER creates
 // an order from a suggestion — the banner is informative; the clinician's click-through to `POST /orders`
 // (carrying `triggeringAssessmentId` / `triggeringHopeAssessmentId`) is the gating action (§2.7 / W-AS-01).
-import type { OrderKind } from "@wardenx/types";
+import type { OrderKind } from "@chartwarden/types";
 
 /** Which clinical source produced a suggestion (the triggering-id column the eventual order carries). */
 export type SuggestionSource = "assessment" | "hope";

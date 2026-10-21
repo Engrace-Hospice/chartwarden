@@ -2,9 +2,9 @@
 // before running (cancel sends nothing), the server's answer replacing the list, a failed row and a person-needs row staying visible, a stale
 // step-up sending the officer to the step-up screen, the 401/403/404/409/error states, a bad id refused before any request, keyboard operation, axe.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { OffboardingDto, OffboardingItemDto, OffboardingItemKey } from "@wardenx/types";
-import { OFFBOARDING_ITEM_KEYS } from "@wardenx/types";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import type { OffboardingDto, OffboardingItemDto, OffboardingItemKey } from "@chartwarden/types";
+import { OFFBOARDING_ITEM_KEYS } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

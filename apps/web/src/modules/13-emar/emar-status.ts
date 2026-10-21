@@ -1,8 +1,8 @@
 // apps/web/src/modules/13-emar — shared eMAR presentation helpers (R1, Lantern).
 // The §2.2 administration, §2.3 scheduled-dose, §2.5 late-entry, §2.8 reconciliation, and §2.7 comfort-kit
-// enums each map to the §6.6 badge taxonomy tone (grounded in the @wardenx/types unions). Controlled
+// enums each map to the §6.6 badge taxonomy tone (grounded in the @chartwarden/types unions). Controlled
 // substances keep the gold `critical` treatment (DESIGN.md §10), consistent with M12.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 // AdministrationStatus = committed | pending_caregiver_review | superseded | voided.
 export const ADMIN_STATUS_TONE: Record<string, StatusTone> = {

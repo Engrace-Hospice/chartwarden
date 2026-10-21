@@ -6,7 +6,7 @@ import {
   StatusPill,
   useApiClient,
   useDrawerA11y,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/01-ops — one outbox event in the Outbox screen's right drawer (WX-PR-020/OPS-004), opened by
 // `?event=<id>`; the old detail route `/admin/ops/outbox/:id` redirects there.
 import { useEffect, useState } from "react";

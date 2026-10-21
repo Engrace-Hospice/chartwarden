@@ -1,10 +1,10 @@
-import { CenteredCardLayout, t, useApiClient } from "@wardenx/ui";
+import { CenteredCardLayout, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Sign In (M2 Auth, AUTH-T07, ADR-0033 §4).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Sign in" (/login). Matched to the P0 Pencil frame
 // (wardenx-P0-foundation.pen `a1dbhD`, "Card Sign in"): a single centered card — gold hearth mark +
 // Fraunces "WardenX" lockup, "Sign in" title + subtitle, filled fields, a full-width pill button, and a
 // "Forgot password? · Use a passkey" links row. Email + password go through Better Auth's own client
-// (@wardenx/auth/client — NOT the generated REST client); on success the session cookie is set and we
+// (@chartwarden/auth/client — NOT the generated REST client); on success the session cookie is set and we
 // hand off to organization-select. Imports its own M2 package (codePath) + leaves only.
 import { useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";

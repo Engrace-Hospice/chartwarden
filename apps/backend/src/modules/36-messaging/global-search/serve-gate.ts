@@ -9,10 +9,10 @@
 //             'ready' AND reconciled since the setting and the platform row last changed AND not expired (C2's `stillValid`),
 //             otherwise 503 GLOBAL_SEARCH_INDEX_NOT_READY. Status alone is not enough (a flip invalidates a prior reconcile).
 // Any unexpected failure (key provider, destroyed ring, database) is 503: no gate ever falls back to "allowed".
-import { type DbClient, schema } from "@wardenx/db";
-import type { SearchKeyProvider } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { SearchKeyProvider } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import type { PlatformSearchFlag, PlatformSearchFlagState } from "./platform-flag";
@@ -52,11 +52,11 @@ export interface ServeGates {
 }
 
 const disabled = () =>
-  new WardenXError("GLOBAL_SEARCH_DISABLED", "global search is not enabled", 403);
+  new ChartWardenError("GLOBAL_SEARCH_DISABLED", "global search is not enabled", 403);
 const notReady = () =>
-  new WardenXError("GLOBAL_SEARCH_INDEX_NOT_READY", "the search index is not ready", 503);
+  new ChartWardenError("GLOBAL_SEARCH_INDEX_NOT_READY", "the search index is not ready", 503);
 const unavailable = () =>
-  new WardenXError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
+  new ChartWardenError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
 
 function orgOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
@@ -66,7 +66,7 @@ function orgOf(request: FastifyRequest): { organizationId: string; userId: strin
 
 /** Typed refusals pass through; anything else is logged by NAME only (never a message: it could carry a query) and is a 503. */
 function failClosed(request: FastifyRequest, error: unknown): never {
-  if (error instanceof WardenXError || error instanceof UnauthorizedError) throw error;
+  if (error instanceof ChartWardenError || error instanceof UnauthorizedError) throw error;
   request.log.error(
     { reason: error instanceof Error ? error.name : "unknown" },
     "global search gate failed closed",

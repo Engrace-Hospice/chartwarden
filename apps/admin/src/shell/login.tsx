@@ -1,7 +1,7 @@
-import { Button, CenteredCardLayout, InlineAlert, TextField } from "@wardenx/ui";
+import { Button, CenteredCardLayout, InlineAlert, TextField } from "@chartwarden/ui";
 // apps/admin/src/shell — Sign in (M1/M34, ADR-0030). Adapted from
 // apps/web/src/modules/02-identity/sign-in.tsx: email + password through Better Auth's own client
-// (@wardenx/auth/client, NOT the generated REST client); on success the session cookie is set and we
+// (@chartwarden/auth/client, NOT the generated REST client); on success the session cookie is set and we
 // hand off to organization-select. Deliberately simplified vs. the tenant web app's version — no
 // 2FA/passkey/forgot-password flows, since this console has no self-service account recovery surface
 // and platform-ops accounts are provisioned by hand, not self-registered. Whether the signed-in account

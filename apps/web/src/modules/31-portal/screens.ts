@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/31-portal - M31 staff screen registration (GAP-054, ADR-0030). The patient/family-facing
 // screens live in apps/portal; these are the staff-side panes. Each `requiredPermission` is the REAL section 4.6
 // M31 key the matching list route gates on (apps/backend/src/modules/31-portal/permission-keys.ts) - the server

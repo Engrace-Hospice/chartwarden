@@ -1,4 +1,4 @@
-// @wardenx/db — `cost_report_snapshot` (M27 §3.3, D10; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `cost_report_snapshot` (M27 §3.3, D10; non-partitioned; retention class `compliance`).
 // Content-hashed snapshot-on-submit lockdown: every seam-derived input + worksheet state materialized
 // at submit/reopen with a SHA-256 content hash. INSERT-ONLY (RLS write policy is system-only, §3.5).
 // `prior_snapshot_id` chains snapshots through reopens; `cost_report.latest_snapshot_id` is the head.

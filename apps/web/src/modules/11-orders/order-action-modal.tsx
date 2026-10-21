@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — the five §2.2/§2.3/§2.5/§2.6 write ceremonies (#91).
 //
 // M11's web surface issued no mutation at all. Four of its seven screens are QUEUES whose whole reason to
@@ -41,7 +41,7 @@ import {
 /** The five ceremonies this modal performs. One component, because they share every control but the body. */
 export type OrderAction = "sign" | "cosign" | "discontinue" | "complete" | "verbal";
 
-/** The §2.1 signer vocabulary, as role keys. Mirrors `OrderSignerDiscipline` in `@wardenx/orders`. */
+/** The §2.1 signer vocabulary, as role keys. Mirrors `OrderSignerDiscipline` in `@chartwarden/orders`. */
 const SIGNER_ROLE_KEYS = [
   "rn_case_manager",
   "medical_director",

@@ -1,4 +1,4 @@
-// @wardenx/fhir — the tier-based rate-limit ceiling decision (§1.1 / D16 / W-FHIR-08, M28-T03).
+// @chartwarden/fhir — the tier-based rate-limit ceiling decision (§1.1 / D16 / W-FHIR-08, M28-T03).
 //
 // D16: a Valkey-backed sliding window enforces per-client request ceilings — tier-1 100 RPS, tier-2 10
 // RPS, tier-3 1 RPS — and refuses the overflow with `429 Too Many Requests` + `Retry-After` +
@@ -11,7 +11,7 @@
 // tenant may only TIGHTEN (never raise above the floor), enforced at registration by
 // `fhirRateLimitWithinFloor` (`domain/validation.ts`). So this module takes the already-resolved ceiling;
 // it does not re-derive it from the tier, keeping the tighten-only rule in one place.
-import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
+import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@chartwarden/types";
 
 /** The sliding window is one second wide (D16 ceilings are per-second). */
 export const FHIR_RATE_LIMIT_WINDOW_MS = 1000;

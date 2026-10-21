@@ -10,15 +10,15 @@
 //     • `patientStateIdentifier` — M5's `state_id` is envelope-encrypted and M5 publishes no decrypting reader seam;
 //     • `clinicianNpi` — no per-clinician NPI is stored anywhere yet (the Sandata body allows null).
 // Wiring a real aggregator = a real `SandataTransport` + a KMS-backed `AggregatorCredentialStore` + those two readers.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import {
   OpenModelAdapter,
   SandataAdapter,
   StateAggregatorRegistry,
   createDenySandataTransport,
   createHttpSandataTransport,
-} from "@wardenx/evv-aggregators";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/evv-aggregators";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { buildFoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import {
   type EvvAggregatorDeps,

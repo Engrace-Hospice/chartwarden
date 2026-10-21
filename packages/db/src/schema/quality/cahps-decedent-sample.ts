@@ -1,4 +1,4 @@
-// @wardenx/db — `cahps_decedent_sample` (M30 §3.3; PARTITIONED monthly by `sampling_cycle_month`;
+// @chartwarden/db — `cahps_decedent_sample` (M30 §3.3; PARTITIONED monthly by `sampling_cycle_month`;
 // retention class `phi`). The CMS CAHPS decedent sampling roster: one row per sampled decedent per
 // monthly cycle, holding the envelope-encrypted primary-caregiver contact for vendor export. Registers
 // a §3.7 eraser (re-encrypt the cipher to <erased>, retain the "was sampled" record). ORG-SCOPED:

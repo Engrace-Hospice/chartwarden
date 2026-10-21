@@ -1,4 +1,4 @@
-// @wardenx/db - `legal_hold_audit_event` (M4, GAP-008; migration 1053): the append-only OVERLAY that says which
+// @chartwarden/db - `legal_hold_audit_event` (M4, GAP-008; migration 1053): the append-only OVERLAY that says which
 // `audit_event` rows an active legal hold covers. See ADR-0051: a hold is NOT a `retention_class` flip, because that
 // column is part of the integrity hash and `wardenx_app` holds no UPDATE on `audit_event`. A row is "held" while the
 // referenced hold's status is 'active'; releasing the hold is the one existing UPDATE and un-holds every row at once.

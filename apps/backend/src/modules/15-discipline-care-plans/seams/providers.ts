@@ -1,6 +1,6 @@
 // apps/backend/src/modules/15-discipline-care-plans/seams/providers.ts — M15-T05 the §4.3 seam
 // implementations: pure orchestration over an injected {@link DisciplinePlanSeamStore} plus the module's own
-// pure decision functions. Each returns the leaf-typed seam interface (@wardenx/types) the M1 registry
+// pure decision functions. Each returns the leaf-typed seam interface (@chartwarden/types) the M1 registry
 // validates and M14/M16/M17/M22/M28/M30/M31/M33 resolve. The providers add NO tenant logic — RLS scopes every
 // store read by the consumer's `app.org_id` (§3.6) — and NO second copy of the domain rules:
 //
@@ -37,7 +37,7 @@ import type {
   VolunteerComplianceProvider,
   VolunteerGateExpiry,
   VolunteerGateExpiryReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { evaluateSupervisoryCadence, hoursOverdue } from "../lifecycle/index";
 import { computeVolunteerHourRatio, daysUntilExpiry, effectiveStatusFor } from "../volunteer/index";
 import type { DisciplinePlanSeamStore, RateCounts, SupervisoryClockRow } from "./store";
@@ -104,7 +104,7 @@ export function createMswRiskFactorReader(store: DisciplinePlanSeamStore): MswRi
 }
 
 /**
- * §4.4 / §7.4 the LOCKED `VolunteerComplianceProvider` (interface in `@wardenx/types/scheduling`, shipped by
+ * §4.4 / §7.4 the LOCKED `VolunteerComplianceProvider` (interface in `@chartwarden/types/scheduling`, shipped by
  * M17-F06/ADR-0009) — M15-T05 binds the real impl over M17's deny-stub, CLOSING the Wave-F volunteer-gate
  * stub. This is M17's D8 pre-schedule predicate 6: an inactive status rejects the publish/assign with
  * `VOLUNTEER_GATE_UNMET` (42 CFR §418.78(b)).
@@ -157,7 +157,7 @@ export function createVolunteerGateExpiryReader(
 }
 
 /**
- * §4.4 / §7.2 the LOCKED `SupervisoryCadenceReader` (interface in `@wardenx/types/scheduling`) — M15-T05 binds
+ * §4.4 / §7.2 the LOCKED `SupervisoryCadenceReader` (interface in `@chartwarden/types/scheduling`) — M15-T05 binds
  * the real impl over M17's deny-stub, CLOSING the Wave-F supervisory-advisory stub. M17's `propose-from-
  * frequency` worker and the supervising RN's day view read it as an ADVISORY; M17 does not own the cadence
  * math (the attestation lives in M15's `aide_supervisory_visit`).

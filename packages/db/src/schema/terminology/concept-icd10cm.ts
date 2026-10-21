@@ -1,4 +1,4 @@
-// @wardenx/db — `concept_icd10cm` (M38 Terminology §3.4). One of the four Phase-1
+// @chartwarden/db — `concept_icd10cm` (M38 Terminology §3.4). One of the four Phase-1
 // per-system concept tables (§2.3: one table per code system, NOT one polymorphic
 // `concept` table). ICD-10-CM-specific columns (is_billable_leaf, chapter, parent_code)
 // live as first-class columns; the §3.4 trigram index backs fuzzy display search.

@@ -20,9 +20,9 @@
 // the db handle). Every fact read is against an M25-OWNED table (denial_case / appeal_case) plus the core
 // `memberships` row that resolves the acting membership. Default-deny throughout: a missing/cross-tenant row
 // or an un-suppliable target id resolves to deny. No PHI is read (ids + a deadline instant only).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { isWithinDeadline } from "./domain";
 
@@ -79,7 +79,7 @@ export const denyStubM25AbacResolver: ReadingM25AbacResolver = {
 
 /**
  * The real Drizzle fact-loader. Each method opens `withOrgContext(db, {organizationId, userId}, tx => …)`
- * (the M1 @wardenx/tenancy helper) so Postgres RLS scopes every read to the acting org. Reads M25-owned
+ * (the M1 @chartwarden/tenancy helper) so Postgres RLS scopes every read to the acting org. Reads M25-owned
  * denial_case / appeal_case + the core memberships row; no PHI columns are selected.
  */
 export function buildDrizzleM25AbacResolver(db: DbClient): ReadingM25AbacResolver {

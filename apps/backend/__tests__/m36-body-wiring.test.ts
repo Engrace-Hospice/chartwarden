@@ -2,7 +2,7 @@
 // actually called (a regression that deletes a call must fail here, because the unit tests of the callee cannot see it).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it, vi } from "vitest";
 import { collectEnvProblems } from "../src/bootstrap/env";
 import {

@@ -9,7 +9,7 @@ import {
   ACK_EVENT_TYPES,
   ACK_STATUSES,
   ACK_SUPERVISOR_REASON_CODES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

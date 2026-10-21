@@ -1,9 +1,9 @@
-// @wardenx/cost-report — Worksheet F-2 (Statement of Revenues and Operating Expenses) TypeBox schema (Form
+// @chartwarden/cost-report — Worksheet F-2 (Statement of Revenues and Operating Expenses) TypeBox schema (Form
 // CMS-1984-14, Pub 15-2 §4352). F-2 reports operating revenue by source and operating expense, yielding the
 // net income/loss that feeds Worksheet F-1. Money is INTEGER CENTS; no PHI (D18).
 //
 // CMS-CERT: certified against the form + Ch.43 §4352 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet F-2 — statement of revenues and operating expenses. */

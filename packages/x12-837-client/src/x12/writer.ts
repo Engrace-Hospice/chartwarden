@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the shared 837I writer pieces: envelope (ISA/GS/ST … SE/GE/IEA), field validation and
+// @chartwarden/x12-837-client — the shared 837I writer pieces: envelope (ISA/GS/ST … SE/GE/IEA), field validation and
 // the name/address/physician segments. Extracted from the transfer-notice builder so the claim, NOE and NOTR
 // generators emit byte-identical envelopes (ADR-0053 D9, ADR-0037). PURE: no IO, no clock (the caller passes
 // `createdAt`). Every error names the FIELD only, never its value (PHI).

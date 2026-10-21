@@ -1,4 +1,4 @@
-// @wardenx/quality — Hospice Care Index (HCI) COMPOSITE score (§1.1, D2). Pure. No IO.
+// @chartwarden/quality — Hospice Care Index (HCI) COMPOSITE score (§1.1, D2). Pure. No IO.
 //
 // The HCI is the COUNT of the ten indicators whose rate met the CMS threshold for the period (max 10). An
 // indicator suppressed for LOW N counts as NOT-met (only `thresholdMet === true` scores) — the agency had

@@ -19,8 +19,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { buildOutOfBandPayload, buildTimepointWindowAlert } from "@wardenx/hope";
+} from "@chartwarden/auth";
+import { buildOutOfBandPayload, buildTimepointWindowAlert } from "@chartwarden/hope";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -831,7 +831,7 @@ describe("M10 — #45 the recorded timepoint's patient comes from the admission"
 
 // ── #48 — the §4.4 recording gate ─────────────────────────────────────────────────────────────────
 //
-// Every guard exercised below is a `@wardenx/hope` function that shipped in M10-T03 with a unit test
+// Every guard exercised below is a `@chartwarden/hope` function that shipped in M10-T03 with a unit test
 // and ZERO production callers:
 //
 //   assertAdmissionActiveAtTarget   M10_ADMISSION_NOT_ACTIVE          0 callers in apps/backend/src

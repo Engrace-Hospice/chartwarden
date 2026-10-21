@@ -1,4 +1,4 @@
-// @wardenx/audit — Module 36 (Secure Messaging & Alerts) action catalog (M36-T08; §4.6.1 `m36.ts`,
+// @chartwarden/audit — Module 36 (Secure Messaging & Alerts) action catalog (M36-T08; §4.6.1 `m36.ts`,
 // M36 spec §8.1.2).
 //
 // The job-emitted message-integrity + DLQ audit events from M36 §8.1.2 — the events the §4.4 jobs

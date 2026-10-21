@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_check_in_schedule` + `safety_check_in` (M20 §3.3 / §2.2.1, D2/D3/D4). The
+// @chartwarden/db — `safety_check_in_schedule` + `safety_check_in` (M20 §3.3 / §2.2.1, D2/D3/D4). The
 // OBLIGATION and the EVENT, deliberately two tables: the schedule row is what the overdue detector scans
 // and escalates, the check-in row is the clinician's own attestation and is append-only after the 5-minute
 // amendment grace (a correction is a new row with `corrects_check_in_id`, and the original flips to

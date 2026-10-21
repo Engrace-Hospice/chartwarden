@@ -36,7 +36,7 @@ import {
   MEDICATION_QUESTION_UNROUTED_REASONS,
   type ModuleEventContribution,
   TASK_STATUSES,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const uuidString = Type.String({

@@ -7,7 +7,7 @@
 // These interfaces MUST stay structurally identical to M40's; ADR-0011 D1 forbids M40 reading M29's
 // `nppes_provider` table, so the synced snapshot travels ON the event (`provider`). The four M40-syncable
 // fields are `firstName` / `lastName` / `credentials` / `specialtyTaxonomy` (minimum-update, §4.7.1).
-import type { Npi, NppesSyncRunId } from "@wardenx/types";
+import type { Npi, NppesSyncRunId } from "@chartwarden/types";
 
 /** The source-of-truth snapshot M40 applies from (never read from M29's table — ADR-0011 D1). */
 export interface NppesProviderSnapshot {

@@ -1,11 +1,11 @@
-// @wardenx/idg — D10 IDG minutes finalization + §164.526 amendment workflow (M14-T03). Pure.
+// @chartwarden/idg — D10 IDG minutes finalization + §164.526 amendment workflow (M14-T03). Pure.
 //
 // `idg_minutes` is the single per-meeting summary record (§1.1). It is append-only annotation-only while
 // `in_progress`; on adjournment it flips to `final` and the row is immutable (the §3.4 DB CHECK + audit
 // trigger refuses UPDATE of `final` content fields — M14-T02 / mirrors M7 D6). Corrections after `final`
 // never edit the row: they require an `idg_minutes_amendment` row with a reason (D10, the M5 §164.526
 // amendment pattern, W-MIN-01) — request (approver null) → Compliance approval → `m14.minutes.amended`.
-import type { IdgMinutesStatus } from "@wardenx/types";
+import type { IdgMinutesStatus } from "@chartwarden/types";
 import type { IdgSideEffect } from "./effects";
 import { require_ } from "./errors";
 

@@ -1,4 +1,4 @@
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the ADR WORK PANEL (hospice ADR/TPE/QIC PRD, milestone 2a). Reads the
 // case fresh (so the If-Match version is the one the server holds NOW), shows HOW the response due date was
 // reached (request date + the MAC window, any business-day roll-back, and whether that window is verified),
@@ -152,7 +152,7 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
             <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />
           ) : null}
           <Hint>
-            WardenX does not send the response to the MAC yet: file it through the MAC's portal, fax
+            ChartWarden does not send the response to the MAC yet: file it through the MAC's portal, fax
             or mail, then record the filing here with its confirmation.
           </Hint>
           <h3 className="wx-action-title">History</h3>

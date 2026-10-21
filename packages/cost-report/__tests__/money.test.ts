@@ -1,5 +1,5 @@
-import { allocateProportional, fromDecimal, sumCents, toDecimal } from "@wardenx/cost-report";
-// @wardenx/cost-report — M27 money/ratio kernel (D8) pure-domain unit tests.
+import { allocateProportional, fromDecimal, sumCents, toDecimal } from "@chartwarden/cost-report";
+// @chartwarden/cost-report — M27 money/ratio kernel (D8) pure-domain unit tests.
 //
 // The proportional allocator is REGULATORY math: parts must sum EXACTLY to the input total (the CMS
 // step-down "no penny drift" invariant), the largest-remainder split must be deterministic with an

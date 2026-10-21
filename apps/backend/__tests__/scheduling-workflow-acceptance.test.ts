@@ -1,4 +1,4 @@
-import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@wardenx/routing-client";
+import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@chartwarden/routing-client";
 import {
   EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH,
   MATERIALIZE_HORIZON_DAYS,
@@ -6,7 +6,7 @@ import {
   materializeRecurrence,
   parseRrule,
   planFrequencyProposals,
-} from "@wardenx/scheduling";
+} from "@chartwarden/scheduling";
 import { describe, expect, it, vi } from "vitest";
 import {
   SchedulingRouteService,
@@ -23,8 +23,8 @@ import {
 // §7.7 (recurring materialisation + discontinuation cascade), §7.8 (no-show detection → `m17.visit.no_show_detected`),
 // §7.9 (OSRM degraded mode — `scheduling.route_optimization` OFF is the Phase-1 path), and §7.10 (PHI minimisation
 // at the routing boundary, D9) — exercised end-to-end over the in-memory `SchedulingRouteService` (the same backend
-// the §4.1 routes compose over, M17-T07) plus the pure `@wardenx/scheduling` deciders the proposal / recurrence /
-// completion paths drive, the §4.7 ABAC predicates the assignment-write routes bind, and the `@wardenx/routing-client`
+// the §4.1 routes compose over, M17-T07) plus the pure `@chartwarden/scheduling` deciders the proposal / recurrence /
+// completion paths drive, the §4.7 ABAC predicates the assignment-write routes bind, and the `@chartwarden/routing-client`
 // adapter that owns the §25.14 OSRM boundary. Deterministic: no infra, injected clock + id sequence.
 //
 // The route-auth handshake (§4.6/§4.7) status codes wire live in the route layer; each pure machine has its own

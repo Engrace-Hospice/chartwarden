@@ -12,7 +12,7 @@
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findActiveThreadGrant } from "../src/modules/36-messaging/thread-grant/active-grant";
 import { type LiveKit, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";

@@ -7,7 +7,7 @@
 // (`adr.review`, a different person from whoever sent it to review) and record the filing (`adr.submit` + step-up).
 // Each packet change is If-Match so a sign-off is always on the version the reviewer saw.
 import { Type } from "@sinclair/typebox";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { ADR_CHECKLIST_KEYS, ADR_FILING_CHANNELS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

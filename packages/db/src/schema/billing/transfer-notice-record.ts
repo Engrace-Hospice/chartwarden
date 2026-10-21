@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `transfer_notice_record` (M23 Billing-Medicare; migration 0375; retention class `compliance`).
+// @chartwarden/db — `transfer_notice_record` (M23 Billing-Medicare; migration 0375; retention class `compliance`).
 // The Medicare hospice Change of Provider / Transfer Notice the RECEIVING hospice files (TOB 81C/82C, "8xC"),
 // a corrected 8xC (occurrence code 56 + condition code D0) and the 8xD void that removes a transfer submitted in
 // error — CMS Pub. 100-04 ch. 11 §20.1.3 / §20.1.4 (Rev. 12847). Shares the NOE/NOTR lifecycle alphabet

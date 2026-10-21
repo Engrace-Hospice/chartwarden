@@ -2,7 +2,7 @@
 // OpenAPI emitter does not import the auth stack). The request bounds here are loose on purpose: the service owns the
 // real ones (2..10 options, 300/100 characters, plain text only, no duplicates) and answers 422 with field details.
 import { type Static, Type } from "@sinclair/typebox";
-import type { PollDetailView, PollView } from "@wardenx/types";
+import type { PollDetailView, PollView } from "@chartwarden/types";
 import { PollViewSchema, UUID_PATTERN } from "./messaging-typebox";
 
 export { PollViewSchema };

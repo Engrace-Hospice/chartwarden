@@ -1,4 +1,4 @@
-// @wardenx/evv-aggregators — config-driven HTTPS Sandata transport (GAP-028).
+// @chartwarden/evv-aggregators — config-driven HTTPS Sandata transport (GAP-028).
 //
 // Binds the `SandataTransport` port to a real HTTP endpoint chosen by configuration (the composition root passes
 // `SANDATA_API_BASE_URL`; absent => the fail-closed deny transport stays bound). Credentials come from the

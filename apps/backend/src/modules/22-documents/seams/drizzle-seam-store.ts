@@ -25,9 +25,9 @@
 // `ERASED_PATIENT_SENTINEL`). `document_version.uploaded_by_membership_id` stays genuinely NULL
 // (`uploaded_by_kind = 'system_render'`, satisfying the table's own CHECK constraint) — the honest value,
 // not a sentinel, since that column IS nullable for exactly this case.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { DocumentSeamStore, RenderUpsert, RenderedDocumentRow } from "./store";
 
@@ -68,7 +68,7 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
           // Mirrors verified-upload.ts's immutability guard for the identical document/version shape — a
           // held/destroyed document's active version must never move underneath a legal hold or tombstone.
           if (existing.status === "legal_hold" || existing.status === "destroyed_tombstone") {
-            throw new WardenXError(
+            throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
               `document ${existing.id} cannot accept a new rendered version (status: ${existing.status})`,
               409,

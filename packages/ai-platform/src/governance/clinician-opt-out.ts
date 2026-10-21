@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §5.4 / AI Governance §10.3 per-clinician opt-out rules (M32-T03).
+// @chartwarden/ai-platform — §5.4 / AI Governance §10.3 per-clinician opt-out rules (M32-T03).
 //
 // The individual's refusal, sitting UNDER the tenant's opt-in and independent of it. Pure.
 //

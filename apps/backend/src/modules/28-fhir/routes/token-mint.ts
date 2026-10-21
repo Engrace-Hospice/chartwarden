@@ -37,8 +37,8 @@ import {
   buildSessionMint,
   resolveGrantedScopes,
   verifyClientAssertion,
-} from "@wardenx/fhir";
-import type { FhirClientId, FhirClientSessionJti } from "@wardenx/types";
+} from "@chartwarden/fhir";
+import type { FhirClientId, FhirClientSessionJti } from "@chartwarden/types";
 
 import type { FhirBaaStatusView } from "../seams/index";
 import { BAA_NOT_IN_FORCE_CODE, isBaaInForce, isIpAllowed } from "./client-gates";

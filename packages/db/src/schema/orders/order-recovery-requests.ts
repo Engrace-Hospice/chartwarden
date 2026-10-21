@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `order_recovery_request` (F-202, #248; migration 0272). A PENDING attested recovery of a lab order —
+// @chartwarden/db — `order_recovery_request` (F-202, #248; migration 0272). A PENDING attested recovery of a lab order —
 // the two-person control on the duplicate-risk `not_received_by_lab` attestation (M3 break-glass's shape,
 // `bge_cosigner_distinct`, migration 0210): a first person files it, a DIFFERENT person co-signs it (which executes the
 // re-dispatch), or either cancels it, or its 24 h `expires_at` lapses. At most one pending request per order (partial

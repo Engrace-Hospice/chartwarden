@@ -1,4 +1,4 @@
-// @wardenx/db — `consent_revocation` (M39 Consent §3.3 #6). One row per explicit revocation event
+// @chartwarden/db — `consent_revocation` (M39 Consent §3.3 #6). One row per explicit revocation event
 // (§2.2.3, D7): the actor, the reason (≥40 chars + evidence doc when staff-initiated, CHECK-
 // enforced), and the typed-cascade progress. cascade_status / cascade_consumer_status_jsonb are
 // DERIVED columns maintained by the service layer + the revocation-cascade-retry cron (the canonical

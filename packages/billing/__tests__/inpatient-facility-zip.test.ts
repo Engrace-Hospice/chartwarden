@@ -1,6 +1,6 @@
-// @wardenx/billing — value code G8 comes from the facility where the INPATIENT (0655/0656) care was delivered:
+// @chartwarden/billing — value code G8 comes from the facility where the INPATIENT (0655/0656) care was delivered:
 // the facility residence span overlapping those line dates, not merely the patient's latest facility.
-import { type FacilitySpan, facilityPostalCodeForInpatientDates } from "@wardenx/billing";
+import { type FacilitySpan, facilityPostalCodeForInpatientDates } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const NURSING_HOME = "97801"; // long-term residence

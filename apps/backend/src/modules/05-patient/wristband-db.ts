@@ -7,16 +7,16 @@
 // on an outbox event: only its org-salted digest is persisted (`wristband-digest.ts`). Issue / void / supersede
 // are audited by the `patient_wristband` M4 write-audit trigger (which scrubs the digest). No outbox event is
 // emitted: nothing downstream consumes a print.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ConflictError,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   type WristbandIssueReason,
   type WristbandVoidReason,
   parseWristbandPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { mintWristbandPayload, wristbandDigest } from "./wristband-digest";
 import {
@@ -116,7 +116,7 @@ export async function issuePatientWristband(
     const tx = asDb(txRaw);
     const patient = await lockPatient(tx, actor.organizationId, input.patientId);
     if (UNBANDABLE_STATUSES.has(patient.status))
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PATIENT_NOT_BANDABLE",
         `a ${patient.status} patient cannot be issued a wristband`,
         409,
@@ -133,7 +133,7 @@ export async function issuePatientWristband(
         throw new ConflictError(
           "another wristband was printed for this patient first; refresh before printing again",
         );
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WRISTBAND_REASON_INVALID",
         input.reason === "first_issue"
           ? "this patient already has a wristband; choose a reprint reason"

@@ -1,4 +1,4 @@
-// @wardenx/reporting · repositories — the platform-global catalog aggregate: `report_base_catalog`
+// @chartwarden/reporting · repositories — the platform-global catalog aggregate: `report_base_catalog`
 // (report bases → MV + dimension/measure catalog + drilldown template), `report_metric_catalog` (the
 // metric registry), and `materialized_view_metadata` (the `report_mv.*` MV registry + refresh
 // telemetry) (M33 §3.3–§3.4). All three are PLATFORM-scoped (NO organization_id; on the check-tenancy
@@ -6,7 +6,7 @@
 // WRITES are platform-ops / migration only (`withPlatformContext`). The translator's spec-validator
 // reads the base catalog to whitelist dimensions/measures (D4); the MV-refresh worker stamps the
 // telemetry.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 

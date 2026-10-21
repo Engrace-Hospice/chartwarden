@@ -8,8 +8,8 @@
 //    answer: the same 404. Nothing about existence leaks and the second DELETE of the same id is that same 404 (the row is gone).
 //  * The owner's list spans every organisation the owner is signed into (it is their own data); the admin's is bounded to sessions bound to the
 //    admin's organisation, and an unknown or foreign user is an empty list, not an error.
-import { NotFoundError } from "@wardenx/types";
-import type { DeviceDto, DeviceListDto, DeviceRevokeDto } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
+import type { DeviceDto, DeviceListDto, DeviceRevokeDto } from "@chartwarden/types";
 import { deviceLabel } from "./device-label";
 import type {
   SessionDeviceActor,

@@ -10,8 +10,8 @@
 // uses (passed in as a closure over the request), so a server-built body widens nothing. Flag off (`messaging.medication_questions`
 // AND `messaging.tasks`): POST is the uniform 404; the options read answers 200 `{enabled:false}`. Org and actor are
 // always the request context. The Idempotency-Key header is enforced by the shared guard and replayed by the M1 middleware.
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
-import type { RichBody } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { RichBody } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   MedicationQuestionActorRef,

@@ -23,8 +23,8 @@
 // proven correct without the live destruction-role stack. So the sweep surfaces the exact set that is due and the
 // compliance officer's certificate (or a future policy-approved batch eraser) removes it. Legal-held documents are
 // never reported as due.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";

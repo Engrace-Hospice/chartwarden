@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `hospice_rate_table` (M23 Billing-Medicare; F-210). The TENANT-ENTERED, effective-dated hospice
+// @chartwarden/db — `hospice_rate_table` (M23 Billing-Medicare; F-210). The TENANT-ENTERED, effective-dated hospice
 // per-diem rate set the claim assembler prices HIPPS segments and the SIA add-on from. One row = one VERSION of one
 // provider entity's rates over `[effective_from, effective_to]` (NULL `effective_to` = open). ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS, ENABLED + FORCED). No PHI.

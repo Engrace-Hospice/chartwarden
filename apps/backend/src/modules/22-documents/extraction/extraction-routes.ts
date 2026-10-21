@@ -15,15 +15,15 @@ import { type Static, Type } from "@sinclair/typebox";
 // Every route also rides the REAL Authorization Contract (`requirePermission` on M22's §4.6 `intake.*` keys,
 // M3). Org binding is server-side (`request.context`, never the body). The DocLens pipeline service is
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
-import { requirePermission } from "@wardenx/auth";
-import { DegradedError, UnauthorizedError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag";
 import type { DocLensIntakeEnqueue } from "./intake-queue";
 import { type DocLensPipelineService, extractionDisabled } from "./pipeline-service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface DocLensRouteDeps {
@@ -79,7 +79,7 @@ export function registerDocLensExtractionRoutes(
   /**
    * §7.1 W1 / depends-on-32 — the feature-flag gate. When `documents.doclens` is OFF (Phase-1 default for
    * every tenant) we set `Retry-After: 0` and throw 503 EXTRACTION_DISABLED BEFORE the handler runs, so the
-   * M32 capability is never reached. The error handler renders the WardenXError envelope and preserves the
+   * M32 capability is never reached. The error handler renders the ChartWardenError envelope and preserves the
    * header already set on the reply.
    */
   const requireDocLensEnabled: PreHandler = async (request, reply) => {

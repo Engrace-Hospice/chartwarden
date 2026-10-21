@@ -2,7 +2,7 @@
 // Exercises the Fastify ↔ Better Auth bridge with a STUB handler (no DB / no better-auth), proving the
 // request/response plumbing: method+path+body reach the handler; status, headers, body, and multiple
 // Set-Cookie headers come back. The real handler is verified end-to-end in the live-PG lane (AUTH-T06).
-import { registerIdentityAuth } from "@wardenx/auth";
+import { registerIdentityAuth } from "@chartwarden/auth";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 

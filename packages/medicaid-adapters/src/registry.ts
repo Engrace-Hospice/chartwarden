@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — the per-state adapter registry (D1, §4.5). Built at boot from the M40
+// @chartwarden/medicaid-adapters — the per-state adapter registry (D1, §4.5). Built at boot from the M40
 // state-program catalog; selection is per-claim by the patient's state (asOf service-date). Always
 // registers the Oregon reference adapter + the WA/ID/CA/NV Phase-1 deny-stubs, then validates that every
 // ACTIVE M40 catalog entry references a registered adapter vendor (fail-closed at boot). PURE: no I/O.

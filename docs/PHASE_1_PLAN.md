@@ -65,7 +65,7 @@ Definition of Done (see roadmap index). Deps shown are the architecture §20 bui
 ### Wave E — Clinical depth (assessments → meds)
 | M | Module | Deps | Phase-1 scope |
 |---|---|---|---|
-| 9 | Clinical Assessments Suite | 8,38 | PPS/FAST/PAINAD/ESAS routine charting. Mobile offline drafts in `@wardenx/mobile-offline` (manifest-exempt). |
+| 9 | Clinical Assessments Suite | 8,38 | PPS/FAST/PAINAD/ESAS routine charting. Mobile offline drafts in `@chartwarden/mobile-offline` (manifest-exempt). |
 | 10 | HOPE Engine | 8,9,36,38 | HOPE is live — **mandatory CMS submission**. iQIES submission path. |
 | 11 | Orders | 6,8,36,38,40 | Medication + non-med orders, verbal-order co-sign. |
 | 12 | DoseSpot Integration | 5,11,38,40 | Full integration, **no EPCS at launch** (deferred to Phase 3 pending DEA path). |

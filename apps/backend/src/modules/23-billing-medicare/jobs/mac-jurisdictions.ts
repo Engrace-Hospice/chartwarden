@@ -9,8 +9,8 @@
 // union is built the way every other M23 cron fans out: enumerate the active orgs through the audited platform
 // enumerator, then read each org's rows under its own `withOrgContext` envelope. Only the jurisdiction code
 // is selected — never the cipher, client id or submitter ids.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { MacJurisdictionListPort } from "./m23-jobs";
 
 /** The active-org fan-out unit (structurally the M23 `ActiveOrgListPort`). */

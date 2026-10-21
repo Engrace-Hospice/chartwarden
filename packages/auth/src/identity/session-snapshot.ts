@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — read a Better Auth session as a minimal snapshot (M2, AUTH-T03, ADR-0033).
+// @chartwarden/auth · identity — read a Better Auth session as a minimal snapshot (M2, AUTH-T03, ADR-0033).
 //
 // The vendor boundary for session reads: wraps `auth.api.getSession` + `fromNodeHeaders` so the rest of
 // the system never imports better-auth. The composition root feeds this into the authenticate hook

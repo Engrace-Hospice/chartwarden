@@ -18,10 +18,10 @@
 // exact claim a CoP 418.100(c)(2) survey reads — only to close it a tick later. It is cancelled with a
 // system reason, which is the truthful record, emits nothing (M36 never added the actor), and the gap it
 // leaves is the coverage-gap watchdog's to report.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, MembershipId } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, MembershipId } from "@chartwarden/types";
 import { and, asc, eq, lte } from "drizzle-orm";
 import { type OnCallShiftFacts, activateShift, completeShift } from "../roster/shift-machine";
 import type { WriteOutboxPort } from "../routes/write-service";

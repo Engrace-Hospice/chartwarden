@@ -18,7 +18,7 @@ import type {
   HopeTimepointStatus,
   PatientId,
   ProviderEntityId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The data port the §2 / D10 seam providers compose over. Methods return read-only DTO shapes (never

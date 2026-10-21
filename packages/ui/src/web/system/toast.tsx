@@ -1,4 +1,4 @@
-// @wardenx/ui web — the shared toast/notification region (UI-010). Every app-shell composition root
+// @chartwarden/ui web — the shared toast/notification region (UI-010). Every app-shell composition root
 // mounts one `ToastProvider`; any descendant calls `useToast().show(...)` instead of hand-rolling a
 // local `role="status"`/`role="alert"` paragraph next to a form (the M5 address-save / M2 staff
 // remove-member containments this replaces). A stack renders fixed to the viewport corner; each

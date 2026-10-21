@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the SUD-treatment medication list (M12 spec §6 Part 2 table / §7.8, 42 CFR Part 2).
+// @chartwarden/dosespot — the SUD-treatment medication list (M12 spec §6 Part 2 table / §7.8, 42 CFR Part 2).
 //
 // ONE home for the list. `medication_order.is_sud_treatment` is derived from it on every draft write
 // (M12 `dosespot-route-service-db.ts`) and the 0340 backfill migration's SQL list is asserted equal to it by

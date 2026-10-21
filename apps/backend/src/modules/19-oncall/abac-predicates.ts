@@ -45,8 +45,8 @@ import {
   type AbacContext,
   type AbacTarget,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
-import type { MembershipId, OncallShiftDiscipline, TriageEscalationTier } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { MembershipId, OncallShiftDiscipline, TriageEscalationTier } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import type { TriageActorDiscipline } from "./lifecycle/protocol";
 
@@ -188,7 +188,7 @@ export function triageDisciplineForRoleKeys(
 }
 
 /** M2 session classes that are an external triage VENDOR operator's session (ADR-0026 / §8.3.1). */
-/** The canonical list (@wardenx/auth), not a local copy — see the F-030 note in M31's predicates. */
+/** The canonical list (@chartwarden/auth), not a local copy — see the F-030 note in M31's predicates. */
 export const VENDOR_SESSION_CLASSES = AUTH_VENDOR_SESSION_CLASSES;
 
 /** M2 session classes that are a patient/caregiver PORTAL session (§4.1 row 36). Canonical list. */
@@ -293,7 +293,7 @@ export interface OncallAbacPorts {
   }): Promise<boolean>;
 }
 
-/** The M39 surface M19 calls — structurally typed so no `@wardenx/consent` import edge is taken (M16 §7.13). */
+/** The M39 surface M19 calls — structurally typed so no `@chartwarden/consent` import edge is taken (M16 §7.13). */
 interface ConsentEvaluatorShape {
   evaluate(args: {
     organizationId: string;

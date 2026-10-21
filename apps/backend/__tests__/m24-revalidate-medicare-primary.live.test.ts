@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
@@ -400,7 +400,7 @@ describe.skipIf(!DB_URL)(
     /** Run `fn` inside a real `withOrgContext`-shaped transaction for the given org — `runMedicaidRevalidate`
      *  expects the tx it receives to already carry `app.org_id`. */
     async function withTx<T>(orgId: string, fn: (tx: never) => Promise<T>): Promise<T> {
-      const { withOrgContext } = await import("@wardenx/tenancy");
+      const { withOrgContext } = await import("@chartwarden/tenancy");
       return withOrgContext(handle.db, { organizationId: orgId, userId: "" }, (tx) =>
         fn(tx as never),
       );

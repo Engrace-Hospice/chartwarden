@@ -60,7 +60,7 @@ describe("M29 adapter-mandate compliance (§8.5, ARCHITECTURE §25.14)", () => {
   it("§8.5.1 — no source imports the M27-owned Xero / Gusto adapter packages directly", () => {
     const offenders = files.filter((f) =>
       importSpecifiers(readFileSync(f, "utf8")).some(
-        (s) => s === "@wardenx/xero-client" || s === "@wardenx/gusto-client",
+        (s) => s === "@chartwarden/xero-client" || s === "@chartwarden/gusto-client",
       ),
     );
     expect(offenders).toEqual([]);
@@ -74,9 +74,9 @@ describe("M29 adapter-mandate compliance (§8.5, ARCHITECTURE §25.14)", () => {
   });
 
   it("§8.5.4 — no source deep-imports another module's Drizzle schema (seams + outbox only)", () => {
-    // The db barrel (`@wardenx/db`, `@wardenx/db/schema`) is legal; a deep reach into a NAMED foreign
+    // The db barrel (`@chartwarden/db`, `@chartwarden/db/schema`) is legal; a deep reach into a NAMED foreign
     // per-module schema dir is the adapter-mandate breach.
-    const forbidden = /@wardenx\/db\/schema\/(?!external-interfaces)[a-z]/;
+    const forbidden = /@chartwarden\/db\/schema\/(?!external-interfaces)[a-z]/;
     const offenders = files.filter((f) =>
       importSpecifiers(readFileSync(f, "utf8")).some((s) => forbidden.test(s)),
     );

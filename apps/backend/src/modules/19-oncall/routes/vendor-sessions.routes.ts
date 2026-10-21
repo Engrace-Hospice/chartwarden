@@ -25,7 +25,7 @@
 //
 // None of these is the binder's job. The seam writes the binding; proving the vendor may HAVE one is
 // this module's, because this module owns the vendor row and the policy.
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { actorOf } from "./actor";

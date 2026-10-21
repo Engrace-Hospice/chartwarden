@@ -2,9 +2,9 @@
 // five remaining §4.8 crons. ORG-scoped, caller-owned `withOrgContext` tx — this file never opens its own
 // tenancy envelope (`watchdog-workers.ts` owns that), and every read is RLS-filtered to that org on top of
 // the explicit `organization_id` predicate.
-import { type DbClient, schema } from "@wardenx/db";
-import type { CensusAdmissionFact, CensusIncidentCounts } from "@wardenx/inpatient";
-import type { IpuCensusSnapshotPayload } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { CensusAdmissionFact, CensusIncidentCounts } from "@chartwarden/inpatient";
+import type { IpuCensusSnapshotPayload } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type {
   ActiveRestraintFact,

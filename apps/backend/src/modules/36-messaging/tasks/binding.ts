@@ -4,8 +4,8 @@
 // a kill switch = off), cached a few seconds per org like clinical links and SBAR. The care-team seam is read lazily and
 // only on the offboarding path. Everything is built from ports so the routes (S2) and the revocation consumer share one
 // service and one store.
-import type { DbClient } from "@wardenx/db";
-import type { CareTeamProvider } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { CareTeamProvider } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import type { HintOutboxPort } from "../message-hint-events";
 import { cacheFlagRead } from "../presence/binding";

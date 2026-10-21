@@ -10,7 +10,7 @@
 // announced at the event's version (escalated and assigned to the recipient / still open), else nobody is alerted; a recipient
 // who can no longer see the channel (or, for the new assignee, is no longer qualified) is skipped with an id-only warn. A lookup
 // ERROR is rethrown so the outbox retries and dead-letters; an alert is never dropped on a blip.
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

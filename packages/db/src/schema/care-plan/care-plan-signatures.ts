@@ -1,4 +1,4 @@
-// @wardenx/db — `care_plan_signature` (M7 §3.3). One row per signer attestation on a care_plan_version
+// @chartwarden/db — `care_plan_signature` (M7 §3.3). One row per signer attestation on a care_plan_version
 // (the D5 quorum is satisfied when every requiredSignerSet role has a row). PHI-bearing → three-column
 // tenancy rule. membershipId references M1 `membership` (the signing actor). One signature per
 // (version, signer_role) — the partial of the quorum. Structural row, no free-text denylist (§3.5).

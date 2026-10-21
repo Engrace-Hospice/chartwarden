@@ -24,8 +24,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+} from "@chartwarden/auth";
+import type { EscalationRouteAnswer, EscalationRouter } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

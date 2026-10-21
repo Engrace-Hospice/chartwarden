@@ -1,4 +1,4 @@
-// @wardenx/types — Module 9 (Clinical Assessments Suite) leaf contracts (M9-T01).
+// @chartwarden/types — Module 9 (Clinical Assessments Suite) leaf contracts (M9-T01).
 //
 // Per ADR-0005 D1/D2 (finding M09-F01) the cross-module CONTRACTS live in this leaf package: the M9
 // spec's references to `packages/types/seams/assessments.ts` + `packages/domain/assessments/*`
@@ -9,7 +9,7 @@
 // M9-T02/T03), the §2.4 `m9.*` outbox event names, the §4.9 typed alert payload, and the two §4.7
 // reader seams (`LatestAssessmentProvider`, `ScaleSeriesProvider`) M7/M10/M14/M22/M28/M32 consume.
 //
-// The per-scale `data` discriminated unions + scoring live in the `@wardenx/assessments` FEATURE
+// The per-scale `data` discriminated unions + scoring live in the `@chartwarden/assessments` FEATURE
 // package (M9-T03); the seam IMPLEMENTATIONS + their M1-registry wiring land in M9-T04; routes in
 // M9-T05; the full outbox publication in M9-T06.
 
@@ -19,7 +19,7 @@ import type { AdmissionId, DateRange, OrgId, PatientId, ProviderEntityId } from 
 import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 import type { ClinicalLinkSource, ClinicalLinkSummary } from "./clinical-link";
 
-// ── Assessment-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──
+// ── Assessment-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──
 export type ClinicalAssessmentId = string;
 export type AssessmentCosignatureId = string;
 export type SignificantChangeEventId = string;

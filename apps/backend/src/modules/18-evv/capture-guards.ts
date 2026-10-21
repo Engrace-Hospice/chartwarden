@@ -12,7 +12,7 @@
 //
 // The only exemption is the explicit, typed {@link EvvSystemCapture} marker. It is a discriminated-union
 // member, never inferred from a role string, and a route can never construct one from request data.
-import { ForbiddenError, ValidationError } from "@wardenx/types";
+import { ForbiddenError, ValidationError } from "@chartwarden/types";
 import type { EvvAbacResolver } from "./abac-predicates";
 
 /**

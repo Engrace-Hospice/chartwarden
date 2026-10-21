@@ -1,4 +1,4 @@
-import { abacRegistry, registerPredicate } from "@wardenx/auth";
+import { abacRegistry, registerPredicate } from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/seams/caseload-provider.ts — M5-T07 the CaseloadProvider seam
 // (M5 spec §4.1, §7.5). CLOSES the M3 boot-gate deny-stub: M3 declared `CaseloadProvider` + the
 // `caseload_membership` ABAC predicate that resolves through it; M5 registers the REAL resolver here
@@ -15,7 +15,7 @@ import { abacRegistry, registerPredicate } from "@wardenx/auth";
 // `m17.visit.assigned`/`.unassigned`-fed shift cache at exactly this `CaseloadStore` seam — the union
 // point this comment always named. Without that client (slice/test boots), the store stays Phase-1:
 // `patient_assignment` alone.
-import type { CaseloadProvider } from "@wardenx/types";
+import type { CaseloadProvider } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 
 /** The data port the CaseloadProvider composes over (Drizzle over patient_assignment in prod). */

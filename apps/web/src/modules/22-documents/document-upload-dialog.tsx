@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, StatusPill, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, StatusPill, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the staff document upload dialog (#91).
 //
 // THE STAFF APP HAD NO FILE INPUT. `grep -rn 'type="file"' apps/web/src apps/admin/src

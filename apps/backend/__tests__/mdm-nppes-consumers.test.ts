@@ -1,4 +1,4 @@
-import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@wardenx/mdm";
+import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@chartwarden/mdm";
 import { describe, expect, it } from "vitest";
 // apps/backend/__tests__/mdm-nppes-consumers.test.ts — M40-T09's M29 NPPES-sync consumers (M40 spec
 // §4.7, §7.11–7.12).

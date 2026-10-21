@@ -1,4 +1,4 @@
-import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import type { AlertEmitter, AlertSeverity } from "@chartwarden/messaging";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 
 const EVENT_TYPES = [

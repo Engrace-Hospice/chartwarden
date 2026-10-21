@@ -1,4 +1,4 @@
-// @wardenx/reporting — Reporting & Dashboards (Module 33).
+// @chartwarden/reporting — Reporting & Dashboards (Module 33).
 //
 // Public surface of the package. M33 is the tenant-facing reporting plane: the whitelisted spec→SQL
 // report-builder translator (D4 — no raw SQL surface), saved views / dashboards / tiles, scheduled

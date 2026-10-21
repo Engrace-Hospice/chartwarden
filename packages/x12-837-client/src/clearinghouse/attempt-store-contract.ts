@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the SubmissionAttemptStore CONTRACT cases. Framework-free like ./conformance.ts: a case
+// @chartwarden/x12-837-client — the SubmissionAttemptStore CONTRACT cases. Framework-free like ./conformance.ts: a case
 // fails by throwing, so the same list runs against the in-memory store (attempt-store.test.ts) and against the
 // durable Postgres store (the backend's live suite, as the NOBYPASSRLS app role). A store is "durable" only when
 // every case passes against it.

@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — TOTP step-up verifier (M2 §4.4, D9).
+// @chartwarden/auth · identity — TOTP step-up verifier (M2 §4.4, D9).
 //
 // The other half of the step-up `MfaVerifier`. `webauthn-verifier.ts` next door does the WebAuthn
 // factor cryptographically; until this landed, the TOTP factor had only `createCodeVerifier` — a slice
@@ -24,8 +24,8 @@
 // consecutive failures inside the window) is a different policy from the plugin's sign-in lockout.
 // Borrowing the endpoint would have meant inheriting both behaviours to get a boolean.
 import { createOTP } from "@better-auth/utils/otp";
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import { symmetricDecrypt } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { isSealed, loadTwoFactorKey, open } from "./two-factor-crypto";

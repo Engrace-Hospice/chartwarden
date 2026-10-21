@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the ASC X12N 837I (005010X223A2) for a Medicare hospice Change of Provider /
+// @chartwarden/x12-837-client — the ASC X12N 837I (005010X223A2) for a Medicare hospice Change of Provider /
 // Transfer Notice (TOB 81C/82C), its date correction, and the 8xD void that removes a transfer submitted in
 // error. PURE string building (ADR-0037: X12 is TypeScript in this M23-owned package); no network, no clock
 // (the caller passes `createdAt`).
@@ -17,7 +17,7 @@
 //     2010BA REF, 2010BB REF, 2000C HL/PAT, 2010CA, 2300 CN1, 2300 REF payer claim control #, 2310A REF must
 //     NOT be present; NM108 "PI" on the payer; BHT02 "00"; ISA12 "00501"; one ST-SE per GS-GE per ISA-IEA.
 // The X12 TR3 itself is licensed; segment order and element positions below follow the public payer
-// crosswalks already cited in `@wardenx/billing` `claim-codes/x12-segments.ts`.
+// crosswalks already cited in `@chartwarden/billing` `claim-codes/x12-segments.ts`.
 import { MBI_PATTERN } from "../eligibility/build-270";
 import {
   NAME_LIMIT,
@@ -51,7 +51,7 @@ export class TransferNotice837iBuildError extends X12BuildError {
   }
 }
 
-/** The facts half — structurally the `TransferNoticeDocument837i` `@wardenx/billing` hands the gateway. */
+/** The facts half — structurally the `TransferNoticeDocument837i` `@chartwarden/billing` hands the gateway. */
 export interface TransferNoticeDocumentInput {
   readonly controlNumber: string;
   readonly action: "original" | "correction" | "void";

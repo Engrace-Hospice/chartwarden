@@ -1,4 +1,4 @@
-// @wardenx/db — M26 Cap Management §3.3 — the per-beneficiary + inpatient accrual ledger. Each aggregate
+// @chartwarden/db — M26 Cap Management §3.3 — the per-beneficiary + inpatient accrual ledger. Each aggregate
 // roll-up (cap_beneficiary_accrual one-per-(org,period,patient); cap_inpatient_accrual one-per-(org,period))
 // is fed by an append-only line table. The two line tables are LIST-partitioned on cap_period_id (§3.2) so a
 // settled cap year can be ATTACH/DETACH-archived without disturbing live data. The Drizzle pgTable carries

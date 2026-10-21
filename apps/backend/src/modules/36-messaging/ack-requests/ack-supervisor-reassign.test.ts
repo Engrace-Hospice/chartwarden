@@ -1,7 +1,7 @@
 // ADR-0078 - the reassign picker (G-6) and the supervisor reassign (G-2) over the in-memory store: who sees which colleagues, what a
 // supervisor may and may not do, the audit trail, and that nothing is acknowledged or disclosed. The route-level permission is covered in
 // routes/ack-supervisor-routes.test.ts; the database guard in apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts.
-import { ACK_REASSIGN_CANDIDATE_CAP } from "@wardenx/types";
+import { ACK_REASSIGN_CANDIDATE_CAP } from "@chartwarden/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type AckService, type AckServiceDeps, createAckService } from "./ack-service";
 import { type MemoryAckStore, createMemoryAckStore } from "./ack-store-memory";

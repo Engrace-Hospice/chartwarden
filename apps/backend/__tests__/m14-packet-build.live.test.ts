@@ -27,8 +27,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
+import { createDbClient } from "@chartwarden/db";
+import { registerPlatformJob, withOrgContext } from "@chartwarden/tenancy";
 import { Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import IORedis from "ioredis";

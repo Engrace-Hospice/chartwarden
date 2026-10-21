@@ -1,5 +1,5 @@
 // apps/web/src/modules/31-portal - shared presentation helpers for the M31 staff surfaces (GAP-054).
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 const ACCOUNT_TONE: Record<string, StatusTone> = {
   active: "success",

@@ -1,8 +1,8 @@
 // M36 WP 3.4 - complete or cancel a task. A clinical task needs a reason CODE (no free text); the submit is blocked
 // here and refused by the server alike. A non-clinical task may close with no reason.
-import { TASK_CLOSE_REASONS } from "@wardenx/types";
-import type { TaskDto } from "@wardenx/types";
-import { Button, Modal } from "@wardenx/ui";
+import { TASK_CLOSE_REASONS } from "@chartwarden/types";
+import type { TaskDto } from "@chartwarden/types";
+import { Button, Modal } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import {

@@ -29,7 +29,7 @@
 -- unpinned, and `sessionPinnedPatientId` then reads it as not pinned. Confirmed by insert, not inferred.
 -- Every `?` test is now wrapped in `COALESCE(scope,'{}'::jsonb)`, which yields false rather than NULL.
 --
--- The app-layer mirror (`isSessionScopeValid`, @wardenx/auth) never had this hole — it tests
+-- The app-layer mirror (`isSessionScopeValid`, @chartwarden/auth) never had this hole — it tests
 -- `typeof scope?.patientId === "string"`, which is false for a null scope. The defense-in-depth layer
 -- was the strict one and the DB floor was the loose one, which is the opposite of how that pair is
 -- meant to work and is why the gap survived: anything going through the auth layer was fine.

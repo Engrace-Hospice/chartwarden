@@ -5,9 +5,9 @@
 // M4 owns `legal_hold`; this module reaches it only through the injected `MessageGovernanceHoldPort` (bound in apps/backend/src/index.ts to
 // the transaction-scoped functions in 04-audit/messaging-hold-workflow.ts), so apply and release write the same row, audit event and
 // outbox payload as M4's own routes.
-import type { AuditContext, AuditQuery } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { AuditContext, AuditQuery } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ApplyMessageLegalHoldRequest,
   MESSAGE_LEGAL_HOLD_REASON_MIN_LENGTH,
@@ -23,8 +23,8 @@ import {
   type RetentionClassDto,
   type RetentionOverviewDto,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import {
   type ActiveMessageHold,
@@ -341,11 +341,11 @@ export function createRetentionGovernanceService(deps: RetentionGovernanceDeps) 
       return inTx(actor, async (tx) => {
         const row = await requireHold(tx, actor.organizationId, id);
         if (row.status === "released") {
-          throw new WardenXError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
+          throw new ChartWardenError("ALREADY_RELEASED", `legal_hold ${id} is already released`, 409);
         }
         const eligible = await eligibleOnRelease(tx, actor.organizationId, row);
         if (eligible !== body.confirmed_eligible_count) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             RELEASE_PREVIEW_STALE_CODE,
             "the number of messages this release makes eligible changed; review the preview again",
             409,

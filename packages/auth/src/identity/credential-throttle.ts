@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — the §5.3.1 brute-force / credential-stuffing guard (AC-05).
+// @chartwarden/auth · identity — the §5.3.1 brute-force / credential-stuffing guard (AC-05).
 //
 // WHAT WAS MISSING. SECURITY_HARDENING §5.3.1 specifies a per-USERNAME failed-attempt limit and a
 // per-IP failed-attempt limit on login. Neither existed. The only `lockout` in the codebase was
@@ -22,7 +22,7 @@
 // successful sign-in. NIST 800-63B §5.2.2 prefers throttling to hard lockout for this reason; the
 // shape here is throttling with a floor, which satisfies §5.3.1's intent without an unlock backlog.
 import { createHash } from "node:crypto";
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /**
  * Failed-attempt counters. `recordFailure` arms the key's expiry on the FIRST failure of a window
@@ -110,7 +110,7 @@ export interface CredentialThrottle {
  * `reply.code(429).send({error: "..."})` — that flat shape is GAP-090, and this is a new surface.
  * The `Retry-After` header is set by the caller, which owns the reply.
  */
-export class CredentialThrottleError extends WardenXError {
+export class CredentialThrottleError extends ChartWardenError {
   constructor(readonly retryAfterSeconds: number) {
     super("TOO_MANY_FAILED_ATTEMPTS", "too many failed sign-in attempts — try again later", 429);
     this.name = "CredentialThrottleError";

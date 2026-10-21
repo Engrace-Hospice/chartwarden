@@ -7,12 +7,12 @@
 // `getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId)` (the M6 Drizzle store answers
 // real rows under the consumer's ambient request context / RLS).
 //
-// WHAT THE SEAM CAN AND CANNOT ANSWER (verified against @wardenx/types §4.7):
+// WHAT THE SEAM CAN AND CANNOT ANSWER (verified against @chartwarden/types §4.7):
 //   · provider_entity_id — carried by AdmissionSummary → resolved here.
 //   · location_id — carried by NO published seam today. AdmissionSummary and AdmissionCensusEntry
 //     expose only providerEntityId; the M5 patient spine has a `location_id` column but PatientIdentity
 //     (the only M5 read seam) carries neither PE nor location. Extending AdmissionSummary is an
-//     M6 + @wardenx/types change outside this module. Until a seam carries it, `location_id` stays
+//     M6 + @chartwarden/types change outside this module. Until a seam carries it, `location_id` stays
 //     NULL — the row is deliberately UNSITED for location rather than an invented value.
 //
 // FALLBACK. When the seam cannot answer — deny-stub (NotImplementedError), unregistered seam
@@ -25,10 +25,10 @@
 //
 // TENANT/PATIENT GUARD. The summary's organizationId/patientId must match the caller's — a mismatch
 // (caller sent another patient's admission id) resolves UNSITED rather than mis-siting the row.
-import type { AdmissionSummary } from "@wardenx/types";
+import type { AdmissionSummary } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
-/** The minimal M39 surface this file calls — structurally typed so M9 takes no `@wardenx/consent`
+/** The minimal M39 surface this file calls — structurally typed so M9 takes no `@chartwarden/consent`
  *  import edge (the M7 `seams/drizzle-store.ts` / M16 `ConsentEvaluatorShape` precedent). */
 interface ConsentEvaluatorShape {
   evaluate(args: {

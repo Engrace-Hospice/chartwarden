@@ -1,6 +1,6 @@
 // M36 WP 3.5 - every word the handoff UI shows, in one place. PROVISIONAL pending clinical-lead review (no sign-off is
 // recorded): change the text here, never the codes. Handoffs never page anyone; the notices below say so plainly.
-import type { HandoffItemKind, HandoffItemState, HandoffState } from "@wardenx/types";
+import type { HandoffItemKind, HandoffItemState, HandoffState } from "@chartwarden/types";
 
 export const HANDOFF_NOTICE =
   "Handoffs do not page anyone. Until the receiver accepts an item, you stay responsible for it.";

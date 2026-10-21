@@ -3,7 +3,7 @@
 // store, with a genuinely signed body whose whitespace differs from JSON.stringify(parsed) - the case the old
 // `JSON.stringify(request.body)` fallback got wrong.
 import { createHmac } from "node:crypto";
-import type { StripeWebhookEventStore } from "@wardenx/subscription-billing";
+import type { StripeWebhookEventStore } from "@chartwarden/subscription-billing";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildM35WebhookIngest } from "../src/modules/35-subscription/billing-runtime/webhook-ingest";

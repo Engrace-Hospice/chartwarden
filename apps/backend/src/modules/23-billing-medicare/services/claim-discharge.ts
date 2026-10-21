@@ -20,7 +20,7 @@ import {
   type TypeOfBill,
   deriveDischargeClaimCodes,
   deriveTypeOfBill,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import type { AdmissionContext } from "./claim-assembly-types";
 
 const PLACES: readonly string[] = ["home", "facility", "unknown"];

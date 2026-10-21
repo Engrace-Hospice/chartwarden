@@ -237,7 +237,7 @@ The M36 Socket.IO client publishes events on `org:<orgId>` rooms. M29 subscribes
 // apps/web/src/modules/29-external-interfaces/_shared/hooks/use-realtime-inbox.ts
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSocket } from '@wardenx/foundation/realtime'
+import { useSocket } from '@chartwarden/foundation/realtime'
 
 const REFRESH_EVENTS = [
   'm29.hl7_inbound_proposal.created',
@@ -489,7 +489,7 @@ import { useRequestRotation, useApproveRotation, useExecuteRotation } from '../_
 import { useStepUp } from '../_shared/hooks/use-step-up'
 import { RationaleTextArea } from '../_shared/components/RationaleTextArea'
 import { useToast } from '@/components/ui/toast'
-import { hasPermission, useCurrentUser } from '@wardenx/foundation/auth-client'
+import { hasPermission, useCurrentUser } from '@chartwarden/foundation/auth-client'
 
 export function CredentialRotationCard({ feedId }: { feedId: string }) {
   const { data: activeCred } = useFeedActiveCredential(feedId)
@@ -701,7 +701,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useSyncRuns, useTriggerSync, useProviderByNpi } from '../_shared/hooks/use-nppes-sync'
 import { useStepUp } from '../_shared/hooks/use-step-up'
-import { useCurrentUser, hasPermission } from '@wardenx/foundation/auth-client'
+import { useCurrentUser, hasPermission } from '@chartwarden/foundation/auth-client'
 
 export function NppesAdminPage() {
   return (

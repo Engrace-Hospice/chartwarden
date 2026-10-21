@@ -1,4 +1,4 @@
-// @wardenx/admin-ui-shell — current-tenant context for the platform-ops console (M34 §3.1/§5.1).
+// @chartwarden/admin-ui-shell — current-tenant context for the platform-ops console (M34 §3.1/§5.1).
 // The platform-ops tenant routes are keyed by `:orgSlug` (e.g. `/tenants/:orgSlug/onboarding`). The
 // shell reads that slug once, at the route boundary, and publishes it through React context so every
 // nested tenant surface (overview cards, support-session banner, export queues) resolves the same

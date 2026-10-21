@@ -1,4 +1,4 @@
-// @wardenx/messaging — alert outcome computation (M36-T04, spec §2.4.3).
+// @chartwarden/messaging — alert outcome computation (M36-T04, spec §2.4.3).
 //
 // Roll the settled per-(recipient × channel) deliveries up into the parent alert's terminal
 // outcome (§2.4.3): `delivered` when the in-app floor reached every recipient and nothing

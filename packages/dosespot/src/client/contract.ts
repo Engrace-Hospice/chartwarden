@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the typed DoseSpot adapter surface (M12-T06, spec §2.5 / §4.10 / D5). M12
+// @chartwarden/dosespot — the typed DoseSpot adapter surface (M12-T06, spec §2.5 / §4.10 / D5). M12
 // (`apps/backend/src/modules/12-dosespot`) and the `transmit-newrx` / `patient-sync` workers consume ONLY
 // these eight typed methods and never import an HTTP client for DoseSpot; `packages/dosespot/src/client/` is
 // the only place allowed to construct a request to a DoseSpot URL (the dependency-cruiser vendor-adapter rule,

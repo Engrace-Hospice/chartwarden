@@ -1,4 +1,4 @@
-// @wardenx/reporting · export — the PDF export render-request handler (M33 §4.8 `report.export_render` / D10).
+// @chartwarden/reporting · export — the PDF export render-request handler (M33 §4.8 `report.export_render` / D10).
 //
 // The body of the `report.export_render` worker for `format=pdf`: gate the resolved row count against the §4.8
 // PDF cap (≤ 5000 rows — Puppeteer paginates M33's printable HTML template), then emit the §1.1

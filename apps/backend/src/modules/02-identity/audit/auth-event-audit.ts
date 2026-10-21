@@ -1,18 +1,18 @@
 // apps/backend/src/modules/02-identity/audit/auth-event-audit.ts — the M4-backed sink for the M2 §8.1
 // authentication trail (GAP-002 / GAP-004).
 //
-// `@wardenx/auth` classifies each Better Auth request into an {@link AuthAuditEvent}; this file persists it
-// through the mandated @wardenx/audit surface, never a direct `audit_event` insert:
+// `@chartwarden/auth` classifies each Better Auth request into an {@link AuthAuditEvent}; this file persists it
+// through the mandated @chartwarden/audit surface, never a direct `audit_event` insert:
 //   - an event with a bound organization (logout, 2FA, passkey, session revoke from an org-bound session) is
 //     written ORG-scoped under `withOrgContext`, so the tenant's audit read surface shows it with its actor;
 //   - a pre-org event (login, failed login, lockout, password reset) has no tenant yet and goes through the
 //     SECURITY DEFINER platform writer (migration 0187). The acting user then rides in `context`, because
 //     that writer hardcodes a null actor column.
-// Payloads hold ids, hashes and ip prefixes only (see auth-audit.ts in @wardenx/auth).
-import { type AuditContext, type AuditExecutor, audit, auditPlatformEvent } from "@wardenx/audit";
-import type { AuthAuditEvent, AuthAuditSink } from "@wardenx/auth";
-import type { PlatformAuditExecutor } from "@wardenx/audit";
-import { withOrgContext } from "@wardenx/tenancy";
+// Payloads hold ids, hashes and ip prefixes only (see auth-audit.ts in @chartwarden/auth).
+import { type AuditContext, type AuditExecutor, audit, auditPlatformEvent } from "@chartwarden/audit";
+import type { AuthAuditEvent, AuthAuditSink } from "@chartwarden/auth";
+import type { PlatformAuditExecutor } from "@chartwarden/audit";
+import { withOrgContext } from "@chartwarden/tenancy";
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

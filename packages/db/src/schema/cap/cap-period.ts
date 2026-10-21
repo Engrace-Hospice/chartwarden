@@ -1,4 +1,4 @@
-// @wardenx/db — M26 Cap Management §3.3 — the cap-period root cluster: the PLATFORM-scoped published cap
+// @chartwarden/db — M26 Cap Management §3.3 — the cap-period root cluster: the PLATFORM-scoped published cap
 // constant + the per-tenant cap_period lifecycle row + its one-time methodology lock.
 //
 // Tenancy (ADR-0010, canonical): cap_period + cap_period_methodology_lock carry organization_id NOT NULL →

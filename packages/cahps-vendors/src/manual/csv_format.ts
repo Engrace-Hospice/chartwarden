@@ -1,9 +1,9 @@
-// @wardenx/cahps-vendors — manual-vendor CSV column schemas + helpers (M30 §4.5 manual adapter).
+// @chartwarden/cahps-vendors — manual-vendor CSV column schemas + helpers (M30 §4.5 manual adapter).
 //
 // For tenants without a vendor contract, the `manual` adapter renders a decedent CSV the QAPI Coordinator
 // emails to a vendor of their choice, and accepts the vendor's aggregate back as a CSV upload (R-16). This
 // module documents BOTH column schemas and owns the small, pure CSV render/parse helpers the adapter uses.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** Manual DECEDENT export columns, in order (the file the coordinator sends out). */
 export const MANUAL_DECEDENT_COLUMNS = [
@@ -54,7 +54,7 @@ export function renderCsv(
 export function parseCsv(payload: Buffer): { header: string[]; records: Record<string, string>[] } {
   const fields = tokenize(payload.toString("utf8"));
   if (fields.length === 0 || fields[0] === undefined || fields[0].length === 0) {
-    throw new WardenXError("VALIDATION_FAILED", "CSV payload is empty", 422);
+    throw new ChartWardenError("VALIDATION_FAILED", "CSV payload is empty", 422);
   }
   const header = fields[0];
   const records: Record<string, string>[] = [];
@@ -67,7 +67,7 @@ export function parseCsv(payload: Buffer): { header: string[]; records: Record<s
       continue; // tolerate a trailing blank line
     }
     if (row.length !== header.length) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VALIDATION_FAILED",
         `CSV row ${i} has ${row.length} fields; expected ${header.length}`,
         422,

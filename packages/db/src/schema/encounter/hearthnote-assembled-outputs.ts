@@ -1,4 +1,4 @@
-// @wardenx/db — `hearthnote_assembled_output` (M8 §3.3). The assembled narrative for a finalize (primary
+// @chartwarden/db — `hearthnote_assembled_output` (M8 §3.3). The assembled narrative for a finalize (primary
 // or addendum): Layer-1 deterministic text, optional post-hardblock Layer-2 text, and the final signed
 // bytes — all encrypted per-tenant DEK (crypto-erased on destruction, §3.6). PHI-bearing → three-column
 // tenancy rule (denormalized from the parent encounter/addendum). Belongs to exactly one parent

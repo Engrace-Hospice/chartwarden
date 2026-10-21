@@ -10,7 +10,7 @@ import {
   type AnthropicZdrContract,
   createModelBackendRegistry,
   createOllamaModelBackend,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 import { describe, expect, it } from "vitest";
 import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
 import {

@@ -23,8 +23,8 @@ import {
   requireAbac,
   requirePermission,
   requireSession,
-} from "@wardenx/auth";
-import { ValidationError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditCollaboratorInvited, auditCollaboratorSessionStarted } from "../audit/identity-audit";
 import { auditFuneralInvited } from "../audit/org-admin-audit";
@@ -156,7 +156,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
     })(request);
     const actor = await resolveActor(deps, request);
     if (!actor.organizationId || !actor.membershipId) {
-      throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);
+      throw new ChartWardenError("FORBIDDEN", "an org-bound staff session is required", 403);
     }
     const patientId = readString(request.body, "patientId");
     const link = await issueLink(request, {
@@ -194,7 +194,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
     })(request);
     const actor = await resolveActor(deps, request);
     if (!actor.organizationId || !actor.membershipId) {
-      throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);
+      throw new ChartWardenError("FORBIDDEN", "an org-bound staff session is required", 403);
     }
     const patientId = readString(request.body, "patientId");
     if (!deps.deceasedPatients) {
@@ -204,7 +204,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       );
     }
     if (!(await deps.deceasedPatients.isDeceased(actor.organizationId, patientId))) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PATIENT_NOT_DECEASED",
         "a funeral-home link can only be issued for a deceased patient",
         409,
@@ -297,7 +297,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
           }),
           { linkId: scope.linkId as string, kind, reason: "not_eligible" },
         );
-        throw new WardenXError("LINK_EXPIRED", "link invalid or expired", 410);
+        throw new ChartWardenError("LINK_EXPIRED", "link invalid or expired", 410);
       }
     }
 
@@ -402,13 +402,13 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       const organizationId = request.context.organizationId;
       const patientId = request.context.attributes?.sessionPatientId;
       if (!organizationId || typeof patientId !== "string" || patientId.length === 0) {
-        throw new WardenXError("NOT_FOUND", "case not found", 404);
+        throw new ChartWardenError("NOT_FOUND", "case not found", 404);
       }
       if (!deps.funeralCases) {
         throw unavailable("FUNERAL_CASE_UNAVAILABLE", "the decedent record reader is not bound");
       }
       const found = await deps.funeralCases.read(organizationId, patientId);
-      if (!found) throw new WardenXError("NOT_FOUND", "case not found", 404);
+      if (!found) throw new ChartWardenError("NOT_FOUND", "case not found", 404);
       return { patientId, decedentName: found.decedentName, dateOfDeath: found.dateOfDeath };
     },
   );

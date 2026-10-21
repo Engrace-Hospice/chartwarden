@@ -4,12 +4,12 @@ import {
   POLL_MAX_QUESTION_LENGTH,
   POLL_MIN_OPTIONS,
   checkPollInput,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // WP 2.10: "Create a poll" dialog. A question and 2..10 plain-text options; the same bounds the server enforces
-// (shared from @wardenx/types), checked as the user submits. The idempotency pair follows the live-send rule (one key per
+// (shared from @chartwarden/types), checked as the user submits. The idempotency pair follows the live-send rule (one key per
 // composed request, reused when no reply arrived, rotated after an answered failure) so a lost reply plus a retry is a
 // replay, never two polls.
-import { Button, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { createPortal } from "react-dom";

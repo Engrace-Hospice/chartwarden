@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `classified_page` (M22 §3.3 / §2.2.6). The per-page classifier output: a page range
+// @chartwarden/db — `classified_page` (M22 §3.3 / §2.2.6). The per-page classifier output: a page range
 // of an intake source labeled with a document type + confidence. Org-scoped (joins to PHI via the
 // batch). Two CHECK shape guards (page-range ordering; human-confirm pairing). `intake_upload_batch_id`
 // carries a SQL FK to `intake_upload_batch`; `source_document_id` is plain uuid app-validated.

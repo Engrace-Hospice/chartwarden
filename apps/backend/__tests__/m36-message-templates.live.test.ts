@@ -20,9 +20,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
-import { PLATFORM_MESSAGE_TEMPLATES, lintTemplateText } from "@wardenx/messaging";
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { PLATFORM_MESSAGE_TEMPLATES, lintTemplateText } from "@chartwarden/messaging";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

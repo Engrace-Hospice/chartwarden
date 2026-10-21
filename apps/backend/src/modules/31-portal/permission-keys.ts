@@ -1,13 +1,13 @@
 // apps/backend/src/modules/31-portal/permission-keys.ts — M31-T07 (§4.6).
 //
 // The forty-seven permission keys Module 31 registers into Module 3's catalog. The canonical map is
-// `M31_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
+// `M31_CONTRIBUTED_PERMISSIONS` in @chartwarden/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it plus the ordered key list, so the
 // §4.1 routes gate on `requirePermission(key)` without re-declaring the map (the M20/M19/M32 posture —
 // references the auth package directly, no drift).
-import { type M31ContributedPermissionKey, M31_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
+import { type M31ContributedPermissionKey, M31_CONTRIBUTED_PERMISSIONS } from "@chartwarden/auth";
 
-export { M31_CONTRIBUTED_PERMISSIONS, type M31ContributedPermissionKey } from "@wardenx/auth";
+export { M31_CONTRIBUTED_PERMISSIONS, type M31ContributedPermissionKey } from "@chartwarden/auth";
 
 /** Union of every §4.6 permission key M31 owns. */
 export type M31PermissionKey = M31ContributedPermissionKey;

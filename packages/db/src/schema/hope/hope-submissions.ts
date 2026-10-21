@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_submission` (M10 §3.3). A per-CCN iQIES batch of signed+unsubmitted assessments
+// @chartwarden/db — `hope_submission` (M10 §3.3). A per-CCN iQIES batch of signed+unsubmitted assessments
 // for one submission period: the queued→in_flight→accepted/rejected/partially_accepted lifecycle
 // (§2.2.4), the encrypted-at-rest envelope pointer (MinIO) + its sha256, and the accept/reject counts.
 // Per-ProviderEntity (the CCN keys submission batching), NOT patient-level → carries organization_id +

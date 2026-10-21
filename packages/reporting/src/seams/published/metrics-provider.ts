@@ -1,4 +1,4 @@
-// @wardenx/reporting — the `MetricsProvider` PUBLISHED seam (M33 §4.3).
+// @chartwarden/reporting — the `MetricsProvider` PUBLISHED seam (M33 §4.3).
 //
 // The single-metric / bulk-metric read surface M33 publishes for embedded dashboard tiles.
 // Consumed by M30 (HQRP measure-detail embedding), M34 (tenant ops console), M37 (IPU dashboard

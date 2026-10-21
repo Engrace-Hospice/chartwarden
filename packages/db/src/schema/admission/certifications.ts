@@ -1,4 +1,4 @@
-// @wardenx/db — `certification_of_terminal_illness` (M6 §3.3). The CTI for an election period:
+// @chartwarden/db — `certification_of_terminal_illness` (M6 §3.3). The CTI for an election period:
 // hospice MD (and optionally attending MD) attesting a ≤6-month prognosis. Org-scoped (no direct
 // patient identifier; tenancy via the election_period FK). Cross-module refs (M40 physicians, M22
 // document) are plain uuid app-validated; the election_period FK is intra-M6. One non-voided CTI per

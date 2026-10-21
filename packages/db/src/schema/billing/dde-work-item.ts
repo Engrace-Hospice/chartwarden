@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `dde_work_item` (M23 Billing-Medicare; ADR-0052; non-partitioned; retention class
+// @chartwarden/db — `dde_work_item` (M23 Billing-Medicare; ADR-0052; non-partitioned; retention class
 // `compliance`). One piece of Medicare Direct Data Entry (FISS) work a biller must key by hand: an NOE/NOTR,
 // a claim entry, an RTP correction, an adjustment, a cancel or an ADR response. HUMAN WORK TRACKING ONLY — no
 // DDE credential or integration exists; `submitted` is an operator attestation.

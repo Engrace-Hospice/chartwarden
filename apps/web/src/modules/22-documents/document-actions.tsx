@@ -1,4 +1,4 @@
-import { Button, Modal, SelectField, TextField, t, useApiClient } from "@wardenx/ui";
+import { Button, Modal, SelectField, TextField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — the two small §4.1/§4.2 document ceremonies (#91).
 //
 // EDIT is `PATCH /api/v1/documents/:id` — title and portal visibility. The route returns the patched

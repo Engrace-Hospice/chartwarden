@@ -1,4 +1,4 @@
-// @wardenx/hope — the M38 value-set membership port the pre-submission validator consumes (M10-T04;
+// @chartwarden/hope — the M38 value-set membership port the pre-submission validator consumes (M10-T04;
 // §3, deps:38). PURE interface. M10 depends on M38 (Clinical Terminology) for the HOPE value sets — the
 // active hospice-terminal-diagnosis set (Section I) and the CMS HOPE J-code set (Section J). Those sets
 // are survey-grade and historical: a surveyor's "was this code valid on the visit date?" must resolve

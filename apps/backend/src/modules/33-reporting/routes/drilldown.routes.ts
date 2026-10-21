@@ -10,8 +10,8 @@
 //        device is refused) + idempotent. Streams chunked CSV off the read replica.
 //
 // Every route is gated by the REAL Authorization Contract (`requirePermission` + `requireAbac` / `requireStepUp`
-// from @wardenx/auth, M3). Org/actor binding is ALWAYS server-side (request.context, never the body).
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+// from @chartwarden/auth, M3). Org/actor binding is ALWAYS server-side (request.context, never the body).
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -37,7 +37,7 @@ const STEPUP_BULK = requireStepUp("report.drilldown.bulk_export") as PreHandler;
 // THIS ROUTE IS CLOSED TO EVERYONE TODAY, BY DESIGN. A producer exists (the `authenticate` hook stamps the
 // session-bound attestation verdict), but no client supplies a verdict yet — the mobile client that runs the
 // §12.4 posture check is unbuilt (ADR-0035) — so the predicate denies every caller. The deny is semantic (see
-// `deviceAttestationValid` in @wardenx/auth), not a missing registration; it lifts on its own once a client
+// `deviceAttestationValid` in @chartwarden/auth), not a missing registration; it lifts on its own once a client
 // supplies attested sessions, with no change here. Do not "fix" it by dropping this preHandler.
 const DEVICE_ATTESTED = requireAbac(
   "report.drilldown.bulk_export",

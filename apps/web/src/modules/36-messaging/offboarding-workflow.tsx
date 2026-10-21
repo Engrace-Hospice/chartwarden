@@ -3,8 +3,8 @@
 // person's sessions), then shows the server's answer; a row that failed says so and the button becomes "Run again". An item that needs a person
 // stays listed with its count (never dropped) and, for acknowledgment requests, links to the supervisors' queue. The page is reached by user id
 // (`/messaging/governance/offboarding/:userId`); a person who has not left, an unknown one and another tenant's all read as a plain sentence.
-import type { OffboardingDto, OffboardingItemDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, Modal, PageHeader, StatusPill } from "@wardenx/ui";
+import type { OffboardingDto, OffboardingItemDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, Modal, PageHeader, StatusPill } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";

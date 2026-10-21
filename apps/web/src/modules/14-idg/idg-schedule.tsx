@@ -8,7 +8,7 @@ import {
   interactiveRowProps,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — IDG Schedule (per-location) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md. 2026-09 "Lantern Clinical 2.0" redesign:
 // the org-level page anatomy shared with Billing / Admissions (idg-page-kit.tsx): page head, sub-page tabs,
@@ -23,7 +23,7 @@ import {
 // "Schedule Meeting" (POST /idg/meetings, idg.schedule) opens ScheduleMeetingModal; the SERVER decides
 // permission (a 403 is surfaced in the dialog), overlap and the time rules — no frontend authz. The
 // coordinator is an id on the read; names resolve from GET /orgs/{id}/care-team-staff (short-id fallback).
-// Reads GET /api/v1/idg/schedule + GET /api/v1/locations via the typed client. Leaves only (@wardenx/ui).
+// Reads GET /api/v1/idg/schedule + GET /api/v1/locations via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";

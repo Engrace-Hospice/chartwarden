@@ -1,4 +1,4 @@
-// @wardenx/audit — M4-T11 audit job processor tests (M4 spec §4.4, §6, §12.2).
+// @chartwarden/audit — M4-T11 audit job processor tests (M4 spec §4.4, §6, §12.2).
 //
 // The pure processors each BullMQ worker runs, exercised against the in-memory ports: the daily
 // retention scan (skips held + not-yet-erasable Part 2), the on-approval destruction run, the

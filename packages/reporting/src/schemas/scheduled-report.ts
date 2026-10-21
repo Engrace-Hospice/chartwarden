@@ -1,4 +1,4 @@
-// @wardenx/reporting — the `ScheduledReportCreate` TypeBox schema (M33 §4.2).
+// @chartwarden/reporting — the `ScheduledReportCreate` TypeBox schema (M33 §4.2).
 //
 // The create-payload validator for a `report_schedule` row: a saved view + cron + IANA timezone +
 // delivery format + recipient membership_ids (D7). Shape gate only — the domain rules (§2.3

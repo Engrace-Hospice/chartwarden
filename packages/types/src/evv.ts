@@ -1,4 +1,4 @@
-// @wardenx/types — Module 18 (Electronic Visit Verification) leaf contracts (M18-T01).
+// @chartwarden/types — Module 18 (Electronic Visit Verification) leaf contracts (M18-T01).
 //
 // Per ADR-0005 D1/D3 the cross-module CONTRACTS live in this leaf package: the M18 spec's references to
 // `packages/evv/src/{seams,events,service-types}.ts` resolve their TYPE surface HERE so the downstream
@@ -6,7 +6,7 @@
 // M23/M24 billing EVV-compliance gate, M25 denial back-link, M30/M33 measures, M31 portal arrival surface)
 // import them with no `dependsOn` edge. The runtime impls + the M1 seam-registry wiring land in M18-T05 (the
 // six published reader seams); the outbox dispatch + M36 alert assembly land in M18-T07. The per-state
-// `EvvAggregatorAdapter` adapter interface (§4.5 D1) lives in `@wardenx/evv-aggregators` (the §25.14
+// `EvvAggregatorAdapter` adapter interface (§4.5 D1) lives in `@chartwarden/evv-aggregators` (the §25.14
 // adapter-mandate boundary), not here.
 //
 // M18-T01 ships the type-level surface every later M18 task builds on: the §3.2 pgEnum value mirrors, the
@@ -22,7 +22,7 @@ import type { IsoInstant, MembershipId } from "./care-plan";
 // imported for internal use here, not re-exported (TS2308).
 import type { VisitId } from "./encounter";
 
-// ── M18-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
+// ── M18-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @chartwarden/db) ──────────
 export type EvvEventId = string;
 export type EvvDeviceId = string;
 export type EvvGeofencePolicyId = string;

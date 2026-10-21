@@ -7,13 +7,13 @@
 // Identifier minimisation: the prescriber's DEA number is on the row's `data` but is deliberately NOT carried;
 // only the DEA schedule of the drug is. 42 CFR Part 2: `isSudTreatment` travels so M22 prints the redisclosure
 // notice, and the caller stamps `isSudClass` so the consent gate applies.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type MedicationOrderRenderPayload,
   RENDER_PAYLOAD_VERSION,
   type SignatureRecord,
   assertMedicationOrderRenderPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type RenderBuildCtx,
   RenderPayloadBuildError,

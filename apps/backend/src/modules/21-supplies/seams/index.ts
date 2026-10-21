@@ -23,8 +23,8 @@
 // written against these exact contracts (M21-T04 already consumes M11's side of the same handshake).
 // Flipping the consumer is an M11/M13 wiring change (the M26 precedent, PRs #129/#130), not M21's. What
 // lands here is the producer side: the contracts are real, registered and boot-validated.
-import type { DbClient } from "@wardenx/db";
-import { getRequestContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { getRequestContext } from "@chartwarden/tenancy";
 import type {
   ComfortKitDispatchProvider,
   IsoInstant,
@@ -32,7 +32,7 @@ import type {
   OrgId,
   SupplyCostProvider,
   SupplyFulfillmentProvider,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createNonCoveredDmeSuppliesReader } from "./non-covered-dme-supplies";
 import {

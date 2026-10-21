@@ -1,4 +1,4 @@
-import { createWardenxAuthClient } from "@wardenx/auth/client";
+import { createChartWardenAuthClient } from "@chartwarden/auth/client";
 import {
   DegradedBanner,
   EmptyState,
@@ -9,11 +9,11 @@ import {
   useDisclosureDismiss,
   useOffCanvasNav,
   useTheme,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
-// <Outlet/>. Imports only @wardenx/ui + @wardenx/auth/client (leaves) + react-router — never a
-// feature module. `@wardenx/auth/client` is the same Better Auth client factory M2's own
+// <Outlet/>. Imports only @chartwarden/ui + @chartwarden/auth/client (leaves) + react-router — never a
+// feature module. `@chartwarden/auth/client` is the same Better Auth client factory M2's own
 // `auth-client.ts` wraps (a leaf, not a feature-module import) — the shell needs its own instance to
 // offer sign-out from the header (live-browser audit #6), the same mechanism the idle screen-lock's
 // "Sign out instead" escape hatch already uses.
@@ -34,7 +34,7 @@ import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
-const authClient = createWardenxAuthClient();
+const authClient = createChartWardenAuthClient();
 
 function getInitials(name: string): string {
   const parts = name
@@ -137,21 +137,12 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         className={navOpen ? "wx-sidebar wx-nav-open" : "wx-sidebar"}
         onClick={closeNavOnLinkClick}
       >
-        <Link to="/" className="wx-brand-block" aria-label="WardenX home">
+        <Link to="/" className="wx-brand-block" aria-label="ChartWarden home">
           <span className="wx-brand-logo" aria-hidden>
-            <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
-              <path
-                d="M11 1 2 4.6v6.2C2 16.6 5.9 21.5 11 23c5.1-1.5 9-6.4 9-12.2V4.6L11 1Z"
-                fill="currentColor"
-              />
-              <path
-                d="M11 7.2a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"
-                fill="var(--color-on-emphasis)"
-              />
-            </svg>
+            <img src="/chartwarden-mark.svg" width="28" height="28" alt="" />
           </span>
           <span className="wx-brand-text">
-            <span className="wx-brand">WardenX</span>
+            <span className="wx-brand">ChartWarden</span>
             <span className="wx-brand-sub">Hospice EHR</span>
           </span>
         </Link>
@@ -416,7 +407,7 @@ function ThemeToggle(): JSX.Element {
 export function HomeScreen(): JSX.Element {
   return (
     <EmptyState
-      title="WardenX"
+      title="ChartWarden"
       description="The app shell is running. Module screens appear here as they are registered."
     />
   );

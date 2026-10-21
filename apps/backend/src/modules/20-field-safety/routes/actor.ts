@@ -22,10 +22,10 @@
 // `staff` on all twenty-nine rows) and §5.3 leaves the portal variants to M31. A session class field would
 // be a branch nothing takes, and the M19 shape — where the class picks the ABAC predicate — would invite
 // one to be added without the predicate that makes it safe.
-import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the scope facts the §4.7 predicates compare against. */

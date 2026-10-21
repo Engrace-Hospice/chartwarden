@@ -34,7 +34,7 @@ import type {
   MembershipId,
   OncallShiftDiscipline,
   OncallShiftStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type TriageSideEffect,
   type TriageTransitionResult,

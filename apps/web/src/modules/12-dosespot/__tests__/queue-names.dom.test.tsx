@@ -1,7 +1,7 @@
 // Finding 9 — the DoseSpot queues name the patient (and the verbal queue the prescriber) instead of showing uuid
 // prefixes; ids that do not resolve fall back to "Name unavailable".
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";

@@ -6,7 +6,7 @@
 // the initial version is signed (Required Signer Set met + a terminal problem present, §2.3); stays
 // `active` while signed revisions flip `active_version_id`; terminal `discharged` when the admission
 // ends. Pure transition over already-resolved facts; the per-version machine lives in `./version`.
-import type { IsoInstant } from "@wardenx/types";
+import type { IsoInstant } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { CarePlanStateError, require_ } from "./errors";
 import { checkTerminalProblemPresent } from "./validation";

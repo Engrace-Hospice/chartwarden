@@ -1,4 +1,4 @@
-// @wardenx/audit — Audit job processors (M4-T11, M4 spec §4.4, §6, §10.4–10.6, §12).
+// @chartwarden/audit — Audit job processors (M4-T11, M4 spec §4.4, §6, §10.4–10.6, §12).
 //
 // The pure, infra-free logic each BullMQ worker runs. Every processor is a function over injected
 // ports (DB / object store / clock / flags), mirroring the rest of the M4 surface: the logic is

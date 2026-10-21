@@ -11,7 +11,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";

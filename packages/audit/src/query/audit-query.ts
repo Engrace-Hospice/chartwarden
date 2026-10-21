@@ -1,4 +1,4 @@
-// @wardenx/audit — Audit query & reporting surface (M4-T06, M4 spec §2.1, §4.1–4.3).
+// @chartwarden/audit — Audit query & reporting surface (M4-T06, M4 spec §2.1, §4.1–4.3).
 //
 // The permissioned search over the M1-owned, append-only `audit_event` log: the data behind
 // "who touched this chart?" (§10.2), the Compliance event search (§4.2 GET /audit/events), and

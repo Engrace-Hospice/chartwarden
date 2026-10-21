@@ -1,4 +1,4 @@
-// @wardenx/billing — the hospice visit-line code table (CMS Pub. 100-04 ch. 11 §30.3, "Revenue Codes" table;
+// @chartwarden/billing — the hospice visit-line code table (CMS Pub. 100-04 ch. 11 §30.3, "Revenue Codes" table;
 // MAC billing sheets, e.g. CGS "Hospice Medicare Billing Codes Sheet"). Every visit by hospice staff is its own
 // dated claim line, reported in 15-minute increments under a discipline revenue code with a G-code. Charges on
 // these lines are bundled into the level-of-care payment (no additional payment); the MAC reads the RN

@@ -33,7 +33,7 @@ import {
   M22_INTAKE_SUD_RELINKED_EVENT,
   M22_INTAKE_SUD_WITHDRAWN_EVENT,
   type ModuleEventContribution,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { M22_CLINICAL_WRITEBACK_EVENTS } from "./events-by-m22-clinical";
 
 const Id = Type.String({ minLength: 1 });
@@ -87,7 +87,7 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   // F-235 (#248) — the §7.1 W1 steps 11–13 chart-writeback handshake, narrowed by F-231's A1 + B
-  // (`@wardenx/types` doclens-writeback.ts): medications never write back; M5 is the only target, as a
+  // (`@chartwarden/types` doclens-writeback.ts): medications never write back; M5 is the only target, as a
   // low-risk contact-field update on the batch's already-resolved patient. Emitted by
   // `POST /api/v1/intake/reviews/:id/complete` in the same transaction as the provenance rows.
   {

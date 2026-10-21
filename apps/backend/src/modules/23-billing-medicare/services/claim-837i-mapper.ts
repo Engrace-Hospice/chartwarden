@@ -4,8 +4,8 @@
 // The beneficiary identity (MBI, name, DOB, sex, address) is a PARAMETER of the render step: it is never part of the
 // stored document, is never logged here, and the builders' errors name a FIELD only (never a value). Nothing is
 // invented — the one thing this file adds to the document is arithmetic and renaming.
-import type { ClaimDocument837iDetail, ClaimGap, GapResult } from "@wardenx/billing";
-import { gap } from "@wardenx/billing";
+import type { ClaimDocument837iDetail, ClaimGap, GapResult } from "@chartwarden/billing";
+import { gap } from "@chartwarden/billing";
 import {
   type Claim837iInput,
   type StediClaimJson,
@@ -13,7 +13,7 @@ import {
   X12BuildError,
   build837iClaim,
   buildStediClaimJson,
-} from "@wardenx/x12-837-client";
+} from "@chartwarden/x12-837-client";
 
 /** The 1000A/1000B/2010AA/2010BB party records the loader reads through its parties port. */
 export interface Claim837iParties {

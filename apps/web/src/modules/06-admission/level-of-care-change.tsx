@@ -1,4 +1,4 @@
-import { Button, EmptyState, InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
+import { Button, EmptyState, InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — Level-of-care change (M6 spec screen 13, D12).
 // POST /api/v1/admissions/:id/level-of-care. Selecting GIP expands the documentation panel with the three D12
 // attestations; the form stays unsubmittable until all are checked and the reason meets R-LCP-01. The server

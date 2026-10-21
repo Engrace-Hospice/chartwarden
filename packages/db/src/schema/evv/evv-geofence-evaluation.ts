@@ -1,4 +1,4 @@
-// @wardenx/db — `evv_geofence_evaluation` (M18 §3.3 / §2.2.2 D3). The historical record of every geofence
+// @chartwarden/db — `evv_geofence_evaluation` (M18 §3.3 / §2.2.2 D3). The historical record of every geofence
 // calculation: per-event Haversine distance vs the resolved three-layer policy (platform → tenant →
 // patient_address). Org-scoped (no patient_id column — joinable to PHI only via evv_event_id, which is the
 // derived coords source); both coordinate ciphers are DENYLISTED from audit (§3.6) to avoid re-emission. The

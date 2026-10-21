@@ -9,7 +9,7 @@
 //     seam or unresolved facility reads as "not in force").
 //   • `ormOutboundFeedsForOrders` — which feed each order's outbound message went to, for the held-order worklist.
 //     READ-ONLY, on the caller's org-scoped transaction (RLS applies; the read is also explicitly org-filtered).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { decideBaaGate } from "../feed/baa-gate";
 import { ORM_SOURCE_KIND } from "./dispatch-planner";

@@ -28,8 +28,8 @@
 // service-side instead, per M9's and M15's own guards.ts comments), so removing the dead duplicate here
 // changes no runtime behavior; for `telehealth_consent_active` M31 boots first and IS consumed by name
 // (`31-portal/routes/guards.ts`), so M39's copy was always dead weight, never the resolver that ran.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import type { ConsentSessionContext, ConsentTypeKey } from "@wardenx/consent";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import type { ConsentSessionContext, ConsentTypeKey } from "@chartwarden/consent";
 import {
   type BereavementWindowPort,
   type CaseloadPort,

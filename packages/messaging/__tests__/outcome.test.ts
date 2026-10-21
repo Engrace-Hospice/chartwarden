@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T04 alert-outcome tests (spec §2.4.3).
+// @chartwarden/messaging — M36-T04 alert-outcome tests (spec §2.4.3).
 import { describe, expect, it } from "vitest";
 import {
   type DeliveryRollupRow,

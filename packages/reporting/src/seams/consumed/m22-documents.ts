@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M22 (Documents). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M22 (Documents). PRESENT producer (§4.4).
 //
 // M33 reads document-throughput aggregates AND subscribes to the `m22.document.created` outbox event
 // (to invalidate cached document-volume tiles). Bound to the live M22 `DocumentReader.aggregateForOrg`

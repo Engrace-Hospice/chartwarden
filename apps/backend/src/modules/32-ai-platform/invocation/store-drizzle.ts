@@ -1,4 +1,4 @@
-import type { AiBackendRoutingRow } from "@wardenx/ai-platform";
+import type { AiBackendRoutingRow } from "@chartwarden/ai-platform";
 // apps/backend/src/modules/32-ai-platform/invocation/store-drizzle.ts — the Drizzle implementations of
 // M32-T04's invocation stores.
 //
@@ -21,8 +21,8 @@ import type { AiBackendRoutingRow } from "@wardenx/ai-platform";
 //
 // TIMESTAMPS CROSS THE PORT AS ISO STRINGS (the M32-T03 posture), so the in-memory store and this one
 // stay structurally identical and the slice tests keep proving something about this file.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AiBackendHealthStatus,
   AiInvocationHitlOutcome,
@@ -30,7 +30,7 @@ import type {
   AiModelModality,
   AiRoutingOverrideReason,
   AiZdrStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { M32EventName } from "../event-names";
 import { type M32EventEmitter, capabilityIdentity } from "../events";

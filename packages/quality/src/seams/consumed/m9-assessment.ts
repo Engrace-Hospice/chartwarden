@@ -1,4 +1,4 @@
-// @wardenx/quality — consumed-seam view of M9 (Clinical Assessments). PRESENT producer (§4.4).
+// @chartwarden/quality — consumed-seam view of M9 (Clinical Assessments). PRESENT producer (§4.4).
 //
 // M30 consumes M9's `LatestAssessmentProvider` and `ScaleSeriesProvider` for the symptom-management
 // dimension of mortality reviews and the HOPE-derived symptom-trajectory context; it does NOT write to

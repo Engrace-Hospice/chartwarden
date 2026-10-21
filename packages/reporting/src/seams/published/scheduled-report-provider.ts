@@ -1,4 +1,4 @@
-// @wardenx/reporting — the `ScheduledReportProvider` PUBLISHED seam (M33 §4.3).
+// @chartwarden/reporting — the `ScheduledReportProvider` PUBLISHED seam (M33 §4.3).
 //
 // The scheduled-report read + recipient-revocation-cascade surface M34 consults at offboarding and on
 // membership revocation. `cascadeRecipientRevocation` removes a revoked membership from every recipient

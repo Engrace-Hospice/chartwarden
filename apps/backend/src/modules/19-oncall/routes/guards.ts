@@ -30,7 +30,7 @@
 //      order is DELIBERATELY not among them: its step-up is asserted at the M11 seam call
 //      (`../clinical/verbal-order.ts`), because the gate must hold for the seam invocation and not merely
 //      for the HTTP request that started it — a worker retry path would otherwise carry no gate at all.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyRequest } from "fastify";
 import { VENDOR_SESSION_CLASSES } from "../abac-predicates";
 import type { PreHandler } from "./actor";

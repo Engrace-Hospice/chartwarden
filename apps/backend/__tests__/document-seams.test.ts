@@ -2,7 +2,7 @@ import type {
   DocumentRenderer,
   DocumentStorageProvider,
   SignedUrlDescriptor,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 // apps/backend/__tests__/document-seams.test.ts — M22-T04 (§4.3 DocumentRenderer + DocumentStorageProvider).
 //
 // M22 publishes the two boot-registered surfaces of the §7.2 W2 render-from-typed-payload handshake. These

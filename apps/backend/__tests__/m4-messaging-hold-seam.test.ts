@@ -4,13 +4,13 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it, vi } from "vitest";
 
 const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
-vi.mock("@wardenx/audit", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@wardenx/audit")>()),
+vi.mock("@chartwarden/audit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@chartwarden/audit")>()),
   audit: auditMock,
 }));
 
-import type { AuditContext } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
+import type { AuditContext } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
 import {
   activeLegalHolds,
   applyLegalHoldInTx,

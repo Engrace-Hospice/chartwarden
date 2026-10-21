@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox.ts - WP 2.4 request/response schemas for the
 // reaction and pin routes (kept out of messaging-typebox.ts, which other work packages edit in parallel).
 import { type Static, Type } from "@sinclair/typebox";
-import { MESSAGE_REACTION_KEYS, type MessageReactionSummary } from "@wardenx/types";
+import { MESSAGE_REACTION_KEYS, type MessageReactionSummary } from "@chartwarden/types";
 import { ResolvedMessageSchema } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });

@@ -3,7 +3,7 @@
 // over the active orgs and runs ONE org-explicit pass per org (every pass opens its own `withOrgContext` — a cron
 // tick is not a request). One org's failure never stops the orgs after it: failures are collected and rethrown
 // together so the job still fails (DLQ / alerting sees it) while every other tenant got its tick.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { EvvCoordsKeyProvider } from "../coords";
 import type { EvvWriteOutboxPort } from "../evv-route-service-db";

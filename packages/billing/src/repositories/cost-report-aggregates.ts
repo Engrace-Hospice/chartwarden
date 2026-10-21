@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — the M27 cost-report read aggregates (§4.4 PatientDaysProvider source).
+// @chartwarden/billing · repositories — the M27 cost-report read aggregates (§4.4 PatientDaysProvider source).
 //
 // AGGREGATE-ONLY, PHI-FREE (D13/D18): the cost-report Worksheet-D statistical census reconciliation reads
 // billed-and-accepted hospice patient-DAYS for a fiscal year — a single count, never a patient row. This
@@ -11,7 +11,7 @@
 // `unit_count` for 0651 RHC / 0655 IRC / 0656 GIP and, for CHC (0652, billed in 15-minute units), the line's
 // service-date span. Visit / physician / ancillary lines carry visits or units and are excluded so the sum is a
 // true patient-day census.
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, between, eq, inArray, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

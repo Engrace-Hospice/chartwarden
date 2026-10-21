@@ -5,9 +5,9 @@
 // active-org fan-out -> withOrgContext -> read -> pure planner ->
 // transactional outbox publish.
 
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { markOverdueAddendumWindowsInTx } from "../election-addendum/compliance";

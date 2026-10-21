@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M7 (Care Plan / IPOC). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M7 (Care Plan / IPOC). PRESENT producer (§4.4).
 //
 // M33 reads care-plan overdue rollups + goal-progress aggregates. Bound to the live M7
 // `CarePlanReader.overdueRollup` / `GoalProgressReader` via `getSeam` at boot (P2C). Aggregate only.

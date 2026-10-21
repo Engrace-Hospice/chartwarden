@@ -11,8 +11,8 @@
 // conditions on it via `.onConflictDoNothing()` (the `elevated-approvals.ts` grant() / M33
 // `report_definition_system_org_base_uq` precedent), and a lost race or a genuine redelivery re-selects the
 // existing row by the same key rather than fabricating a second worklist entry.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { DenialSeedStore } from "../consumers/handlers";
 

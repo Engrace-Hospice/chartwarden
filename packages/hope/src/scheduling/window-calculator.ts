@@ -1,11 +1,11 @@
-// @wardenx/hope — the timepoint window calculator (M10-T03; §2.2.1, §2.3, D2). PURE, IO-free: given an
+// @chartwarden/hope — the timepoint window calculator (M10-T03; §2.2.1, §2.3, D2). PURE, IO-free: given an
 // admission/LOC anchor date (the SOC start-of-care date, resolved from M6's admission readers) and the
 // org timezone, it computes the [window_opens_at, window_closes_at, late_deadline_at] instants for each
 // CMS HOPE timepoint, and classifies a candidate `target_date` against a stored schedule's window (the
 // soft-window + hard-cutoff D2 model). The scheduling worker (M10-T06) composes `windowFor` over the M6
 // `admission.activated` outbox event; the recording service (M10-T06) composes `classifyCapture` to set
 // `was_late` and gate the hard cutoff.
-import type { HopeRfaKind, IsoInstant, LocalDate } from "@wardenx/types";
+import type { HopeRfaKind, IsoInstant, LocalDate } from "@chartwarden/types";
 import { addCalendarDays, endOfOrgDayInstant, startOfOrgDayInstant } from "./time";
 
 /** The §3.3 schedule window for a timepoint: org-local day boundaries materialized as UTC instants. */

@@ -19,7 +19,7 @@ import {
   VOLUNTEER_RATIO_POLICY,
   fiscalYearFor,
   volunteerRatioStatus,
-} from "@wardenx/discipline-plans";
+} from "@chartwarden/discipline-plans";
 import type {
   EncounterId,
   FiscalYear,
@@ -28,7 +28,7 @@ import type {
   ProviderEntityId,
   VolunteerHourEntrySource,
   VolunteerHourRatio,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { DisciplinePlanSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
 

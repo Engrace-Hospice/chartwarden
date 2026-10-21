@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the BAD-DEBT log (R2, §5 / D7). Pick a report → its Medicare
 // bad-debt entries (deductible / coinsurance) with the CMS-allowability signal (collection efforts
 // documented + supporting docs). Read-only; the server is the only authz point (ADR-0030).

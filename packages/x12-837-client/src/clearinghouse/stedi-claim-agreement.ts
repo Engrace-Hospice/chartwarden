@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — proves the raw X12 and the Stedi JSON built from the SAME claim input agree on the
+// @chartwarden/x12-837-client — proves the raw X12 and the Stedi JSON built from the SAME claim input agree on the
 // money, dates and codes that decide payment (ADR-0053 D9). Pure and content-free: it returns the names of the
 // fields that disagree, never their values (PHI-safe, loggable).
 import { tokenizeInterchange } from "../eligibility/x12-envelope";

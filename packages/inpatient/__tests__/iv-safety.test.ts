@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T05 unit tests for the §2.6 IV-continuous safety overlay (closes the M13 deferral).
+// @chartwarden/inpatient — M37-T05 unit tests for the §2.6 IV-continuous safety overlay (closes the M13 deferral).
 import { describe, expect, it } from "vitest";
 import {
   IV_BEDSIDE_CHECK_NON_SEDATION_MINUTES,

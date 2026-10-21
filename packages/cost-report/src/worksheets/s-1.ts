@@ -1,10 +1,10 @@
-// @wardenx/cost-report — Worksheet S-1 (Provider Identification / General Information) TypeBox schema
+// @chartwarden/cost-report — Worksheet S-1 (Provider Identification / General Information) TypeBox schema
 // (CMS-1984-14, §4.2 / §1.1). S-1 carries the provider-level demographic + enrollment facts that anchor
 // the report: CCN, NPI, Tax ID, MAC jurisdiction, certification dates, fiscal-year configuration, and the
 // CBSA/wage-index locality — most of these flow from M40 `ProviderEntityReader`. No money here (it is
 // identification data); no PHI — provider-entity attributes only (D18).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet S-1 — provider identification & general information. */

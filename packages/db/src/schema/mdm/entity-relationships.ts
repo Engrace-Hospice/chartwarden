@@ -1,4 +1,4 @@
-// @wardenx/db — `entity_relationship` (M40 MDM §3.5). The canonical real-world hierarchy
+// @chartwarden/db — `entity_relationship` (M40 MDM §3.5). The canonical real-world hierarchy
 // between two MDM entities of the same kind — facility→parent chain, plan→payer, etc. The
 // `entity_kind` discriminator fixes which canonical table `src_id`/`dst_id` reference (the
 // FK is enforced application-side, kind-switched, since a polymorphic FK cannot point at one

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/17-scheduling/seams/providers.ts — M17-T05 the §4.3 seam implementations: pure
 // orchestration over an injected {@link SchedulingSeamStore}. Each returns the leaf-typed seam interface
-// (@wardenx/types) the M1 registry validates and M8/M18/M14/M5/M19/M20/M31/M30/M33 resolve. The providers add NO
+// (@chartwarden/types) the M1 registry validates and M8/M18/M14/M5/M19/M20/M31/M30/M33 resolve. The providers add NO
 // tenant logic — RLS scopes every store read by the consumer's `app.org_id` (§3.6); they project store rows to
 // the read DTOs and derive the read-side measures (the §4.3 on-time / no-show / reschedule rates + the
 // stability index = 1 − reschedule-rate). All four seams are READ-only — M17 owns the visit lifecycle internally
@@ -10,7 +10,7 @@ import type {
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { SchedulingSeamStore } from "./store";
 
 /**

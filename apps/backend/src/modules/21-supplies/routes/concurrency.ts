@@ -23,7 +23,7 @@
 // every M21 write goes through the service layer, which sets `updated_at` from one clock per transaction;
 // it would NOT be sound if a trigger could bump the column without the service seeing it, which is why
 // migration 0106's triggers only compute discrepancy columns and never touch `updated_at`.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */
@@ -32,7 +32,7 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "IDEMPOTENCY_KEY_REQUIRED",
         "an Idempotency-Key header is required",
         400,
@@ -46,7 +46,7 @@ export function rejectOffsetPagination(): PreHandler {
   return async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
     if (query.offset !== undefined) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "OFFSET_PAGINATION_FORBIDDEN",
         "offset pagination is not supported on PHI list routes; use ?cursor=",
         400,
@@ -68,7 +68,7 @@ export function ifMatchStamp(
   const cleaned = typeof value === "string" ? value.replace(/"/g, "").trim() : "";
   const parsed = cleaned !== "" && !Number.isNaN(Date.parse(cleaned)) ? cleaned : undefined;
   if (parsed === undefined && required) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "IF_MATCH_REQUIRED",
       "this route requires an If-Match header carrying the row updated_at you read (§7.2)",
       428,

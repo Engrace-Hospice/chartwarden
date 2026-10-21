@@ -9,7 +9,7 @@ import {
   t,
   tint,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — Minutes (per meeting) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (minutes
 // reading surface). The finalized (or in-progress) minutes view for a meeting.

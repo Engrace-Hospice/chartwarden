@@ -1,9 +1,9 @@
-// @wardenx/bereavement — D3 / D17 deterministic risk rubric (M16-T01 domain layout).
+// @chartwarden/bereavement — D3 / D17 deterministic risk rubric (M16-T01 domain layout).
 //
 // Deterministic-first by AI Governance §17: a surveyor must be able to reproduce the tier from the captured
 // feature vector. The Layer-2 M32 narrative (D3) adds clinical prose and can NEVER move the tier — that
 // composition lives in the M16 service layer; this module is the reproducible half.
-// PURE — no IO, `@wardenx/types`-only.
+// PURE — no IO, `@chartwarden/types`-only.
 
 import type {
   BereavementConfidenceBand,
@@ -11,7 +11,7 @@ import type {
   BereavementRiskFactorInputs,
   BereavementRiskFactorName,
   BereavementRiskTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * D3 — the platform-floor factor weights. They sum to 1.0 over the full 8-factor vector, which is what makes

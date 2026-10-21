@@ -1,6 +1,6 @@
 import type { ClaimDocument837i } from "../claim-codes/x12-segments";
 import type { ClaimDiagnosisSnapshotEntry } from "../claim-lines/claim-snapshot";
-// @wardenx/billing — the DETAILED claim document: everything the 837I builders need that lives on the persisted claim
+// @chartwarden/billing — the DETAILED claim document: everything the 837I builders need that lives on the persisted claim
 // (claim row + claim_line rows + the 1068 snapshot columns + the M6 admission date). It extends the thin gateway
 // contract `ClaimDocument837i` and is PURE (no I/O, no clock).
 //

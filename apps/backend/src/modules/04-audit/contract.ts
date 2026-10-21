@@ -13,7 +13,7 @@
 //      M4 boot-validates the namespace. (The action catalog + boot validation land in M4-T10, §4.6;
 //      the read/write obligations above are live now.)
 //
-// Importing the obligations THROUGH this module (rather than reaching into @wardenx/audit
+// Importing the obligations THROUGH this module (rather than reaching into @chartwarden/audit
 // directly) keeps "the capture contract" a single, documented seam — the same shape M3 uses.
 import {
   type PhiListReadInput,
@@ -24,7 +24,7 @@ import {
   auditPhiRead,
   declareReadAudit,
   generateAuditTrigger,
-} from "@wardenx/audit";
+} from "@chartwarden/audit";
 
 // Re-export the write- + read-capture obligations as the contract surface.
 export {

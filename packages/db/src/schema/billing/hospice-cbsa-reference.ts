@@ -1,4 +1,4 @@
-// @wardenx/db — the CMS hospice wage-index GEOGRAPHY (M23, migration 1058). PLATFORM-SHARED reference data: no
+// @chartwarden/db — the CMS hospice wage-index GEOGRAPHY (M23, migration 1058). PLATFORM-SHARED reference data: no
 // organization_id, no PHI; tenants read, only the billing_platform_loader role writes (the `wage_index_factor`
 // precedent, migration 0078) — all three are on the check-tenancy NON_ORG_SCOPED allowlist.
 //

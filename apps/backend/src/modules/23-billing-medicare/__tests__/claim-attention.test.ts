@@ -1,4 +1,4 @@
-import * as billing from "@wardenx/billing";
+import * as billing from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/claim-attention.test.ts — the "needs attention" facts a
 // claim carries because of how its stay ended (services/claim-attention.ts), the TOB re-derivation they use
 // (claim-discharge.ts `rederivedTypeOfBill`), and the Drizzle read service's `attention` decoration + list
@@ -10,8 +10,8 @@ import { rederivedTypeOfBill } from "../services/claim-discharge";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/billing")>();
+vi.mock("@chartwarden/billing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/billing")>();
   const { buildFakeRepositories } = await import("./_billing-repo-fakes");
   const { repos, store } = buildFakeRepositories();
   return { ...actual, repositories: { ...actual.repositories, ...repos, __store: store } };

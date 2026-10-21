@@ -1,4 +1,4 @@
-// @wardenx/messaging — M36-T01 unit tests (spec §2.3, §3.2).
+// @chartwarden/messaging — M36-T01 unit tests (spec §2.3, §3.2).
 //
 // Locks the single `channel_kind` discriminator (§2.3): the descriptor table covers every
 // kind exactly once, and each kind's subject requirement + retention class match the §2.3

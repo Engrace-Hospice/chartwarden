@@ -11,8 +11,8 @@ import {
   NotFoundError,
   type OffboardingDto,
   type OffboardingItemDto,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type {
   Inspection,
   OffboardingActor,
@@ -29,8 +29,8 @@ export interface OffboardingService {
   execute(actor: OffboardingActor, userId: string): Promise<OffboardingDto>;
 }
 
-const userActive = (): WardenXError =>
-  new WardenXError(
+const userActive = (): ChartWardenError =>
+  new ChartWardenError(
     "OFFBOARDING_USER_ACTIVE",
     "This person has not left. Offboarding applies to a deactivated or removed user.",
     409,

@@ -3,7 +3,7 @@
 // D15: Module 32's LLM may not create, modify, witness, or attest to any supplies / controlled-substance
 // dispatch row. `validateSupplyAIBlock()` runs at boot against M32's real `AIPromptRegistry` (the D18
 // table-only query) and REFUSES to start if an active prompt targets an M21 zone. The registry is injected
-// as a LOCAL structural port (no @wardenx/ai-platform import, no dependsOn edge); the composition root binds
+// as a LOCAL structural port (no @chartwarden/ai-platform import, no dependsOn edge); the composition root binds
 // the real seam in a db-present onReady hook (the M37 `validateIpuAIBlock` precedent).
 //
 // Per-route layer: `rejectAiActor` in ./routes/actor.ts rejects an `actor_kind='ai_*'` principal on every

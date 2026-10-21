@@ -5,7 +5,7 @@
  */
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { userRoom } from "@wardenx/messaging";
+import { userRoom } from "@chartwarden/messaging";
 import { Redis } from "ioredis";
 import { type Socket, io as connect } from "socket.io-client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

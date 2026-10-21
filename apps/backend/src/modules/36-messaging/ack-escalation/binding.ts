@@ -2,8 +2,8 @@
 // The ops flag `messaging.escalation_timers` (FeatureFlagReaderPort: tenant row wins, absent = off, cached a few seconds per org)
 // gates the ACTION only. Arming a timer is always safe (it writes nothing to the request), so the arming consumer ignores the flag;
 // with the flag off a due request is left exactly as it is, open and visible (ADR-0070).
-import { runWithRequestContext, systemOrgContext } from "@wardenx/tenancy";
-import { ACK_ESCALATION_TIMERS_FLAG_KEY, type EscalationRouter } from "@wardenx/types";
+import { runWithRequestContext, systemOrgContext } from "@chartwarden/tenancy";
+import { ACK_ESCALATION_TIMERS_FLAG_KEY, type EscalationRouter } from "@chartwarden/types";
 import {
   type DeliveryFailureService,
   createDeliveryFailureService,

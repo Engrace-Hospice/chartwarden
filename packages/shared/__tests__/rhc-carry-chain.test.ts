@@ -1,4 +1,4 @@
-// The two-tier RHC carry-over CHAIN core shared by @wardenx/billing's `computeRhcCarryOver` (M23, the main path)
+// The two-tier RHC carry-over CHAIN core shared by @chartwarden/billing's `computeRhcCarryOver` (M23, the main path)
 // and M6's `rhcCarryOver` fallback: clip to the day before the new election, merge overlapping / touching spans
 // into blocks (a day counts once), walk back while each gap is ≤ 60 days, stop at the 60-day high tier.
 import { describe, expect, it } from "vitest";

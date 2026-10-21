@@ -1,7 +1,7 @@
 // apps/backend/src/modules/13-emar/outbox-consumers/m21-comfort-kit-deployed.ts — the §2.5/§2.7 D5
 // comfort-kit deployment intake, live for the first time (F-166, #248).
 //
-// `buildComfortKitDeployment` (`@wardenx/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure,
+// `buildComfortKitDeployment` (`@chartwarden/emar`, `comfort-kit/comfort-kit.ts`) has been a complete, pure,
 // unit-tested deployment materializer since M13-T05, and `M13_OUTBOX_SUBSCRIPTIONS`
 // (`../consumers/index.ts`) has named `m21.comfort_kit.deployed_at_patient` with a real consumer
 // (`m13.comfort-kit-deployed`) since the list was written — nothing has ever bound it. One layer down:
@@ -17,7 +17,7 @@
 // order signs LATER, at deployment (M21's own spec, §"The medication identity", line 58: those lines
 // instead carry `comfortKitTemplateMedicationId`, an M21-internal identity). `comfort_kit_drawdown.
 // medication_order_id` is NOT NULL, and — checked, not assumed — NO table anywhere in M13's schema, and NO
-// type anywhere in `@wardenx/emar`'s pure comfort-kit core (`KitContentLine`, `KitDrawdownInit`,
+// type anywhere in `@chartwarden/emar`'s pure comfort-kit core (`KitContentLine`, `KitDrawdownInit`,
 // `KitDrawdownState`, `KitReturnReconciliationLine` all require it), has ever represented an
 // order-less drawdown or administration. `administration_record.medication_order_id` is NOT NULL too.
 // Inventing a floor-stock drawdown shape here — a second key, a relaxed constraint, a new "no order"
@@ -44,13 +44,13 @@
 // rows a clinician may have already decremented. `kit_drawdown_deployment_order_uk` (comfort_kit_
 // deployment_id, medication_order_id) is the per-line guard for the (normal, non-redelivery) case where
 // the deployment insert succeeds but a later step fails and retries — `.onConflictDoNothing()` there too.
-import { type DbClient, schema } from "@wardenx/db";
-import { type KitContentLine, buildComfortKitDeployment } from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type KitContentLine, buildComfortKitDeployment } from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   ComfortKitDispatchedContentPayload,
   M21ComfortKitDeployedAtPatientPayload,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 
 const DEPLOYMENT = schema.comfortKitDeployments;

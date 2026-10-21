@@ -1,4 +1,4 @@
-// @wardenx/db — M25 Remittance & Denials schema barrel (§3.3, 11 owned tables). Re-exports the shared
+// @chartwarden/db — M25 Remittance & Denials schema barrel (§3.3, 11 owned tables). Re-exports the shared
 // enums plus all table modules; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010, canonical): EVERY M25 table carries organization_id NOT NULL → the canonical

@@ -2,7 +2,7 @@
 // M6 prints the representative's name on a notice-of-rights acknowledgment or a revocation; the consent row names
 // the grantor, and only M39 reads `consent_record`. Ids only: resolving a name is the grantor's owning module's job
 // (a user is Foundation, a caregiver is M5 through its roster seam).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 
 export interface ConsentGrantorFacts {

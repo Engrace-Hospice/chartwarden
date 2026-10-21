@@ -1,4 +1,4 @@
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { AdmissionEvidenceRequirement } from "./admission-evidence-service";
 
 export type UploadedCtiMetadata =
@@ -30,7 +30,7 @@ export interface UploadedNoticeOfRightsMetadata {
 function assertIsoDateTime(value: string | undefined, code: string): void {
   if (value === undefined) return;
   if (Number.isNaN(Date.parse(value))) {
-    throw new WardenXError(code, "Evidence timestamp must be a valid ISO date/time.", 400);
+    throw new ChartWardenError(code, "Evidence timestamp must be a valid ISO date/time.", 400);
   }
 }
 
@@ -41,7 +41,7 @@ export function requirementsForUploadedCti(
   if (metadata.documentState === "unsigned") return ["cti"];
   assertIsoDateTime(metadata.signedAt, "UPLOADED_CTI_SIGNED_AT_INVALID");
   if (!admissionHospicePhysicianId || metadata.signingPhysicianId !== admissionHospicePhysicianId) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "UPLOADED_CTI_HOSPICE_PHYSICIAN_MISMATCH",
       "Uploaded signed CTI must be signed by the admission selected hospice physician.",
       400,

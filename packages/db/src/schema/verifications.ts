@@ -1,4 +1,4 @@
-// @wardenx/db — `verification` (M1 Foundation §3.8, Better Auth table). Short-lived
+// @chartwarden/db — `verification` (M1 Foundation §3.8, Better Auth table). Short-lived
 // verification tokens (email verify, password reset, etc.), keyed by an opaque
 // identifier rather than a user FK. Cross-org and NON_ORG_SCOPED in check-tenancy.ts.
 import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";

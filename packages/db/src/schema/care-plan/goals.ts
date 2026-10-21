@@ -1,4 +1,4 @@
-// @wardenx/db — `goal` (M7 §3.3). A measurable goal under a problem. PHI-bearing → three-column
+// @chartwarden/db — `goal` (M7 §3.3). A measurable goal under a problem. PHI-bearing → three-column
 // tenancy rule. `originalText` preserves patient/family/agent-stated wording VERBATIM (D6); `revisedText`
 // holds clinician revisions — both free-text, denylisted with `statusNote`/`measurableOutcome` in the
 // M4 write-audit trigger (§3.5). `actingConsentId` is an M39 consent soft-ref (DPOA attribution for

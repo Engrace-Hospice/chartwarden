@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `auditor_baa_acceptance` (M2 Identity §7.7; migration 0540). The append-only evidence that an
+// @chartwarden/db — `auditor_baa_acceptance` (M2 Identity §7.7; migration 0540). The append-only evidence that an
 // external auditor accepted the versioned BAA / engagement terms for ONE engagement: who (user + typed name),
 // when, from where (ip + user agent), which terms (version + sha-256 of the exact text shown) and for which
 // engagement. `engagement_id` is an opaque reference to M3's `auditor_engagement` (no FK: M2 does not depend

@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/22-documents/extraction/batch-identity.ts — does each document in an intake batch
 // belong to the patient the batch is filed under? (F-238)
 //
@@ -19,12 +19,12 @@ import {
   compareIdentity,
   splitFullName,
   worstIdentity,
-} from "@wardenx/intake-extraction";
+} from "@chartwarden/intake-extraction";
 import {
   DegradedError,
   type IntakeSudRelinkedPayload,
   M22_INTAKE_SUD_RELINKED_EVENT,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { CandidateValueCipher } from "./candidate-value-cipher";

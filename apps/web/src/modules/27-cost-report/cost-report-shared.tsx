@@ -2,7 +2,7 @@
 // styles (Lantern §6, CSS-var tokens only) and a small report-picker hook + control. Most M27 GET routes are
 // per-report (`/cost-reports/{id}/…`), so the per-report screens pick a report from the live list and then
 // fetch its detail; the server stays the only authz point (ADR-0030 — this gates nav visibility only).
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";

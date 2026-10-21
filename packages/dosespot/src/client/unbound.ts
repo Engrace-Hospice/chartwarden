@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the Phase-1 deny-stub adapter (M12-T06, spec §4.10 / D5 / D11). Every method throws a
+// @chartwarden/dosespot — the Phase-1 deny-stub adapter (M12-T06, spec §4.10 / D5 / D11). Every method throws a
 // `retryable: false` {@link DegradedError} so the `transmit-newrx` / `patient-sync` workers DLQ the job
 // immediately (no retry storm) while the prescribing UI's draft path stays fully functional (D11 — drafts
 // persist with `dosespot_send_state='queued'`; submission health never gates recording). The live adapter

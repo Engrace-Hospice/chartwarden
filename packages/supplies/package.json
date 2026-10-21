@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/supplies",
+  "name": "@chartwarden/supplies",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
-    "@wardenx/types": "workspace:*",
+    "@chartwarden/types": "workspace:*",
     "decimal.js": "^10.6.0"
   }
 }

@@ -1,4 +1,4 @@
-// @wardenx/dosespot — §2.2 D2 medication-order lifecycle state machine (M12-T03). Pure, IO-free.
+// @chartwarden/dosespot — §2.2 D2 medication-order lifecycle state machine (M12-T03). Pure, IO-free.
 //
 // M12 extends M11's seven-state order machine to cover the DoseSpot transmission outcomes
 // (`signed → queued_for_transmission → transmitted → ack_received | nack_received → active`) and the EPCS
@@ -21,13 +21,13 @@
 // the §2.8 D14 `sign_via_m11` / `record_verbal_via_m11` descriptors that name M11's `OrderSignatureProvider`
 // calls the service binds at run time. No IO; every fact a guard needs (data complete, allergy/consent
 // passed, IAL2 verified, deadline reached, actor authority) is resolved upstream and passed in. The EPCS
-// requirement is read from the `@wardenx/dosespot` §2.1 `MED_CLASS_CATALOG`, not re-derived inline.
+// requirement is read from the `@chartwarden/dosespot` §2.1 `MED_CLASS_CATALOG`, not re-derived inline.
 import type {
   EpcsSecondFactorType,
   MedClass,
   MedicationOrderDiscontinuationReason,
   MedicationOrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { MED_CLASS_CATALOG } from "../classes/catalog";
 import {
   type MedicationOrderSideEffect,

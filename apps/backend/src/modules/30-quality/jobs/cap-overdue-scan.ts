@@ -7,8 +7,8 @@
 // catalog-validating publisher and (b) raises the M36 `cap_overdue` alert directly (no M36 consumer binds the
 // event, so there is no double-fire). The alert cadence is "every 2d until completed": the correlation id
 // carries a 2-day bucket, so a re-run inside the bucket dedupes and a new bucket re-pages.
-import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 

@@ -1,4 +1,4 @@
-// @wardenx/cap-management — the §3.7 destruction eraseFn contract (M4 destruction registry). M26 registers
+// @chartwarden/cap-management — the §3.7 destruction eraseFn contract (M4 destruction registry). M26 registers
 // TWO handlers (the backend binds the Drizzle store in P4):
 //   - tenant_destruction  — full org offboarding: delete every cap_* row for the org (FK-ordered).
 //   - patient_redaction   — honour an individual patient's right-to-erasure WITHOUT destroying the

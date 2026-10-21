@@ -13,7 +13,7 @@ import type {
   MedicationAdministrationProvider,
   ReconciliationProvider,
   ScaleType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createMedicationAdministrationProvider, createReconciliationProvider } from "./providers";
 import { type EmarSeamStore, createInMemoryEmarSeamStore } from "./store";

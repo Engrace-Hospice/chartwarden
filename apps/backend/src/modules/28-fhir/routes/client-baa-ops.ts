@@ -2,7 +2,7 @@
 // gate operable. The admin routes call these so a client can never be created or activated that cannot
 // mint, an operator can list which partners are affected, and a malformed ip allowlist is a 422 instead of
 // a silent lock-out. Pure over the M40 port, so every rule is unit-testable without a route harness.
-import { DegradedError, ValidationError } from "@wardenx/types";
+import { DegradedError, ValidationError } from "@chartwarden/types";
 
 import type { FhirBaaStatusView } from "../seams/index";
 import {

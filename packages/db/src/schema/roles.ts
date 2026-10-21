@@ -1,4 +1,4 @@
-// @wardenx/db — `role` (M3 Authorization §3.4). A named set of permissions. Rows with
+// @chartwarden/db — `role` (M3 Authorization §3.4). A named set of permissions. Rows with
 // organization_id NULL are **platform templates** (the ≈60 default roles, readable by
 // all, writable only in platform context); a tenant clones/extends them into org-owned
 // rows. `system_locked` roles are CoP-required and cannot be deleted or stripped below

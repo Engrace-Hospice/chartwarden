@@ -2,7 +2,7 @@ import {
   type AlertEmitter,
   type MessagingProvider,
   createInMemoryAlertEmitter,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/seams.ts — M36-T06 seam registration (spec §4.6).
 //
 // M36 publishes the platform's alert/messaging surfaces. This module-owned init registers M36's
@@ -17,17 +17,17 @@ import {
 // it fail-closed — `getMessagingProvider()` then resolves the deny-stub (denies loudly on call),
 // present and never failing open.
 //
-// Both seams follow M38's rich-seam pattern: the interface lives in @wardenx/messaging (the leaf
-// @wardenx/types may not import it), so the M1 registry holds the instance opaquely
+// Both seams follow M38's rich-seam pattern: the interface lives in @chartwarden/messaging (the leaf
+// @chartwarden/types may not import it), so the M1 registry holds the instance opaquely
 // (`SeamContracts[…] = unknown`); this file is the typed boundary — it registers the typed impl
 // and hands consumers a typed handle. Consumers import the `AlertEmitter`/`MessagingProvider` TYPE
-// from @wardenx/messaging (they already list 36 in dependsOn) and resolve the runtime instance here.
+// from @chartwarden/messaging (they already list 36 in dependsOn) and resolve the runtime instance here.
 //
 // SLICE NOTE: the emitter is wired over an in-memory slice (no live DB/Valkey/source-module
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import type { ChartPromotionSourceReader, EscalationRouter } from "@wardenx/types";
+import type { ChartPromotionSourceReader, EscalationRouter } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */
@@ -67,8 +67,8 @@ export function getAlertEmitter(): AlertEmitter {
  * this resolves the fail-closed deny-stub (throws on any call); the typed cast keeps the consumer
  * boundary honest. Imported here lazily as a type so the leaf-free boundary stays clean.
  */
-export function getMessagingProvider(): import("@wardenx/messaging").MessagingProvider {
-  return getSeam("MessagingProvider") as import("@wardenx/messaging").MessagingProvider;
+export function getMessagingProvider(): import("@chartwarden/messaging").MessagingProvider {
+  return getSeam("MessagingProvider") as import("@chartwarden/messaging").MessagingProvider;
 }
 
 /**

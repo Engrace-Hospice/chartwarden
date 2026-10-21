@@ -40,8 +40,8 @@ import type {
   SafetySosLifecycleState,
   SafetySosOutcome,
   VisitId,
-} from "@wardenx/types";
-import { SAFETY_SOS_ANOMALY_VOLUME_PER_HOUR, SAFETY_SOS_TERMINAL_STATES } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_SOS_ANOMALY_VOLUME_PER_HOUR, SAFETY_SOS_TERMINAL_STATES } from "@chartwarden/types";
 import {
   type SafetySideEffect,
   type SafetyTransitionResult,
@@ -103,7 +103,7 @@ export const SAFETY_SOS_EDGES: readonly SafetySosEdge[] = [
   { from: "resolving", command: "openIncident", to: "incident_opened" },
 ];
 
-/** §2.2.2 — the states no command advances out of. Mirrors `SAFETY_SOS_TERMINAL_STATES` (@wardenx/types);
+/** §2.2.2 — the states no command advances out of. Mirrors `SAFETY_SOS_TERMINAL_STATES` (@chartwarden/types);
  *  asserted equal by the §9 contract test. */
 const TERMINAL: readonly SafetySosLifecycleState[] = SAFETY_SOS_TERMINAL_STATES;
 

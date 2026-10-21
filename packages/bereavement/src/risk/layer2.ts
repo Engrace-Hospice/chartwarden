@@ -1,4 +1,4 @@
-// @wardenx/bereavement — D3 Layer-2 risk-narrative eligibility (M16-T04).
+// @chartwarden/bereavement — D3 Layer-2 risk-narrative eligibility (M16-T04).
 //
 // D3 is a HYBRID model with a hard asymmetry: the deterministic rubric owns the tier, and the M32 LLM adds
 // clinical prose that can never move it (AI Governance §7.4; the spec's rejected alternative (c) is exactly
@@ -11,14 +11,14 @@
 // `hearthnote.layer2` deny-stub (packages/hearthnote/src/layer2) — the ladder is real, shipped and tested
 // now; only the M32 call behind it is pending.
 //
-// PURE — no IO, `@wardenx/types`-only.
+// PURE — no IO, `@chartwarden/types`-only.
 
 import type {
   BereavementAugmentationResult,
   BereavementDataCompleteness,
   BereavementRiskScoreKind,
   BereavementRiskTier,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The Part-A capability that unlocks the Layer-2 narrative (M38's `ai.full` precedent). Default OFF. */
 export const BEREAVEMENT_AI_FULL_FLAG = "ai.full" as const;

@@ -39,7 +39,7 @@ describe("the aggregate does not time, route, escalate or page (WP 4.3 - 4.5)", 
     expect(src).not.toMatch(
       /escalat(e|ion)Router|EscalationRouter|oncall|on_call|pager|bullmq|setTimeout|setInterval|cron/i,
     );
-    expect(src).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/(19|11|12|13)-/);
+    expect(src).not.toMatch(/from "@chartwarden\/(oncall|triage)|modules\/(19|11|12|13)-/);
     // 4.2 never writes a state or an event type that belongs to a later package. WP 4.4's one `escalated` write is the store's
     // `escalate` (the timer lives in ack-escalation/, outside this directory); `failed_unreachable` stays 4.5's.
     expect(src).not.toMatch(/status:\s*"failed_unreachable"/);

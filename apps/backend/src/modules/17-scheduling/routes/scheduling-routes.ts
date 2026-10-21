@@ -1,5 +1,5 @@
 // apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts — M17-T07 the §4.1 route inventory behind
-// the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the §4.6 keys
+// the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys
 // M17 registers into M3's catalog (M17_CONTRIBUTED_PERMISSIONS). Org binding is server-side (`request.context`,
 // never the body). Handlers compose over the injected SchedulingRouteService (in-memory slice; Drizzle in prod
 // under `withOrgContext` so RLS backstops).
@@ -17,9 +17,9 @@ import {
   requireAbac,
   requirePermission,
   resolveActorPermissions,
-} from "@wardenx/auth";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam, requestStepUpFresh } from "../../../bootstrap/index";
 import { assertAssignedClinician } from "./assigned-clinician";
@@ -66,7 +66,7 @@ import {
 } from "./scheduling-typebox";
 import type { SchedulingRouteService, VisitReadScope } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SchedulingRouteDeps {

@@ -4,8 +4,8 @@
 // off, a kill switch = off), cached a few seconds per org like tasks and handoffs. Everything is built from ports so the
 // routes, the source-reader seam and the two outbox consumers share one service and one store. The outcome consumer does
 // NOT consult the flag: a decision an owning module already committed must always be recorded.
-import type { DbClient } from "@wardenx/db";
-import type { ChartPromotionSourceReader, ClinicalLinkSource } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import type { ChartPromotionSourceReader, ClinicalLinkSource } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Part2ChannelGate } from "../part2-channel-gate";

@@ -2,8 +2,8 @@
 // Joining a visit refreshes the roster in the background. That refresh must NOT swap the page for the full-page
 // spinner: doing so unmounts the live video iframe and remounts it (same participant token) when the load ends.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TelehealthRoom } from "../telehealth-room";
 

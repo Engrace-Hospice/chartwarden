@@ -1,14 +1,14 @@
-// @wardenx/forms — §3.1 / §4.5 the FormTemplate contract (Pillar 2 — the canonical renderer).
+// @chartwarden/forms — §3.1 / §4.5 the FormTemplate contract (Pillar 2 — the canonical renderer).
 //
 // M22-T01 ships the DOMAIN layout only: the FormTemplate descriptor shape + the platform-floor template
 // registry as pure data. The react-pdf / Puppeteer adapters, the per-template `payload-schema.ts` TypeBox
-// schemas, and the `vX_Y_Z.tsx` components land in later M22 tasks. Leaf-import only (`@wardenx/types`).
+// schemas, and the `vX_Y_Z.tsx` components land in later M22 tasks. Leaf-import only (`@chartwarden/types`).
 
 import type {
   DocumentAggregateType,
   DocumentRetentionClass,
   FormRenderEngine,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** §4.5 — a platform-published form-template descriptor. The platform-floor template is the source of
  * truth; tenant overlays tighten only (D16). `retentionClass` is the default the renderer stamps on the

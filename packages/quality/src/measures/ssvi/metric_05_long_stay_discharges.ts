@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 5: Percentage of discharges with a length of stay over 180 days (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 5: Percentage of discharges with a length of stay over 180 days (CMS-1851-F Table 9). Pure. No IO.
 //
 // Point at ≥ 33.2% (75th pct). Rate = discharges (live AND death) whose length of stay — admission date to
 // discharge date — exceeds 180 days ÷ all discharges. Source: M6 `DischargeReader.ssviDischargeCounts`.

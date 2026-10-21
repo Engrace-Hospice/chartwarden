@@ -6,13 +6,13 @@
 // (the `:orgSlug/dek-rotate` lifecycle command); this file owns the §3.5 key-ring metadata read screen.
 // Gated by the §4.5 keys + `tenant_lifecycle_platform_ops` ABAC; reads run under `withPlatformContext`
 // (F03/F09, audited) in prod. Mirrors the M22 route-plugin shape.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface TenantKeyRingRouteDeps {

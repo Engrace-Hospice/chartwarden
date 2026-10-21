@@ -11,7 +11,7 @@
 //
 // The WRITE half is `validateRichBodyLinks`, used by the send and edit routes: every clinicalLink node is checked before
 // the message commits, with the same guards, and any failure is the same generic 422.
-import type { GuardHandler } from "@wardenx/auth";
+import type { GuardHandler } from "@chartwarden/auth";
 import {
   type ClinicalLinkKind,
   ForbiddenError,
@@ -19,7 +19,7 @@ import {
   type RichBody,
   UnauthorizedError,
   richBodyClinicalLinks,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type ClinicalLinkSourcePorts,

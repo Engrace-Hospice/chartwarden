@@ -19,7 +19,7 @@
 // them with `source='m29_proposal_accept'` — modelled as an OPTIONAL payload field so route-emitted and
 // applier-emitted events share one schema and existing consumers keep working unmodified.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** The four CMS levels of care (mirrors `level_of_care`; §3.2). */
 const levelOfCare = Type.Union([

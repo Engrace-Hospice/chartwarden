@@ -19,8 +19,8 @@
 // committed row.
 import { createHash, randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { InboundCipher } from "../inbound/inbound-crypto";

@@ -21,7 +21,7 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import {
   type ConsentDpoaAgentView,
   type ConsentRecipientView,
@@ -29,7 +29,7 @@ import {
   type DelegatedAccessView,
   type EvalAuditRow,
   createInMemoryConsentRouteService,
-} from "@wardenx/consent";
+} from "@chartwarden/consent";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

@@ -6,7 +6,7 @@
 // (message, reader) by the `message_receipt_unique` index; the author never gets a receipt for their own message;
 // a repeat read changes nothing (the original `read_at` stands). A receipt only ever means "read", never a clinical
 // confirmation (ADR-0056 item 1).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 
 /** A Drizzle transaction handle (declared here: messaging-write-core imports this file). */

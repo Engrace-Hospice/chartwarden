@@ -17,9 +17,9 @@
 // allows only the author or a channel manager, so a voter can never end the poll. Org and user come from the request context, never a
 // param or the body. Polls are refused in a patient-linked channel (422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL). The
 // poll detail names voters, so it is read-audited like a message read; responses are never cached.
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import type { AnnouncementService, MessagingRouteService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { AnnouncementService, MessagingRouteService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { MessagePollService } from "../polls/poll-service-db";
 import { announcementSendGuard } from "./announcement-routes";

@@ -2,7 +2,7 @@
 // corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3 / §20.1.4). Wire types (the generated client's
 // TransferNoticeView), state/action labels and tones, and the client-side checks of the three forms. The
 // server re-evaluates every rule; these checks only keep an obviously incomplete form from being sent.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 export type NoticeState =
   | "draft"

@@ -24,9 +24,9 @@
 // on `kind`), so every open row for the visit is closed by one encounter sign, and a freshly-created row
 // defaults to `missing_checkout` — the dominant, spec-named case (`M18_DR_INT_INVENTORY.md`'s Tier-2 row:
 // "the sweep re-derives open rows idempotently on `(visit_id, kind='missing_checkout')`").
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { EvvMissingResolutionStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { EvvMissingResolutionStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { transitionMissingResolution } from "../domain/missing-resolution";
 

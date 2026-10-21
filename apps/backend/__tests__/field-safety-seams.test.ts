@@ -1,5 +1,5 @@
-import type { RecipientResolverFn } from "@wardenx/messaging";
-import { resolveRecipients } from "@wardenx/messaging";
+import type { RecipientResolverFn } from "@chartwarden/messaging";
+import { resolveRecipients } from "@chartwarden/messaging";
 // apps/backend/__tests__/field-safety-seams.test.ts — M20-T05 (§4.3 the seven published seams, §4.5 the
 // `field_safety_composed` recipient resolver, M20-F06 the emergency-contact row).
 //
@@ -28,8 +28,8 @@ import type {
   OrgId,
   ProviderEntityId,
   SafetyMetricsWindow,
-} from "@wardenx/types";
-import { SAFETY_POLICY_FLOOR } from "@wardenx/types";
+} from "@chartwarden/types";
+import { SAFETY_POLICY_FLOOR } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   REQUIRED_SEAMS,
@@ -162,7 +162,7 @@ describe("M20-T05 §4.3 — the seven seams are declared and fail CLOSED", () =>
 describe("M20-T05 — the orgId argument is an ASSERTION, never a selector", () => {
   it("refuses a seam call whose org disagrees with the caller's scope", async () => {
     const provider = createSafetyPolicyProvider(store(), orgOf, now);
-    // `WardenXError`'s message is not its code — assert on the CODE, which is the contract a caller
+    // `ChartWardenError`'s message is not its code — assert on the CODE, which is the contract a caller
     // branches on (the platform-wide `expect().toThrowError(/CODE/)` false-green, M15-T07).
     await expect(provider.effectivePolicy(OTHER_ORG)).rejects.toMatchObject({
       code: "SAFETY_SEAM_ORG_MISMATCH",

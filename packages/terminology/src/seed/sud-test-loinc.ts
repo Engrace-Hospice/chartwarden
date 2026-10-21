@@ -1,4 +1,4 @@
-// @wardenx/terminology — the `sud_test_loinc` member list (GAP-086, 42 CFR Part 2).
+// @chartwarden/terminology — the `sud_test_loinc` member list (GAP-086, 42 CFR Part 2).
 //
 // GENERATED DATA (large by design — one row per LOINC code; exempt from the soft file-size ceiling).
 // Each entry is [LOINC_NUM, LOINC LONG_COMMON_NAME] copied verbatim from the LOINC table as served by the

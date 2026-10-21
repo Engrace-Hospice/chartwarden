@@ -1,4 +1,4 @@
-// @wardenx/reporting — drilldown CONSENT-NARROWING + AUDIT-WRITER FAIL-CLOSED UNIT TESTS
+// @chartwarden/reporting — drilldown CONSENT-NARROWING + AUDIT-WRITER FAIL-CLOSED UNIT TESTS
 // (M33 §4.4 / §3.6 / §4.10 / W-R-05 / D16).
 //
 // The drilldown emit is fail-closed at every layer that could surface a patient identifier. These PURE
@@ -20,7 +20,7 @@ import {
   decideConsentNarrowing,
   narrowDrilldownForConsent,
   writeDrilldownAudit,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 
 const ORG = "00000000-0000-0000-0000-0000000000aa";

@@ -7,7 +7,7 @@
 // transaction. Message bodies are envelope-encrypted under the tenant DEK at write time — the seam
 // boundary is plaintext by contract (§3.4) and the ciphertext never leaves this layer except as the
 // `message.body_cipher` bytea.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   bodyEnvelopeScheme,
   deriveOrgDek,
@@ -18,16 +18,16 @@ import {
   ringEnvelopeVersion,
   sealMessageBody,
   sealMessageBodyRing,
-} from "@wardenx/messaging";
-import type { RingBodyDek } from "@wardenx/messaging";
-import type { MessageBodyKind } from "@wardenx/messaging";
+} from "@chartwarden/messaging";
+import type { RingBodyDek } from "@chartwarden/messaging";
+import type { MessageBodyKind } from "@chartwarden/messaging";
 import {
   IdempotencyConflictError,
   NotFoundError,
   type RichBody,
   ValidationError,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAnnouncementReads } from "./announcement-receipts";
 import {
@@ -239,11 +239,11 @@ export async function insertEncryptedMessage(
       .where(and(eq(MSG.organizationId, args.orgId), eq(MSG.id, id)))
       .limit(1)) as Array<{ channelId: string; parentMessageId: string | null }>;
     if (found[0]?.channelId !== args.channelId) {
-      throw new WardenXError(code, `${what} message must be in the same channel`, 422);
+      throw new ChartWardenError(code, `${what} message must be in the same channel`, 422);
     }
     // WP 2.2: threads are one level. A reply's parent is a thread root, never another reply (quoting a reply is fine).
     if (id === args.parentMessageId && found[0]?.parentMessageId) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "PARENT_MESSAGE_IS_REPLY",
         "a reply must target the thread's root message, not another reply",
         422,

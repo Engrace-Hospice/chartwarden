@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T08 unit tests: restraint (§2.10), visitor (§2.7), equipment (§2.9), meal (§2.8).
+// @chartwarden/inpatient — M37-T08 unit tests: restraint (§2.10), visitor (§2.7), equipment (§2.9), meal (§2.8).
 import { describe, expect, it } from "vitest";
 import {
   assertInspectionCurrent,

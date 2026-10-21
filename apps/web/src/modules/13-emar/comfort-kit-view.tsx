@@ -7,7 +7,7 @@ import {
   StatusPill,
   TextAreaField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — comfort kit view (M13 §4.1/§6.1 #7, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (comfort-kit drawdown). Read-only
 // detail of a deployed comfort kit: the deployment, the admission it serves, and the disposal/return status. The

@@ -1,13 +1,13 @@
-// @wardenx/hope — RFA (Reason-For-Assessment) domain metadata (§2, D1/D11).
+// @chartwarden/hope — RFA (Reason-For-Assessment) domain metadata (§2, D1/D11).
 //
-// The cross-module ENUM/seam surface lives in the leaf `@wardenx/types` (`HopeRfaKind` etc.); this
+// The cross-module ENUM/seam surface lives in the leaf `@chartwarden/types` (`HopeRfaKind` etc.); this
 // FEATURE package owns the rich per-RFA metadata the scheduling, recording, and section-TypeBox modules
 // build on. T01 pins the RFA descriptor table (label, how each timepoint is generated, whether the
 // Participation Section Q is required); the per-section TypeBox `data` shapes + the required-items
 // matrix land per-folder under `sections/` in later M10 tasks.
 
-import { HOPE_RFA_KINDS } from "@wardenx/types";
-import type { HopeRfaKind, HopeScheduleGeneratedBy } from "@wardenx/types";
+import { HOPE_RFA_KINDS } from "@chartwarden/types";
+import type { HopeRfaKind, HopeScheduleGeneratedBy } from "@chartwarden/types";
 
 export { HOPE_RFA_KINDS };
 export type { HopeRfaKind };

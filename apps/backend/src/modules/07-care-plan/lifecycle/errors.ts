@@ -2,12 +2,12 @@
 //
 // Every guard / validation failure in the M7 care-plan domain raises a `CarePlanStateError` carrying
 // the machine-readable code that maps to the §2.3 validation-rule table (e.g. `REQUIRED_SIGNER_SET_UNMET`,
-// `PATIENT_STATED_GOAL_VERBATIM`). The error extends the M1 `WardenXError` envelope base (packages/types
+// `PATIENT_STATED_GOAL_VERBATIM`). The error extends the M1 `ChartWardenError` envelope base (packages/types
 // — NOT the banned packages/foundation) so the M1 Fastify error handler renders it with the precise
 // code + HTTP status the UI keys its message off, with no cross-module import edge. The code→status
 // mapping is the single source mirrored from §2.3; nothing transitions on a string match — each code is
 // an enumerated constant (mirrors the M6 `AdmissionStateError` precedent).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The full §2.3 validation-rule + §2.2 lifecycle machine-readable failure-code catalog → HTTP status. */
 export const M7_ERROR_STATUS = {
@@ -51,11 +51,11 @@ export type M7ErrorCode = keyof typeof M7_ERROR_STATUS;
  * renders an exact message; the M1 error handler maps `statusCode` to the HTTP response. Per §2.2 every
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
-export class CarePlanStateError extends WardenXError {
+export class CarePlanStateError extends ChartWardenError {
   constructor(
     code: M7ErrorCode,
     message: string,
-    details?: ConstructorParameters<typeof WardenXError>[3],
+    details?: ConstructorParameters<typeof ChartWardenError>[3],
   ) {
     super(code, message, M7_ERROR_STATUS[code], details);
     this.name = "CarePlanStateError";

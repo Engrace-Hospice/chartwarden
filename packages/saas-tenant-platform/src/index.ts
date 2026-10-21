@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — SaaS Tenant Platform (Module 34).
+// @chartwarden/saas-tenant-platform — SaaS Tenant Platform (Module 34).
 //
 // Public surface of the package. This is the platform control plane: tenant lifecycle +
 // onboarding state machine, per-tenant DEK lifecycle / cryptographic shred, DSAR & tenant-export

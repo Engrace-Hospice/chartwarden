@@ -1,4 +1,4 @@
-// @wardenx/fhir — §2.2 `fhir_inbound_resource` staged-proposal state machine (M28-T01).
+// @chartwarden/fhir — §2.2 `fhir_inbound_resource` staged-proposal state machine (M28-T01).
 //
 // The §2.2 diagram as a PURE function. A consumer POSTs a FHIR resource; it stages as `pending`; the
 // OWNER MODULE's reviewer (M5 for Patient, M12 for MedicationStatement — §2.3 `KNOWN_OWNER_MODULES`)
@@ -14,7 +14,7 @@
 //
 //  2. `rejected` and `expired` schedule the raw `payload` for destruction at +30 days (§2.4/§3.7): the
 //     payload may carry PHI fragments, the digest + rationale survive for dispute resolution. That set is
-//     `FHIR_INBOUND_PAYLOAD_ERASE_STATUSES` in `@wardenx/types`; the shred itself is the M4 eraser.
+//     `FHIR_INBOUND_PAYLOAD_ERASE_STATUSES` in `@chartwarden/types`; the shred itself is the M4 eraser.
 
 import {
   FHIR_INBOUND_PAYLOAD_ERASE_STATUSES,
@@ -23,7 +23,7 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
   type FhirStatusTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /** The status a newly-staged proposal lands in (§2.2). */
 export const FHIR_INBOUND_INITIAL_STATUS: FhirInboundStatus = "pending";

@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
 

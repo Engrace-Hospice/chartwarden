@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { audit } from "@wardenx/audit";
-import type { DbClient } from "@wardenx/db";
-// M34 `dependsOn` already includes 36; alert-rules.ts takes the same @wardenx/messaging type import.
+import { audit } from "@chartwarden/audit";
+import type { DbClient } from "@chartwarden/db";
+// M34 `dependsOn` already includes 36; alert-rules.ts takes the same @chartwarden/messaging type import.
 // `getSeam("AlertEmitter")` is an opaque rich-seam (`unknown` in the registry), so the consumer casts
 // to its own view — the M36 `getAlertEmitter()` precedent.
-import type { AlertEmitter } from "@wardenx/messaging";
+import type { AlertEmitter } from "@chartwarden/messaging";
 // apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts — M34 Phase 2D LIVE BullMQ wiring
-// for the §4.3 jobs. The thin, infra-touching adapter that turns the @wardenx/saas-tenant-platform pure
+// for the §4.3 jobs. The thin, infra-touching adapter that turns the @chartwarden/saas-tenant-platform pure
 // workers (catalog in ./index.ts) into running BullMQ `Worker`s + the four cron-schedule `Queue`s. All job
 // LOGIC lives in the package (unit-tested against in-memory ports); this module only constructs
 // `Worker`/`Queue` over a Valkey connection and BINDS each worker's PORTS to real adapters — repos under
@@ -38,7 +38,7 @@ import {
   TenantExportRepository,
   TenantKeyRingRepository,
   transitionTenant,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 import type {
   BundleExpirySweepPorts,
   DekRotateWorkerPorts,
@@ -52,9 +52,9 @@ import type {
   ShredWorkerPorts,
   TenantExportJobBody,
   TenantExportWorkerPorts,
-} from "@wardenx/saas-tenant-platform";
-import { listTenantExportShards } from "@wardenx/saas-tenant-platform";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+} from "@chartwarden/saas-tenant-platform";
+import { listTenantExportShards } from "@chartwarden/saas-tenant-platform";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
@@ -1244,7 +1244,7 @@ export async function scheduleM34Jobs(connection: ConnectionOptions): Promise<Qu
 //     runDestruction/recordCertificateRefusal/fileCertificate; NEVER bypass M4.
 //   • the programmatic M36 alert router (the onboarding/export/sweep `routeAlert` ports).
 //   • the separately-pooled platform DB (`deps.platformDb`) + registering the M34 platform jobIds in the
-//     @wardenx/tenancy PLATFORM_CONTEXT_ALLOWLIST so withPlatformContext admits them (currently empty).
+//     @chartwarden/tenancy PLATFORM_CONTEXT_ALLOWLIST so withPlatformContext admits them (currently empty).
 //   • the baa_expiry / support_session_close / dsar_sla_escalation Workers (their processors take extra
 //     per-run inputs — build them alongside `registerM34Workers` once the BAA/support-session/DSAR-SLA
 //     ports are assembled). The Queues are already scheduled by `scheduleM34Jobs`.

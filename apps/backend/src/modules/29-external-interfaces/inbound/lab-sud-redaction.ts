@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/inbound — SUD ingress redaction gate (M29-T05, §7.3 D15).
-// Injected over narrow ports — the M39 `ConsentEvaluator` is OPAQUE in the leaf `@wardenx/types` and M29
+// Injected over narrow ports — the M39 `ConsentEvaluator` is OPAQUE in the leaf `@chartwarden/types` and M29
 // carries no `39`/`38` dependsOn edge (ADR-0005: seam consumers are edge-free), so this file defines the
 // minimal `LabConsentPort` + reuses `LabTerminologyPort` and the T08 boot wiring adapts the real M39/M38
 // seams. PURE over its injected ports — no DB, no clock.
@@ -12,7 +12,7 @@
 //      (absent / unknown / unauthorized) ⇒ redact. M38/M39 unavailable ⇒ fail SAFE (redact).
 // An UNMATCHED lab (no patient_id) is NOT redacted here — there is no patient context for a consent check;
 // the SUD gate re-runs at manual-bind time (T08), when the patient is known.
-import { XI_SUD_INGRESS_DATA_CLASS } from "@wardenx/types";
+import { XI_SUD_INGRESS_DATA_CLASS } from "@chartwarden/types";
 import type { LabTerminologyPort } from "./lab-terminology";
 
 /** The narrow slice of M38's `TerminologyProvider` the SUD gate needs (LOINC → category classification). */

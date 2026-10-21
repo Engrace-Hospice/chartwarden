@@ -3,7 +3,7 @@
 // re-checked now (a stale event must not alert someone who lost access). The text is fixed and PROVISIONAL (clinical-lead
 // sign-off pending): no name, no patient, no message text. This is an inbox entry, NOT a page and NOT a request for a
 // response: the response request, timers and escalation are WP 4.2 - 4.4. The seeded rule keeps it in-app only.
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

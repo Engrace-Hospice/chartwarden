@@ -62,7 +62,7 @@ and **compliance-retained accountability records** (`break_glass_event`, `audito
 Per §8.1 the break-glass and engagement events are `compliance` retention (6–7 years; HIPAA
 §164.316(b)(2)) — they **must survive** a patient's right-to-erasure request during the retention
 window (legal-hold supremacy, M4 §10.6), so erasing them would itself be a compliance violation.
-The closed `DataClass` union (`@wardenx/types`) therefore carries no M3 class, and `validateErasers()`
+The closed `DataClass` union (`@chartwarden/types`) therefore carries no M3 class, and `validateErasers()`
 remains satisfied by the existing required classes. When a membership is offboarded, its
 `membership_role` grants are dropped by the role-revoke path (not the erasure path); the role
 catalog is org configuration, not subject data. Destruction-certificate workflow for the

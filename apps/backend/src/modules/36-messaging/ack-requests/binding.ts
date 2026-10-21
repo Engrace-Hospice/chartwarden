@@ -6,7 +6,7 @@ import {
   ACK_REQUESTS_FLAG_KEY,
   URGENT_RECEIVE_PERMISSION,
   URGENT_SEND_PERMISSION,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { recipientEligible } from "../handoffs/handoff-eligibility";
 import type { EligibilityPorts } from "../handoffs/handoff-eligibility";
 import type { HintOutboxPort } from "../message-hint-events";

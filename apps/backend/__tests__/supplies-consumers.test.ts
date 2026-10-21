@@ -4,8 +4,8 @@
 // The pure M21 cross-module boundary — no DB, no seams, no clock: every fact is injected. The one file
 // that DOES touch a seam (`consumers/order-context.ts`) is exercised only through its pure helper, because
 // binding the M1 registry from a unit test would be testing the registry, not the cascade.
-import type { AdmissionStatusValue, M21EventName, SupplyRequestStatus } from "@wardenx/types";
-import { M21_EVENT_NAMES, M21_SUBSCRIBED_EVENT_NAMES } from "@wardenx/types";
+import type { AdmissionStatusValue, M21EventName, SupplyRequestStatus } from "@chartwarden/types";
+import { M21_EVENT_NAMES, M21_SUBSCRIBED_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type ComfortKitDispatchContext,

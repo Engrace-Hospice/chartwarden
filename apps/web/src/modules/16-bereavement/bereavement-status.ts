@@ -10,7 +10,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** `bereavement_plan_status` (§3.2) — the §2.2 plan root. Every `closed_*` is terminal, so neutral: a
  *  completed 13-month program and an early close are both "done", and the CLOSURE REASON (not the status

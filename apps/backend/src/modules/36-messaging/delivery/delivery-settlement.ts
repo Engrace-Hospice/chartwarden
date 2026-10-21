@@ -9,14 +9,14 @@
 // FORWARD-ONLY + IDEMPOTENT: the row is locked (`FOR UPDATE`) and `canTransition` refuses any move that is not
 // strictly forward, so a duplicate, replayed or out-of-order callback is a no-op that writes (and audits)
 // nothing. The roll-up skips an unchanged outcome for the same reason (the M4 trigger fires on every UPDATE).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type NotificationChannel,
   type NotificationStatus,
   type VendorTransition,
   canTransition,
   rollUpAlertOutcome,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 export type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];

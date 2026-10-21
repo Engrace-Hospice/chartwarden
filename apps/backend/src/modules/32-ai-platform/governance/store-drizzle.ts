@@ -17,13 +17,13 @@
 //     session variable — passing one without the other would read across tenants on a
 //     BYPASSRLS-granted role and pass every test that did not check for it.
 //
-// TIMESTAMPS CROSS THE PORT AS ISO STRINGS, NOT `Date`. The pure rules in `@wardenx/ai-platform` do
+// TIMESTAMPS CROSS THE PORT AS ISO STRINGS, NOT `Date`. The pure rules in `@chartwarden/ai-platform` do
 // date arithmetic on ISO instants and the in-memory store holds strings; a port that leaked `Date` here
 // would make the two stores structurally different and the slice tests would stop proving anything
 // about this one.
-import { type DbClient, schema } from "@wardenx/db";
-import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
-import type { AiModelBackendKind, AiRoutingPreference } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@chartwarden/tenancy";
+import type { AiModelBackendKind, AiRoutingPreference } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type M32EventEmitter, capabilityIdentity } from "../events";
 

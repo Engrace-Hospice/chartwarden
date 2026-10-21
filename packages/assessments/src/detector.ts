@@ -1,4 +1,4 @@
-// @wardenx/assessments — §2.4 significant-change DETECTOR (delta math + D2 tenant-override floor
+// @chartwarden/assessments — §2.4 significant-change DETECTOR (delta math + D2 tenant-override floor
 // enforcement), M9-T08.
 //
 // The pure evaluators the recording transaction (§9.6: detection adds < 30 ms to the insert path) runs
@@ -14,7 +14,7 @@
 // rejected at policy-write time, never silently clamped). The §9.1 canonical case — a tenant cannot set
 // `painad ≥ 3` when the floor is `≥ 4` — is enforced by `resolveSignificantChangeThreshold`.
 
-import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@wardenx/types";
+import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@chartwarden/types";
 import { require_ } from "./errors";
 import { RULE_SCALE, firstEmissionSeverity } from "./significant-change";
 

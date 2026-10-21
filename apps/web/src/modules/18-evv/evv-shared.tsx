@@ -1,7 +1,7 @@
-import { StatusPill, type StatusTone } from "@wardenx/ui";
+import { StatusPill, type StatusTone } from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — shared table + status-pill primitives the M18 §5.1 read screens render
 // (Track B / ADR-0030, M18-T07). Reconciled to Lantern (R1): §6.6 StatusPill (tone maps grounded in the
-// @wardenx/types enums) + a No-Line, keyboard-actionable DataTable. Coordinate-free: the read screens never
+// @chartwarden/types enums) + a No-Line, keyboard-actionable DataTable. Coordinate-free: the read screens never
 // render lat/lng (D10 — coordinates need the separate evv.read_coords path).
 import type { JSX, ReactNode } from "react";
 

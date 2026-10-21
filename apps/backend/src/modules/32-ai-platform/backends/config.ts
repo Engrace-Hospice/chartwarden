@@ -23,7 +23,7 @@ import {
   createAnthropicModelBackend,
   createAnthropicSdkTransport,
   createOllamaModelBackend,
-} from "@wardenx/ai-platform";
+} from "@chartwarden/ai-platform";
 
 export interface AiBackendDeploymentConfig {
   readonly ollama: {

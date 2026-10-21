@@ -8,7 +8,7 @@
 // value, not a dead row's (the reason M40's own `resolveFacility` exists; that canonical projection carries no `kind`,
 // so the chase is repeated here over the same columns). Bounded hops (a merge cycle is impossible by the CHECK but a
 // bound keeps a corrupt chain from looping).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { inArray } from "drizzle-orm";
 
 export type FacilityKindValue = (typeof schema.facilities.$inferSelect)["kind"];

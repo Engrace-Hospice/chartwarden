@@ -1,4 +1,4 @@
-// @wardenx/db — Organization-Settings Registry aggregator (M1 Foundation §3.15.1).
+// @chartwarden/db — Organization-Settings Registry aggregator (M1 Foundation §3.15.1).
 //
 // Aggregates every module's ModuleSettingsContribution into one validated registry.
 // The build is FAIL-CLOSED: if two modules declare the same `settingsKey`, the build

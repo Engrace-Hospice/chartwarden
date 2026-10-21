@@ -1,4 +1,4 @@
-// @wardenx/db — `presence` (M36 Secure Messaging §3.5). One row per user, mutated on
+// @chartwarden/db — `presence` (M36 Secure Messaging §3.5). One row per user, mutated on
 // Socket.IO connect/disconnect. It is user-owned and tenant-agnostic (presence follows the
 // human across tenants), so it carries NO organization_id and is opted out of the
 // three-column rule via the check-tenancy NON_ORG_SCOPED allowlist (a reviewed change) —

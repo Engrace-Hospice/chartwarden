@@ -1,4 +1,4 @@
-// @wardenx/db — M24 Billing — Medicaid §3.3 — per-attempt submission records + the 999/277CA-equivalent
+// @chartwarden/db — M24 Billing — Medicaid §3.3 — per-attempt submission records + the 999/277CA-equivalent
 // acknowledgment rows. Both NON-partitioned (not in the §3.2 partition set). Simple PK (id).
 //
 // CROSS-MODULE FK POLICY: organization_id / provider_entity_id (M1 core) get real FKs; medicaid_submission_id

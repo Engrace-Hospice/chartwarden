@@ -5,7 +5,7 @@
 // offset pagination is forbidden on PHI lists). The slice encodes the keyset as base64url JSON; production
 // HMAC-signs it (the codec shape is identical so the routes are stable). `decodeCursor` rejects a malformed
 // cursor as 400 VALIDATION_FAILED (never silently page-from-start).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 
 /** The keyset a cursor encodes — `(createdAt DESC, id)` (§4.1). Opaque to clients. */
 export interface CursorKeyset {
@@ -28,7 +28,7 @@ export function decodeCursor(cursor: string): CursorKeyset {
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new WardenXError("VALIDATION_FAILED", "the cursor is malformed", 400);
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
 }
 

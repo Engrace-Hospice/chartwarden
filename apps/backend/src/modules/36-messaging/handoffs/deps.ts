@@ -3,8 +3,8 @@
 // default to the platform's own) and returns the binding: `isEnabled` + `service` are the route deps; `expireDue` is the
 // tick body; `reassignForLeaver` is the offboarding half; `stillOffered` / `markNeedsAttention` are the notification
 // consumer's ports. One factory, so every caller shares one service and one store.
-import type { DbClient } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
 import { createSeamPart2ChannelGate } from "../part2-channel-gate";

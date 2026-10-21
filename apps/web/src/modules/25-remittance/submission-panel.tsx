@@ -5,7 +5,7 @@ import {
   StatusPill,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the SUBMISSION section of an ADR, appeal or reopening panel (hospice ADR/TPE/QIC
 // PRD, milestone 6a). WardenX does not send anything to a MAC, QIC or esMD gateway yet: the filing is made outside
 // WardenX through the channel the MAC or QIC instructs, and this section tracks the attempt and keeps the proof. It
@@ -206,7 +206,7 @@ export function SubmissionPanel({ kind, subjectId }: SubmissionPanelProps): JSX.
         </>
       ) : null}
       <Hint>
-        WardenX does not send this to the MAC yet. File it through the channel the MAC or QIC
+        ChartWarden does not send this to the MAC yet. File it through the channel the MAC or QIC
         instructs, then record the confirmation here.
       </Hint>
       <Facts
@@ -265,7 +265,7 @@ export function SubmissionPanel({ kind, subjectId }: SubmissionPanelProps): JSX.
               <>
                 <Hint>
                   {onCase(attempt.purpose)
-                    ? "The case record keeps its original confirmation and is the value WardenX uses. Corrections are kept beside it."
+                    ? "The case record keeps its original confirmation and is the value ChartWarden uses. Corrections are kept beside it."
                     : "The latest correction is the current value; the original receipt is kept above."}
                 </Hint>
                 <ul className="wx-action-hint wx-action-list">

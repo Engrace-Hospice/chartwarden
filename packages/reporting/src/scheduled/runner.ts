@@ -1,4 +1,4 @@
-// @wardenx/reporting · scheduled — the scheduled-report RUNNER (M33 §2.2 / §2.5–§2.6 / §4.8 W-R-04).
+// @chartwarden/reporting · scheduled — the scheduled-report RUNNER (M33 §2.2 / §2.5–§2.6 / §4.8 W-R-04).
 //
 // The body of the `report.scheduled_run` worker: it takes one due occurrence and drives it from `queued` to
 // `rendered_pending` (the §2.2 ladder `queued → running → rendered_pending → rendered_complete → delivered`;
@@ -18,7 +18,7 @@
 // PURE port-injected orchestration: every fact/effect is an injected port (no clock/RNG/Drizzle/BullMQ/M22/
 // M39/translator import here). The {@link partitionRecipients} + {@link decideRunDisposition} decision cores
 // are total functions unit-asserted independently of the I/O.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import type { RenderSnapshot, SnapshotColumn } from "../export/render-request";
 import { M33_SCHEDULED_REPORT_AGGREGATE_TYPE } from "./delivery";
 

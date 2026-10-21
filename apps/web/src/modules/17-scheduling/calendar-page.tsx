@@ -7,7 +7,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — Scheduling (M17 §5.1, Track B / ADR-0030; 2026-09-25 redesign,
 // mockup "Scheduling"). The org calendar: a Day / Week / Month / List view of the visits in range
 // (GET /visits from–to), a staff legend that filters the grid, the selected visit's details below it,

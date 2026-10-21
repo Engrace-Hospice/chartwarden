@@ -2,7 +2,7 @@
 //
 // The comfort-kit template is the RECIPE, and its rules are all one shape: platform floor, tenant may extend
 // or tighten, tenant may never remove or loosen. The arithmetic of that rule (bounds, thresholds, the
-// four-medication floor) lives in `@wardenx/supplies`; this file owns the LIFECYCLE around it — authoring a
+// four-medication floor) lives in `@chartwarden/supplies`; this file owns the LIFECYCLE around it — authoring a
 // tenant template, superseding one with a new version, retiring one, and answering "which template was
 // effective when this kit went out?".
 //
@@ -20,8 +20,8 @@ import {
   type TemplateViolation,
   type TenantTemplateMedication,
   validateTenantTemplate,
-} from "@wardenx/supplies";
-import type { ComfortKitTemplateId, IsoInstant } from "@wardenx/types";
+} from "@chartwarden/supplies";
+import type { ComfortKitTemplateId, IsoInstant } from "@chartwarden/types";
 import { type SupplySideEffect, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
 

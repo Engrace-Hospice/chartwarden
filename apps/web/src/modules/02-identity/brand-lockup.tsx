@@ -1,4 +1,4 @@
-import { t } from "@wardenx/ui";
+import { t } from "@chartwarden/ui";
 import type { JSX } from "react";
 // apps/web/src/modules/02-identity — the WardenX brand lockup for the auth-flow cards (Sign in, MFA,
 // org-select, …). Matches the P0 Pencil auth frame (wardenx-P0-foundation.pen `a1dbhD`): the Lantern
@@ -13,7 +13,7 @@ export function BrandLockup(): JSX.Element {
       <span
         style={{ fontFamily: t.fontDisplay, fontWeight: 600, fontSize: "1.5rem", color: t.primary }}
       >
-        WardenX
+        ChartWarden
       </span>
     </div>
   );

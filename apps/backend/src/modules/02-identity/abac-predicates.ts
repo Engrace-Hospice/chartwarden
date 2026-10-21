@@ -8,7 +8,7 @@
 //     `POST /api/v1/platform/users/:id/deactivate` (platform-user-routes.ts).
 //
 // Pure — no injected read surface. RE-DERIVED from the platform-owned role catalog
-// (`@wardenx/auth` `PLATFORM_OPS_ROLE_KEYS`), the M29 `nppes_platform_job_caller` / M35
+// (`@chartwarden/auth` `PLATFORM_OPS_ROLE_KEYS`), the M29 `nppes_platform_job_caller` / M35
 // `platform_billing_scope` precedent (apps/backend/src/modules/29-external-interfaces/
 // abac-predicates.ts): re-deriving from the single source keeps the platform's several
 // platform-only gates from drifting apart on who counts as an operator, rather than each
@@ -24,7 +24,7 @@ import {
   PLATFORM_OPS_ROLE_KEYS,
   type PlatformOpsRoleKey,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 
 export const M2_ABAC_PREDICATES = [
   "organization_lifecycle_platform_ops",

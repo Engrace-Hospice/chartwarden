@@ -13,8 +13,8 @@
 // + the org RLS predicate is the full gate. The mutating routes in the §4.1.1 table — R-11, R-13, R-14,
 // R-16 — carry `Idempotency-Key`; the GET reads are exempt. Org/actor binding is ALWAYS server-side
 // (request.context, never the body). Mirrors the M33 routes/exports.routes.ts shape.
-import { requirePermission } from "@wardenx/auth";
-import { NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { requirePermission } from "@chartwarden/auth";
+import { NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type M30ReadActor, type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -169,7 +169,7 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
       const actor = actorOf(request);
       const { exportId } = parse(ExportIdParamsSchema, request.params);
       if (!exportFile) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "CAHPS_EXPORT_FILE_UNAVAILABLE",
           "CAHPS export downloads are not available: no tenant key cipher is bound",
           503,

@@ -1,4 +1,4 @@
-// @wardenx/db — `processing_log` (M1 Foundation). The §4.8 BullMQ worker consumer-idempotency ledger:
+// @chartwarden/db — `processing_log` (M1 Foundation). The §4.8 BullMQ worker consumer-idempotency ledger:
 // every M30/M33-style background worker opens its `process()` with an `already_processed` short-circuit
 // against this table (the application-layer complement to BullMQ `removeOnComplete`, so a job replayed
 // from the DLQ — or re-delivered after a crash before its ack — never re-applies its effects). HELPER-ONLY

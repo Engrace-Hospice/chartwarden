@@ -1,7 +1,7 @@
 // apps/web/src/modules/23-billing-medicare — the PURE helpers behind the hospice rate-table screen (FY2027
 // workstream E): dollars ↔ whole cents, the six rate fields, and the client-side comparison of keyed rates against
 // the CMS national reference for the declared HQRP status. The comparison is the screen's LIVE hint while typing;
-// the server recomputes the authoritative `nationalReferenceWarnings` on every saved version (@wardenx/billing
+// the server recomputes the authoritative `nationalReferenceWarnings` on every saved version (@chartwarden/billing
 // `checkRatesAgainstNationalReference`). No React, no IO.
 
 /** The six PRE-wage-index national amounts (whole cents) — the rate-table version's rate columns. */

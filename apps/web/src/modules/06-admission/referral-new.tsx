@@ -1,5 +1,5 @@
-import { isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
-import { Button, DetailPageLayout, PageHeader, useApiClient } from "@wardenx/ui";
+import { isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
+import { Button, DetailPageLayout, PageHeader, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

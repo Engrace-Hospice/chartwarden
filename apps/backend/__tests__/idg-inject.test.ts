@@ -34,9 +34,9 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { evaluateQuorum } from "@wardenx/idg";
-import { RateLimitedError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { evaluateQuorum } from "@chartwarden/idg";
+import { RateLimitedError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

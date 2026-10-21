@@ -9,15 +9,15 @@
 // reaction can never become, replace or imply a read receipt or a sign-off. Pin and unpin are audited by the
 // `message_pin` write-audit trigger (actor = the session user). Both operations are idempotent; the realtime hint
 // (`m36.message.annotated`, ids and one timestamp) is published only when a row actually changed.
-import { type DbClient, schema } from "@wardenx/db";
-import type { MessageReactionPinService, MessagingRouteService } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { MessageReactionPinService, MessagingRouteService } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   MAX_PINS_PER_CHANNEL,
   NotFoundError,
-  WardenXError,
+  ChartWardenError,
   isMessageReactionKey,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { loadReactionSummaries } from "./message-annotations";
 import { type HintOutboxPort, publishMessageHint } from "./message-hint-events";
@@ -75,7 +75,7 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
       )
       .limit(1);
     if (!row || row.status === "deleted") throw new NotFoundError("message", input.messageId);
-    if (row.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    if (row.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
     return { parentMessageId: row.parentMessageId };
   }
 
@@ -103,7 +103,7 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
   return {
     async setReaction(orgId, input) {
       if (!isMessageReactionKey(input.emoji)) {
-        throw new WardenXError("INVALID_REACTION", "unknown reaction", 422);
+        throw new ChartWardenError("INVALID_REACTION", "unknown reaction", 422);
       }
       await assertMember(orgId, input.userId, input.channelId);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
@@ -172,7 +172,7 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
           { n: number },
         ];
         if (Number(n) >= MAX_PINS_PER_CHANNEL) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "PIN_LIMIT_REACHED",
             `a channel can pin at most ${MAX_PINS_PER_CHANNEL} messages`,
             409,
@@ -202,7 +202,7 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
         if (channel.isArchived)
-          throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
         const removed = await tx
           .delete(MPIN)
           .where(

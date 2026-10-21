@@ -8,7 +8,7 @@ import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
   MESSAGING_QUEUE_PARAMETERS,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type M36IntegrityJobDeps,

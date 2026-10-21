@@ -16,14 +16,14 @@
 // open ever writes here. The tenant flag `messaging.ack_requests` gates CREATING a request (off => the uniform 404); a request that
 // already exists can always be settled, because stranding an open safety item would be worse than the flag being a hard off. A missing,
 // malformed, other-tenant or hidden-channel id is ONE 404. Org and actor are always the request context. No timers, tiers or paging.
-import { requirePermission } from "@wardenx/auth";
+import { requirePermission } from "@chartwarden/auth";
 import {
   type AckSupervisorReasonCode,
   NotFoundError,
   URGENT_RECEIVE_PERMISSION,
   URGENT_SEND_PERMISSION,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AckActorRef, AckService } from "../ack-requests/ack-service";
 import {

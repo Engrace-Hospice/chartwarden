@@ -8,7 +8,7 @@
 //     timely per MBPM ch. 9 §20.1(5)(a)).
 // No IO and no `Date.now()`: every fact (the period start date, the org timezone, the "as of" instant
 // for an overdue check) is passed in, so the math is deterministic across timezones and DST boundaries.
-import type { LocalDate } from "@wardenx/types";
+import type { LocalDate } from "@chartwarden/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (D8). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";

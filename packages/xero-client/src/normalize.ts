@@ -1,4 +1,4 @@
-// @wardenx/xero-client — raw Xero → normalized mapping (pure, IO-free). Mirrors the M30 cahps-vendors
+// @chartwarden/xero-client — raw Xero → normalized mapping (pure, IO-free). Mirrors the M30 cahps-vendors
 // `result.ts` parser style: defensive type-guards, structured throw on a malformed payload, money as
 // INTEGER CENTS (M27 invariant — no floats past this boundary). No Xero SDK shapes leak past here.
 //

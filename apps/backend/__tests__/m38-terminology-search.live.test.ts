@@ -19,9 +19,9 @@ import {
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
-import { createTerminologyProvider } from "@wardenx/terminology";
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import { createTerminologyProvider } from "@chartwarden/terminology";
 import {
   type LoadableSystemId,
   SILENT_LOGGER,
@@ -29,7 +29,7 @@ import {
   createRecordingFollowUps,
   runLoadVersion,
   sha256Hex,
-} from "@wardenx/terminology-loader";
+} from "@chartwarden/terminology-loader";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

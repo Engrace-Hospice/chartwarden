@@ -14,7 +14,7 @@ import {
   type OnCallDirectoryStatus,
   type OnCallRank,
   type OnCallTierDto,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export interface OnCallCoverageDeps {
   readonly isEnabled: (orgId: string) => Promise<boolean>;

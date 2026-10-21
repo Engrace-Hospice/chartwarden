@@ -1,4 +1,4 @@
-// @wardenx/types — the DocLens → MEDICATION HISTORY (M12) and → ALLERGY LIST (M5) writeback contract
+// @chartwarden/types — the DocLens → MEDICATION HISTORY (M12) and → ALLERGY LIST (M5) writeback contract
 // (F-238 "meds-allergies"). The sibling of `doclens-writeback.ts` (F-235's M5 demographics path); it does not
 // change that contract.
 //
@@ -18,7 +18,7 @@
 // Both modules import this one leaf file (M22 shares no `dependsOn` edge with M5 or M12), so the field
 // paths, the dedupe key and the payload shapes cannot drift between the producer and the consumers.
 
-/** The registry field path (`@wardenx/intake-extraction`) whose approved candidates become history lines. */
+/** The registry field path (`@chartwarden/intake-extraction`) whose approved candidates become history lines. */
 export const DOCLENS_MEDICATION_FIELD_PATH = "medications[].name" as const;
 /** The registry field path whose approved candidates become unverified allergy entries. */
 export const DOCLENS_ALLERGY_FIELD_PATH = "allergies[].substance" as const;

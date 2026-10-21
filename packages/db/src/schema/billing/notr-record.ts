@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `notr_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// @chartwarden/db — `notr_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). The Notice of Termination/Revocation: one regulatory NOTR per terminating event
 // (revocation / transfer-out / discharge), with the timely-filing window watched by the cron watchdog
 // (`window_target_at`). The NOTR lifecycle (D4) lives in `state` (shares the NOE/NOTR 7-state shape).

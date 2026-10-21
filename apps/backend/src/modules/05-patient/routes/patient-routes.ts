@@ -2,7 +2,7 @@
 // (§4.2; the §4.7 permission handshake; §7.1 admit-no-dup / §7.4 address cascade / §7.7 right-to-amend).
 //
 // Every route is gated by the REAL Authorization Contract (`requirePermission` + `requireAbac` from
-// @wardenx/auth, M3) on the §4.7 keys M5 registers into M3's catalog (M5_CONTRIBUTED_PERMISSIONS).
+// @chartwarden/auth, M3) on the §4.7 keys M5 registers into M3's catalog (M5_CONTRIBUTED_PERMISSIONS).
 //
 // F-092 — THE ABAC HALF WAS MISSING, AND SIX COMMENTS IN THIS FILE SAID OTHERWISE. Nine of M5's keys
 // declare `abac: "caseload_or_scope"` in the permission catalog, and M5 was the only clinical module on
@@ -30,7 +30,7 @@
 // The list half could not be a guard. A preHandler runs before the handler, sees no rows, and can only
 // allow or deny — it can REFUSE a collection but cannot FILTER one. So `list` now takes the narrowing
 // set (`censusScope` below), and the org-wide-role determination that used to live inside the predicate
-// moved to `hasOrgWideScope` in @wardenx/auth, where both halves read it. M5 built `caseloadPatientIds`
+// moved to `hasOrgWideScope` in @chartwarden/auth, where both halves read it. M5 built `caseloadPatientIds`
 // for exactly this — its doc comment calls it "the `patient_id = ANY(:ids)` list filter" — and until
 // now it had one consumer platform-wide, M12's refill inbox, which is not this list.
 //
@@ -45,8 +45,8 @@ import {
   requireAbac,
   requirePermission,
   requireStepUp,
-} from "@wardenx/auth";
-import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/auth";
+import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { IdentifierCipherUnboundError } from "../identifiers/identifier-cipher";
@@ -93,22 +93,22 @@ export interface PatientRouteDeps {
  *  rest are this route's own (the spec names no code for them). Anything else rethrows unchanged. */
 function mapMergeError(err: unknown): unknown {
   if (err instanceof PatientNotFoundError) {
-    return new WardenXError("NOT_FOUND", `patient '${err.patientId}' not found`, 404);
+    return new ChartWardenError("NOT_FOUND", `patient '${err.patientId}' not found`, 404);
   }
   if (err instanceof SelfMergeError) {
-    return new WardenXError("SELF_MERGE", err.message, 422);
+    return new ChartWardenError("SELF_MERGE", err.message, 422);
   }
   if (err instanceof SourceAlreadyMergedError) {
-    return new WardenXError("ALREADY_MERGED", err.message, 409);
+    return new ChartWardenError("ALREADY_MERGED", err.message, 409);
   }
   if (err instanceof TargetAlreadyMergedError) {
-    return new WardenXError("MERGE_TARGET_ALREADY_MERGED", err.message, 409);
+    return new ChartWardenError("MERGE_TARGET_ALREADY_MERGED", err.message, 409);
   }
   if (err instanceof UnmergeableSourceStatusError) {
-    return new WardenXError("PATIENT_NOT_MERGEABLE", err.message, 409);
+    return new ChartWardenError("PATIENT_NOT_MERGEABLE", err.message, 409);
   }
   if (err instanceof UnknownMergeFieldError) {
-    return new WardenXError("UNKNOWN_MERGE_FIELD", err.message, 422);
+    return new ChartWardenError("UNKNOWN_MERGE_FIELD", err.message, 422);
   }
   return err;
 }
@@ -203,7 +203,7 @@ const SCOPE_MERGE_TARGET = requireAbac("patient.merge", "caseload_or_scope", {
  * collection but cannot FILTER one: it runs before the handler, sees no rows, and its only outputs are
  * allow and deny. Narrowing a list is a read-path concern, so the determination the predicate makes
  * internally (`hasOrgWideScope`) had to become callable from outside it — which is what F-096 moved
- * into `@wardenx/auth`, and why both halves now answer from the same derivation rather than from two
+ * into `@chartwarden/auth`, and why both halves now answer from the same derivation rather than from two
  * lists that agree until one is edited.
  *
  * FAIL-CLOSED ON A SEAM THROW. `CaseloadProvider` is a Phase-0 deny-stub that THROWS when its owning
@@ -229,7 +229,7 @@ async function censusScope(request: FastifyRequest): Promise<readonly string[] |
   }
 }
 
-const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 // §2.5 read-audit: a single-patient chart read. `patientIdParam: "id"` joins the read to the patient
 // for the §164.528 accounting query. Per-tab routes extend this with the field names they surface.
@@ -421,13 +421,13 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       const result = await service.admit(organizationId, body, userId).catch((e: unknown) => {
         // GAP-010: no tenant key bound / ring destroyed -> 503, not a 500 and not a silent unencrypted write.
         if (e instanceof IdentifierCipherUnboundError) {
-          throw new WardenXError("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
+          throw new ChartWardenError("IDENTIFIER_CIPHER_UNBOUND", e.message, 503);
         }
         throw e;
       });
       if (result.outcome === "hard_block") {
         // §7.1: no patient row created; surface the existing chart for "Open existing patient".
-        throw new WardenXError(
+        throw new ChartWardenError(
           "DUPLICATE_OF",
           `duplicate of ${result.existingPatientId} (matched on ${result.matchedOn})`,
           409,

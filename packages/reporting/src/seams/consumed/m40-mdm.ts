@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M40 (Master Data Management). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M40 (Master Data Management). PRESENT producer (§4.4).
 //
 // M33 resolves dimension LABELS only — physician / facility / payer / state / MAC display names for the
 // dimension axes of a report (never PHI). Bound to the live M40 `ProviderEntityReader` / `LocationReader`

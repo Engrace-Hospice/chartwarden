@@ -33,8 +33,8 @@
  */
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { allPermissionMirrorRows } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import {
   createPlatformKekAdapter,

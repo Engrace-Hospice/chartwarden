@@ -1,11 +1,11 @@
-// @wardenx/cost-report — Worksheet A-6 (Adjustments to Expenses) TypeBox schema (CMS-1984-14, §1.1). A-6
+// @chartwarden/cost-report — Worksheet A-6 (Adjustments to Expenses) TypeBox schema (CMS-1984-14, §1.1). A-6
 // REMOVES non-allowable / non-reimbursable costs from the trial balance (e.g. advertising, bad-debt expense
 // already claimed elsewhere, owner-compensation in excess of reasonable, investment income offsets). Unlike
 // A-1 reclassifications, A-6 adjustments are NOT net-zero — they reduce (or, rarely, increase) the allowable
 // cost base. Each adjustment names its allowability basis. Money is INTEGER CENTS (negative = a reduction of
 // allowable cost); no PHI (D18).
 //
-// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
+// PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
 import { type Static, Type } from "@sinclair/typebox";
 
 /** A single adjustment entry against a cost center's expenses. */

@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `noe_timeliness_5d` (noe, error, regulatory). The admission's Notice of
+// @chartwarden/billing — §4.5 rule `noe_timeliness_5d` (noe, error, regulatory). The admission's Notice of
 // Election must be in `ack_accepted` before the claim can bill (D3); CMS requires the NOE within 5
 // calendar days of the hospice election. The rule warns at day 3 of admission and blocks at day 5+1
 // unless overridden (42 CFR §418.24). `admissionDay` is PRECOMPUTED (clock-free). PURE: reads ctx only.

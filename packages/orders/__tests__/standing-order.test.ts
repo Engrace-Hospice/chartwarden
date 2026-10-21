@@ -1,5 +1,5 @@
-import type { OrderKind } from "@wardenx/types";
-// @wardenx/orders — §2.4 D5 standing-order template + spawn engine — M11-T04.
+import type { OrderKind } from "@chartwarden/types";
+// @chartwarden/orders — §2.4 D5 standing-order template + spawn engine — M11-T04.
 import { describe, expect, it } from "vitest";
 import type { OrderSideEffect } from "../src/lifecycle/effects";
 import {

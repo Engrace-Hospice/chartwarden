@@ -28,7 +28,7 @@ import type {
   TriageEscalationTrigger,
   TriageProtocolId,
   TriageProtocolQuestionId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 /**
  * The timestamp columns a transition may stamp — exactly the ones in migration 0107.

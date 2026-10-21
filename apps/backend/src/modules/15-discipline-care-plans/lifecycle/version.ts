@@ -17,7 +17,7 @@ import type {
   DisciplineRequiredSignerSet,
   DisciplineSignerRole,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { DisciplinePlanStateError, require_ } from "./errors";
 import { decideRecordSignature, resolveRequiredSignerSet } from "./required-signer-set";

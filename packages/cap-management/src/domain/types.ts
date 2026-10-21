@@ -1,4 +1,4 @@
-// @wardenx/cap-management — shared domain value types. These mirror the DB enums (packages/db/src/schema/cap)
+// @chartwarden/cap-management — shared domain value types. These mirror the DB enums (packages/db/src/schema/cap)
 // as string-literal unions so the pure domain never imports Drizzle. No PHI; ids are opaque strings.
 
 export type Methodology = "streamlined" | "proportional";

@@ -8,7 +8,7 @@
 // reads query the parent, inserts route to the current-month leaf.
 //
 // Like M12, M13 has NO state-transition triggers (only the M4 audit triggers) — the service does every
-// administration/worksheet/deployment transition itself via INSERT/UPDATE, composing the PURE `@wardenx/emar`
+// administration/worksheet/deployment transition itself via INSERT/UPDATE, composing the PURE `@chartwarden/emar`
 // deciders: the §2.5 D8 late-entry tier (`resolveLateEntryTier`), the §2.6 D7 witness-attestation token
 // (`buildWitnessAttestationToken`/`verifyWitnessAttestationToken`, HMAC + scope-bound), and the §2.9 BCMA
 // verifier (`evaluateBarcodeScan`/`barcodeScanBlocks`). Every mutation emits its strict `m13.*` catalog
@@ -61,7 +61,7 @@
 //       from the `activeMedicationOrderIds` port) plus at least one decision, and the worksheet is
 //       terminal once finalized / voided (no decision, line, finalize or void reopens it).
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   ADMINISTRATION_MODE_CATALOG,
   AdministrationStateError,
@@ -82,14 +82,14 @@ import {
   transitionAdministration,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
-} from "@wardenx/emar";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/emar";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type MedClass,
   NotFoundError,
   type PatientWristbandVerifier,
   ValidationError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type {
   CaregiverReviewAbacFacts,
@@ -1038,7 +1038,7 @@ export function createDbEmarBackend(
         // `administration_record.iv_session_id` used to be written NOWHERE: the production path never set
         // it and the in-memory slice hard-coded it null, so no session could exist, `getIvSession` 404'd
         // for every input, and `IV_SESSION_GRAPH` / `assertIvSegmentLegal` / `checkIvRateBounds` — all
-        // real, all unit-tested in @wardenx/emar — were called by nothing. The ordering graph and the
+        // real, all unit-tested in @chartwarden/emar — were called by nothing. The ordering graph and the
         // titration bounds were enforced at runtime by no one.
         //
         // `planIvSegment` is that core, and it is the authority here rather than a re-derivation: it
@@ -1371,7 +1371,7 @@ export function createDbEmarBackend(
           );
         }
 
-        // §2.2 — the pure `@wardenx/emar` machine (`administration-record.ts`'s `commit` case) has
+        // §2.2 — the pure `@chartwarden/emar` machine (`administration-record.ts`'s `commit` case) has
         // declared `{kind: "request_document"} + {kind: "outbox", event: "m13.administration_record
         // .document_requested"}` on `perAdministrationPdfRequired` since M13-T03; nothing in this
         // service ever read that effect list (this route reimplements the commit inline rather than

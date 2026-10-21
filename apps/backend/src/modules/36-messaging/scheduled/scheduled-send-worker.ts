@@ -3,7 +3,7 @@
 // org's due rows are dispatched by the dispatcher (re-check, send, delete in one transaction). A per-row problem is
 // absorbed by the dispatcher (counted, then blocked); an org-level failure (e.g. the database) fails the tick via the
 // same fan-out the integrity jobs use, so it is visible in the failed set and the DLQ alert.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@chartwarden/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type M36IntegrityWorkerDeps, fanOutOrgs } from "../jobs/integrity-workers";
 import type { DispatchResult, ScheduledSendDispatcher } from "./scheduled-send-dispatcher";

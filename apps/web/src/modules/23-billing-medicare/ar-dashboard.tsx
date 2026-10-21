@@ -8,7 +8,7 @@ import {
   StatusPill,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — Billing landing (M23 §5.1 #1, Track B / ADR-0030; 2026-09-25
 // redesign, mockup "Billing / Claims"). Four headline cards, the org's claims table, and a right rail with
 // the A/R aging buckets, the claim pipeline by state, and the NOE/NOTR filing-window posture.

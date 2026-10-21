@@ -1,4 +1,4 @@
-// @wardenx/db — M31 Patient/Family Portal & Telehealth schema barrel (§3.1/§3.3, M31-T02). The central
+// @chartwarden/db — M31 Patient/Family Portal & Telehealth schema barrel (§3.1/§3.3, M31-T02). The central
 // ../index.ts re-exports this barrel; the five pgEnums live in ../../enums.ts.
 //
 // SCOPE (authority: architecture/module-manifest.ts wins over the spec §2 15-entity ERD — ADR-0005). The

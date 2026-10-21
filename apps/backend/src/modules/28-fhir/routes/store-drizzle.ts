@@ -13,7 +13,7 @@
 // bytes — a real DEK wrap lands when the platform cipher does (the M32/M20 posture).
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   FHIR_CLIENT_CASCADE_ON_ENTRY,
   fhirClientTransition,
@@ -21,8 +21,8 @@ import {
   fhirInboundOwnerModuleFor,
   fhirInboundSubjectPatientId,
   inboundPayloadSha256,
-} from "@wardenx/fhir";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/fhir";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
   type FhirBulkExportRequestKind,
@@ -31,7 +31,7 @@ import {
   type FhirClientSummary,
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { INBOUND_PAYLOAD_RETENTION_DAYS } from "../jobs/queues";

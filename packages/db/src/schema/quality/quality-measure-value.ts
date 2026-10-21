@@ -1,4 +1,4 @@
-// @wardenx/db — `quality_measure_value` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `quality_measure_value` (M30 §3.3; non-partitioned; retention class `compliance`).
 // Append-only / soft-supersede ledger of computed HQRP quality measures (HCI components, claims-based
 // measures, CAHPS-derived). One current row per (measure, provider_entity, period) with superseded_at
 // NULL; recompute writes a new row and stamps superseded_at/superseded_by on the prior. ORG-SCOPED:

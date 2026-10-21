@@ -12,13 +12,13 @@ import {
   StatusPill,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
 // The operational hub: four counters (Open, Closing 48h, Late, Expired) over the org's open HOPE
 // schedules, each clickable to filter, above the schedule worklist sorted by window-close. Window state
 // (green/amber/red/grey) is derived client-side as a UX cue only — the SERVER is authoritative for status
-// (ADR-0030, no frontend authz). Reads GET /api/v1/hope/schedules via the typed client. Leaves only (@wardenx/ui).
+// (ADR-0030, no frontend authz). Reads GET /api/v1/hope/schedules via the typed client. Leaves only (@chartwarden/ui).
 //
 // #91 — this worklist is where a HOPE window is ACTED on, and it used to offer no action at all: a
 // clinician could see "closes in 6 hours" and had no way to record the timepoint that closes it. Each

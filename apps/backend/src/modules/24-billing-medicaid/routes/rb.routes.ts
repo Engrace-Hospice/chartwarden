@@ -3,7 +3,7 @@
 // `:id` arrangement (or the body PE on create); activate/terminate add §D12 step-up. Every mutation rejects
 // `actor_kind='ai_*'` (§8.6) and requires the §F08 Idempotency-Key. The rb-day override gates on RBAC + RLS
 // (the rb_day → PE caseload narrowing binds with the M5 CaseloadProvider seam — deferred, §4.4).
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";

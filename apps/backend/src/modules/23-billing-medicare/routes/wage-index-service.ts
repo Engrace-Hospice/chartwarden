@@ -3,17 +3,17 @@
 // `referenceData.wageIndexForCcn` adapter binds (`resolveWageIndexForOrg`, the F-121 org-explicit seam-function pattern: boot-
 // time closures have no ambient request context, so each read opens its own `withOrgContext`).
 //
-// Validation is layered: the pure rules in `@wardenx/billing` (`validateWageIndexEntry`) run first for a precise 422; the
+// Validation is layered: the pure rules in `@chartwarden/billing` (`validateWageIndexEntry`) run first for a precise 422; the
 // "one live value per CCN + fiscal year" pre-check names the clashing version for a precise 409; migration 0280's partial
 // unique index is the race-safe backstop (a concurrent writer surfaces as the same 409, never as two live rows). Values are
 // append-only: a correction SUPERSEDES the old row (kept as history); already-assembled claims are unaffected because assembly
 // snapshots the applied factor onto `per_diem_rate_calculation`.
 import { randomUUID } from "node:crypto";
-import { repositories, resolveWageIndex, validateWageIndexEntry } from "@wardenx/billing";
-import type { ResolvedWageIndex } from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { repositories, resolveWageIndex, validateWageIndexEntry } from "@chartwarden/billing";
+import type { ResolvedWageIndex } from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateWageIndexBody,
@@ -117,7 +117,7 @@ export function buildDrizzleWageIndexService(
   function validated(body: CreateWageIndexBody | SupersedeWageIndexBody): void {
     const v = validateWageIndexEntry(body, now().toISOString().slice(0, 10));
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "WAGE_INDEX_INVALID",
         `invalid wage index: ${v.errors.join("; ")}`,
         422,
@@ -125,8 +125,8 @@ export function buildDrizzleWageIndexService(
     }
   }
 
-  function clashError(clash: schema.TenantWageIndex): WardenXError {
-    return new WardenXError(
+  function clashError(clash: schema.TenantWageIndex): ChartWardenError {
+    return new ChartWardenError(
       "WAGE_INDEX_EXISTS",
       `a live wage index (${clash.id}) already exists for CCN ${clash.ccn} fiscal year ${clash.fiscalYearStarting}; supersede it instead of entering a second one`,
       409,
@@ -156,7 +156,7 @@ export function buildDrizzleWageIndexService(
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "WAGE_INDEX_EXISTS",
           "a live wage index for that CCN and fiscal year was entered concurrently",
           409,
@@ -183,14 +183,14 @@ export function buildDrizzleWageIndexService(
         if (!old || old.organizationId !== actor.organizationId)
           throw new NotFoundError("wage index");
         if (old.ccn !== body.ccn || old.fiscalYearStarting !== body.fiscalYearStarting) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_KEY_MISMATCH",
             "a supersede must keep the same CCN and fiscal year; enter a different CCN/year as a new wage index",
             422,
           );
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_ALREADY_SUPERSEDED",
             `wage index ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -201,7 +201,7 @@ export function buildDrizzleWageIndexService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "WAGE_INDEX_ALREADY_SUPERSEDED",
             `wage index ${id} was already superseded`,
             409,

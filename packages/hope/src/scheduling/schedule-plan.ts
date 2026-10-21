@@ -1,4 +1,4 @@
-// @wardenx/hope — the timepoint engine (M10-T03; §2, task #6 + #11, D9). PURE, IO-free: it turns an M6
+// @chartwarden/hope — the timepoint engine (M10-T03; §2, task #6 + #11, D9). PURE, IO-free: it turns an M6
 // admission/discharge fact into the set of `hope_timepoint_schedule` row DESCRIPTORS the scheduling
 // worker inserts. `planAdmissionTimepoints` materializes the three admission-anchored windows (Admission
 // / HUV1 / HUV2) from `admission.activated`; `planDischargeTimepoint` materializes the single Discharge
@@ -6,7 +6,7 @@
 // admission, because its `discharge_reason` branch cannot be known until discharge actually happens). The
 // worker (M10-T06) maps these descriptors onto Drizzle inserts inside one tx; idempotency is enforced by
 // the schema's `uniq_hope_sched_admission_rfa_open` partial index, so a re-emitted event is a no-op.
-import type { HopeRfaKind, HopeScheduleGeneratedBy, LocalDate } from "@wardenx/types";
+import type { HopeRfaKind, HopeScheduleGeneratedBy, LocalDate } from "@chartwarden/types";
 import { DEFAULT_TIMEPOINT_ALERT_CADENCE, type TimepointAlertCadence } from "./alert-cadence";
 import {
   type AdmissionAnchoredRfaKind,

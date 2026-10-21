@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_oncall_policy` (M19 §3.3). D3/D7: the per-(org, ProviderEntity) after-hours
+// @chartwarden/db — `tenant_oncall_policy` (M19 §3.3). D3/D7: the per-(org, ProviderEntity) after-hours
 // deployment posture — which model the tenant runs, its escalation ladder, its callback SLA per severity,
 // and the two AI feature gates. It is ORG-LEVEL CONFIGURATION, not patient data: no patient column, no
 // location column, and the row is never touched by the §3.7 eraser (the M11 `order_verbal_policy` / M13

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-// @wardenx/x12-837-client — the Stedi ClearinghouseTransport, SUBMIT SIDE (ADR-0053; contract:
+// @chartwarden/x12-837-client — the Stedi ClearinghouseTransport, SUBMIT SIDE (ADR-0053; contract:
 // docs/audits/clearinghouse-integration/STEDI_TRANSPORT_CONTRACT_20261011.md).
 //
 // Implemented: submitClaim and submitNotice. Everything else answers CH_NOT_WIRED (fail closed) until its contract

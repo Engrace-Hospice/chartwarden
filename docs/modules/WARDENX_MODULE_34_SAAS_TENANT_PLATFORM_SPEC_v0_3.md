@@ -639,7 +639,7 @@ The two SECURITY DEFINER functions are `m34_provision_tenant_key_ring(tenant_acc
 // packages/saas-tenant-platform/src/schema/tenant-account.ts
 import { pgEnum, pgTable, uuid, text, jsonb, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '@wardenx/db/schema/organization' // M1 — read only; FK reference
+import { organizations } from '@chartwarden/db/schema/organization' // M1 — read only; FK reference
 
 export const tenantAccountStatus = pgEnum('tenant_account_status', [
   'signup_intent',
@@ -747,7 +747,7 @@ export const tenantAccountStatusEvent = pgTable(
 // packages/saas-tenant-platform/src/schema/onboarding-task-template.ts
 // M34-F02 / ADR-0010: schema files that newly carry organization_id below
 // (onboarding-task.ts, tenant-invitation.ts) import the M1 organization FK target:
-//   import { organizations } from '@wardenx/db/schema/organization' // M1 — read only; FK reference
+//   import { organizations } from '@chartwarden/db/schema/organization' // M1 — read only; FK reference
 export const onboardingTaskTemplate = pgTable(
   'onboarding_task_template',
   {
@@ -869,7 +869,7 @@ export const tenantInvitation = pgTable(
 ```typescript
 // packages/saas-tenant-platform/src/schema/tenant-key-ring.ts
 // M34-F02 / ADR-0010: organization_id FK target imported from M1 (read-only):
-//   import { organizations } from '@wardenx/db/schema/organization'
+//   import { organizations } from '@chartwarden/db/schema/organization'
 export const tenantKeyRing = pgTable(
   'tenant_key_ring',
   {
@@ -1036,7 +1036,7 @@ export const supportConsentGrant = pgTable(
     // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
     // now carries its own organization_id NOT NULL so the canonical app.org_id RLS predicate
     // (and the compliance_officer INSERT WITH CHECK) apply directly (ADR-0010 D2/D3).
-    // FK target imported from M1: import { organizations } from '@wardenx/db/schema/organization'.
+    // FK target imported from M1: import { organizations } from '@chartwarden/db/schema/organization'.
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
@@ -1349,7 +1349,7 @@ export const platformTenantBaaRecord = pgTable(
     // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
     // now carries its own organization_id NOT NULL so the canonical app.org_id RLS predicate
     // (and the compliance_officer INSERT/UPDATE ABAC) apply directly (ADR-0010 D2/D3).
-    // FK target imported from M1: import { organizations } from '@wardenx/db/schema/organization'.
+    // FK target imported from M1: import { organizations } from '@chartwarden/db/schema/organization'.
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
@@ -1571,7 +1571,7 @@ Every M34 PHI-touching table receives the M4 write-audit trigger (DSAR job rows 
 
 ```typescript
 // In the migration:
-import { installWriteAuditTriggers } from '@wardenx/audit/generator'
+import { installWriteAuditTriggers } from '@chartwarden/audit/generator'
 
 installWriteAuditTriggers([
   { table: 'tenant_account', retentionClass: 'compliance' },
@@ -1989,7 +1989,7 @@ All seams are registered at boot in `packages/saas-tenant-platform/src/seam-boot
 ```typescript
 import { setTenantLifecycleProvider, setTenantKeyProvider, ... } from './seams'
 import { realTenantLifecycleProvider, realTenantKeyProvider, ... } from './implementations'
-import { registerEraser } from '@wardenx/audit/seams'
+import { registerEraser } from '@chartwarden/audit/seams'
 import { saasTenantPlatformEraser } from './eraser'
 import { tenantExportShardForM34 } from './tenant-export-shard'
 import { registerTenantExportShard } from './seams'

@@ -1,4 +1,4 @@
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer Body } } ? Body : never;
 type Ok<Operation> = Operation extends { responses: { 200: infer Response } }

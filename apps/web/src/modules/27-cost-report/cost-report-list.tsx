@@ -10,7 +10,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/27-cost-report — the COST REPORTS list (R2, §5.1). The primary surface for finance
 // staff + compliance officers: every cost report by (ProviderEntity, fiscal year) with its lifecycle state
 // and reopen count. Reads are org-scoped server-side (RLS); the server is the only authz point (ADR-0030).

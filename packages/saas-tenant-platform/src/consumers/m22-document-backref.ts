@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · consumers — the M22 §1.1-handshake back-ref consumer (M34 §7.3, D9).
+// @chartwarden/saas-tenant-platform · consumers — the M22 §1.1-handshake back-ref consumer (M34 §7.3, D9).
 //
 // THE DOWNSTREAM HALF OF THE DSAR RENDER HANDSHAKE. The DSAR worker emits `m22.document.upload_requested`
 // for the rendered FHIR-Bundle PDF + NDJSON manifest (`services/dsar-export-worker.ts`); M22 renders +

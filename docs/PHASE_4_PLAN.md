@@ -32,7 +32,7 @@ each track is pulled forward by a specific customer or compliance need with its 
 | **HITRUST certification** | platform-wide | Enterprise sales requirement | Control mapping, evidence automation; leans on M4 audit + M30 SRA. |
 | **SOC 2 (Type II)** | platform-wide | Enterprise sales requirement | Continuous-controls evidence; ops-runbook + audit-log driven. |
 | **CHAP-verified-for-WardenX** | platform-wide | Market credibility | Distinct from tenant CoP compliance (M30) — this certifies the platform vendor. |
-| **Mobile native shell** | `apps/mobile/` (Capacitor) | Field-staff native delivery | Architecture §10 notes Capacitor wrapping the mobile-optimized frontend; offline store already exists (`@wardenx/mobile-offline`). |
+| **Mobile native shell** | `apps/mobile/` (Capacitor) | Field-staff native delivery | Architecture §10 notes Capacitor wrapping the mobile-optimized frontend; offline store already exists (`@chartwarden/mobile-offline`). |
 | **Local-LLM at scale** | 32 (`ml-worker`/`llm-worker`) | Sustained AI throughput demand | vLLM replaces Ollama default per architecture §10.7.6.2; split `llm-worker` VM when scale demands. |
 
 ---

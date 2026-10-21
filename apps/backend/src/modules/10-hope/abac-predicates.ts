@@ -3,7 +3,7 @@ import {
   type AbacTarget,
   hasOrgWideScope,
   registerPredicateIdempotent,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 // apps/backend/src/modules/10-hope/abac-predicates.ts — M10-T06 (§4.7).
 //
 // The FOUR named ABAC predicate resolvers M10 OWNS and registers into M3's named-predicate registry (M3
@@ -40,7 +40,7 @@ import {
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is
 // idempotent via `registerPredicateIdempotent`.
-import { isHopeAuthorDisciplineAllowed, isSfvAuthorDisciplineAllowed } from "@wardenx/hope";
+import { isHopeAuthorDisciplineAllowed, isSfvAuthorDisciplineAllowed } from "@chartwarden/hope";
 import { getSeam } from "../../bootstrap/index";
 
 /** The predicate names M10 owns (registered into M3). Single-owner across the platform registry. */

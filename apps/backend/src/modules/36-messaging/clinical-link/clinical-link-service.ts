@@ -14,9 +14,9 @@ import {
   type ClinicalLinkKind,
   type ClinicalLinkSummary,
   type RichBody,
-  WardenXError,
+  ChartWardenError,
   richBodyClinicalLinks,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 export { CLINICAL_LINK_KINDS };
 export type { ClinicalLinkKind };
@@ -25,8 +25,8 @@ export const CLINICAL_LINK_NOT_AVAILABLE = "CLINICAL_LINK_NOT_AVAILABLE";
 export const CLINICAL_LINKS_FLAG_KEY = "messaging.clinical_links";
 
 /** The ONE refusal. Fresh instance per throw (stack traces are per-instance); the text is fixed and names nothing. */
-export function linkNotAvailable(): WardenXError {
-  return new WardenXError(CLINICAL_LINK_NOT_AVAILABLE, "link not available", 422);
+export function linkNotAvailable(): ChartWardenError {
+  return new ChartWardenError(CLINICAL_LINK_NOT_AVAILABLE, "link not available", 422);
 }
 
 /** The owning-module reads M36 may make. Read-only by construction: there is no write member to call. */

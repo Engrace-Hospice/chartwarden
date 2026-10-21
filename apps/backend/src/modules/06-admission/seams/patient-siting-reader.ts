@@ -4,9 +4,9 @@
 // admission id, here keyed by patient). Not a request: it opens its OWN org-scoped `withOrgContext` envelope
 // (empty acting user, the seam-read convention) with an explicit `organization_id` predicate behind RLS.
 // Fail-closed shape: unknown / inactive patient, or an unsited admission, yields `[]`.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientSitingReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientSitingReader } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const ADM = schema.admissions;

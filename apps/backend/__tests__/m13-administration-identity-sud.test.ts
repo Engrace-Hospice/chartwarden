@@ -2,7 +2,7 @@
 // flag (it never did before), and M13's portal redaction + the M28 FHIR Part 2 gate read M13's OWN copy, which
 // was never written either. The adapter that turns M12's administration context into the identity M13 files an
 // administration under must carry the flag, and must fail closed (an order that does not say is not "non-SUD").
-import type { MedicationOrderDto } from "@wardenx/types";
+import type { MedicationOrderDto } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { toAdministrationIdentity } from "../src/modules/13-emar/administration-identity";
 

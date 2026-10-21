@@ -1,7 +1,7 @@
 // apps/web/src/modules/16-bereavement — the "unreachable proposed" banner. The nightly detector only
 // PROPOSES; the counselor confirms through the existing mark-unreachable route.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

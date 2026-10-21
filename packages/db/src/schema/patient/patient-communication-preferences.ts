@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_communication_preference` (M5 §3.4). One row per patient (patient_id PK):
+// @chartwarden/db — `patient_communication_preference` (M5 §3.4). One row per patient (patient_id PK):
 // preferred language/channel, interpreter need, accessible format, do-not-contact/mail flags.
 // PHI-bearing → three-column tenancy rule.
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

@@ -1,4 +1,4 @@
-// @wardenx/messaging — the in-memory MessagingRouteService slice (M36-T07, spec §4.1–4.2).
+// @chartwarden/messaging — the in-memory MessagingRouteService slice (M36-T07, spec §4.1–4.2).
 //
 // The DB-free implementation of the §4.1 route inventory's application service, so the backend
 // route module is integration-testable with no live Postgres/Valkey (mirrors M38's
@@ -15,10 +15,10 @@ import {
   MAX_PINS_PER_CHANNEL,
   NotFoundError,
   type RichBody,
-  WardenXError,
+  ChartWardenError,
   isMessageReactionKey,
   sanitizeRichBody,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type AnnouncementReader,
   type AnnouncementReceiptPerson,
@@ -141,7 +141,7 @@ function sanitizedRichBody(raw: RichBody | undefined): RichBody | undefined {
   if (raw === undefined) return undefined;
   const checked = sanitizeRichBody(raw);
   if (!checked.ok) {
-    throw new WardenXError("INVALID_RICH_BODY", "the structured message body is not valid", 422);
+    throw new ChartWardenError("INVALID_RICH_BODY", "the structured message body is not valid", 422);
   }
   return checked.value;
 }
@@ -153,7 +153,7 @@ function validateReferences(
   eligibleStaff: ReadonlyMap<string, { readonly displayName: string }>,
 ): void {
   if (references.length > 25) {
-    throw new WardenXError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
+    throw new ChartWardenError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
   }
   let previousEnd = -1;
   for (const reference of [...references].sort((a, b) => a.start - b.start || a.end - b.end)) {
@@ -174,7 +174,7 @@ function validateReferences(
       (reference.kind === "staff" && !channel.members.has(reference.entityId)) ||
       body.slice(reference.start, reference.end) !== `@${label}`
     ) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "INVALID_MESSAGE_REFERENCES",
         "a message reference is invalid for this conversation",
         422,
@@ -451,7 +451,7 @@ export function createInMemoryMessagingService(
       throw new NotFoundError("message", messageId);
     }
     if (writable && channels.get(m.channelId)?.archivedAt) {
-      throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+      throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
     }
     return m;
   };
@@ -466,7 +466,7 @@ export function createInMemoryMessagingService(
     if (!(await self.canViewChannel(orgId, input.userId, input.channelId))) {
       throw new NotFoundError("channel", input.channelId);
     }
-    if (channel.archivedAt) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    if (channel.archivedAt) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
   };
 
   /** WP 2.4: a LIVE message of THIS channel; anything else (unknown, other channel, deleted) is the same 404. */
@@ -627,7 +627,7 @@ export function createInMemoryMessagingService(
     // ── WP 2.4: reactions and pins ──────────────────────────────────────────────────────────────
     async setReaction(orgId, input) {
       if (!isMessageReactionKey(input.emoji)) {
-        throw new WardenXError("INVALID_REACTION", "unknown reaction", 422);
+        throw new ChartWardenError("INVALID_REACTION", "unknown reaction", 422);
       }
       const m = await liveChannelMessage(this, orgId, input);
       reactionPins.setReaction(m.messageId, input.emoji, input.userId, input.present);
@@ -638,7 +638,7 @@ export function createInMemoryMessagingService(
       const m = await liveChannelMessage(this, orgId, input);
       const result = reactionPins.pin(m.channelId, m.messageId, iso());
       if (result === "capReached") {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "PIN_LIMIT_REACHED",
           `a channel can pin at most ${MAX_PINS_PER_CHANNEL} messages`,
           409,
@@ -671,7 +671,7 @@ export function createInMemoryMessagingService(
         throw new NotFoundError("channel", input.channelId);
       }
       if (channel.archivedAt)
-        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+        throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
       const terms = assertSearchHasCriteria(input);
       const limit = searchPageSize(input.limit);
       const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null;
@@ -717,7 +717,7 @@ export function createInMemoryMessagingService(
     async sendMessage(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
       if (ch.archivedAt) {
-        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+        throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
       const richBody = sanitizedRichBody(input.richBody);
       assertSbarWrite(richBody, ch.kind, effectiveSbarPolicy(options.sbarPolicy ?? null));
@@ -735,14 +735,14 @@ export function createInMemoryMessagingService(
       if (input.parentMessageId) {
         const parent = messages.get(input.parentMessageId);
         if (parent?.orgId !== orgId || parent.channelId !== input.channelId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "PARENT_MESSAGE_NOT_IN_CHANNEL",
             "a reply's parent message must be in the same channel",
             422,
           );
         }
         if (parent.parentMessageId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "PARENT_MESSAGE_IS_REPLY",
             "a reply must target the thread's root message, not another reply",
             422,
@@ -1194,13 +1194,13 @@ export function createInMemoryMessagingService(
     async putPreferences(orgId, userId, input) {
       validateRoutingMap(input.routingMap);
       if (input.vacationForwardToUserId && input.vacationForwardToUserId === userId) {
-        throw new WardenXError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
+        throw new ChartWardenError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
       }
       if (input.vacationForwardToUserId) {
         assertEligibleStaff(orgId, input.vacationForwardToUserId);
         const target = preferences.get(`${orgId}:${input.vacationForwardToUserId}`);
         if (target?.vacationForwardToUserId === userId) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VACATION_FORWARD_CYCLE",
             "the forward target also forwards to you",
             409,
@@ -1210,7 +1210,7 @@ export function createInMemoryMessagingService(
         // same invariant the Drizzle-backed store enforces; mirrored so this in-memory reference
         // stays behaviorally accurate, not just structurally similar).
         if (!input.vacationUntil || new Date(input.vacationUntil).getTime() <= Date.now()) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VACATION_UNTIL_NOT_FUTURE",
             "vacationUntil must be set and in the future when vacationForwardToUserId is set",
             422,
@@ -1259,7 +1259,7 @@ export function createInMemoryMessagingService(
         return { endpointId, channel: row.channel, verificationStatus: row.verificationStatus };
       }
       if (token !== row.token) {
-        throw new WardenXError("INVALID_TOKEN", "verification token does not match", 422);
+        throw new ChartWardenError("INVALID_TOKEN", "verification token does not match", 422);
       }
       row.verificationStatus = "verified";
       row.token = null;
@@ -1337,7 +1337,7 @@ export function createInMemoryMessagingService(
         input.patch.recipientResolver !== undefined &&
         !RECIPIENT_RESOLVERS.includes(input.patch.recipientResolver)
       ) {
-        throw new WardenXError("INVALID_RESOLVER", "unknown recipient resolver", 422);
+        throw new ChartWardenError("INVALID_RESOLVER", "unknown recipient resolver", 422);
       }
 
       const key = `${orgId}:${base.eventType}`;
@@ -1383,15 +1383,15 @@ function toPreferencesView(row: PreferencesRow): NotificationPreferencesView {
 function validateRoutingMap(map: RoutingMap): void {
   for (const [category, bySeverity] of Object.entries(map)) {
     if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
-      throw new WardenXError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+      throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
     }
     for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
       if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {
-        throw new WardenXError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
+        throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
       }
       for (const channel of channelsList ?? []) {
         if (!NOTIFICATION_CHANNELS.includes(channel)) {
-          throw new WardenXError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
+          throw new ChartWardenError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
         }
       }
     }

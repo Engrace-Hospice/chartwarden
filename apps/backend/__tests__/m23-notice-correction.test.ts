@@ -13,7 +13,7 @@ const fakes = vi.hoisted(() => ({
   failNextCreateWithControlNumber: false,
 }));
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
+vi.mock("@chartwarden/billing", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   const repos = original.repositories as Record<string, unknown>;
   const notice = (table: Map<string, Row>, eventKeys: readonly string[]) =>
@@ -69,7 +69,7 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
   };
 });
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => Promise<unknown>) =>
     fn({}),
 }));

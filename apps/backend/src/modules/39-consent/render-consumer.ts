@@ -1,7 +1,7 @@
 // M39 signed-consent → M22 render bridge. The outbox dispatcher owns retry/receipts: a renderer
 // outage leaves the source event pending and never rewrites or un-signs the legally operative row.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../bootstrap/outbox-dispatcher";
 import { renderConsentRecordDocument } from "./consumed-seams";

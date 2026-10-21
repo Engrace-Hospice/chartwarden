@@ -1,4 +1,4 @@
-import { Button, Panel, TextField, useApiClient } from "@wardenx/ui";
+import { Button, Panel, TextField, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Apply promo to a subscription
 // (`/admin/subscriptions/:id/apply_promo`, promo.admin.apply). POST /api/admin/subscriptions/:id/apply_promo
 // (step-up + Idempotency-Key + the §4.8 `promo_applicable_to_subscription` ABAC gate, enforced server-side).

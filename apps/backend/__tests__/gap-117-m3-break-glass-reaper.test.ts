@@ -8,7 +8,7 @@ const rowsByOrg: Record<string, Array<Record<string, unknown>>> = {
   "org-b": [{ id: "ev-2", organizationId: "org-b" }],
 };
 
-vi.mock("@wardenx/tenancy", () => ({
+vi.mock("@chartwarden/tenancy", () => ({
   systemOrgContext: (organizationId: string) => ({ organizationId, userId: "" }),
   withOrgContext: async (
     _db: unknown,

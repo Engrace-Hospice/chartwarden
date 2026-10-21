@@ -10,13 +10,13 @@ import {
   WorkQueueLayout,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — My Visits (M17 §5.1 `/app/me/visits`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The clinician's own visits today + upcoming 7 days, mobile-
 // optimized. Caseload scoping is the SERVER's job (the §4.7 `within_caseload_or_unassigned_pool` ABAC + RLS;
 // ADR-0030 — no frontend authz, out-of-scope visits never appear). The "Start visit" (EVV-missing flow) action
 // fills in as that write path hardens. Reads GET /api/v1/visits (date-window filtered) via the typed client.
-// Leaves only (@wardenx/ui).
+// Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

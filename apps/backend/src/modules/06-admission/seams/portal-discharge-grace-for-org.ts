@@ -21,8 +21,8 @@
 //
 // ORG-EXPLICIT: opens its own `withOrgContext` (a cron tick is not a request) and filters `organization_id`
 // explicitly, so a wrong-tenant call cannot read another tenant even on a superuser connection.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 
 const ADM = schema.admissions;

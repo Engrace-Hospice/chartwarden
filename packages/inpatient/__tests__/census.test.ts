@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T10 unit tests for the §2.13 D14 census builder + service-day rule.
+// @chartwarden/inpatient — M37-T10 unit tests for the §2.13 D14 census builder + service-day rule.
 import { describe, expect, it } from "vitest";
 import { isServiceDay } from "../src/domain/census/bed-day-calculator";
 import {

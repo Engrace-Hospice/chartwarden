@@ -1,4 +1,4 @@
-// @wardenx/audit — PHI read-capture contract (M4-T03, M4 spec §3.4, §2.3 "App — read").
+// @chartwarden/audit — PHI read-capture contract (M4-T03, M4 spec §3.4, §2.3 "App — read").
 //
 // Viewing PHI is itself an auditable event (HIPAA §164.312(b)) and, when surfaced to an
 // outside party, a §164.528-reportable *disclosure*. This module is the route-facing surface

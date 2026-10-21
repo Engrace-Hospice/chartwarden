@@ -71,5 +71,5 @@ Same mechanical path as ADR-0028 (recommended: apply now, per ADR-0027 D-f):
   with "M23 slice / M25 slice" and has M25-T04 "parse 835 + 277CA". Update to: M23-T07 →
   `packages/x12-837-client` (837 + 999 + 277CA); M25-T04 → `packages/x12-835-client` (**835 only**;
   277CA-derived denials arrive via `m23.claim.rejected`).
-- `@wardenx/mobile-offline` remains the only deliberately manifest-exempt package; with this ADR there
+- `@chartwarden/mobile-offline` remains the only deliberately manifest-exempt package; with this ADR there
   are **no remaining ungoverned adapter packages**.

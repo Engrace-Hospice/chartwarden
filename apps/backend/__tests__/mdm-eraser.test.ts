@@ -7,7 +7,7 @@
 //   • the composition-root wireModuleErasers hook makes validateErasers() pass during a real
 //     buildServer() boot (the missing eraser would otherwise have failed the boot gate);
 //   • a tenant-offboarding erase reports the org's per-class total.
-import { createInMemoryMdmEraseStore } from "@wardenx/mdm";
+import { createInMemoryMdmEraseStore } from "@chartwarden/mdm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetErasersForTest,

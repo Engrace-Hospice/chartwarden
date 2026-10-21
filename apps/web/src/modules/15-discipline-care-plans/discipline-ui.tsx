@@ -3,7 +3,7 @@
 // table vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the
 // M24 medicaid-ui.tsx precedent). Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens`
 // stays green and the twilight dark mode is automatic.
-import { Modal as SharedModal, t } from "@wardenx/ui";
+import { Modal as SharedModal, t } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
@@ -329,7 +329,7 @@ export function TextAreaField({
 }
 
 /** The §5.1 modal shell — backdrop + dialog + footer actions. Every M15 ceremony reuses it. Delegates
- * to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
+ * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
  * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
 export function Modal({
   title,

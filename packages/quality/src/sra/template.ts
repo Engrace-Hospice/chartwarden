@@ -1,4 +1,4 @@
-// @wardenx/quality — NIST 800-66r2 SRA template structure (M30-P2a). Pure const, IO-free.
+// @chartwarden/quality — NIST 800-66r2 SRA template structure (M30-P2a). Pure const, IO-free.
 //
 // `sra_cycle.template_version` defaults to `nist_800_66_r2`. NIST SP 800-66 Rev. 2 frames the HIPAA
 // Security Rule risk assessment around the Rule's safeguard standards (45 CFR §164.308 Administrative,

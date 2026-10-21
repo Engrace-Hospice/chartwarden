@@ -1,4 +1,4 @@
-// @wardenx/messaging — D9 tenant-offboarding destruction (M36-T10, spec §7.8 / §11 D9).
+// @chartwarden/messaging — D9 tenant-offboarding destruction (M36-T10, spec §7.8 / §11 D9).
 export {
   eraseTenantMessaging,
   type MessagingEraseStore,

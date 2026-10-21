@@ -1,4 +1,4 @@
-// @wardenx/fhir — the API-key authentication alternative (§2.2 `fhir_client_credential` / D2, M28-T03).
+// @chartwarden/fhir — the API-key authentication alternative (§2.2 `fhir_client_credential` / D2, M28-T03).
 //
 // The SECOND Phase-1 auth path (D2). For "trusted infrastructure integrations" that cannot run the SMART
 // Backend Services asymmetric flow (`backend-services.ts`), a `fhir_client_credential` of `kind='api_key'`

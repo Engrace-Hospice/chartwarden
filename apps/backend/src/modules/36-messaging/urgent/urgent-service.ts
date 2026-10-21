@@ -10,7 +10,7 @@ import {
   type ValidatedClinicalLinkInput,
   derivePatient,
   urgentRecipientInvalid,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 import {
   NotFoundError,
   type RichBody,
@@ -19,8 +19,8 @@ import {
   type UrgentMessageOptions,
   type UrgentMessageResponse,
   type UrgentRecipient,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";
 import { resolveRichWrite } from "../rich-body-codec";
@@ -111,8 +111,8 @@ export interface UrgentService {
 
 const channelNotFound = (): NotFoundError => new NotFoundError("channel");
 /** ADR-0081: a role-based send whose response cannot be tracked is refused whole (nothing sent), never sent without the role on record. */
-const roleSendUntracked = (): WardenXError =>
-  new WardenXError(
+const roleSendUntracked = (): ChartWardenError =>
+  new ChartWardenError(
     "ROLE_SEND_UNAVAILABLE",
     "Messaging a role is unavailable right now. Use the agency telephone procedure; no message was sent.",
     503,
@@ -157,7 +157,7 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       await visibleChannel(actor, input.channelId);
       const patientId = await patientOf(actor.orgId, input.channelId);
       if (!patientId) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "URGENT_NOT_PATIENT_CHANNEL",
           "An urgent clinical message needs a patient conversation.",
           422,
@@ -189,7 +189,7 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
       }
 
       const rich = resolveRichWrite({ bodyDoc: input.bodyDoc });
-      if (!rich) throw new WardenXError("VALIDATION_FAILED", "an SBAR body is required", 422);
+      if (!rich) throw new ChartWardenError("VALIDATION_FAILED", "an SBAR body is required", 422);
       const clinicalLinks = await validateLinks(rich.richBody);
       // A link to ANOTHER patient's record must not ride in this patient's urgent message (one answer, as 3.10).
       if (clinicalLinks.some((l) => l.patientId?.toLowerCase() !== patientId.toLowerCase())) {

@@ -1,4 +1,4 @@
-// @wardenx/iqies-client — the MinIO envelope-storage convention (M10-T07, spec §4.10.1 / M10-F17 /
+// @chartwarden/iqies-client — the MinIO envelope-storage convention (M10-T07, spec §4.10.1 / M10-F17 /
 // SD-033/034). Submitted CMS HOPE envelopes are PHI-bearing XML subject to the CMS 10-year retention; they
 // are stored under a declared per-tenant prefix with COMPLIANCE object-lock so no principal (including a
 // platform admin) can overwrite or delete them before the retention period expires. This module owns the

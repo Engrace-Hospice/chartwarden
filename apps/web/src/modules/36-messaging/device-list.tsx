@@ -1,8 +1,8 @@
 // M36 WP 5.5 (ADR-0083, PROPOSED) - the list of devices shared by the self-service page and the security officer's page: a flat list of rows
 // (label, last used, push state as text, a pill for the current one) and a Revoke button that names its device. State is words, never colour
 // alone. It shows no IP address, no raw user agent and no id. Presentational: the screens own the data and the confirm step.
-import type { DeviceDto } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
+import type { DeviceDto } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {
   CURRENT_LABEL,

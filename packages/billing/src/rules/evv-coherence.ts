@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `evv_bracket_coherence` (evv, error, OPERATIONAL, D9). Every claim
+// @chartwarden/billing — §4.5 rule `evv_bracket_coherence` (evv, error, OPERATIONAL, D9). Every claim
 // line's EVV-relevant backing encounters must have a bracket state in {compliant, not_required,
 // documented_missing}; an `unresolved_missing` bracket blocks submission WHEN THE RULE IS ENABLED.
 // ADR-0008: Medicare-hospice EVV is operational/internal only and MUST NEVER be `regulatory_required`

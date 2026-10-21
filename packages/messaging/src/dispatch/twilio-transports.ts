@@ -1,4 +1,4 @@
-// @wardenx/messaging — Twilio SMS + Voice transports (M36 GAP-062, spec §4.4 / §4.7).
+// @chartwarden/messaging — Twilio SMS + Voice transports (M36 GAP-062, spec §4.4 / §4.7).
 //
 // SMS  -> `POST /2010-04-01/Accounts/{sid}/Messages.json`   (vendorMessageId = the message SID)
 // Voice-> `POST /2010-04-01/Accounts/{sid}/Calls.json`      (vendorMessageId = the call SID) — the Tier-1 SOS page.

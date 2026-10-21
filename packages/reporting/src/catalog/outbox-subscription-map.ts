@@ -1,4 +1,4 @@
-// @wardenx/reporting · catalog — the §4.5 OUTBOX_SUBSCRIPTION_MAP (D15).
+// @chartwarden/reporting · catalog — the §4.5 OUTBOX_SUBSCRIPTION_MAP (D15).
 //
 // The `report.mv_refresh` worker's incremental tier subscribes to ~60 upstream outbox topics across
 // M5–M28; each topic projects to the `mv_keys_invalidated[]` it dirties. The §4.4 outbox-subscriber reads

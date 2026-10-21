@@ -11,7 +11,7 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /onboarding/templates. The platform-ops onboarding-step floor — the 11 canonical platform-seed
 // templates plus tenant additions (SD-036 pattern-2). Backed by GET /api/v1/platform/onboarding-templates

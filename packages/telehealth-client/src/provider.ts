@@ -1,4 +1,4 @@
-// @wardenx/telehealth-client — the vendor-adapter contract (M31 §4.5 D1; M31-T01 layout).
+// @chartwarden/telehealth-client — the vendor-adapter contract (M31 §4.5 D1; M31-T01 layout).
 //
 // The `TelehealthProvider` interface is the ONLY boundary M31 crosses to a telehealth vendor. Per the D1
 // PHI-minimization rule every input is PHI-free — no patient name, no clinician name, no MRN, no condition:

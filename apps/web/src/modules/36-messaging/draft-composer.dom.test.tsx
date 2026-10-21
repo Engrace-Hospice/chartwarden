@@ -3,7 +3,7 @@
  * thread panel's reply composer does the same for its root.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

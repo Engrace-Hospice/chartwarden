@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `notr_record` (the Notice of Termination/Revocation root, §3.3; the
+// @chartwarden/billing · repositories — `notr_record` (the Notice of Termination/Revocation root, §3.3; the
 // §2.2 terminating-event fast path). ORG-SCOPED + VERSIONED — shape-identical to `noe-record` (NOE + NOTR
 // share the frozen `NOE_NOTR_STATES` alphabet, so this repo reuses the same `noticeStateCodec`), plus the
 // extra `trigger_kind` discriminator and its one-of-three event back-refs. The three db.ts conventions
@@ -12,7 +12,7 @@
 // The timely-filing watchdog cron enumerates in-flight rows past `window_target_at` via
 // `listWindowWatchCandidates` (§3.4 `notr_window_watch_idx`) and stamps `window_breached_at` through
 // `transitionToState`. No PHI / no MBI (D13 / §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, asc, desc, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/db — `form_template_version` (M22 §3.3 / §2.2.3). The draft→published→deprecated version
+// @chartwarden/db — `form_template_version` (M22 §3.3 / §2.2.3). The draft→published→deprecated version
 // lifecycle of a platform form template; `payload_schema` is the serialized TypeBox render contract.
 // Platform-shared reference (NO organization_id BY DESIGN, like its parent `form_template`) → listed
 // in check-tenancy NON_ORG_SCOPED, dual-grant RLS in 0049. `payload_schema` is DENYLISTED in the

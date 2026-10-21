@@ -4,8 +4,8 @@ import {
   buildPerDiemInput,
   calculatePerDiem,
   stepDownAllocate,
-} from "@wardenx/cost-report";
-// @wardenx/cost-report — PURE allocation-input assembler unit suite (Form CMS-1984-14 §4320/§4330). Asserts
+} from "@chartwarden/cost-report";
+// @chartwarden/cost-report — PURE allocation-input assembler unit suite (Form CMS-1984-14 §4320/§4330). Asserts
 // the worksheet → input shaping of `assembleAllocationInputs`: Worksheet A general-service centers + A-1…A-4
 // LOC direct costs + the Worksheet B-1 statistical basis → the step-down input; the census → per-LOC days.
 import { describe, expect, it } from "vitest";

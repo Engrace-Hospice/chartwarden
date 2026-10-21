@@ -1,4 +1,4 @@
-// @wardenx/messaging — the tighten-only floor of a `system_locked` platform alert rule (GAP-102).
+// @chartwarden/messaging — the tighten-only floor of a `system_locked` platform alert rule (GAP-102).
 //
 // M36 spec §7.4 (line 401): a `system_locked` rule cannot be disabled or have its
 // `recipient_resolver` changed; §1 (line 75) / D11: a tenant may TIGHTEN routing but never LOOSEN it
@@ -7,7 +7,7 @@
 // (b) ADD channels to `channels_override`. `recipient_resolver`, `enabled = true` and the lock itself
 // are immutable. Pure (no DB) so the in-memory service, the Drizzle service and the Drizzle emitter
 // share one definition; migration 0334 enforces the same rule in a DB trigger.
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { AlertSeverity } from "../interfaces/kinds";
 import { PLATFORM_DEFAULT_ALERT_RULES, SYSTEM_LOCKED_EVENT_TYPES } from "./alert-rules";
 
@@ -34,13 +34,13 @@ export function assertLockedRulePatchAllowed(eventType: string, patch: LockedRul
   const floor = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
   if (!floor) return;
   if (patch.enabled === false) {
-    throw new WardenXError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
+    throw new ChartWardenError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
   }
   if (
     patch.recipientResolver !== undefined &&
     patch.recipientResolver !== floor.recipientResolver
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "LOCKED_RULE_RESOLVER_IMMUTABLE",
       `system_locked rule '${eventType}' cannot have its recipient resolver changed`,
       422,
@@ -50,7 +50,7 @@ export function assertLockedRulePatchAllowed(eventType: string, patch: LockedRul
     patch.severityFloor !== undefined &&
     ALERT_SEVERITY_RANK[patch.severityFloor] < ALERT_SEVERITY_RANK[floor.severityFloor]
   ) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "LOCKED_RULE_SEVERITY_DOWNGRADE",
       `system_locked rule '${eventType}' cannot be downgraded below '${floor.severityFloor}'`,
       422,

@@ -1,4 +1,4 @@
-import { ForbiddenError } from "@wardenx/types";
+import { ForbiddenError } from "@chartwarden/types";
 // apps/backend/__tests__/encounter-workflow-acceptance.test.ts — M8-T12 the §7 workflow-acceptance
 // suite. One scenario per §7 user story, exercised end-to-end over the in-memory EncounterRouteService
 // (the same backend the routes compose over). Deterministic: no infra, injected clock. The route-auth

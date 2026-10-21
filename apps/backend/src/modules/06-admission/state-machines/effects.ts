@@ -6,7 +6,7 @@
 // structurally. This pure engine (M6-T04) returns side effects DECLARATIVELY as data; the service
 // layer (M6-T06+) executes them inside the aggregate's optimistic-locked transaction. Keeping them as
 // data makes the machines deterministic and unit-testable with no DB.
-import type { ComplianceWindowKind, LevelOfCare, LocalDate, M6EventName } from "@wardenx/types";
+import type { ComplianceWindowKind, LevelOfCare, LocalDate, M6EventName } from "@chartwarden/types";
 
 /** Why an election period closed (§2.3.2 `complete(cause)`). */
 export type ElectionEndCause = "next_period" | "revocation" | "transfer" | "discharge";

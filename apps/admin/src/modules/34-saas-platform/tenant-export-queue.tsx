@@ -9,8 +9,8 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /exports/tenant. The org-scoped full-tenant-export queue (D9 — the NDJSON-per-table + PDFs +
 // manifest.json archive used for migration / BAA-termination / compliance-audit / surveyor requests).

@@ -1,4 +1,4 @@
-// @wardenx/db — `audit_action_catalog` (M4 Audit §3.5, §4.6). Platform-shared registry of every
+// @chartwarden/db — `audit_action_catalog` (M4 Audit §3.5, §4.6). Platform-shared registry of every
 // auditable action keyed by action name: which module owns it, its default retention class, the
 // denylist categories it implies, and whether it is Part 2–eligible. M4 boot-validates owner-module
 // actions against this catalog (§4.6.7). NON_ORG_SCOPED platform reference, read-all (writes via M4

@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/cost-report",
+  "name": "@chartwarden/cost-report",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,10 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
-    "@wardenx/db": "workspace:*",
-    "@wardenx/gusto-client": "workspace:*",
-    "@wardenx/shared": "workspace:*",
-    "@wardenx/types": "workspace:*",
-    "@wardenx/xero-client": "workspace:*"
+    "@chartwarden/db": "workspace:*",
+    "@chartwarden/gusto-client": "workspace:*",
+    "@chartwarden/shared": "workspace:*",
+    "@chartwarden/types": "workspace:*",
+    "@chartwarden/xero-client": "workspace:*"
   }
 }

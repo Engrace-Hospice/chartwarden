@@ -19,7 +19,7 @@ import {
   ROLE_TEMPLATES,
   platformOpsRolePermissionSeedRows,
   rolesForPermission,
-} from "@wardenx/auth";
+} from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 
 /** The eighteen `billing_admin.*` keys are exactly the catalog entries in that category (source of truth).

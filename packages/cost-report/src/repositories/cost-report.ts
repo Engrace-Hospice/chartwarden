@@ -1,10 +1,10 @@
-// @wardenx/cost-report · repositories — the regulatory-financial-record root: `cost_report` (one row per
+// @chartwarden/cost-report · repositories — the regulatory-financial-record root: `cost_report` (one row per
 // (provider_entity, fiscal-year-end); composite uniqueness `(org, provider_entity, fye)` enforces one
 // CMS-1984-14 report per CCN per FY — D1; the XState lifecycle (D4) lives in `state`) (M27 §3.3).
 // ORG-SCOPED; the cost-report service wraps these in `withOrgContext` and owns the lifecycle guards (the
-// pure reducer lives in @wardenx/cost-report). No PHI (D18) — aggregate financial/statistical only.
+// pure reducer lives in @chartwarden/cost-report). No PHI (D18) — aggregate financial/statistical only.
 // `updateWithVersion` realizes the §2.5 optimistic-concurrency contract (`WHERE id=? AND version=?`).
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import type { CostReportDb, VersionedUpdateResult } from "./db";
 

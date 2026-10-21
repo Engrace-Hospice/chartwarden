@@ -1,4 +1,4 @@
-// @wardenx/dosespot — the inbound-webhook BODY contract (F-230, #248). Pure parsing, no IO, no clock.
+// @chartwarden/dosespot — the inbound-webhook BODY contract (F-230, #248). Pure parsing, no IO, no clock.
 //
 // WHAT IS SPEC-DEFINED vs PROVISIONAL (read before trusting any field name here):
 //   • The ENVELOPE (`dosespot_event_id`, `organization_id`, `event_type`, `occurred_at`, `payload`) and the

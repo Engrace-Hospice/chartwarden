@@ -1,4 +1,4 @@
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { numericMetrics } from "../drift";
 // apps/admin/src/modules/32-ai-platform — GAP-049 screen-registry + presentation unit tests.

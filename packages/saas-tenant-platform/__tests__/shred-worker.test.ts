@@ -14,7 +14,7 @@
 //       the MinIO scope destruction;
 //   (4) the M4 destruction-cert callback path is exercised (no bypass) — the eraser fan-out + the cert
 //       refusal/file calls all thread the certificate id.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   type DekRotateJob,
   DekRotateKeyRingDestroyed,
@@ -29,7 +29,7 @@ import {
   type WrappedDek,
   handleDekRotate,
   runTenantShred,
-} from "@wardenx/saas-tenant-platform";
+} from "@chartwarden/saas-tenant-platform";
 import { describe, expect, it } from "vitest";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────────────────────────

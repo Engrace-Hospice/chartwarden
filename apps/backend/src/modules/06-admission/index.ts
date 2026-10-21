@@ -4,7 +4,7 @@
 // this. T07 (§7.1/§7.2): referral idempotency + triage/accept state guards, the
 // `admission.draft_from_referral` bundle, and the R-AC-01 activation gate (intake/). T08 (§7.3–7.5):
 // recert CTI sign + F2F window math + window override — the pure org-TZ window math (certification/).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
@@ -119,7 +119,7 @@ interface ConsentEvaluatorPort {
  * post-death rules, and re-deriving "is there an active DPOA" in M6 would be a fork of them.
  *
  * `getSeam` opaquely + a locally-declared narrow port is the M22 `consent-gate.ts` / M12
- * `seams/index.ts` convention (no `@wardenx/consent` import edge from M6). Resolved as a THUNK per call
+ * `seams/index.ts` convention (no `@chartwarden/consent` import edge from M6). Resolved as a THUNK per call
  * so it binds after `wireModuleSeams()`, and the M1 registry fails closed on an unregistered seam.
  */
 function dpoaConsentCheck(): DpoaConsentCheckPort {

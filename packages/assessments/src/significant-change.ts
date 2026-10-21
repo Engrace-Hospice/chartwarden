@@ -1,13 +1,13 @@
-// @wardenx/assessments — significant-change rule taxonomy (§2.4, §4.9, D2).
+// @chartwarden/assessments — significant-change rule taxonomy (§2.4, §4.9, D2).
 //
-// The rule-id enum + the CRITICAL_RULES severity floor live in the leaf `@wardenx/types` (so M36 +
+// The rule-id enum + the CRITICAL_RULES severity floor live in the leaf `@chartwarden/types` (so M36 +
 // every consumer reads them without a feature-package import). This module re-exports that surface and
 // adds the per-rule → scale mapping the detector keys on. The rule EVALUATORS (delta math + D2
 // tenant-override floor enforcement) land in `detector.ts` (M9-T08); this file is the metadata surface
 // (rule→scale map + first-emission severity) the detector and the §4.9 alert builder share.
 
-import { CRITICAL_RULES, isCriticalRule } from "@wardenx/types";
-import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@wardenx/types";
+import { CRITICAL_RULES, isCriticalRule } from "@chartwarden/types";
+import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@chartwarden/types";
 
 export { CRITICAL_RULES, isCriticalRule };
 export type { SignificantChangeRuleId, AssessmentAlertSeverity };

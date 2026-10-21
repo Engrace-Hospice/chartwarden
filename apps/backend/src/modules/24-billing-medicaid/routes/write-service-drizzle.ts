@@ -1,6 +1,6 @@
 // apps/backend/src/modules/24-billing-medicaid/routes/write-service-drizzle.ts — the Drizzle-backed M24 WRITE
 // service. Each command runs under withOrgContext (RLS), validates the §2.2 transition via the pure
-// @wardenx/medicaid-adapters reducers, stamps the acting membership, writes an append-only
+// @chartwarden/medicaid-adapters reducers, stamps the acting membership, writes an append-only
 // medicaid_claim_state_history row, and emits the §4.11 outbox event on the caller's tx (transactional
 // outbox). A bad transition → INVALID_TRANSITION (409); a stale If-Match → VERSION_CONFLICT (409); a missing
 // row → NOT_FOUND. Money is INTEGER cents; no MBI/Recipient ID enters an outbox payload (D12 / D13 / §3.6).
@@ -10,7 +10,7 @@
 // unlock + the per-state 270/271 adapter), testCredential + submitClaim adapter wire I/O (the state adapter),
 // loadRateSchedule (M40), registerPlatformRule (rules are the frozen code registry). Each is noted at its site.
 import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
@@ -25,9 +25,9 @@ import {
   replacementTob,
   runMedicaidRules,
   voidTob,
-} from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -57,13 +57,13 @@ import type {
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-class ConflictError extends WardenXError {
+class ConflictError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 409);
     this.name = "ConflictError";
   }
 }
-class DegradedError extends WardenXError {
+class DegradedError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 503);
     this.name = "DegradedError";
@@ -263,7 +263,7 @@ export function buildDrizzleM24WriteService(
     }
     const resolved = await facilityNames.resolveFacility(orgId, facilityMdmId);
     if (!resolved) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "NF_FACILITY_NOT_FOUND",
         `no M40 facility resolves for '${facilityMdmId}' — pick the facility from the master-data list`,
         422,

@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the ASC X12N 837I (005010X223A2) Notice of Election (TOB 81A) and Notice of
+// @chartwarden/x12-837-client — the ASC X12N 837I (005010X223A2) Notice of Election (TOB 81A) and Notice of
 // Termination/Revocation (TOB 81B). PURE string building (ADR-0037, ADR-0053 D9); no network, no clock (the caller
 // passes `createdAt`). Shape follows the CMS 837I NOE Companion Guide v1.2 and the payloads the Stedi sandbox
 // accepted on 2026-10-09 (golden fixtures `stedi-NOE_81A.x12` / `stedi-NOTR_81B.x12`).

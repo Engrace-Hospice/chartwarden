@@ -3,8 +3,8 @@
 // duplicates the dedupe key or the wording. PHI-free by construction: no patient, name, cause word or reason in the text,
 // the payload or the correlation id (a hash of source + trigger, never the raw id). Every text is PROVISIONAL (no
 // clinical-lead sign-off); the alert never pages anyone - it is an inbox entry.
-import { type AlertEmitter, reviewCorrelationKey } from "@wardenx/messaging";
-import type { ReviewSource } from "@wardenx/types";
+import { type AlertEmitter, reviewCorrelationKey } from "@chartwarden/messaging";
+import type { ReviewSource } from "@chartwarden/types";
 
 /** Alert types that are alert-rule keys only (not outbox catalog events); seeded in PLATFORM_DEFAULT_ALERT_RULES (S2). */
 export const REVIEW_QUEUED_ALERT = "m36.review.queued" as const;

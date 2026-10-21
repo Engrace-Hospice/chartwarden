@@ -6,8 +6,8 @@
 // a second worker is absorbed by the emitter's correlation id and nothing is delivered twice. If the emit fails the row stays and
 // the next tick tries again (counted as `failed`). The alert carries ids and one FIXED generic sentence - no message text, no patient,
 // no sender - and an in-app link; out-of-band copies are the sanitiser's fixed generic line with an opaque link (ADR-0074).
-import type { AlertEmitter } from "@wardenx/messaging";
-import { REMINDER_ALERT_EVENT, REMINDER_STALE_AFTER_DAYS } from "@wardenx/types";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { REMINDER_ALERT_EVENT, REMINDER_STALE_AFTER_DAYS } from "@chartwarden/types";
 import type { DueReminder, ReminderSweepStore } from "./snooze-reminder-store-db";
 
 export const SWEEP_LIMIT = 200;

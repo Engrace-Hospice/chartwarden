@@ -1,4 +1,4 @@
-import { Glyph } from "@wardenx/ui";
+import { Glyph } from "@chartwarden/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";

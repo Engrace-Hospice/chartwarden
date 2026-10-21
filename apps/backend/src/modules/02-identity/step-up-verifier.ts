@@ -1,5 +1,5 @@
-import { createDbPasskeyCredentialStore, createWebauthnAssertionVerifier } from "@wardenx/auth";
-import type { DbClient } from "@wardenx/db";
+import { createDbPasskeyCredentialStore, createWebauthnAssertionVerifier } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import type { MfaVerifier } from "./step-up-ports";
 
 export interface StepUpVerifierOptions {

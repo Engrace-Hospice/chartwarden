@@ -23,7 +23,7 @@
 // matching the existing precedent in packages/auth/src/identity/mount.ts (no @fastify/cookie
 // anywhere in this codebase).
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { CsrfValidationError } from "@wardenx/types";
+import { CsrfValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 const CSRF_COOKIE_NAME = "wardenx_csrf";

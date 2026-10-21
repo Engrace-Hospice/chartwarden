@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: cost-report filing compliance (CoP 418.310). Pure. No IO.
+// @chartwarden/quality — operational measure: cost-report filing compliance (CoP 418.310). Pure. No IO.
 //
 // 42 CFR 418.310 makes failure to file a Medicare cost report grounds for TERMINATION, so this is the
 // one CoP indicator with no tolerance band: the share of the org's assessed provider entities that are

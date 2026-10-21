@@ -33,10 +33,10 @@
 // `userId` is empty — §3.3, a system transition records no actor. The read and the write are M12-owned
 // tables inside one `withOrgContext`. The consumed event name is a STRING literal and no M6 schema is
 // imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { transitionMedicationOrder } from "@wardenx/dosespot";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { MedicationOrderStatus } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { MedicationOrderStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";

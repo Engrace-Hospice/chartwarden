@@ -3,14 +3,14 @@
 //
 // GET routes require a session; the admin status mutation is platform_ops-only. As of M3-T10
 // these guards are the REAL Authorization Contract (`requireSession`/`requireRole` from
-// @wardenx/auth, a foundation-helper package every module may consume) — the M1 deny-stub
+// @chartwarden/auth, a foundation-helper package every module may consume) — the M1 deny-stub
 // forward-seam is retired. Data access goes through injected readers (the seam to M1's own
 // `system_status` / `feature_flag` tables) so the route file imports no Drizzle schema
 // directly; the boot default is an in-memory reader (the slice has no DB wired yet), which
 // production swaps for the org-scoped, withOrgContext-wrapped DB reader.
 import { Type } from "@sinclair/typebox";
-import { requireRole, requireSession } from "@wardenx/auth";
-import { ValidationError } from "@wardenx/types";
+import { requireRole, requireSession } from "@chartwarden/auth";
+import { ValidationError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 export type SystemStatusLevel = "operational" | "degraded" | "outage";

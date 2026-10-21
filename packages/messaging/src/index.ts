@@ -1,4 +1,4 @@
-// @wardenx/messaging — Secure Messaging & Alerts (Module 36).
+// @chartwarden/messaging — Secure Messaging & Alerts (Module 36).
 //
 // Public surface of the package. M36-T01 ships the `channel_kind` discriminator (§2.3) and
 // the type-level mirror of the §3.2 enum surface — the shared kind/enum types every later

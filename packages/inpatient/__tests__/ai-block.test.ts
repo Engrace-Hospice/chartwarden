@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T11 unit tests for the D16 AI-prohibited-zone boot validator.
+// @chartwarden/inpatient — M37-T11 unit tests for the D16 AI-prohibited-zone boot validator.
 import { describe, expect, it } from "vitest";
 import {
   IPU_PROHIBITED_OUTPUT_ENTITY_PREFIXES,

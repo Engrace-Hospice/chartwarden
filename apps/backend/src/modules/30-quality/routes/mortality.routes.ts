@@ -10,17 +10,17 @@
 //   R-73 POST  /quality/mortality/:reviewId/complete    — complete the review (assignee-owned; the package
 //        completeness predicate gates all three dimensions). Idempotency-Key (org, reviewId, reviewer).
 //
-// AUTHORIZATION (the REAL §4.6/§4.7 contract — `requirePermission` + `requireAbac` from @wardenx/auth, M3):
+// AUTHORIZATION (the REAL §4.6/§4.7 contract — `requirePermission` + `requireAbac` from @chartwarden/auth, M3):
 // each route gates on its §4.6 key, then composes the §4.1 ABAC column — the M3-base `inOrg` (reads) plus
 // the M30-owned `assignedToMortality` (writes), whose target is `request.params` (the `:reviewId`). These
 // are PHI routes: the §4.1 "requirePatientScope()" gate is realized in THIS codebase by the §4.7 predicate
 // chain here PLUS the M3 patient-level RLS predicate active inside the service's ONE `withOrgContext` tx
 // (P2c) PLUS the row-level `part2Redisclosure` redaction — there is no standalone `requirePatientScope`
-// export in @wardenx/auth (the §4.1 note's mechanism, not a symbol). R-73 carries `Idempotency-Key`; the
+// export in @chartwarden/auth (the §4.1 note's mechanism, not a symbol). R-73 carries `Idempotency-Key`; the
 // PATCH (R-72) is version-OCC-protected and §4.1.1-exempt. Org/actor binding is ALWAYS server-side
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER the body. The service drives the pure
-// @wardenx/quality mortality machine and emits the §4.10 `m30.mortality.*` events transactionally.
-import { requireAbac, requirePermission, resolveActorPermissions } from "@wardenx/auth";
+// @chartwarden/quality mortality machine and emits the §4.10 `m30.mortality.*` events transactionally.
+import { requireAbac, requirePermission, resolveActorPermissions } from "@chartwarden/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";

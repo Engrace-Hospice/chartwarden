@@ -2,7 +2,7 @@
 // Debounced; every request has an AbortController that a newer query, a close or an unmount cancels, so a slow reply for
 // an older query can never replace a newer one. The query text lives ONLY in the caller's component state and in the
 // request itself: it is never written to storage, a URL, a log or an analytics call.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiErrorMessage } from "./messaging-utils";
 

@@ -1,5 +1,5 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.6 token ledger + forecast
 // (`/admin/ai-platform/tokens`, `ai.tokens.read`).
 //

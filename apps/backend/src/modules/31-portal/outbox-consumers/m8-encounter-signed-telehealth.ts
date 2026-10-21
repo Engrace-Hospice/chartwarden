@@ -30,9 +30,9 @@
 // is a real, reportable gap this build does not force through: it is left exactly as-is (not reconciled),
 // which is honest (the room genuinely never formally ended) rather than a silently-wrong `reconciled` stamp
 // on a room nobody closed.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { TelehealthLifecycleState } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { TELEHEALTH_ENDED_STATES, canTransitionTelehealth } from "../telehealth/visit-lifecycle";
 

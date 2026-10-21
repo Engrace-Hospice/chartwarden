@@ -1,5 +1,5 @@
 {
-  "name": "@wardenx/emar",
+  "name": "@chartwarden/emar",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
-    "@wardenx/types": "workspace:*"
+    "@chartwarden/types": "workspace:*"
   }
 }

@@ -9,13 +9,13 @@ import {
   WorkQueueLayout,
   interactiveRowProps,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — cosign-pending queue (M11 §4.1/§5 §2.5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (cosignature). LPN-drafted kinds
 // (per tenant policy) require an RN / Clinical-Supervisor cosignature before the order may go Active; this is
 // the queue of orders with cosign_status='pending', showing the cosigner role needed. The cosign step-up
 // action fills in as its write surface hardens. Reads GET /api/v1/orders/cosign-pending via the typed client;
-// the server enforces the §4.7 cosigner_role_match ABAC (ADR-0030 — no frontend authz). Leaves only (@wardenx/ui).
+// the server enforces the §4.7 cosigner_role_match ABAC (ADR-0030 — no frontend authz). Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

@@ -2,8 +2,8 @@
 // It supplies the two ports the S1 binding leaves to the caller (the message facts and the display name) and returns
 // the binding: `isEnabled` + `service` are the route deps; `reassignForLeaver` is the access-revocation consumer's
 // `reassignOwnedItems`. One factory, so the routes and the revocation consumer share one service and one store.
-import { type DbClient, schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { createMentionActorNameResolver } from "../mention-non-member-service-db";
 import { type TaskBinding, type TaskBindingInput, buildTaskBinding } from "./binding";

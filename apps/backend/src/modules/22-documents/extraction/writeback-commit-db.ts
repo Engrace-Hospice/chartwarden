@@ -12,14 +12,14 @@
 // publisher. Any failure (no publisher, no cipher for a ciphered value, a source document with no
 // version) throws and rolls the whole completion back: the review stays `in_progress`, nothing is
 // half-committed, and the reviewer sees the error instead of a "complete" that wrote nothing.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
   type ExtractionCommitRequestedPayload,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import {
@@ -171,7 +171,7 @@ export async function commitReviewWriteback(
   const versionByDoc = new Map(docs.map((d) => [d.id, d.activeVersionId]));
   for (const id of sourceDocumentIds) {
     if (!versionByDoc.get(id)) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "SOURCE_DOCUMENT_UNRESOLVED",
         "an approved field's source document has no filed version to cite as provenance; the review cannot be committed",
         409,

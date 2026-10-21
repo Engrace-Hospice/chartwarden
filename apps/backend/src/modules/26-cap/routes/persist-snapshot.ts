@@ -1,9 +1,9 @@
 // apps/backend/src/modules/26-cap/routes/persist-snapshot.ts — persist one cap projection snapshot, detect the
 // band transition against the PRIOR snapshot of the same scope (and patient), raise the cap_threshold_event and
 // publish projection_updated / threshold_crossed on the caller's tx. Split out of write-service-drizzle.ts.
-import type { AlertBand, Methodology } from "@wardenx/cap-management";
-import { isEscalation } from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
+import type { AlertBand, Methodology } from "@chartwarden/cap-management";
+import { isEscalation } from "@chartwarden/cap-management";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ProjectionView } from "./read-service";
 import type { WriteOutboxPort } from "./write-service";

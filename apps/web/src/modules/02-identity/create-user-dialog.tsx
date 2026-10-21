@@ -1,4 +1,4 @@
-import { Button, Modal, ReverifyLink, useApiClient, useToast } from "@wardenx/ui";
+import { Button, Modal, ReverifyLink, useApiClient, useToast } from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import type { LocationOption, ProvisionedUser, RoleOption } from "./user-management-api";
@@ -291,7 +291,7 @@ export function CreateUserDialog({
             </div>
             {serverGenerated ? (
               <p style={descriptionStyle}>
-                WardenX will generate a secure password and display it once after creation.
+                ChartWarden will generate a secure password and display it once after creation.
               </p>
             ) : (
               <>

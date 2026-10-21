@@ -10,8 +10,8 @@ import {
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-} from "@wardenx/ui";
-import type { paths } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { paths } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — M34 SaaS Tenant Platform, the MARQUEE platform-ops inventory (R2).
 // Spec §5.1 (`/tenants` row) — the cross-tenant inventory with status filter, legal-name search, and a
 // "New tenant" CTA. Backed by GET /api/v1/platform/tenants (cursor-paginated CursorPage<TenantSummary>)

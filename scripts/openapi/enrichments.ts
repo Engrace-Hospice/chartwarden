@@ -17,7 +17,7 @@
 import { type TSchema, Type } from "@sinclair/typebox";
 // M23 Billing — the package-contract request/response schemas the route handlers `parse(...)` / return
 // (claim assemble/replace/void bodies, the empty manual-validate body, and the internal service-to-service
-// seam queries + responses). Re-exported from @wardenx/billing via route-contracts → schemas.
+// seam queries + responses). Re-exported from @chartwarden/billing via route-contracts → schemas.
 import {
   AcceptedSubmissionsQuery,
   AcceptedSubmissionsResponse,
@@ -28,7 +28,7 @@ import {
   ClaimReplaceRequest,
   ClaimVoidRequest,
   ManualValidateRequest,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
   ReadyResponseSchema as M1ReadyResponseSchema,
@@ -735,7 +735,7 @@ import {
 } from "../../apps/backend/src/modules/30-quality/routes/quality-typebox";
 // M32 AI Platform — the §4.1 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator. Note the
-// CLOSED string-literal unions: every wire enum mirrors a `@wardenx/db` pgEnum, because a wire enum
+// CLOSED string-literal unions: every wire enum mirrors a `@chartwarden/db` pgEnum, because a wire enum
 // published as `Type.String()` is a silent lie (the M30 lesson) — and note what has no schema at all,
 // which is every prompt / response / chart-context payload (§4.1 keeps `aiSdk.invoke` off REST).
 import {
@@ -779,7 +779,7 @@ import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/sr
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
 // Every symbol M3-aliased. Response DTOs mirror ../authz-ports views (RoleView, MembershipRoleView,
-// BreakGlassView, EngagementView, EngagementSummary) + the @wardenx/auth permission mirror, each pinned
+// BreakGlassView, EngagementView, EngagementSummary) + the @chartwarden/auth permission mirror, each pinned
 // by a compile-time `Conforms` alias in the source file.
 import {
   // request bodies
@@ -1067,7 +1067,7 @@ import {
   VersionedResultSchema as M25VersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 
-// M26 Cap Management — §4.2 request/response schemas. Bodies are the @wardenx/cap-management contracts;
+// M26 Cap Management — §4.2 request/response schemas. Bodies are the @chartwarden/cap-management contracts;
 // responses mirror the read/write-service VIEW interfaces (the shapes the handlers actually return),
 // pinned by Conforms in m26-typebox.ts. Every symbol is M26-aliased.
 import {
@@ -3182,7 +3182,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
 
   // ── M23 Billing — Medicare (§4.1 route surface) ──────────────────────────────────────────────────────
   // Request bodies (POST/PATCH) + filter queries (list/read GETs) reuse the SAME TypeBox validators the
-  // handlers `parse(...)` against (billing-typebox + the @wardenx/billing route-contract schemas). Responses
+  // handlers `parse(...)` against (billing-typebox + the @chartwarden/billing route-contract schemas). Responses
   // are attached ONLY where a real exported TypeBox response schema matches the handler return — the assemble
   // route (ClaimAssembleResponse) and the two internal seam reads (Claim-day projection / accepted
   // submissions). The other handlers return TS view interfaces (ClaimDetailView / *AcceptedView / *View), not
@@ -6702,7 +6702,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ── M3 Authorization (17 routes — role catalog + assignment, break-glass, auditor engagements) ──────
 // Full request + response contracts. Bodies reuse the boundary schemas; responses mirror the
 // ../authz-ports views (RoleView / MembershipRoleView / BreakGlassView / EngagementView /
-// EngagementSummary) + the @wardenx/auth permission mirror, each pinned by a `Conforms` alias.
+// EngagementSummary) + the @chartwarden/auth permission mirror, each pinned by a `Conforms` alias.
 Object.assign(ROUTE_ENRICHMENTS, {
   // §6 role catalog + assignment
   "GET /api/v1/permissions": {
@@ -6787,7 +6787,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 });
 
 // M04 Audit & Compliance Log — full route enrichment (4 GET reads over the append-only
-// audit_event log). Response DTOs are pinned to the @wardenx/audit AuditQuery port via Conforms in
+// audit_event log). Response DTOs are pinned to the @chartwarden/audit AuditQuery port via Conforms in
 // audit-typebox.ts. No mutating routes → no request bodies.
 Object.assign(ROUTE_ENRICHMENTS, {
   // §4.2 — Compliance / survey / incident event search (cursor-paginated).

@@ -15,7 +15,7 @@ import type {
   PortalMedicationSummary,
   PortalTriageSummary,
   PortalVisitSummary,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { isPatientFacingDocumentKind, redactedDisplayName } from "./minimize";
 import { layEnumLabel } from "./terminology";
 import type {

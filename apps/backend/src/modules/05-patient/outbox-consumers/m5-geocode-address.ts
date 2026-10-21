@@ -12,9 +12,9 @@
 //   - a malformed payload THROWS (an integration defect to surface, not to drop).
 // IDEMPOTENT: a redelivery re-geocodes and overwrites with the same coordinates. The write runs as the NULL
 // (system) audit actor.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { GeocoderPort } from "../geocoder";
 import { type GeocodeAddressPorts, type GeocodeResult, runGeocodeAddress } from "../jobs/index";

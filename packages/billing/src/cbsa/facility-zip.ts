@@ -1,4 +1,4 @@
-// @wardenx/billing — which facility's ZIP backs value code G8 (pure).
+// @chartwarden/billing — which facility's ZIP backs value code G8 (pure).
 //
 // G8 is the CBSA of the facility where the INPATIENT care (revenue 0655 / 0656 — general inpatient, inpatient
 // respite) was delivered (CMS Pub. 100-04 ch. 11 §30.3), so it comes from the facility residence span that overlaps

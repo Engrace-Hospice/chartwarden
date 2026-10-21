@@ -1,4 +1,4 @@
-// @wardenx/quality — M30 §2.3 / D8 / §10 mandatory external-report determination (P2a). PURE.
+// @chartwarden/quality — M30 §2.3 / D8 / §10 mandatory external-report determination (P2a). PURE.
 //
 // The actual external-agency notification is OUT-OF-SYSTEM and human-driven (§10): the audit trail of
 // "external report filed at <time> with <ref>" lands in `incident_report.external_report_ref`. What M30

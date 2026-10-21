@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.1 Administration-Mode catalog (M13-T01 domain layout).
+// @chartwarden/emar — §2.1 Administration-Mode catalog (M13-T01 domain layout).
 //
 // The single source of per-mode metadata the lifecycle (§2.2 D6), the per-mode validators (§3.4), the
 // FHIR `MedicationAdministration` projection (§2.12 / M28), and the audit-denylist install (§3.6) read
@@ -6,12 +6,12 @@
 // the mode maps onto a FHIR `effective[x]`, which per-mode `data` free-text fields are denylisted, and how
 // each mode relates to the `iv_session_id` correlation chain (§2.1).
 //
-// PURE DATA — no IO, `@wardenx/types`-only. The per-mode TypeBox `data` schemas + cross-field `validate.ts`
+// PURE DATA — no IO, `@chartwarden/types`-only. The per-mode TypeBox `data` schemas + cross-field `validate.ts`
 // + `terminology.ts` (M38 bindings) + `fhir-mapping.ts` land per-folder in `modes/<mode>/` in later tasks
 // (the spec §2.1 open-taxonomy shape); this catalog pins the metadata they hang off so adding a mode is one
 // PR (drop a folder + add an entry; the central `administration_record` schema does not change — §2.1).
 
-import type { AdministrationMode } from "@wardenx/types";
+import type { AdministrationMode } from "@chartwarden/types";
 
 /** How a mode maps onto a FHIR `MedicationAdministration` `effective[x]` (§2.1 "FHIR mapping" column). */
 export type FhirEffectiveMapping =

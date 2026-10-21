@@ -1,4 +1,4 @@
-import { type EraseInput, createInMemoryEraserPorts } from "@wardenx/audit";
+import { type EraseInput, createInMemoryEraserPorts } from "@chartwarden/audit";
 // apps/backend/__tests__/audit-eraser.test.ts — M4-T08 the `audit_event` data eraser.
 //
 // Proves M4 registers a REAL eraser for the `audit_event` data class over the Phase-0 deny-stub,
@@ -10,7 +10,7 @@ import { type EraseInput, createInMemoryEraserPorts } from "@wardenx/audit";
 //   • the Drizzle ports' `performErasure` leg binds to the packages/audit destruction executor
 //     ONLY when a destruction-granted client is injected, and stays the loud UNBOUND throw
 //     otherwise (wardenx_app holds no DELETE — migration 0001 append-only).
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import { wireErasers } from "../src/bootstrap/erasers/providers";
 import {

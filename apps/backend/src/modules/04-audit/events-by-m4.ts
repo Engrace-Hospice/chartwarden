@@ -12,7 +12,7 @@
 // `[]` is the honest broadcast/no-consumer shape (the same one `m29.hl7_inbound_proposal.rejected`
 // uses for "a durable record; no consumer applies anything").
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const HoldEventPayload = Type.Object({
   holdId: Type.String({ minLength: 1 }),

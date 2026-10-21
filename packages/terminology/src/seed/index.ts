@@ -1,4 +1,4 @@
-// @wardenx/terminology — platform seed corpus (M38-T08, spec §3.9, §7.8).
+// @chartwarden/terminology — platform seed corpus (M38-T08, spec §3.9, §7.8).
 //
 // The typed, deterministic source of truth a seed runner inserts into `code_system`, `value_set`,
 // and `value_set_member` at Phase-1 bootstrap. Kept as pure data in the package (the same place the

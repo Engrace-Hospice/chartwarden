@@ -9,7 +9,7 @@
 // The revenue snapshot is platform-wide (cross-tenant read + a platform-only table) and runs on the
 // platform runner. Events go through the catalog-validating `m35` outbox publisher in the SAME transaction
 // as the state change, so a lost job never leaves a transition without its event.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DUNNING_CANCEL_STAGE,
   DUNNING_SUSPEND_STAGE,
@@ -23,15 +23,15 @@ import {
   computeMeterAggregate,
   invoiceLineSumsConsistent,
   toBillingYearMonth,
-} from "@wardenx/subscription-billing";
-import { withOrgContext } from "@wardenx/tenancy";
+} from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BillingYearMonth,
   InvoiceLineKind,
   OrgId,
   SubscriptionStatus,
   UsageEventType,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { PlatformRunner, WriteOutboxPort } from "../routes/service-drizzle";
 import {

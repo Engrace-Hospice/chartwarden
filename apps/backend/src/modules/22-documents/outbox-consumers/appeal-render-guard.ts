@@ -7,8 +7,8 @@
 //
 // Only references already in the typed payload are read; no document content or title is fetched or logged. The
 // patient link was proven at submit (the claim's patient), so it is not re-derived here.
-import { runWithRequestContext } from "@wardenx/tenancy";
-import { type DocumentReader, appealEnclosureRefusal } from "@wardenx/types";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import { type DocumentReader, appealEnclosureRefusal } from "@chartwarden/types";
 
 /** M22's own `DocumentReader`, narrowed to the one arm the guard reads. */
 export type AppealRenderGuardDocuments = Pick<DocumentReader, "documentMetadata">;

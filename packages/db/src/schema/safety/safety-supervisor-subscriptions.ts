@@ -1,4 +1,4 @@
-// @wardenx/db — `safety_supervisor_subscription` (M20 §3.3 / §2.2.5, D8). The PAGING layer: who gets woken
+// @chartwarden/db — `safety_supervisor_subscription` (M20 §3.3 / §2.2.5, D8). The PAGING layer: who gets woken
 // up when this clinician's SOS fires. Dashboard VISIBILITY is RBAC + ABAC and is deliberately independent —
 // a supervisor may see a board they are not paged for, and (the failure D8 exists to close) a clinician may
 // be visible on every board and paged by nobody.

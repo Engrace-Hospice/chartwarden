@@ -10,9 +10,9 @@
 // explicitly (a seam has no request context of its own). Returns the coverage identity + member id and
 // nothing clinical — a consumer that only needs to CHOOSE a coverage reads `id` and leaves `subscriberId`
 // alone (M24 stores only the masked tail; D12 / §3.6).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientCoverage, PatientCoverageReader } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { PatientCoverage, PatientCoverageReader } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const day = (d: Date | string | null): string | null => {

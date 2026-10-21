@@ -1,4 +1,4 @@
-// @wardenx/cost-report — M27 Worksheet C PER-DIEM COST calculation (Form CMS-1984-14, Pub 15-2 §4330, D8).
+// @chartwarden/cost-report — M27 Worksheet C PER-DIEM COST calculation (Form CMS-1984-14, Pub 15-2 §4330, D8).
 // The terminal hop of the hospice cost chain (A → B/B-1 step-down → C): for each level of care, the
 // fully-allocated cost from Worksheet B (col. 18) is divided by the total *unduplicated* days to get the
 // average cost per diem, which is then multiplied by the program (Medicare XVIII / Medicaid XIX) days to get
@@ -7,7 +7,7 @@
 // the end of the cost computation.
 //
 // PURE DOMAIN, deterministic total function over an already-fetched input: no Fastify, no Drizzle/DB, no
-// BullMQ, no `@wardenx/db`, no `getSeam`. Money is INTEGER CENTS; days are AGGREGATE counts (no PHI, D18).
+// BullMQ, no `@chartwarden/db`, no `getSeam`. Money is INTEGER CENTS; days are AGGREGATE counts (no PHI, D18).
 import { type Cents, fromDecimal, ratio, sumCents, toDecimal } from "../domain/money";
 
 /** The four hospice levels of care (Worksheet B lines 50–53 / Worksheet C blocks), in form order. */

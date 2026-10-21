@@ -1,4 +1,4 @@
-// @wardenx/db — `hope_spec_item` (M10 HOPE modernization Phase 1A). Versioned CMS item master rows,
+// @chartwarden/db — `hope_spec_item` (M10 HOPE modernization Phase 1A). Versioned CMS item master rows,
 // shaped to ingest the official itm_mstr source without annual schema churn.
 import { index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { hopeSpecItemKind } from "../../enums";

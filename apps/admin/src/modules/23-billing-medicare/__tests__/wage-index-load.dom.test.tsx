@@ -3,7 +3,7 @@
 // year, the source reference and an Idempotency-Key), that nothing is sent while the preview shows a problem, and that
 // every refusal the route can give (STEP_UP_REQUIRED, 403, 409, 422 with row details) reaches the operator.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WageIndexLoad } from "../wage-index-load";

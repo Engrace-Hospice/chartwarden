@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M24 (Medicaid / Room & Board). ABSENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M24 (Medicaid / Room & Board). ABSENT producer (§4.4).
 //
 // M24 is not yet implemented → forward-seam DENY-STUB. M24 registers the real `MedicaidClaimReader` /
 // `MedicaidClaimMetricsProvider` / `StateChannelHealthReader` over this stub when it lands (P2C).

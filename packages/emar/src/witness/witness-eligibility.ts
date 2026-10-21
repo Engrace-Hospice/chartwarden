@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.6 D7 controlled-substance witness eligibility (M13-T04). PURE, IO-free.
+// @chartwarden/emar — §2.6 D7 controlled-substance witness eligibility (M13-T04). PURE, IO-free.
 //
 // Two operations require a second clinical-discipline witness: ADMINISTRATION of a Schedule II–V medication
 // and WASTAGE of any partial dose of one. The administration route resolves the witness's membership from

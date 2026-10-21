@@ -1,5 +1,5 @@
 // apps/backend/src/modules/27-cost-report/consumers — the §4.10 / D3 UPSTREAM outbox-subscription map
-// (the M27 inbound catalog). Mirrors the M30 `@wardenx/quality` consumers/subscription-map.ts precedent.
+// (the M27 inbound catalog). Mirrors the M30 `@chartwarden/quality` consumers/subscription-map.ts precedent.
 //
 // M27 is not only an event PRODUCER (events-by-m27.ts) — it also SUBSCRIBES to a small set of upstream
 // topics and projects each into an M27-local effect: (1) the M22 render handshake returns a document id

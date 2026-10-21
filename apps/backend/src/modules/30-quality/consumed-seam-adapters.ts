@@ -17,8 +17,8 @@ import type {
   QualityFilingPosture,
   QualityPatientDays,
   QualityPeriod,
-} from "@wardenx/quality";
-import { FORWARD_SEAM_UNAVAILABLE } from "@wardenx/quality";
+} from "@chartwarden/quality";
+import { FORWARD_SEAM_UNAVAILABLE } from "@chartwarden/quality";
 import { getSeam } from "../../bootstrap/index";
 
 /** M23's `ClaimLineReader` as this adapter uses it (the registry holds it opaquely as `unknown`). */

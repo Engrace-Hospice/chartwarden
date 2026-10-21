@@ -1,4 +1,4 @@
-// @wardenx/db — `discipline_intervention` (M15 §3.3). The per-discipline intervention: what will be done,
+// @chartwarden/db — `discipline_intervention` (M15 §3.3). The per-discipline intervention: what will be done,
 // how often, by whom. `goal_refs` is a jsonb array of intra-module `discipline_goal` ids (many-to-many
 // without a join table — the plan is authored and read as one document, §2.2.3). §2.2.3 lifecycle
 // active → discontinued | completed; discontinuation REQUIRES a reason (CHECK + service guard).

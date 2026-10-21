@@ -1,4 +1,4 @@
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/appeals.routes.ts — M25 (§4.1 routes 18-19, 21-26) the
 // appeal tracker: list, detail (+ events), attach-document, the step-up + within-deadline submit, the MAC
 // ack, the decide (typed outcome), withdraw, and the terminal close. Reads gate on `appeal.read`; submit

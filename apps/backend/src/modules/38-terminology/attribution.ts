@@ -6,7 +6,7 @@
 // and the FHIR `CodeSystem.copyright` element (the store fills `CodeSystemMeta.copyright`). Reads sit on the hot
 // lookup path, so the resolver caches the (tiny) active set for a short TTL; a freshly recorded or revoked
 // attestation is visible everywhere within that window.
-import type { CodeSystemId } from "@wardenx/terminology";
+import type { CodeSystemId } from "@chartwarden/terminology";
 import type { SystemAttribution, TerminologyOpsStore } from "./ops-store";
 
 /** Response header carrying a system's attribution text (header-safe, single line). */

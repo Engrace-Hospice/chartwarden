@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T05 provider unit tests (spec §4.5).
+// @chartwarden/terminology — M38-T05 provider unit tests (spec §4.5).
 //
 // Proves the real `TerminologyProvider` is correct ORCHESTRATION over the T04 as-of engine and
 // the injected store, with no live infra:

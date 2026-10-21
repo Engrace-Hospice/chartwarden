@@ -1,4 +1,4 @@
-// @wardenx/db — `sra_cycle` (M30 §3.3; non-partitioned; retention class `compliance`).
+// @chartwarden/db — `sra_cycle` (M30 §3.3; non-partitioned; retention class `compliance`).
 // The annual HIPAA Security Risk Assessment cycle (NIST 800-66r2 template), with dual cosign (security
 // officer + compliance officer) gating closure (V-12 CHECK) and a reopen trail. Parent of sra_finding
 // (real intra-M30 FK). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). document_id is

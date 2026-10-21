@@ -1,6 +1,6 @@
 // WP 3.8 - the pure lifecycle-review rules: cause mapping, trigger reference, close mapping, allowed actions, the PHI-free
 // correlation key.
-import { REVIEW_CAUSES, TASK_CLOSE_REASONS, type TaskCloseReason } from "@wardenx/types";
+import { REVIEW_CAUSES, TASK_CLOSE_REASONS, type TaskCloseReason } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   REVIEW_LIST_DEFAULT,

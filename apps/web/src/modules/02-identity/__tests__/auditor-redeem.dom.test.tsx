@@ -3,8 +3,8 @@
 // redeemed only when the auditor presses the button (so a mail scanner following the link cannot burn it).
 // A successful redemption hands over to the enrolment screen (BAA terms + second factor, M2 §7.7).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
-import type { ApiClient } from "@wardenx/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuditorRedeem } from "../auditor-redeem";

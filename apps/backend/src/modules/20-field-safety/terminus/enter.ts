@@ -9,9 +9,9 @@
 // watchdog ticks (15 s) inside one loop period (60-300 s) exactly ONE inserts it; the other 19 see a
 // conflict and do nothing - no duplicate outbox event, no duplicate page, no duplicate dial. The uniqueness
 // is in the database, so two workers cannot double-fire either.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import type { MembershipId } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import type { MembershipId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { type TerminusAlertAnchor, insertTerminusAction, listDialRows } from "./ledger";
 import { planDialAttempt } from "./policy";

@@ -1,12 +1,12 @@
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, fail } from "@wardenx/billing";
-import type { Rule } from "@wardenx/billing";
+import * as billing from "@chartwarden/billing";
+import { BillingRuleRegistry, fail } from "@chartwarden/billing";
+import type { Rule } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/override-service.test.ts — the §10 task-29 / §4.5 /
 // §4.7 validation-OVERRIDE service tests (D5 / D13 / D14). The override is the human compliance act that lets
 // a claim proceed past a FAILING validation result; the service enforces four fail-closed gates in order:
 // never-via-AI (D13), step-up (D14), role-eligibility (§4.7 / §2.2), and the ≥40-char reason floor, then
 // writes the override + its mandatory M4 audit linkage + the audit-prominent outbox event in one unit of
-// work. `@wardenx/billing` is PARTIAL-mocked for the in-memory repos; the FROZEN rule registry carries the
+// work. `@chartwarden/billing` is PARTIAL-mocked for the in-memory repos; the FROZEN rule registry carries the
 // `regulatoryRequired` / `overrideRoleRequired` metadata the role gate keys on.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BillingWriteActor, WriteOutboxPort } from "../services/claim-state-service";
@@ -15,8 +15,8 @@ import type { OverrideAuditPort, OverrideServicePorts } from "../services/overri
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
-vi.mock("@wardenx/billing", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@wardenx/billing")>();
+vi.mock("@chartwarden/billing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chartwarden/billing")>();
   const { buildFakeRepositories } = await import("./_billing-repo-fakes");
   const { repos, store } = buildFakeRepositories();
   return {

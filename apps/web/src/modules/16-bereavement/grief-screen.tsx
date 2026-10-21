@@ -14,7 +14,7 @@
 // `pg13Score` / `ipgrScore`, and M16 publishes no per-item store — so the items live in this form as the
 // arithmetic the counselor would otherwise do on paper, and only the total crosses the wire. The threshold
 // prompt below is an ADVISORY: the tier promotion to `complicated` is the server's, driven by route 18.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/16-bereavement/seams/providers.ts — M16-T05, the §4.6 / D13 seam implementations:
-// pure orchestration over an injected {@link BereavementSeamStore} plus `@wardenx/bereavement`'s pure policy.
-// Each returns the leaf-typed seam interface (`@wardenx/types`) the M1 registry validates and
+// pure orchestration over an injected {@link BereavementSeamStore} plus `@chartwarden/bereavement`'s pure policy.
+// Each returns the leaf-typed seam interface (`@chartwarden/types`) the M1 registry validates and
 // M28/M30/M31/M32/M33/M36 resolve. The providers add NO tenant logic — RLS scopes every store read by the
 // consumer's `app.org_id` (§3.5) — and NO second copy of the domain rules:
 //
@@ -32,7 +32,7 @@ import {
   isWithinOptOutRescindWindow,
   mergeAugmentation,
   ruleScoreToWeighted,
-} from "@wardenx/bereavement";
+} from "@chartwarden/bereavement";
 import type {
   BereavedContactId,
   BereavedPortalScope,
@@ -51,7 +51,7 @@ import type {
   BereavementRiskFactorsSnapshot,
   BereavementRiskTierProvider,
   IsoInstant,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { BereavementStateError } from "../lifecycle/index";
 import type {
   BereavementPlanFacts,

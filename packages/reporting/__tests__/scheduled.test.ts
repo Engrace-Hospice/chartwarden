@@ -1,4 +1,4 @@
-// @wardenx/reporting — scheduled-report CRON-EVALUATOR + RUNNER + DELIVERY UNIT TESTS
+// @chartwarden/reporting — scheduled-report CRON-EVALUATOR + RUNNER + DELIVERY UNIT TESTS
 // (M33 §2.2 / §2.5–§2.6 / §4.3 / §4.8 W-R-04 / D7).
 //
 // PURE port-injected handlers driven by in-memory recording fakes (the M34 `shred-worker.test.ts` template):
@@ -10,7 +10,7 @@
 //     to M22 (idempotencyKey = runId), then the delivery consumer flips the occurrence `→ delivered` on the M22
 //     render reply (spec D7 names it `m22.document.created`; M22 publishes `m22.document.rendered`);
 //   • a fully-revoked recipient set AUTO-PAUSES the schedule (§2.5) — nothing is rendered for nobody.
-import type { schema } from "@wardenx/db";
+import type { schema } from "@chartwarden/db";
 import {
   ALL_RECIPIENTS_REVOKED_REASON,
   type M22DocumentRenderedPayload,
@@ -23,7 +23,7 @@ import {
   decideScheduledDelivery,
   evaluateDueSchedules,
   handleScheduledRun,
-} from "@wardenx/reporting";
+} from "@chartwarden/reporting";
 import { describe, expect, it } from "vitest";
 
 // The run-patch shapes exactly as the PORTS declare them. Restating them inline made each double refuse

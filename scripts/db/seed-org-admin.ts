@@ -19,7 +19,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";

@@ -17,7 +17,7 @@
 //             summary, it must resolve `sudDisclosurePermitted` (M39) exactly as `readTriageMedicationContext`
 //             does and set `isSudClass` so M22's render gate (F-197) applies — this function's allowlist is
 //             the single place that change has to be made deliberately.
-import type { TriageDisposition } from "@wardenx/types";
+import type { TriageDisposition } from "@chartwarden/types";
 
 /** The dispositions that END in something a caregiver/attending can be told. `abandoned` (the caller hung
  *  up) and `escalated_unresolved` (still being worked) have no outcome to summarise. */

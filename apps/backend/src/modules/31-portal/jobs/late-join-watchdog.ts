@@ -5,9 +5,9 @@
 // UPDATE per org (idempotent: it only matches non-terminal, non-`in_progress` rows) and emits
 // `m31.telehealth.visit_ended` in the same transaction. The vendor room is NOT ended here: the room-id cipher
 // needs the per-tenant DEK and the vendor adapter is unbound in production (see docs/history/m31-portal-deferrals.md).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { TelehealthEndReason, TelehealthLifecycleState } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { TelehealthEndReason, TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import type { M31EventEmitter } from "../events";
 import type { M31ActiveOrgListPort } from "./post-discharge-grace-sweep";

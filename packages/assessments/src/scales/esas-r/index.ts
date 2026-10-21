@@ -1,4 +1,4 @@
-// @wardenx/assessments — ESAS-r (Edmonton Symptom Assessment System, revised) scorer (§4.3, §7.2).
+// @chartwarden/assessments — ESAS-r (Edmonton Symptom Assessment System, revised) scorer (§4.3, §7.2).
 //
 // Nine numeric symptom items (pain, tiredness, drowsiness, nausea, lack of appetite, shortness of
 // breath, depression, anxiety, wellbeing), each 0..10. The total is the sum of the nine — the optional

@@ -1,4 +1,4 @@
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/28-fhir/jobs/inbound-workers.ts — the two inbound-proposal lifecycle crons
 // (GAP-084, §2.2, §4.8, W-FHIR-06). Before these existed a `pending` proposal sat forever: the SLA was a
 // number on `tenant_fhir_config` that nothing read, and a rejected/expired proposal's raw FHIR payload (which
@@ -16,9 +16,9 @@ import { type DbClient, schema } from "@wardenx/db";
 // Both are bounded per org per tick, idempotent (the status / sentinel predicate is in the UPDATE itself, so a
 // re-run or a concurrent run touches nothing twice), per-org (the tenant is the loop variable, never read from
 // a row), and one org's failure does not stop the others (collected, re-thrown as an AggregateError at the end).
-import { planInboundExpiry } from "@wardenx/fhir";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { FhirInboundOwnerModule, FhirInboundResourceId } from "@wardenx/types";
+import { planInboundExpiry } from "@chartwarden/fhir";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { FhirInboundOwnerModule, FhirInboundResourceId } from "@chartwarden/types";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 
 import type { ActiveOrgListPort, FhirAlertPort, FhirJobOutboxPort } from "./ports";

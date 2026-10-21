@@ -1,4 +1,4 @@
-// @wardenx/subscription-billing — §D5/D6 usage-metering + active-period service (pure over ports, M35-T03).
+// @chartwarden/subscription-billing — §D5/D6 usage-metering + active-period service (pure over ports, M35-T03).
 //
 // Two pipelines, both PHI-free by construction:
 //
@@ -17,7 +17,7 @@
 // PURE: the store owns the partitioned insert + the RLS session; the key provider owns the KMS decrypt;
 // T06 supplies both and publishes the returned {@link OutboxIntent}s.
 
-import type { IsoInstant, OrgId, UsageEventType } from "@wardenx/types";
+import type { IsoInstant, OrgId, UsageEventType } from "@chartwarden/types";
 import { isValidUsageQuantity } from "../domain/validation";
 import { computeBillingPseudonym } from "../pseudonym/hasher";
 import {

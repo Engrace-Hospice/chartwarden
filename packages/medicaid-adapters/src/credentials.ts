@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — the adapter-facing trading-partner credential shape (§3.3
+// @chartwarden/medicaid-adapters — the adapter-facing trading-partner credential shape (§3.3
 // state_medicaid_trading_partner_credential, §4.5). The backend decrypts the KMS-wrapped *_cipher columns
 // under the per-tenant DEK at the call site only and hands the adapter this PLAIN, request-scoped value;
 // the adapter never touches the DB or the cipher. PURE DOMAIN: a type only.

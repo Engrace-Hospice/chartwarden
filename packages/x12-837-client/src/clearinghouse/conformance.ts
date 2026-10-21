@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the ClearinghouseTransport CONFORMANCE cases (ADR-0053 D4).
+// @chartwarden/x12-837-client — the ClearinghouseTransport CONFORMANCE cases (ADR-0053 D4).
 //
 // Framework-free on purpose: a case is `{ id, stage, title, run(harness) }` and fails by throwing, so the same
 // list runs under vitest (see conformance.test.ts), in a live-sandbox smoke script, or in a CI job, and this

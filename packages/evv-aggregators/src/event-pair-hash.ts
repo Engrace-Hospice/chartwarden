@@ -1,4 +1,4 @@
-// @wardenx/evv-aggregators — the §2.2.5 / §2.3 idempotency primitive (M18-T06).
+// @chartwarden/evv-aggregators — the §2.2.5 / §2.3 idempotency primitive (M18-T06).
 //
 // `event_pair_hash = SHA-256(check_in_event_id || check_out_event_id)`. Deterministic, so a retried submission
 // for the same (visit, event-pair) carries the SAME key and the vendor (or its circuit-breaker) dedupes it —

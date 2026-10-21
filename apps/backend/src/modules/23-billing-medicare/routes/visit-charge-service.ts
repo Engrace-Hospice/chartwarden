@@ -3,7 +3,7 @@
 // claim-assembly `referenceData` adapter binds (`visitChargeVersionsForOrg`, the F-121 org-explicit seam-function pattern:
 // boot-time closures have no ambient request context, so each read opens its own `withOrgContext`).
 //
-// The shape is the rate-table service's (rate-table-service.ts): the pure rules in `@wardenx/billing`
+// The shape is the rate-table service's (rate-table-service.ts): the pure rules in `@chartwarden/billing`
 // (`validateVisitChargeEntry`) run first for a precise 422; the overlap pre-check names the conflicting version for a
 // precise 409; the migration's EXCLUDE constraint is the race-safe backstop. Charges are append-only: a correction
 // SUPERSEDES the old version (it stays readable as history) and already-assembled claims are unaffected because the
@@ -15,10 +15,10 @@ import {
   dateRangesOverlap,
   repositories,
   validateVisitChargeEntry,
-} from "@wardenx/billing";
-import type * as schema from "@wardenx/db/schema";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
 import type {
   CreateVisitChargeBody,
@@ -160,7 +160,7 @@ export function buildDrizzleVisitChargeService(
       charges: chargesOfBody(body),
     });
     if (!v.ok) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "VISIT_CHARGE_INVALID",
         `invalid visit-charge schedule: ${v.errors.join("; ")}`,
         422,
@@ -169,8 +169,8 @@ export function buildDrizzleVisitChargeService(
     return v.effectiveTo;
   }
 
-  function overlapError(clash: schema.HospiceVisitChargeSchedule): WardenXError {
-    return new WardenXError(
+  function overlapError(clash: schema.HospiceVisitChargeSchedule): ChartWardenError {
+    return new ChartWardenError(
       "VISIT_CHARGE_OVERLAP",
       `the effective window overlaps live visit-charge schedule ${clash.id} (${clash.effectiveFrom}..${clash.effectiveTo ?? "open"}); supersede that version instead of entering a second one`,
       409,
@@ -219,7 +219,7 @@ export function buildDrizzleVisitChargeService(
       });
     } catch (err) {
       if (isExclusionViolation(err)) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "VISIT_CHARGE_OVERLAP",
           "the effective window overlaps a live visit-charge schedule entered concurrently",
           409,
@@ -247,7 +247,7 @@ export function buildDrizzleVisitChargeService(
           throw new NotFoundError("visit-charge schedule");
         }
         if (old.supersededAt !== null) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VISIT_CHARGE_ALREADY_SUPERSEDED",
             `visit-charge schedule ${id} was already superseded by ${old.supersededById}`,
             409,
@@ -258,7 +258,7 @@ export function buildDrizzleVisitChargeService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError(
+          throw new ChartWardenError(
             "VISIT_CHARGE_ALREADY_SUPERSEDED",
             `visit-charge schedule ${id} was already superseded`,
             409,

@@ -11,9 +11,9 @@
 // IDEMPOTENT: the transition is forward-only (`canTransition`), so a duplicate / replayed / out-of-order
 // callback is a no-op that writes and audits nothing; status strings that imply no transition (an SMS
 // `queued`, a Postmark `Open`) are ignored. The vendor payload is NOT persisted (it can echo recipient data).
-import type { DbClient } from "@wardenx/db";
-import { type VendorCallbackKind, mapVendorStatus } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { type VendorCallbackKind, mapVendorStatus } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import type { MessagingWebhookService, VendorDeliveryUpdate } from "../routes/webhook-routes";
 import { type DeliveryOutboxPort, applyDeliveryTransition } from "./delivery-settlement";

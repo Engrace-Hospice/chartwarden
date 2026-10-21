@@ -1,4 +1,4 @@
-// @wardenx/ui — top-level error boundary (spec §5.1). Catches render errors, shows a
+// @chartwarden/ui — top-level error boundary (spec §5.1). Catches render errors, shows a
 // fallback, and surfaces the correlationId so users can quote it to support. React error
 // boundaries must be class components.
 import { Component } from "react";

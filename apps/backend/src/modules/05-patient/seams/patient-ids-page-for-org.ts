@@ -13,8 +13,8 @@
 //
 // Bounded (a page is at most {@link PATIENT_IDS_PAGE_MAX}), ordered by id so `afterId` is a stable cursor, and
 // run under `withOrgContext` so RLS is the wall; the explicit `organization_id` predicate is the belt behind it.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
 
 const P = schema.patients;

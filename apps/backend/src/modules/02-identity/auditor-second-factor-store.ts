@@ -13,8 +13,8 @@ import {
   hashRecoveryCode,
   recoveryCodeMatches,
   totpStepStart,
-} from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
+} from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 
 /** Consecutive wrong codes before the factor locks. */

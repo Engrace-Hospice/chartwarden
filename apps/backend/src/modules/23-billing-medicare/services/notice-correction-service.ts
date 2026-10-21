@@ -28,9 +28,9 @@ import {
   planNoticeCorrection,
   repositories,
   validateCorrectionReason,
-} from "@wardenx/billing";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+} from "@chartwarden/billing";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingWriteActor,
@@ -107,7 +107,7 @@ function assertReplayMatches(
   requested?: string | null,
 ): void {
   if (requested && requested !== existingDate) {
-    throw new WardenXError(
+    throw new ChartWardenError(
       "CORRECTION_IN_PROGRESS",
       `a correction with date ${existingDate} is already in progress; cancel it to file a different date`,
       409,
@@ -116,8 +116,8 @@ function assertReplayMatches(
   }
 }
 
-function refusal(plan: Extract<NoticeCorrectionPlan, { kind: "refuse" }>): WardenXError {
-  return new WardenXError(
+function refusal(plan: Extract<NoticeCorrectionPlan, { kind: "refuse" }>): ChartWardenError {
+  return new ChartWardenError(
     plan.code,
     plan.message,
     409,
@@ -127,8 +127,8 @@ function refusal(plan: Extract<NoticeCorrectionPlan, { kind: "refuse" }>): Warde
   );
 }
 
-function invalid(field: string, message: string): WardenXError {
-  return new WardenXError("VALIDATION_FAILED", message, 422, [
+function invalid(field: string, message: string): ChartWardenError {
+  return new ChartWardenError("VALIDATION_FAILED", message, 422, [
     { field, code: "VALIDATION_FAILED", message },
   ]);
 }
@@ -148,7 +148,7 @@ async function chainDepth(
   while (cursor !== null) {
     depth += 1;
     if (depth >= MAX_CORRECTION_DEPTH) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "CORRECTION_CHAIN_TOO_LONG",
         "this notice has been corrected too many times; contact the MAC",
         409,
@@ -216,7 +216,7 @@ export function buildNoticeCorrectionService(
       // one-live-NOE one): whichever it was, the winner's correction is the answer when there is one.
       const record = race === "control_number" ? null : await inOrg(actor, replay);
       if (!record) {
-        throw new WardenXError(
+        throw new ChartWardenError(
           "NOTICE_ALREADY_LIVE",
           "another notice for this admission is already in progress",
           409,
@@ -273,7 +273,7 @@ export function buildNoticeCorrectionService(
             );
             const live = await repo.findEffectiveByAdmission(source.admissionId);
             if (live) {
-              throw new WardenXError(
+              throw new ChartWardenError(
                 "NOTICE_ALREADY_LIVE",
                 "this admission already has a Notice of Election in progress or accepted",
                 409,
@@ -375,7 +375,7 @@ export function buildNoticeCorrectionService(
               ? await repo.findEffectiveByEvent(source.triggerKind, eventId)
               : null;
             if (live) {
-              throw new WardenXError(
+              throw new ChartWardenError(
                 "NOTICE_ALREADY_LIVE",
                 "this discharge / revocation already has a NOTR in progress or accepted",
                 409,

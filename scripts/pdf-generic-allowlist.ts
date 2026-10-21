@@ -1,7 +1,7 @@
 /**
  * GAP-033 - the M22 template registries and the allow-lists `arch:pdf-templates` reads.
  *
- * Two registries exist and had drifted: the forms library (`@wardenx/forms` FORM_TEMPLATE_REGISTRY - the D14/D16
+ * Two registries exist and had drifted: the forms library (`@chartwarden/forms` FORM_TEMPLATE_REGISTRY - the D14/D16
  * descriptors) and the renderer's PLATFORM_TEMPLATE_TABLE (what a render request can actually name). The renderer
  * table is the one a request resolves against; this file is the single, reviewed statement of how the two relate
  * and of which renderer keys still draw through the structured GENERIC builder instead of a bespoke form.

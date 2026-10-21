@@ -1,4 +1,4 @@
-// @wardenx/db — `route_segment` (M17 §3.3 / D10). One row per leg of an optimized clinician day-route: the
+// @chartwarden/db — `route_segment` (M17 §3.3 / D10). One row per leg of an optimized clinician day-route: the
 // from/to anchor-or-visit endpoints, the proposed drive minutes + mileage (tenths-of-mile integer), and the
 // OSRM-encoded polyline. Mileage here is a PROPOSAL — M8 (Encounters) is authoritative for billable mileage
 // (D10). The `polyline` reveals patient locations → registered as PHI-bearing in the eraser (§3.7) and

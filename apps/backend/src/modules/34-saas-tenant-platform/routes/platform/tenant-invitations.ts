@@ -5,8 +5,8 @@
 // Authorization Contract on the §4.5 keys + the `tenant_lifecycle_platform_ops` ABAC predicate M34 owns;
 // the issue route additionally requires §6 step-up. Cross-tenant reads run under `withPlatformContext`
 // (F03/F09, audited) in prod; org/actor binding is server-side. Mirrors the M22 route-plugin shape.
-import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   InvitationListQuerySchema,
@@ -16,7 +16,7 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface TenantInvitationRouteDeps {

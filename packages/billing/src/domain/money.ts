@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 money/rate primitives (D6 / D7 / D11 / §2.6). The penny-exact CENTS kernel
+// @chartwarden/billing — M23 money/rate primitives (D6 / D7 / D11 / §2.6). The penny-exact CENTS kernel
 // (toDecimal/fromDecimal/sumCents/ratio/allocateProportional) is shared platform-wide — see
 // packages/shared/src/money/kernel.ts (ARCH-021) — and re-exported below unchanged; this file adds only
 // the billing-specific rate primitives every Phase-2 calculator imports: the HIPPS per-diem builder (D7),
@@ -6,13 +6,13 @@
 // math. Billing math is REGULATORY math — a cent off in a claim line is a real Medicare-payment
 // consequence and an audit trigger.
 //
-// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
+// PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`. Types, pure
 // functions, constants only. `decimal.js` is used internally-only, via the shared kernel's
 // `RegulatoryDecimal` clone (so a wage-index factor / sequestration percent string lifts into the exact
 // same `decimal.js` domain as `toDecimal`/`fromDecimal`, never a separately-configured instance).
-export * from "@wardenx/shared/money";
+export * from "@chartwarden/shared/money";
 
-import { type Cents, RegulatoryDecimal as D, fromDecimal, toDecimal } from "@wardenx/shared/money";
+import { type Cents, RegulatoryDecimal as D, fromDecimal, toDecimal } from "@chartwarden/shared/money";
 
 // ── billing-specific rate primitives (D6 / D7 / D11) ───────────────────────────────────────────────────
 

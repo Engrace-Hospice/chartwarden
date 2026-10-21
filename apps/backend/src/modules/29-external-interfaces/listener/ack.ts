@@ -9,7 +9,7 @@
 //
 // IO-free: the ACK datetime (MSH-7) and the ACK's own control id (MSH-10) are INJECTED — never a clock or a
 // uuid call inside a pure builder — so the emitter is fully deterministic under test.
-import type { Hl7OutboundAckStatus } from "@wardenx/types";
+import type { Hl7OutboundAckStatus } from "@chartwarden/types";
 import { type MshEnvelope, encodeMllpFrame } from "./mllp-framing";
 
 /** Map an ack disposition to its HL7 MSA-1 code. `timeout` never produces an ACK we send (it is the

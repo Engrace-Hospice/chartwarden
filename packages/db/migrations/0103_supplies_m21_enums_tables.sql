@@ -212,7 +212,7 @@ CREATE INDEX IF NOT EXISTS "vendor_routing_rule_scope_lookup_idx" ON "vendor_rou
 
 -- ============================================================================================
 -- par_stock — D5's per-Location shelf posture. Severity (ok / low / critical) is DERIVED in
--- @wardenx/supplies, never stored: a stored severity is a second source of truth that goes stale the moment
+-- @chartwarden/supplies, never stored: a stored severity is a second source of truth that goes stale the moment
 -- a threshold is edited, and the screen reading it would show a green shelf that is actually empty.
 --
 -- provider_entity_id is NOT NULL because the published M21ParThresholdPayload puts providerEntityId on every

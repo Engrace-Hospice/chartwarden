@@ -1,4 +1,4 @@
-// @wardenx/db — `membership` (M1 Foundation §3.7). The (user, organization) join:
+// @chartwarden/db — `membership` (M1 Foundation §3.7). The (user, organization) join:
 // unlike `user`, a membership IS org-scoped, so it carries organization_id and is
 // subject to the three-column rule / RLS (check-tenancy.ts). At most one non-revoked
 // membership per (user, org) — enforced by a partial unique index.

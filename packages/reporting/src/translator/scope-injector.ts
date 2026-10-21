@@ -1,4 +1,4 @@
-// @wardenx/reporting — translator step 4: inject the `reportable_scope` envelope as an ADDITIONAL
+// @chartwarden/reporting — translator step 4: inject the `reportable_scope` envelope as an ADDITIONAL
 // parameterized WHERE predicate (M33 §4.7 D8).
 //
 // `reportable_scope` is the single rule by which every M33 read is authorization-filtered (D8). The

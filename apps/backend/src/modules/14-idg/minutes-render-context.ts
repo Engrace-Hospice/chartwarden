@@ -7,7 +7,7 @@
 // PHI: names/labels are document CONTENT (rendered into the PHI-bearing minutes PDF) — never object keys.
 // Part 2: a patient label is display metadata of the meeting's own packet; the PDF builder never prints a
 // label for an entry whose text is withheld.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { type DecisionRenderEntry, buildDecisionContent } from "./minutes-decision-content";
 

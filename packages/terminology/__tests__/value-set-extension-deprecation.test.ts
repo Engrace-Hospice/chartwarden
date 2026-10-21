@@ -1,4 +1,4 @@
-// @wardenx/terminology — M38-T07 unit tests: value-set expansion (§7.5), add-only tenant
+// @chartwarden/terminology — M38-T07 unit tests: value-set expansion (§7.5), add-only tenant
 // extensions (§7.6), annual deprecation remediation (§7.3). Pure engine, no live infra (§9.1).
 //
 //   • §7.5 expansion — materialized projection of members; the B-tree membership lookup honors

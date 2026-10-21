@@ -12,8 +12,8 @@
 //
 // Org-explicit (a cron tick is not a request): per active org, `withOrgContext`; one org's failure never skips the
 // others and the pass rejects at the end so BullMQ retries. Idempotent (a second pass finds nothing open).
-import { type DbClient, schema } from "@wardenx/db";
-import { registerPlatformJob, systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { registerPlatformJob, systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { ADMITTING_STAFF_ASSIGNMENT_ROLE } from "../seams/care-team-provider";

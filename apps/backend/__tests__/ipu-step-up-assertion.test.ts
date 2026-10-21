@@ -13,8 +13,8 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
-} from "@wardenx/auth";
-import { M37_ERROR_STATUS } from "@wardenx/inpatient";
+} from "@chartwarden/auth";
+import { M37_ERROR_STATUS } from "@chartwarden/inpatient";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

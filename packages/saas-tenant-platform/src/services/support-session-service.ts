@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform · services — the support-session service (M34 §3.6, §7.4; D8/D16/D21).
+// @chartwarden/saas-tenant-platform · services — the support-session service (M34 §3.6, §7.4; D8/D16/D21).
 //
 // The WITH-consent break-glass *variant* (M34-F01 / D21): a tenant compliance_officer files a
 // `support_consent_grant` (scope + ≤72h expiry — the repo + the §3.6 CHECK enforce that); a DISTINCT
@@ -21,7 +21,7 @@
 //
 // The three `m34.support_session.*` outbox names are pinned as constants until the backend wiring phase
 // adopts the §4.9 `M34EventName` catalog verbatim (events-by-m34.ts already declares the three payloads).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { SupportRepository } from "../repositories/support";
 
 /** The §7.4 hard ceiling on a support-session window: a session never outlives `started_at + 8h`, even
@@ -52,7 +52,7 @@ export type SupportSessionCloseReason =
   | "grant_revoked"
   | "forced_terminated";
 
-// ── failure-code catalog (the M34 lifecycle-errors precedent — WardenXError envelope, precise codes) ──
+// ── failure-code catalog (the M34 lifecycle-errors precedent — ChartWardenError envelope, precise codes) ──
 
 /** The support-session failure-code catalog → canonical HTTP status (the route reuses these verbatim). */
 export const M34_SUPPORT_SESSION_ERROR_STATUS = {
@@ -73,7 +73,7 @@ export type M34SupportSessionErrorCode = keyof typeof M34_SUPPORT_SESSION_ERROR_
 
 /** A guard/validation failure in the support-session domain — carries the precise `code` for the UI;
  *  the M1 Fastify error handler maps `statusCode` to the HTTP response (the `TenantLifecycleError` shape). */
-export class SupportSessionError extends WardenXError {
+export class SupportSessionError extends ChartWardenError {
   constructor(code: M34SupportSessionErrorCode, message: string) {
     super(code, message, M34_SUPPORT_SESSION_ERROR_STATUS[code]);
     this.name = "SupportSessionError";

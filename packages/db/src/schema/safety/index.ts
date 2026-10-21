@@ -1,4 +1,4 @@
-// @wardenx/db — M20 Field Safety schema barrel (§3.3, 13 owned tables, manifest-exact). The central
+// @chartwarden/db — M20 Field Safety schema barrel (§3.3, 13 owned tables, manifest-exact). The central
 // ../index.ts re-exports this barrel; the 12 M20 pgEnums live in ../../enums.ts (M20-T01, unprefixed SQL
 // names — M20's §3.2 spells them without an `m20_` prefix, as M19's does).
 //
@@ -47,7 +47,7 @@
 // (the M16-T02 finding).
 //
 // Enums + the thirteen tables land in migration 0110; RLS/grants, the thirteen M4 write-audit triggers
-// (with the §3.6 denylists mirrored from `M20_AUDIT_DENYLIST` in @wardenx/types) and the §2.3
+// (with the §3.6 denylists mirrored from `M20_AUDIT_DENYLIST` in @chartwarden/types) and the §2.3
 // active-SOS guard on the location stream in 0111. The §7.x lifecycle services, the overdue/SLA workers
 // and the polygon evaluator land in M20-T03.
 

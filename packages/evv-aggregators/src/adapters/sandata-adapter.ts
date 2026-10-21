@@ -1,5 +1,5 @@
 import { eventPairHash } from "../event-pair-hash";
-// @wardenx/evv-aggregators — the Phase-1 Sandata adapter (M18-T06, §4.5 D1, §7.8/§7.9, §8.5).
+// @chartwarden/evv-aggregators — the Phase-1 Sandata adapter (M18-T06, §4.5 D1, §7.8/§7.9, §8.5).
 //
 // Sandata covers the plurality of mandate states by population; it ships ENABLED at launch (the other vendor
 // adapters are Phase-2 scaffolding). Per §8.5 this file is one of the ONLY places a Sandata endpoint / payload

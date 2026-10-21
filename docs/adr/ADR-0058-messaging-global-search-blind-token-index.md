@@ -515,7 +515,7 @@ reference tenant and is unchanged. Whether to default to 18 is a reviewer decisi
   `apps/backend/src/modules/22-documents/extraction/feature-flag.ts`; an absent key reads as false). **Caveat from that file:** a
   tenant-scoped row wins outright over the platform-global row of the same key, so a kill switch set on the global row does not
   override a tenant row for the same key.
-- A **step-up pattern for admin settings exists**: `requireStepUp(opKey)` from `@wardenx/auth`, backed by the server-verified
+- A **step-up pattern for admin settings exists**: `requireStepUp(opKey)` from `@chartwarden/auth`, backed by the server-verified
   `stepUpFreshFor` (`apps/backend/src/bootstrap/step-up.ts`; used by M34 command routes,
   `apps/backend/src/modules/33-reporting/routes/schedules.routes.ts` line 50, `apps/backend/src/modules/40-mdm/routes/mdm-routes.ts`
   line 76 and others). A tenant may tighten, never loosen, the platform floor per operation.

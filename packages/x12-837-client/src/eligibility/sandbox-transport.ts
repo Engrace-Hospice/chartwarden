@@ -1,4 +1,4 @@
-// @wardenx/x12-837-client — the fixture-backed SANDBOX HETS transport (dev / test ONLY).
+// @chartwarden/x12-837-client — the fixture-backed SANDBOX HETS transport (dev / test ONLY).
 //
 // Answers every 270 with a synthetic 271 from ./fixtures, never touching a network. It exists so local dev
 // and tests can exercise the full 270 → 271 → parse → persist path. The backend refuses to bind it when

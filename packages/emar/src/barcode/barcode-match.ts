@@ -1,4 +1,4 @@
-// @wardenx/emar — §2.9 / BCMA barcode-medication-administration verification (M13-T09). PURE, IO-free, shared
+// @chartwarden/emar — §2.9 / BCMA barcode-medication-administration verification (M13-T09). PURE, IO-free, shared
 // with the Capacitor mobile eMAR so the bedside scan and the server-side re-verification agree on one
 // `match_result` (no drift). The `@capacitor/camera` plugin reads the medication's NDC / RxNorm barcode and the
 // patient's wristband at the bedside; M13 re-derives the canonical `barcode_scan_event.match_result` from the
@@ -12,7 +12,7 @@
 // wrong-patient/wrong-drug/expired scan is a hard `BARCODE_VERIFICATION_FAILED`, not a soft warning — the
 // surveyor question "was the right drug given to the right patient?" must never resolve to a logged mismatch).
 
-import type { WristbandVerdictStatus } from "@wardenx/types";
+import type { WristbandVerdictStatus } from "@chartwarden/types";
 
 /** The `barcode_scan_event.match_result` domain (§3.3). */
 export type BarcodeMatchResult =

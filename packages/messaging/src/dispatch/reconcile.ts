@@ -1,4 +1,4 @@
-// @wardenx/messaging — vendor callback → delivery status mapping (M36 GAP-101, spec §2.4.4 / §4.9).
+// @chartwarden/messaging — vendor callback → delivery status mapping (M36 GAP-101, spec §2.4.4 / §4.9).
 //
 // Pure. A Twilio SMS/voice status callback or a Postmark event is mapped to the `notification_delivery`
 // transition it implies, or to `null` when it implies none (an in-flight status, an open/click event, an

@@ -6,14 +6,14 @@ import {
   PageHeader,
   humanizeIdentifier,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Summary (M7 §5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The printable, patient/family-friendly view, generated server-side from the active version's state.
 // §7.6: SUD content is excluded unless the calling session has a matched consent — the response carries
 // `redacted: true` when anything was filtered (the filter is SERVER-side, never a frontend hide).
 // Reads GET /api/v1/care-plans/:planId/summary via the typed client; the server enforces every scope.
-// Imports only leaves (@wardenx/ui).
+// Imports only leaves (@chartwarden/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";

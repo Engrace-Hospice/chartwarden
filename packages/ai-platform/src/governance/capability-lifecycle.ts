@@ -1,4 +1,4 @@
-// @wardenx/ai-platform — §2.2 capability-lifecycle GOVERNANCE rules (M32-T03).
+// @chartwarden/ai-platform — §2.2 capability-lifecycle GOVERNANCE rules (M32-T03).
 //
 // `./lifecycle/state-machine` (T01) holds the EDGE SET — which (from, to, kind) triples exist. This
 // file is the gate that decides whether a particular signer, with particular evidence, may WALK one of
@@ -38,7 +38,7 @@ import type {
   AiCapabilityRiskTier,
   AiLifecycleApprovalKind,
   AiLifecycleTransition,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import { aiLifecycleTransition } from "../lifecycle/state-machine";
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";

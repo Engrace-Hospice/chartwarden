@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_prompt_template` (M32 §3.2.5). The versioned prompt registry `AIPromptRegistry`
+// @chartwarden/db — `ai_prompt_template` (M32 §3.2.5). The versioned prompt registry `AIPromptRegistry`
 // (§4.5) resolves against, and the D18 AI-prohibited-zone key: `output_entity_target_prefix` is what a
 // downstream module's boot validator asks about to prove no active prompt targets its prohibited entity.
 //
@@ -17,7 +17,7 @@
 //
 // The two prefix columns are OPEN vocabularies on TEXT, deliberately un-CHECKed: a new capability
 // introduces a new target, and a value list here would mean a prohibited-zone key could not be added
-// without a migration. `@wardenx/types` names the known values (`AiKnownOutputEntityTargetPrefix` /
+// without a migration. `@chartwarden/types` names the known values (`AiKnownOutputEntityTargetPrefix` /
 // `AiKnownOutputTypePrefix`) without closing the set.
 //
 // `capability_key` is a KEY not an FK (the `ai_capability` posture): the template is authored against a

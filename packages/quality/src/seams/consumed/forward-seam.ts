@@ -1,4 +1,4 @@
-// @wardenx/quality — the forward-seam-unavailable marker (M30 §4.4).
+// @chartwarden/quality — the forward-seam-unavailable marker (M30 §4.4).
 //
 // M30 CONSUMES every upstream clinical/billing module's read seam through the M1 SeamRegistry
 // (`getSeam`) — no import edge (the dependency-cruiser schema rule enforces this). The producers that

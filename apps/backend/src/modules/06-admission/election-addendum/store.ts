@@ -1,14 +1,14 @@
 // apps/backend/src/modules/06-admission/election-addendum/store.ts — the in-transaction primitives behind the
 // FY2027 election statement addendum (42 CFR 418.24(c)/(d)). Every function takes the CALLER's org-context tx
 // so it composes into activation / discharge / consumer transactions; nothing here opens a transaction.
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import type {
   AddendumDiagnosisLine,
   ElectionAddendumExemptionReason,
   ElectionAddendumStatus,
   LocalDate,
   NonCoveredItemSnapshot,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import { exemptionEventFor, transitionElectionAddendum } from "../state-machines/election-addendum";

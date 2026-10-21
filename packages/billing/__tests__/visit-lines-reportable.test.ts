@@ -1,11 +1,11 @@
-// @wardenx/billing — rule `visit_lines_reportable` (visits, warn, regulatory): a billable visit that could not be
+// @chartwarden/billing — rule `visit_lines_reportable` (visits, warn, regulatory): a billable visit that could not be
 // built into a claim line (no documented duration, no covering level-of-care period) is skipped, never guessed —
 // and surfaced here, naming encounter ids only, so a biller can document it. Never blocks the claim.
 import {
   type ValidationContext,
   type VisitReportingSnapshot,
   visitLinesReportable,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 

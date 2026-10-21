@@ -36,7 +36,7 @@ pencil-prompts/**        →  the three above, fused into a generation prompt fo
 ## Working order
 
 1. **Read [`DESIGN.md`](./DESIGN.md) first** — it is the visual source of truth. The implementation
-   mirror (`packages/ui/src/core/theme/colors.ts` + `apps/web/src/index.css` + the `@wardenx/ui`
+   mirror (`packages/ui/src/core/theme/colors.ts` + `apps/web/src/index.css` + the `@chartwarden/ui`
    web layer) is **reconciled to Lantern** (R0/R1): self-hosted fonts, CSS-var tokens incl. twilight
    dark mode, the §6.6 StatusPill + Guardrail/Sensitivity/Provenance primitives, and No-Line rules.
 2. To **add or change a screen**: edit/author its spec under `screens/**` (keep the

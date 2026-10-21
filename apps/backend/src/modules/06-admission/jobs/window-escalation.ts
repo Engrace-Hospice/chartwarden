@@ -8,8 +8,8 @@
 //
 // Exclusions: the two election-addendum kinds (own scan + own dedicated event), `info` severity windows and
 // `auto_acknowledge` windows (D15 external signals — informational, they must never page).
-import { type DbClient, schema } from "@wardenx/db";
-import type { ComplianceWindowSeverity, ComplianceWindowStatusValue } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { ComplianceWindowSeverity, ComplianceWindowStatusValue } from "@chartwarden/types";
 import { and, eq, inArray, isNotNull, lte, ne } from "drizzle-orm";
 import { addCalendarDays } from "../certification/window-math";
 import { ADDENDUM_WINDOW_KINDS } from "../election-addendum/store";

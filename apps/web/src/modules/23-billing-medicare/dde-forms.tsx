@@ -1,7 +1,7 @@
 // apps/web/src/modules/23-billing-medicare — the two DDE record forms (ADR-0052): "record as keyed in DDE" and
 // "record what came back". Real <form> elements (Enter submits, fields are named), controlled by drafts the rail
 // holds so a step-up round trip can restore them. Notes are capped and MBI-shaped text is refused client-side too.
-import { Button, SelectField, TextAreaField, TextField } from "@wardenx/ui";
+import { Button, SelectField, TextAreaField, TextField } from "@chartwarden/ui";
 import { type FormEvent, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -66,7 +66,7 @@ export function SubmissionForm({
       aria-label="Record as keyed in DDE"
     >
       <p className="wx-row-sub">
-        This records that you keyed the item in DDE. WardenX cannot check it, so it is your word and
+        This records that you keyed the item in DDE. ChartWarden cannot check it, so it is your word and
         it is audited. It needs a recent re-authentication.
       </p>
       <TextField

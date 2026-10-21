@@ -21,7 +21,7 @@
 //   value_missing            no stored extracted value to commit.
 //   conflicting_values       two approved candidates for the same field path with different values —
 //                            the reviewer attested both, so neither is chosen.
-import { DOCLENS_M5_WRITEBACK_FIELDS, type DocLensCommitField } from "@wardenx/types";
+import { DOCLENS_M5_WRITEBACK_FIELDS, type DocLensCommitField } from "@chartwarden/types";
 
 export type WritebackExclusionReason =
   | "not_a_writeback_target"

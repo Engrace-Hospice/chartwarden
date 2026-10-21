@@ -2,7 +2,7 @@
 // the six fields the route requires, and a step-up refusal must keep what was typed and offer Re-verify rather than
 // claim success or wipe the form.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@wardenx/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantProvisionDrawer } from "./tenant-provision";

@@ -1,4 +1,4 @@
-// @wardenx/billing — §4.5 rule `per_diem_class_coding_correct` (perDiemClass, error, regulatory). Verifies the
+// @chartwarden/billing — §4.5 rule `per_diem_class_coding_correct` (perDiemClass, error, regulatory). Verifies the
 // STRUCTURAL invariants of the per-diem snapshot the calculator produced: segments present, the
 // ADR-0001 RHC day-60 tier buckets (days_1_60 / days_61_plus) assigned, wage factor a decimal string.
 // ADR-0001 NOTE (outstanding): the ADR strikes the HIPPS construct entirely (hospice claims carry no

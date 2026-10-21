@@ -6,7 +6,7 @@
  * is org-scoped. A justified waiver emits nothing; a non-2xx emits nothing; a failure is best-effort
  * (logged, never fatal). Here a fake transactional DB captures the audit rows the hook inserts.
  */
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";

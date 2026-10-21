@@ -22,9 +22,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { audit } from "@wardenx/audit";
-import { createDbClient } from "@wardenx/db";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { audit } from "@chartwarden/audit";
+import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";

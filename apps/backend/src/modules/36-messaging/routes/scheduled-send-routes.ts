@@ -11,9 +11,9 @@
 // state), so these routes only decide who may QUEUE. List/cancel need only messaging.read: a user who lost access must
 // still be able to see and withdraw what they queued. Org and user come from the request context, never a param or the
 // body; the service keys on them and RLS pins the owner again. Responses are never cached (they carry message text).
-import { requireAbac, requirePermission } from "@wardenx/auth";
-import type { AnnouncementService, ScheduledSendService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { AnnouncementService, ScheduledSendService } from "@chartwarden/messaging";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { announcementSendGuard } from "./announcement-routes";
 import { CHANNEL_VISIBILITY_PREDICATE, REQUIRE_IDEMPOTENCY_KEY } from "./messaging-routes";

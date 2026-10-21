@@ -1,5 +1,5 @@
-import { formatMrn } from "@wardenx/types";
-import { Button, EmptyState, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
+import { formatMrn } from "@chartwarden/types";
+import { Button, EmptyState, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import type { ConversationType, DmStaffMember, PatientSearchResult } from "./messaging-types";

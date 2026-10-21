@@ -21,7 +21,7 @@
 //
 // Fail-closed on the facts it controls: a missing membership id can never match a roster row, so a read actor
 // without one is allowed only by rule 1 or 4.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 
 /** Org-wide IPU authority roles (the role templates that carry director-level reach; rule 1). */

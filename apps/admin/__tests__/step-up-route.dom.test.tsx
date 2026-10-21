@@ -1,9 +1,9 @@
-// @wardenx/admin — the console's /step-up page. Platform-ops writes answer 403 STEP_UP_REQUIRED on a stale session,
+// @chartwarden/admin — the console's /step-up page. Platform-ops writes answer 403 STEP_UP_REQUIRED on a stale session,
 // and before this route existed the console had no way to re-verify, so those actions could never succeed. The net:
 // a signed-in platform_ops actor reaches /step-up (chromeless — RequireChrome does not bounce it), sees the shared
 // ceremony under the console's own brand, and a verified code returns to the action's page.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient } from "@chartwarden/ui";
 import { afterEach, describe, expect, it } from "vitest";
 import { AdminApp } from "../src/app";
 import { adminAuthScreens } from "../src/shell/auth-screens";
@@ -53,7 +53,7 @@ describe("admin /step-up", () => {
   it("renders the shared ceremony under the console brand for a signed-in platform_ops actor", async () => {
     mountAt("/step-up?returnTo=%2Fadmin%2Frevenue");
     expect(await screen.findByRole("heading", { name: "Confirm it’s you" })).toBeTruthy();
-    expect(screen.getByText("WardenX Platform Ops")).toBeTruthy();
+    expect(screen.getByText("ChartWarden Platform Ops")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Sign in as someone else" }).getAttribute("href")).toBe(
       "/login",
     );

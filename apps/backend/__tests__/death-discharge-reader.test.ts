@@ -3,7 +3,7 @@
 // returns seeded death rows; the test asserts the reader (1) opens its OWN withOrgContext envelope (sets the
 // per-request org/user GUC via set_config on this connection — HARD RULE 3), and (2) maps each row to a
 // DeathDischargeRow with the §4.11-limited constant source + undefined cosign status.
-import type { DbClient } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createDeathDischargeReader } from "../src/modules/06-admission/index";
 

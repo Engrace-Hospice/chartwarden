@@ -11,12 +11,12 @@
 // `planPrn` runs BEFORE the administration row is inserted (a violation must leave nothing behind);
 // `insertPrn` runs in the SAME transaction right after it, so the wrapper and the administration commit or
 // roll back together and the emitted event names a row that exists.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PrnIntervalOverride,
   assertPrnInterval,
   resolveReassessmentWindowMinutes,
-} from "@wardenx/emar";
+} from "@chartwarden/emar";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
 const ADM = schema.administrationRecords;

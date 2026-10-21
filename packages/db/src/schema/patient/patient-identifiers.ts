@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_identifier` (M5 §3.3, §2.2). Every identifier a patient carries (MRN/MBI/
+// @chartwarden/db — `patient_identifier` (M5 §3.3, §2.2). Every identifier a patient carries (MRN/MBI/
 // SSN/state-id/prior/hospice-external/partner-mrn). PHI-bearing → three-column tenancy rule.
 // §2.2 storage split: ssn/state_id are ENVELOPE-ENCRYPTED (`value_encrypted` bytea + plaintext
 // `value_last4` for display, `value` NULL); every other kind is plaintext `value`. CHECK constraints

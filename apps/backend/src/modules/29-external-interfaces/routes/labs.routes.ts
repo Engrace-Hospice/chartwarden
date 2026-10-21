@@ -10,7 +10,7 @@
 // the bind materializes the `lab_observation` parent that ingest deferred, under the observation id the
 // link row reserved; the discard soft-tombstones the link with a ≥10-char reason (§5.2.4). The guard +
 // step-up + actor chain each already walked is unchanged.
-import { ConflictError, NotFoundError } from "@wardenx/types";
+import { ConflictError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 import { getSeam } from "../../../bootstrap/index";

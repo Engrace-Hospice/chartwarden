@@ -11,7 +11,7 @@
 //
 // Until a Stripe webhook secret + payload key + platform credential are bound, `ingest` is unset and the
 // route fails closed (503). GAP-058: the composition root now binds it (billing-runtime/webhook-ingest.ts).
-import { WardenXError } from "@wardenx/types";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 /** The §4.3 verified-webhook result kind the route maps onto an HTTP reply code. */
@@ -57,7 +57,7 @@ function registerWebhookHandler(app: FastifyInstance, deps: WebhookRouteDeps): v
   // POST /v1/webhooks/stripe - inbound Stripe webhook (Stripe-Signature HMAC; no user session). §4.3.
   app.post("/api/v1/webhooks/stripe", async (request, reply) => {
     if (!deps.ingest) {
-      throw new WardenXError(
+      throw new ChartWardenError(
         "STRIPE_WEBHOOK_UNCONFIGURED",
         "the Stripe webhook transport is not configured",
         503,

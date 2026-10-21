@@ -2,7 +2,7 @@
 // a listener or dispatches a message (M29-T03, §2.2/§2.3/§4.11.1). PURE decision + the local consumer port.
 //
 // WHY A LOCAL PORT (M28 precedent). M40's focused `BaaStatusProvider` seam interface lives in
-// `@wardenx/mdm` (a feature package). Although M29's manifest `dependsOn` carries 40, M29's documented
+// `@chartwarden/mdm` (a feature package). Although M29's manifest `dependsOn` carries 40, M29's documented
 // stance (T01) is to reach every upstream module through a seam/outbox, never a compile-time feature-package
 // import — so this file declares M29's OWN minimal view of the two BAA-gate contracts it needs, and the T08
 // boot wiring resolves the live `getSeam("BaaStatusProvider")` into it (with a structural cast, the M28

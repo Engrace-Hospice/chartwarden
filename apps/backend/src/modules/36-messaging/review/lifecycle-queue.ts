@@ -5,10 +5,10 @@
 // `care_team` channel are queued - a bereavement channel is a different kind and is never touched. The insert is
 // idempotent, and `openSubjects` is re-read AFTER it, so a redelivered trigger still reports who is affected (the alert
 // dedupe absorbs the repeat) instead of going quiet.
-import type { DbClient } from "@wardenx/db";
-import { REVIEW_QUEUE_BATCH } from "@wardenx/messaging";
-import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type { ReviewLifecycleCause } from "@wardenx/types";
+import type { DbClient } from "@chartwarden/db";
+import { REVIEW_QUEUE_BATCH } from "@chartwarden/messaging";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
+import type { ReviewLifecycleCause } from "@chartwarden/types";
 import type { Tx } from "../messaging-write-core";
 import type { ReviewStore } from "./review-store-db";
 

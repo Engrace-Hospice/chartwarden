@@ -1,4 +1,4 @@
-// @wardenx/messaging — the `AlertEmitter` + `RecipientResolver` published seam contracts (§4.6).
+// @chartwarden/messaging — the `AlertEmitter` + `RecipientResolver` published seam contracts (§4.6).
 //
 // M36-T06. `AlertEmitter` is the ONE boot-validated cross-module surface M36 publishes (Wave-B
 // acceptance): a producer module emits a typed event and M36 resolves the firing rules, the

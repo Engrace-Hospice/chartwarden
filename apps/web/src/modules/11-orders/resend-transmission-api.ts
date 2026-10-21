@@ -7,7 +7,7 @@
 //   (`orm_refused:*` other than the SUD gate and the immutable-order facts, or `dispatch_refused:*`). Those orders are
 //   not on the Held Transmissions list, so the order detail is where the action lives. Whether to OFFER it is the
 //   server's `allowedActions.resend_transmission`; whether it is PERMITTED is decided again by the route.
-import type { ApiClient, operations } from "@wardenx/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
 type Ok200<Op> = Op extends { responses: { 200: infer R } } ? Json<R> : never;

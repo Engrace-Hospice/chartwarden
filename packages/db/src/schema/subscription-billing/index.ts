@@ -1,4 +1,4 @@
-// @wardenx/db — Module 35 (Subscription Billing) schema barrel: the twenty-one `ownedTables`
+// @chartwarden/db — Module 35 (Subscription Billing) schema barrel: the twenty-one `ownedTables`
 // `architecture/module-manifest.ts` gives M35 (§3.3).
 //
 // TENANT-SCOPED (twelve) — organization_id NOT NULL, RLS keyed ONLY on canonical app.org_id (§3.5):

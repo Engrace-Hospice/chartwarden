@@ -2,7 +2,7 @@
 // lifecycle. PHI-free by construction: ids, an enum and one instant - no patient id, no text, no name. Published in the SAME
 // transaction as the transition, so a committed transition always has its event and a rolled-back one never does; an
 // idempotent repeat publishes nothing. The catalog entries live in events-by-m36.ts.
-import type { AckClass } from "@wardenx/types";
+import type { AckClass } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
 export const M36_ACK_REQUESTED = "m36.ack.requested";

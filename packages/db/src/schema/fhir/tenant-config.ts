@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_fhir_config` (M28 §3.3). One row per tenant: the FHIR host, the identifier-URI
+// @chartwarden/db — `tenant_fhir_config` (M28 §3.3). One row per tenant: the FHIR host, the identifier-URI
 // base (D9), the per-tenant HMAC cursor-signing key (DEK-encrypted), and the review/dedup knobs.
 //
 // TENANT-SCOPED, and its own scope: `organization_id` IS the primary key — a tenant has exactly one FHIR

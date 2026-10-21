@@ -1,4 +1,4 @@
-// @wardenx/billing — schemas for route #8 `POST /api/v1/billing/claims/:id:replace` (§4.1, D14).
+// @chartwarden/billing — schemas for route #8 `POST /api/v1/billing/claims/:id:replace` (§4.1, D14).
 //
 // Builds a TOB 817 (replacement) referencing this claim; returns the NEW claim id in DRAFT. Step-up auth
 // required. The predecessor must be in a replaceable terminal/adjudicated state (server-enforced).

@@ -1,4 +1,4 @@
-// @wardenx/cap-management — penny-exact money + ratio kernel (§2.3: all monetary fields are BIGINT cents,
+// @chartwarden/cap-management — penny-exact money + ratio kernel (§2.3: all monetary fields are BIGINT cents,
 // never NUMERIC, never FLOAT). Cap dollar amounts span $30K–$40K per beneficiary × up to ~5,000 beneficiaries
 // = ~$200M max, comfortably within JS safe-integer range (2^53 ≈ $90 trillion in cents), so `number` cents
 // arithmetic is exact here. Percentages are computed as `number` ratios with explicit rounding at the
@@ -9,7 +9,7 @@
 // kernel's `ratio` (a `decimal.js` value that throws on a zero denominator), these operate on plain
 // `number` fractions and return `0` on a zero denominator (an open period with a zero cap denominator
 // reads as 0% utilization, never NaN/Infinity) — a genuinely different domain, not a duplicate.
-export { roundCents } from "@wardenx/shared/money";
+export { roundCents } from "@chartwarden/shared/money";
 
 /**
  * Ratio of `part` to `whole` as a fraction (e.g. 0.9512 = 95.12%). Returns 0 when `whole` is 0 — an open

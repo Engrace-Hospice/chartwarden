@@ -5,7 +5,7 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/paid · warning≈needs-attention ·
 // error≈failed/denied · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone } from "@chartwarden/ui";
 
 /** `m24_claim_state` → §6.6 tone. In-flight states are progress; the biller's worklist signals are
  * warning/error; PAID is the only success; the post-terminal states are inert neutral. */

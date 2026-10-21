@@ -2,7 +2,7 @@
 // conversation (the same jump the thread links use). Re-read when this tab pins/unpins, and when the pinned flags of the
 // loaded messages change (that is how another member's pin or unpin arrives, through the normal list refresh), so the
 // audited pin-list read is not repeated on every hint.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import type { Message } from "./messaging-types";

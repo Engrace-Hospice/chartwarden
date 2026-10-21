@@ -5,15 +5,15 @@
 // envelope + every log line) and the request envelope (ip / user-agent / start time). The
 // tenant/actor fields start empty here; M2's auth plugin fills userId / organizationId /
 // roles AFTER this hook runs (spec §4.5). The HttpRequestContext type is the shared
-// `@wardenx/types` leaf shape, so every module's routes read `request.context` without a
+// `@chartwarden/types` leaf shape, so every module's routes read `request.context` without a
 // cross-module edge.
 //
 // Applied directly to the root instance (app.addHook), NOT registered as an encapsulated
 // plugin — without `fastify-plugin` a registered plugin's hooks would not see routes in
 // the parent scope. Applying on the root keeps the hook global.
 import { randomUUID } from "node:crypto";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import type { HttpRequestContext } from "@wardenx/types";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { HttpRequestContext } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 declare module "fastify" {

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `evv_geofence_policy` (M18 §3.3 / §2.2.2 D3). The three-layer geofence policy with strict
+// @chartwarden/db — `evv_geofence_policy` (M18 §3.3 / §2.2.2 D3). The three-layer geofence policy with strict
 // precedence: platform floor (seeded scope='platform', radius_m=200, max_accuracy_m=50) → tenant default →
 // per-address override (requires override_reason ≥30 chars, DENYLISTED §3.6). Tenant-scoped configuration
 // data, NOT patient-scoped (the `patient_address_id` column carries no `patient_id`/PHI signal, so the

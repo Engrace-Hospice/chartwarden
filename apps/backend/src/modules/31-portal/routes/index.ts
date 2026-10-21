@@ -3,7 +3,7 @@
 // The single deps object every M31 route plugin composes over (`PortalRouteDeps`), plus the Drizzle-backed
 // store builder + the guard/actor/typebox re-exports the composition root binds (the M19/M20 routes/index.ts
 // precedent). The store owns the three tables; the video vendor adapter is injected structurally so the
-// route layer takes no `@wardenx/telehealth-client` edge (the composition root binds the real Daily.co
+// route layer takes no `@chartwarden/telehealth-client` edge (the composition root binds the real Daily.co
 // adapter).
 export {
   type PortalStore,
@@ -49,7 +49,7 @@ export {
 } from "../portal-crypto";
 
 /**
- * The structural projection of the `@wardenx/telehealth-client` `TelehealthProvider` the route layer calls
+ * The structural projection of the `@chartwarden/telehealth-client` `TelehealthProvider` the route layer calls
  * — mint token / end / start-stop recording / verify webhook. Injected so the routes take no vendor edge;
  * the composition root binds the real Daily.co adapter (D1), a NOOP fail-closed adapter otherwise.
  */
@@ -126,7 +126,7 @@ export interface PortalRouteDeps {
    */
   readonly signIn?: PortalSignInPort;
   /** Invitee sign-in — the §5.3.1 failed-bind throttle (per user + per IP). ABSENT ⇒ only the global rate tier applies. */
-  readonly signInThrottle?: import("@wardenx/auth").CredentialThrottle;
+  readonly signInThrottle?: import("@chartwarden/auth").CredentialThrottle;
   /** GAP-159 - the M31 outbox emitter for decision-point events (session, upload, amendment, message). */
   readonly events?: M31EventEmitter;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */

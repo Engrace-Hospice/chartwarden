@@ -10,8 +10,8 @@
 // "Assigner must already have access" (spec): the chart scope guard runs on `:id` for all three, 404 on
 // deny so a refusal never confirms the chart exists. Org-wide oversight roles (DON etc.) pass it through
 // the predicate's org-wide arm, which is how the first clinician ever lands on a caseload.
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AssignmentAlreadyEndedError,
@@ -54,25 +54,25 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 /** Map the port's typed precondition errors onto the §4.3 HTTP contract; anything else rethrows. */
 function mapAssignmentError(err: unknown): unknown {
   if (err instanceof AssignmentPatientNotFoundError) {
-    return new WardenXError("NOT_FOUND", "patient not found", 404);
+    return new ChartWardenError("NOT_FOUND", "patient not found", 404);
   }
   if (err instanceof AssignmentNotFoundError) {
-    return new WardenXError("NOT_FOUND", "assignment not found", 404);
+    return new ChartWardenError("NOT_FOUND", "assignment not found", 404);
   }
   if (err instanceof PrimaryRnAlreadyAssignedError) {
-    return new WardenXError("PRIMARY_RN_ALREADY_ASSIGNED", err.message, 409);
+    return new ChartWardenError("PRIMARY_RN_ALREADY_ASSIGNED", err.message, 409);
   }
   if (err instanceof AssignmentAlreadyOpenError) {
-    return new WardenXError("ASSIGNMENT_ALREADY_OPEN", err.message, 409);
+    return new ChartWardenError("ASSIGNMENT_ALREADY_OPEN", err.message, 409);
   }
   if (err instanceof AssignmentAlreadyEndedError) {
-    return new WardenXError("ASSIGNMENT_ALREADY_ENDED", err.message, 409);
+    return new ChartWardenError("ASSIGNMENT_ALREADY_ENDED", err.message, 409);
   }
   if (err instanceof ClinicianNotInOrgError) {
-    return new WardenXError("CLINICIAN_NOT_IN_ORG", err.message, 422);
+    return new ChartWardenError("CLINICIAN_NOT_IN_ORG", err.message, 422);
   }
   if (err instanceof AssignmentEndBeforeStartError) {
-    return new WardenXError("ASSIGNMENT_END_BEFORE_START", err.message, 422);
+    return new ChartWardenError("ASSIGNMENT_END_BEFORE_START", err.message, 422);
   }
   return err;
 }
@@ -104,7 +104,7 @@ export function registerPatientAssignmentRoutes(
       const { organizationId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);
       const rows = await assignments.list(organizationId, id);
-      if (rows === null) throw new WardenXError("NOT_FOUND", "patient not found", 404);
+      if (rows === null) throw new ChartWardenError("NOT_FOUND", "patient not found", 404);
       return { assignments: rows };
     },
   );

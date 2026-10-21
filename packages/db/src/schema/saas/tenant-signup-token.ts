@@ -1,4 +1,4 @@
-// @wardenx/db — `tenant_signup_token` (M34 §3.9). The single-use, time-bound token issued against a
+// @chartwarden/db — `tenant_signup_token` (M34 §3.9). The single-use, time-bound token issued against a
 // `tenant_signup_intent` (email-verification or first-admin-setup). Like its parent intent, it is
 // DELIBERATELY org-less (M34-F02 / ADR-0010, §3.10): genuinely PRE-ORGANIZATION, the one legitimate
 // org-less exemption — NOT tenant-scoped, so the canonical `app.org_id` RLS predicate does not

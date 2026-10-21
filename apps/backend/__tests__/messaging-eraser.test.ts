@@ -1,4 +1,4 @@
-import { DekDestroyedError, createInMemoryMessagingEraseStore } from "@wardenx/messaging";
+import { DekDestroyedError, createInMemoryMessagingEraseStore } from "@chartwarden/messaging";
 // apps/backend/__tests__/messaging-eraser.test.ts — M36-T10 the `messages` data eraser
 // (spec §7.8 / §11 D9).
 //

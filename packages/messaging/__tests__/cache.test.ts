@@ -5,7 +5,7 @@ import {
   recipientResolverPrefix,
   roomMembershipKey,
   unreadCountKey,
-} from "@wardenx/messaging";
+} from "@chartwarden/messaging";
 // M36-T08 — cache key grammar + invalidation + the three access patterns (M36 spec §4.8).
 //
 // Accept: the §4.8 key grammar is stable; the resolver cache round-trips and prefix-invalidates; the

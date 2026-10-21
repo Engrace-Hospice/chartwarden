@@ -1,6 +1,6 @@
 // apps/admin/src/modules/35-subscription-billing — shared presentational bits for the §5.2 console screens.
 // The redesign's list + right drawer chrome lives in the shared `wx-*` classes (packages/ui list-chrome.css);
-// these helpers only compose it with the @wardenx/ui kit so the 14 screens write it once. No inline styles.
+// these helpers only compose it with the @chartwarden/ui kit so the 14 screens write it once. No inline styles.
 import {
   Button,
   Glyph,
@@ -9,7 +9,7 @@ import {
   LoadingSpinner,
   ReverifyLink,
   isStepUpRequired,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 
 /** A server result surfaced to the operator. `stepUp`: the refusal was STEP_UP_REQUIRED (offer Re-verify). */

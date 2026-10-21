@@ -3,7 +3,7 @@
 // Exercises the in-memory M29Store the route handlers compose over — the FSM + propose-then-review + rejection
 // rules the Drizzle store shares from the same T03/T04 cores, so a passing test here tests the RULE, not a
 // second spelling of it.
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 
 import { createInMemoryM29Store } from "../routes/store";

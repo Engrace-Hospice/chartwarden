@@ -4,9 +4,9 @@
 // from M8's signed-encounter digests via the §4.7 `SignedEncountersReader` seam — never M8's tables. The
 // patients of a provider entity come from M15's OWN `discipline_care_plan` rows (every admitted patient has
 // plan stubs, §2.2.1), so no cross-module table read is needed.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, PatientId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, PatientId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { getSignedEncountersReader } from "../seams/index";
 import {

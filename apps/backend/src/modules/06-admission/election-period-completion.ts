@@ -6,7 +6,7 @@
 // Both previously diverged: the cascade ran a bare UPDATE and discarded the transition's `outbox` effect, and
 // nothing at all ended a period at its end date — so `m6.election.period_ended` was declared (and bound by
 // M23's revalidate consumer) but never published.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, sql } from "drizzle-orm";
 import type { ElectionEndCause } from "./state-machines/effects";
 import {

@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M14 (Interdisciplinary Group / IDG). PRESENT (§4.4).
+// @chartwarden/reporting — consumed-seam view of M14 (Interdisciplinary Group / IDG). PRESENT (§4.4).
 //
 // M33 reads IDG schedule-cadence + decision-latency + packet aggregates. Bound to the live M14
 // `IdgScheduleProvider` / `IdgDecisionProvider` / `IdgPacketProvider` via `getSeam` at boot (P2C).

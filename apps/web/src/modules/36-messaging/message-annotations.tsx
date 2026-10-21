@@ -3,7 +3,7 @@
 //
 // A reaction is NOT a sign-off: separate controls, separate wording, and the picker says so out loud. There is
 // no control here (or anywhere in the row) that confirms a message was read or acted on.
-import { useApiClient } from "@wardenx/ui";
+import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import type { Message } from "./messaging-types";

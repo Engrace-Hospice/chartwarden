@@ -1,4 +1,4 @@
-// @wardenx/inpatient — M37-T09 unit tests for the §2.11 D12 body-release coordination machine.
+// @chartwarden/inpatient — M37-T09 unit tests for the §2.11 D12 body-release coordination machine.
 import { describe, expect, it } from "vitest";
 import { IpuStateError } from "../src/errors";
 import {

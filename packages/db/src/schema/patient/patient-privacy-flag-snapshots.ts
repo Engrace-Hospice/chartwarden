@@ -1,4 +1,4 @@
-// @wardenx/db — `patient_privacy_flag_snapshot` (M5 §3.5, M5 D10). A denormalized snapshot of a
+// @chartwarden/db — `patient_privacy_flag_snapshot` (M5 §3.5, M5 D10). A denormalized snapshot of a
 // patient's active privacy flags (sud/hiv/mental_health/genetic/minor_restricted/abuse_victim),
 // recomputed from M39 `m39.consent.*` events (M5-T10 consumer — inert until M39 ships). The §7.6 SUD
 // read-enforcement reads THIS (fast path) rather than re-deriving from consent each read. One row per

@@ -1,4 +1,4 @@
-// @wardenx/quality — operational measure: comfort-kit deployment-to-administration interval. Pure. No IO.
+// @chartwarden/quality — operational measure: comfort-kit deployment-to-administration interval. Pure. No IO.
 // Modeled as the rate of comfort-kit deployments whose first administration occurred within the SLA-minute
 // window (higher is better); the snapshot carries the median/p90 minutes for the deployment-to-admin
 // interval. Source: M12 `getComfortKitDeploymentTimeline` + M13 `getComfortKitAdministrationTimeline`.

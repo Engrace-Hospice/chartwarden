@@ -1,4 +1,4 @@
-// @wardenx/audit — Audit job queue catalog (M4-T11, M4 spec §4.4).
+// @chartwarden/audit — Audit job queue catalog (M4-T11, M4 spec §4.4).
 //
 // The canonical names + cadences of the six audit background jobs. Module 1 owns the
 // `audit.archive` partition-tiering MECHANISM; Module 4 owns the retention/destruction/integrity/

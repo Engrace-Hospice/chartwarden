@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `wage_index_factor` (platform-shared per-CCN annual CMS wage-index
+// @chartwarden/billing · repositories — `wage_index_factor` (platform-shared per-CCN annual CMS wage-index
 // schedule, §3.3, D12; non-partitioned; retention class `reference`). The ONLY M23 table with NO
 // `organization_id` — PLATFORM-SHARED reference data consumed by the HIPPS/per-diem calculator at claim
 // assembly (snapshotted onto `per_diem_rate_calculation` so the math stays reproducible).
@@ -9,7 +9,7 @@
 // write path, and is deliberately absent from this data port. RLS on the table is SELECT `USING (true)` for
 // `app_user`, so these reads need no `app.org_id` scope (and the service still runs them under
 // `withOrgContext` for uniformity). No PHI (D18).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type BillingDb,

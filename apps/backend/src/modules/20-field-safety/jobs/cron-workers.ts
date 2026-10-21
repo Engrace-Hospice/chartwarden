@@ -37,9 +37,9 @@
 // a terminus (the original GAP-032 symptom), and the `sos_terminus_reached` payload reports the ledger,
 // never a guess. The re-page LOOP is idempotent per (alert, loop period): the ledger's UNIQUE key means the
 // ~20 watchdog ticks inside one period produce one event and one set of intents.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
   MembershipId,
@@ -48,7 +48,7 @@ import type {
   SafetyPolicyProvider,
   SafetySosAlertId,
   SafetySosLifecycleState,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { buildSosEscalatedAlert, buildSosTerminusAlert } from "../alerts";

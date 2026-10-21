@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-// @wardenx/db — `validation_rule_config` (M23 Billing-Medicare §3.3, D5; non-partitioned; retention
+// @chartwarden/db — `validation_rule_config` (M23 Billing-Medicare §3.3, D5; non-partitioned; retention
 // class `operational`). The PER-TENANT overlay on the platform's billing-rule registry. The 18 default
-// rules are CODE-side (the §11.A registry in `@wardenx/billing`); only the tenant overlay (enable/
+// rules are CODE-side (the §11.A registry in `@chartwarden/billing`); only the tenant overlay (enable/
 // disable, severity, override-role, parameters, and any tenant-custom rule) is persisted here.
 // ORG-SCOPED: organization_id NOT NULL — there are NO platform-default rows in this table (unlike the
 // M27 cost_report_validation_rule), so the canonical app.org_id RLS predicate applies directly.

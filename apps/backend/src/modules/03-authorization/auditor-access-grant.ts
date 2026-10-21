@@ -17,8 +17,8 @@
 //     staff member's access;
 //   • if the org's `external_auditor` role has been widened beyond the auditor minimum, redemption is refused
 //     (an administrator must correct it) rather than silently trimmed or silently honoured.
-import type { DbClient } from "@wardenx/db";
-import { schema } from "@wardenx/db";
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { isEngagementLive } from "./engagement-scope";
 

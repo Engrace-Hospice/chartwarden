@@ -1,6 +1,6 @@
 // M36 WP 2.13 / ADR-0058 P1 — the body cipher over the M34 ring: scheme selection, both-scheme read, cache.
 import { randomBytes } from "node:crypto";
-import { bodyEnvelopeScheme, ringEnvelopeVersion } from "@wardenx/messaging";
+import { bodyEnvelopeScheme, ringEnvelopeVersion } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
 import {
   type MessageBodyKeyProvider,

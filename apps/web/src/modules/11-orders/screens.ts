@@ -1,4 +1,4 @@
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/11-orders — M11 screen registration (Track B, ADR-0030).
 // The §5 Orders read screens that have a backing M11 read route on the generated client: the global
 // physician Signature Inbox (§5, pending-signature), the per-patient Orders list (§5, "Use Patient

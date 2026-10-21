@@ -1,4 +1,4 @@
-// @wardenx/billing · repositories — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned;
+// @chartwarden/billing · repositories — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned;
 // retention class `compliance`). APPEND-ONLY: one row per dispatch attempt of an 837I claim / NOE / NOTR
 // to the MAC (via the x12-837-client sidecar / portal) — the worker appends a row per attempt capturing
 // that attempt's `outcome`; there is deliberately NO update/delete method (the P1 DB append-only trigger
@@ -10,7 +10,7 @@
 // ENUM BOUNDARY: `kind` (claim_837i|noe|notr) and `outcome` (queued|generated|submitted|failed_*) are
 // DB-native lowercase enums with no domain-alphabet divergence, so rows pass through UN-mapped (no codec;
 // contrast `claim.state`). No PHI / MBI is ever stored here (D13, §8.7).
-import * as schema from "@wardenx/db/schema";
+import * as schema from "@chartwarden/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 

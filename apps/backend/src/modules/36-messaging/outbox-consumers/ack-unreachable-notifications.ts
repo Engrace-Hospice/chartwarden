@@ -10,7 +10,7 @@
 // the outbox retries and dead-letters.
 // ADR-0079: the supervisor audience is told by the shared supervisor attention alert (in-app, plus a page to a verified endpoint when the
 // notification policy is on), not by this rule, and a supervisor alert that reached no out-of-band route raises its own ops notice.
-import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
+import type { AlertEmitter, MessagingRouteService } from "@chartwarden/messaging";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

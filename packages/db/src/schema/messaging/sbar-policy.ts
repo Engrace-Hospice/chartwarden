@@ -1,5 +1,5 @@
 // M36 WP 3.3 - a tenant's tighten-only SBAR policy: longer minimums, a patient-channel requirement, re-worded hints.
-// The CHECK bounds mirror SBAR_PLATFORM_FLOOR (1) and the 500 ceiling in @wardenx/types (pinned by a test).
+// The CHECK bounds mirror SBAR_PLATFORM_FLOOR (1) and the 500 ceiling in @chartwarden/types (pinned by a test).
 import { sql } from "drizzle-orm";
 import {
   boolean,

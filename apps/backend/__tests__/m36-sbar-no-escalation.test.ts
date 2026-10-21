@@ -1,6 +1,6 @@
 // WP 3.3 - the SBAR urgency hint is a sender's LABEL, never a trigger. No alert, page, notification, acknowledgement,
 // event, column or routing decision may depend on it until a work package deliberately maps it. WP 4.1 does NOT: message.urgency is set only by the Urgent clinical entry and the server never reads this label. Static guard: outside the codec
-// (messaging-rich-body.ts) and the validator (messaging-sbar.ts) in @wardenx/types, nothing server-side or in the
+// (messaging-rich-body.ts) and the validator (messaging-sbar.ts) in @chartwarden/types, nothing server-side or in the
 // messaging package may mention `urgencyHint`. (The web renders and sets it; that is display only and is covered by the
 // web slice's own tests.)
 import { readFileSync, readdirSync, statSync } from "node:fs";

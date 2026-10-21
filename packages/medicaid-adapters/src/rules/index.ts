@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 §4.6 validation-framework barrel. Re-exports the rule MODEL, the
+// @chartwarden/medicaid-adapters — M24 §4.6 validation-framework barrel. Re-exports the rule MODEL, the
 // REGISTRY + runner, and the 13 platform-default rules assembled into a freshly-built default registry.
 // All 13 are regulatoryRequired (the §4.6 platform floor); 12 are `error`, the cap rule is `warn` until M26
 // locks. PURE DOMAIN throughout — no Fastify, Drizzle, BullMQ, getSeam, clock, PHI.

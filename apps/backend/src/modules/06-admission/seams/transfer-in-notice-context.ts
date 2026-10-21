@@ -8,8 +8,8 @@
 // Worker-callable (an M23 outbox consumer runs on a relay tick, not a request), so it opens its own
 // `withOrgContext` with an explicit organization predicate as the second wall behind RLS — the
 // `admissionSchedulingContextForOrg` precedent. `null` when the transfer event is unknown in the org.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const ADM = schema.admissions;

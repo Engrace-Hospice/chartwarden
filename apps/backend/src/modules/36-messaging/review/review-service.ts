@@ -7,17 +7,17 @@
 // so a racing close cannot deadlock with a decision), decide the review row FIRST, then move the task through the shared
 // task store with `reviewOverride`. A task already closed elsewhere is the uniform 409 (its trigger resolved the row).
 // A restricted (Part 2) or missing row is the same byte-identical 404, for reads and for actions alike.
-import type { DbClient } from "@wardenx/db";
-import { REVIEW_LIST_DEFAULT, closeActionForReason } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import type { DbClient } from "@chartwarden/db";
+import { REVIEW_LIST_DEFAULT, closeActionForReason } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   NotFoundError,
   type ReviewItemDto,
   TASK_ACTIVE_STATUSES,
   TASK_CLOSE_REASONS,
   type TaskCloseReason,
-  WardenXError,
-} from "@wardenx/types";
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
@@ -71,16 +71,16 @@ const REVIEW_NAME_LIMIT = 200;
 
 /** One refusal for missing / other tenant / restricted: names nothing. */
 const notFound = (): NotFoundError => new NotFoundError("messaging_review_item");
-const assigneeInvalid = (): WardenXError =>
-  new WardenXError("REVIEW_ASSIGNEE_INVALID", "this person cannot be assigned the task", 422);
-const stateConflict = (): WardenXError =>
-  new WardenXError(
+const assigneeInvalid = (): ChartWardenError =>
+  new ChartWardenError("REVIEW_ASSIGNEE_INVALID", "this person cannot be assigned the task", 422);
+const stateConflict = (): ChartWardenError =>
+  new ChartWardenError(
     "REVIEW_ITEM_STATE_CONFLICT",
     "review item is not in a state that allows this",
     409,
   );
-const reasonInvalid = (): WardenXError =>
-  new WardenXError("REVIEW_REASON_INVALID", "closing reason is not recognised", 422);
+const reasonInvalid = (): ChartWardenError =>
+  new ChartWardenError("REVIEW_REASON_INVALID", "closing reason is not recognised", 422);
 
 const isActiveStatus = (status: string): boolean =>
   (TASK_ACTIVE_STATUSES as readonly string[]).includes(status);

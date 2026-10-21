@@ -1,6 +1,6 @@
-// @wardenx/billing — §4.5 rule `cbsa_value_codes_present`: a claim with home-level lines must carry value code 61 and
+// @chartwarden/billing — §4.5 rule `cbsa_value_codes_present`: a claim with home-level lines must carry value code 61 and
 // one with inpatient lines G8; one whose area cannot be resolved is blocked, naming the code and why (no address).
-import { type ValidationContext, cbsaValueCodesPresent } from "@wardenx/billing";
+import { type ValidationContext, cbsaValueCodesPresent } from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 

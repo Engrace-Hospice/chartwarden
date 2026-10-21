@@ -1,4 +1,4 @@
-// @wardenx/db — `value_set_member` (M38 Terminology §3.5). The authoring-time membership
+// @chartwarden/db — `value_set_member` (M38 Terminology §3.5). The authoring-time membership
 // rows for a value set (one per (system, code) with its own effective range). The hot
 // read path is the materialized `value_set_expansion`, rebuilt from these at version load
 // (§7.5). Platform-shared reference (NON_ORG_SCOPED); writes only via `terminology_loader`.

@@ -27,7 +27,7 @@
 // Every read a write depends on runs WITHIN the same `tx` (a nested store read would re-enter the pool and
 // see stale pre-commit data — the M11 write-lifecycle gotcha), and the cosigner axis is RE-DERIVED
 // server-side from the persisted drafter/kind/policy facts, never trusted from input.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_COSIGN_POLICY,
   DEFAULT_VERBAL_POLICY,
@@ -36,8 +36,8 @@ import {
   lpnCosignRequired,
   planCosignAttest,
   transitionOrder,
-} from "@wardenx/orders";
-import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+} from "@chartwarden/orders";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import {
   type AdmissionId,
   type ClinicalLinkSummary,
@@ -57,7 +57,7 @@ import {
   type PatientId,
   type VerbalOrderId,
   type VerbalOrderStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 import type { OrderSeamStore, VerbalTimeliness } from "./store";
 

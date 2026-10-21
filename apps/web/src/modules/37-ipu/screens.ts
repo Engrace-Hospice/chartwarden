@@ -1,6 +1,6 @@
 // apps/web/src/modules/37-ipu — M37 IPU Management screen registration (§5, ADR-0030). The tenant-facing
 // IPU screens under an "IPU" navGroup at /ipu/*. Each `requiredPermission` is a REAL §4.6 M37 key the
-// matching read route gates on (M37_CONTRIBUTED_PERMISSIONS in @wardenx/auth) — the server stays the
+// matching read route gates on (M37_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the
 // authoritative enforcer, this only gates nav visibility.
 //
 // #91 — the bedside pane has landed, which is what this header used to promise ("the deeper bedside /
@@ -49,7 +49,7 @@
 //   • `m37.gip_criteria.attester_eligible` NOW GATES the attestation (GAP-106): route 19 composes
 //     RBAC + step-up + the registered predicate, and the service re-checks the attester server-side. The
 //     CoP 418.108 "hospice MD only" rule is therefore enforced on the backend, not by this surface.
-import type { ScreenRegistryModule } from "@wardenx/types";
+import type { ScreenRegistryModule } from "@chartwarden/types";
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const IpuAdmissions = lazy(() =>

@@ -62,7 +62,7 @@ cursor validation, adjustments, remittance, push events, enrollment, outage, tes
 isolation) run against any transport through a `ClearinghouseHarness` (the transport plus a script that drives the
 far side for a given scope). The suite is framework-free so it runs under vitest, a live-sandbox smoke script or
 CI. `InMemoryClearinghouse` is the executable specification and the double for module tests; it is exported from
-`@wardenx/x12-837-client/testing`, not the package barrel, so production code cannot import it. Mutant
+`@chartwarden/x12-837-client/testing`, not the package barrel, so production code cannot import it. Mutant
 transports (no replay flag, MBI echo, dry-run side effect, throwing, accepting a tampered webhook, ignoring usage,
 leaking across tenants, regressing on a late ack, accepting a malformed cursor, payload-only idempotency) each have
 to be caught by the case that guards that rule (the usage and tenant leaks are split per method: acknowledgments,

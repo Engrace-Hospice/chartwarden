@@ -1,4 +1,4 @@
-// @wardenx/quality — SSVI metric 6: Average skilled nursing minutes on RHC (CMS-1851-F Table 9). Pure. No IO.
+// @chartwarden/quality — SSVI metric 6: Average skilled nursing minutes on RHC (CMS-1851-F Table 9). Pure. No IO.
 //
 // Point at ≤ 9.8 minutes per RHC day (25th pct). The CMS value is the MEAN skilled-nursing (RN/LPN) minutes per
 // routine-home-care day — the same quantity as HCI indicator 8, from the same sources (M6 level-of-care spans ×

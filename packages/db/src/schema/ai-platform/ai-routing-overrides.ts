@@ -1,4 +1,4 @@
-// @wardenx/db — `ai_routing_override` (M32 §3.2.13 / W8). The tenant's standing instruction to route a
+// @chartwarden/db — `ai_routing_override` (M32 §3.2.13 / W8). The tenant's standing instruction to route a
 // capability somewhere other than its default backend — the local-only sovereignty case.
 //
 // TENANT-SCOPED: organization_id NOT NULL, RLS keyed ONLY on app.org_id (0116). No PHI: the row names a
@@ -23,7 +23,7 @@
 // governs which rows may COEXIST, not which one is in force right now.
 //
 // `override_reason` is TEXT with a value CHECK rather than a pgEnum: §3.1 declares twenty-one enums and
-// this vocabulary is not among them (`AiRoutingOverrideReason` in @wardenx/types). It is NOT NULL because
+// this vocabulary is not among them (`AiRoutingOverrideReason` in @chartwarden/types). It is NOT NULL because
 // a routing override that stops PHI reaching a cloud vendor is a compliance decision, and "why" is the
 // part a later audit reads.
 import { sql } from "drizzle-orm";

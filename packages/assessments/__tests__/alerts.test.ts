@@ -1,4 +1,4 @@
-// @wardenx/assessments — §4.9 M36 typed-alert builder (M9-T06).
+// @chartwarden/assessments — §4.9 M36 typed-alert builder (M9-T06).
 import { describe, expect, it } from "vitest";
 import {
   buildSignificantChangeAlert,

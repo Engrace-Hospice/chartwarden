@@ -1,4 +1,4 @@
-// @wardenx/reporting — consumed-seam view of M12 (DoseSpot Integration). PRESENT producer (§4.4).
+// @chartwarden/reporting — consumed-seam view of M12 (DoseSpot Integration). PRESENT producer (§4.4).
 //
 // M33 reads medication-order volume + refill-inbox SLA aggregates. Bound to the live M12
 // `MedicationOrderProvider` / `RefillInboxProvider` via `getSeam` at boot (P2C). Aggregate only (D6).

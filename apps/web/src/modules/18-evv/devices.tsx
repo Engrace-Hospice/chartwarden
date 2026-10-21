@@ -8,7 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — EVV Devices (M18 §5.1 `/app/evv/devices/pending`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The team device roster (devices awaiting approval surface
 // first): one row per `evv_device` with platform / model / integrity status.

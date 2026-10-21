@@ -10,7 +10,7 @@
 // "Couldn't open this notification" page with a Retry button (still no id-derived content). The headline takes focus when a page
 // replaces the resolving line, so a screen reader announces the change. On success it replaces itself with the thread (`/messaging?channelId=&messageId=`),
 // which scrolls to the message and, for an acknowledgment request, focuses its card. Nothing here acknowledges anything.
-import { CenteredStatusLayout, Glyph, useApiClient } from "@wardenx/ui";
+import { CenteredStatusLayout, Glyph, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -19,7 +19,7 @@ import { notificationIdFromPath } from "../../shell/pending-deep-link";
 export const LANDING_OPENING_TEXT = "Opening your notification";
 export const LANDING_GONE_HEADLINE = "This notification is no longer available";
 export const LANDING_GONE_EXPLANATION =
-  "It may have been removed, or you may no longer have access. Your messages are still in WardenX.";
+  "It may have been removed, or you may no longer have access. Your messages are still in ChartWarden.";
 export const LANDING_GONE_ACTION = "Go to messages";
 export const LANDING_FAILED_HEADLINE = "Couldn't open this notification";
 export const LANDING_FAILED_EXPLANATION =

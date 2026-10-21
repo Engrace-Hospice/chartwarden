@@ -6,8 +6,8 @@ import {
   type StatusTone,
   t,
   useApiClient,
-} from "@wardenx/ui";
-import type { GlyphName } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { GlyphName } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — INTAKE.ReviewQueue (DocLens, F-237; spec
 // docs/design/screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md "Work Queue"). The intake batches
 // a reviewer can act on: a label-first KPI strip derived from the rows actually returned, an Open /

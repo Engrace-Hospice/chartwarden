@@ -1,4 +1,4 @@
-// @wardenx/fhir — domain-input shapes for the synchronous single-entity mappers (M28-T04).
+// @chartwarden/fhir — domain-input shapes for the synchronous single-entity mappers (M28-T04).
 //
 // The DiagnosticReport is a multi-source read-time PROJECTION (§4.11); the other Phase-1 read resources
 // are single-entity MAPPINGS — the reader seam loads ONE owner-module row, the mapper shapes it. These

@@ -1,4 +1,4 @@
-// @wardenx/intake-extraction — §7.1 W1 / §8.5 the M32 AI-capability PORT (the DocLens classifier /
+// @chartwarden/intake-extraction — §7.1 W1 / §8.5 the M32 AI-capability PORT (the DocLens classifier /
 // extractor / vision-verifier) as the M22-side STRUCTURAL projection of the M32 seam.
 //
 // M22 owns NO AI inference: classification, extraction and vision verification are Module 32 (AI Platform)
@@ -12,7 +12,7 @@
 // and the routes never even reach the pipeline (the `documents.doclens` flag is OFF → 503). The deny-stub
 // here lets the pure pipeline be tested end-to-end (flag injected ON, over a fake capability) without M32.
 
-import type { ClassifiedPageDocType, ExtractionCandidateRiskLevel } from "@wardenx/types";
+import type { ClassifiedPageDocType, ExtractionCandidateRiskLevel } from "@chartwarden/types";
 
 /** A capability call that either yields a typed result or reports the capability is unavailable (denied or
  * dropped mid-pipeline). Never a thrown error — unavailability is a normal Phase-1 state (§8.5). */

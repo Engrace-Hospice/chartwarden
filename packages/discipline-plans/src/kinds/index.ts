@@ -1,4 +1,4 @@
-// @wardenx/discipline-plans — §3.1 `src/kinds/` barrel (M15-T01).
+// @chartwarden/discipline-plans — §3.1 `src/kinds/` barrel (M15-T01).
 //
 // M15-T01 lands the §3.5 / D11 required-signer constants per kind. The §3.4 per-kind TypeBox `data jsonb`
 // schemas + their validators land with the Drizzle schema they validate (M15-T02).
@@ -7,7 +7,7 @@ import type {
   DisciplinePlanKind,
   DisciplinePlanVersionKind,
   DisciplineRequiredSignerSet,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 import {
   AIDE_POC_REQUIRED_SIGNERS,

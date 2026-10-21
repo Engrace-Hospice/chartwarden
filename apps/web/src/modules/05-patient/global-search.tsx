@@ -1,4 +1,4 @@
-import { formatMrn } from "@wardenx/types";
+import { formatMrn } from "@chartwarden/types";
 import {
   Button,
   EmptyState,
@@ -12,8 +12,8 @@ import {
   setSearchTerm,
   useApiClient,
   useSearchTerm,
-} from "@wardenx/ui";
-import type { StatusTone } from "@wardenx/ui";
+} from "@chartwarden/ui";
+import type { StatusTone } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `Cp053`): a centered results column of
@@ -79,7 +79,7 @@ const SEARCH_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 // GAP-080 closed the OTHER door into the same exposure: the needle also used to round-trip through
 // `?q=` in the visible URL, which is browser storage by another name (history entry, omnibox
 // autocomplete, on-disk session restore) and, unlike this array, survives a reload. The term is now
-// handed over in memory via `@wardenx/ui`'s `useSearchTerm`, on exactly the posture this array has.
+// handed over in memory via `@chartwarden/ui`'s `useSearchTerm`, on exactly the posture this array has.
 const recentTerms: string[] = [];
 
 function readRecent(): string[] {

@@ -27,9 +27,9 @@
 // the rest of the module writes, and it matters most for `findCallBySourceEvent`: that read is keyed on an
 // outbox event id, which is unique across the whole DEPLOYMENT rather than within a tenant, so it is the
 // one query here that could address another tenant's row at all.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IsoInstant, OnCallShiftId, ProviderEntityId, TriageCallId } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IsoInstant, OnCallShiftId, ProviderEntityId, TriageCallId } from "@chartwarden/types";
 import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { CoveringShiftCandidate } from "./inbound-trigger";
 import type { DeliveryFailureTriggerPorts, InboundTriggerPorts } from "./trigger-context";

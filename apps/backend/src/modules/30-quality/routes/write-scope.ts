@@ -8,7 +8,7 @@
 //   - patient-less row (null / undefined) ⇒ org-level, allowed without consulting the seam;
 //   - otherwise the SERVER-resolved scope decides; a denied patient is a NotFound (404, no existence leak);
 //   - ANY failure resolving the scope (seam unbound/down, resolver throws) is a DENY, never an allow.
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import { type M30WriteActor, isM30SystemActor } from "./actor";
 import { assertPatientInScope } from "./patient-scope";
 import type { PatientScopeResolver } from "./scope-resolver";

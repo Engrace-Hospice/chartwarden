@@ -1,4 +1,4 @@
-// @wardenx/billing — the tenant-entered visit-charge schedule domain: validation of a keyed entry and the
+// @chartwarden/billing — the tenant-entered visit-charge schedule domain: validation of a keyed entry and the
 // fail-closed resolution of the per-15-minute-unit charge a visit line is billed at. Pure; no DB, no clock.
 import {
   VISIT_CHARGE_DISCIPLINES,
@@ -9,7 +9,7 @@ import {
   missingVisitCharges,
   validateVisitChargeEntry,
   visitUnitChargeOn,
-} from "@wardenx/billing";
+} from "@chartwarden/billing";
 import { describe, expect, it } from "vitest";
 
 const none: VisitUnitCharges = {

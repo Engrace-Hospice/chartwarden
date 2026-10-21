@@ -1,10 +1,10 @@
-// @wardenx/orders — org-timezone clock math for the verbal-window + standing-spawn engines (M11-T04).
+// @chartwarden/orders — org-timezone clock math for the verbal-window + standing-spawn engines (M11-T04).
 // PURE, IO-free, `Date.now()`-free: every fact (the anchor instant, the org timezone, the holiday set) is
 // passed in, so the math is deterministic across timezones and DST boundaries. This mirrors the M10 HOPE
 // `scheduling/time.ts` precedent but lives here because `packages/orders` is a leaf feature lib (the backend
-// depends on it, never the reverse) and may only import `@wardenx/types`. `Intl` (ICU ships with the runtime)
+// depends on it, never the reverse) and may only import `@chartwarden/types`. `Intl` (ICU ships with the runtime)
 // resolves the zone offset, so DST is handled exactly — the spec §2.3 "deadline-at-midnight / DST" edges.
-import type { IsoInstant, LocalDate } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@chartwarden/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (matches the M6/M10 default). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";

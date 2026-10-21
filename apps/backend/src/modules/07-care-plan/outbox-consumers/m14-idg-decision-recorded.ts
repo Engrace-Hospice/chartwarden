@@ -3,10 +3,10 @@ import { randomUUID } from "node:crypto";
 // validates the consumed arm defensively, and commits a governed proposal plus a durable decision-id
 // marker in one org-scoped transaction. Clinical rows are not mutated until the idg_review version
 // reaches quorum and publishes.
-import { type AuditContext, audit } from "@wardenx/audit";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { IdgDecisionPayload } from "@wardenx/types";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { IdgDecisionPayload } from "@chartwarden/types";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { IdgApplyAction, IdgApplyFacts } from "../consumers/apply-idg-decision";
 import { decideIdgDecision } from "../consumers/apply-idg-decision";

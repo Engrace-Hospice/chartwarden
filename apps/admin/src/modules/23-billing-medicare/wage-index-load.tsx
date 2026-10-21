@@ -9,7 +9,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM WAGE-INDEX LOAD (M23 §4.1 #42, GAP-144). The annual CMS
 // hospice wage index into the PLATFORM-SHARED table, by a WardenX platform administrator:
 //

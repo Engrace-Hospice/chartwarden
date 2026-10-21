@@ -1,4 +1,4 @@
-// @wardenx/idg — §2.4 D1 packet builder + W-PKT-02 freeze + W-SUD-01 SUD redaction — M14-T04.
+// @chartwarden/idg — §2.4 D1 packet builder + W-PKT-02 freeze + W-SUD-01 SUD redaction — M14-T04.
 import { describe, expect, it } from "vitest";
 import {
   type BuiltPacket,

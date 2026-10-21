@@ -1,4 +1,4 @@
-// @wardenx/fhir — FHIR R4 (4.0.1) wire types (M28-T04).
+// @chartwarden/fhir — FHIR R4 (4.0.1) wire types (M28-T04).
 //
 // A PRAGMATIC subset of the FHIR R4 resource/datatype shapes — only the elements the Phase-1 read-only
 // projections (§4.5, §4.11) actually emit. These are the OUTPUT shapes of the mappers; the gateway
@@ -362,7 +362,7 @@ export interface OperationOutcome extends FhirResourceBase {
 }
 
 /** The read-only union of resource types the Phase-1 gateway PROJECTS (D1). Not the same as the inbound
- *  or forward-seam sets — those are tracked in `@wardenx/types`. */
+ *  or forward-seam sets — those are tracked in `@chartwarden/types`. */
 export type FhirProjectedResource =
   | Patient
   | Encounter

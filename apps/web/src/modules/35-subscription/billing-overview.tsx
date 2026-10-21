@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/35-subscription — M35 Subscription overview (§5.1 `/billing`).
 // The billing home: plan name, subscription status, current period, and — when the org is in dunning —
 // the §5.5 dunning banner (assertive alert for the day_28_suspend+ stages). Composed client-side from

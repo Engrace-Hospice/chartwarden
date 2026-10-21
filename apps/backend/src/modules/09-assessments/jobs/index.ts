@@ -15,13 +15,13 @@ import {
   computeScaleLicenseStatus,
   escalatesOnNoAck,
   transitionSignificantChange,
-} from "@wardenx/assessments";
+} from "@chartwarden/assessments";
 import type {
   ScaleLicenseStatus,
   ScaleType,
   SignificantChangeRuleId,
   SignificantChangeStatus,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 
 // ── §4.8 queue catalog ────────────────────────────────────────────────────────────────────────────
 

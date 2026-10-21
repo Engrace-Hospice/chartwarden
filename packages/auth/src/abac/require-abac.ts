@@ -1,4 +1,4 @@
-// @wardenx/auth · abac — the `requireAbac` half of the Authorization Contract (M3-T05).
+// @chartwarden/auth · abac — the `requireAbac` half of the Authorization Contract (M3-T05).
 //
 // Spec §4.1 (the middleware every module consumes) + §2.2 (the resolution pipeline's ABAC
 // step and the break-glass branch). `requireAbac(action, predicate)` is a preHandler
@@ -17,7 +17,7 @@ import {
   NotFoundError,
   StepUpRequiredError,
   UnauthorizedError,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import {
   type GuardHandler,
   type GuardRequest,

@@ -7,7 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the DASHBOARD RENDER (R2).
 // Spec §5.1.3 (`/reports/dashboards/:dashboardId`) — read one dashboard, then render its tile grid:
 // each <TileFrame> reads GET /api/v1/reporting/tiles/{tileKey} (aggregate-only result, D6 — NEVER

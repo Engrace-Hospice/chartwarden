@@ -12,8 +12,8 @@
 // inside `withOrgContext` so `app.org_id` RLS scopes them to the actor's tenant. Canonical writes
 // stay impossible here — there is no INSERT/UPDATE/DELETE path to a platform table (§7.4 lockdown,
 // enforced in depth by the absent `wardenx_app` grant on those tables).
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type CodeSystemId,
   type CodeSystemMeta,
@@ -26,8 +26,8 @@ import {
   type TerminologyStore,
   normalizeAsOf,
   resolveBatchAsOf,
-} from "@wardenx/terminology";
-import { WardenXError } from "@wardenx/types";
+} from "@chartwarden/terminology";
+import { ChartWardenError } from "@chartwarden/types";
 import {
   type SQL,
   and,
@@ -266,7 +266,7 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
     const M = schema.valueSetMembers;
     const X = schema.valueSetTenantExtension;
     const known = await db.select({ id: VS.id }).from(VS).where(eq(VS.id, valueSetId)).limit(1);
-    if (known.length === 0) throw new WardenXError("NOT_FOUND", "value set not found", 404);
+    if (known.length === 0) throw new ChartWardenError("NOT_FOUND", "value set not found", 404);
     const platformWhere = and(
       eq(M.valueSetId, valueSetId),
       eq(M.systemId, system),

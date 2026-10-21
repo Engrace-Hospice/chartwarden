@@ -2,7 +2,7 @@
 // allowed_actions, restricted items show fixed wording, and a stale or refused answer is handled without losing the view.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { describe, expect, it, vi } from "vitest";
 import { HandoffReviewDialog } from "./handoff-review-dialog";

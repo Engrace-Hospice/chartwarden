@@ -4,7 +4,7 @@
 // organization's routing rules on `denial_route.manage`. Every change is If-Match (409 when stale) and every
 // mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
 import { Type } from "@sinclair/typebox";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { REOPENING_FILING_CHANNELS, REOPENING_OUTCOMES } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

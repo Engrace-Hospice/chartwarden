@@ -1,14 +1,14 @@
-// @wardenx/db — M23 Billing (Medicare): shared pgEnum declarations + helper TS types for the
+// @chartwarden/db — M23 Billing (Medicare): shared pgEnum declarations + helper TS types for the
 // module's jsonb columns (spec §3.3). The enums live here (not scattered into table files) so the
 // fan-out table files import them from a single home and never redeclare a pgEnum. Filename
 // intentionally avoids the substring "schema" (table-ownership/tenancy heuristic gotcha).
 //
-// CONVENTIONS (mirror @wardenx/db cost-report, M27 — the proven precedent):
+// CONVENTIONS (mirror @chartwarden/db cost-report, M27 — the proven precedent):
 //   * Every DB ENUM type name is `m23_`-prefixed (matches M27 `m27_*` / M30 `m30_*`) so it can never
 //     collide with another module's enum; the exported Drizzle const is camelCase `m23X`.
 //   * The DEEP per-rule `predicate_dsl` and per-result `remediation` shapes are TypeBox-typed at the
-//     service layer in `@wardenx/billing` (P2). At the DB layer those columns are typed loosely here so
-//     the schema package takes no `@wardenx/billing` edge.
+//     service layer in `@chartwarden/billing` (P2). At the DB layer those columns are typed loosely here so
+//     the schema package takes no `@chartwarden/billing` edge.
 //   * No PHI / MBI is ever stored in these columns (D13, §3.6, §8.7) — MBI is NEVER persisted.
 import { pgEnum } from "drizzle-orm/pg-core";
 
@@ -216,7 +216,7 @@ export interface PerDiemRateCalculationSegment {
 export type PerDiemRateCalculationSegments = PerDiemRateCalculationSegment[];
 
 // per_diem_rate_calculation.rhc_carry_over — the two-tier RHC carry-over the claim was priced with (migration 0376;
-// nullable: rows priced before it carry NULL). Shape owned by `@wardenx/billing` `computeRhcCarryOver` +
+// nullable: rows priced before it carry NULL). Shape owned by `@chartwarden/billing` `computeRhcCarryOver` +
 // M23's `RhcCarryOverView`; kept structural here (db does not import billing). Dates, counts, NPIs, codes —
 // no PHI / MBI.
 export interface PerDiemRateCalculationRhcCarryOver {

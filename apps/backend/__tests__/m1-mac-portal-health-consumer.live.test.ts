@@ -33,7 +33,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, schema } from "@wardenx/db";
+import { createDbClient, schema } from "@chartwarden/db";
 import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

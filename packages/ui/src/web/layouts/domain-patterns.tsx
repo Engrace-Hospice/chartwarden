@@ -1,4 +1,4 @@
-// @wardenx/ui — domain Tier-2 pattern layouts (R0.4, WARDENX_UI_LAYOUT_PATTERNS.md).
+// @chartwarden/ui — domain Tier-2 pattern layouts (R0.4, WARDENX_UI_LAYOUT_PATTERNS.md).
 // Slot-based compositions for the patterns the *built* modules need now but the foundational
 // patterns.tsx didn't yet cover: MAR Grid (M13), Scheduling Calendar (M17), Status Board, Admin
 // Hierarchy/Settings, Portal Dashboard, Gated Action Flow, Document Viewer. A screen "Use <X>."

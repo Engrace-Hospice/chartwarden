@@ -1,4 +1,4 @@
-// @wardenx/db — `invoice_line` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). `organization_id`
+// @chartwarden/db — `invoice_line` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). `organization_id`
 // is a logical uuid (M35-F04). `invoice_id` is a REAL FK; `plan_meter_id` is a REAL FK (set null on meter
 // deletion). Copied to `platform_retained_invoice_line` on offboarding (§3.7).
 import {

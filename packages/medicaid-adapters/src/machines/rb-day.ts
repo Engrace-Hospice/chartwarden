@@ -1,4 +1,4 @@
-// @wardenx/medicaid-adapters — M24 `rb_day` lifecycle reducer (§2.2). Pure transition table.
+// @chartwarden/medicaid-adapters — M24 `rb_day` lifecycle reducer (§2.2). Pure transition table.
 // pending → billable | excluded; billable → billed; billed → billable (claim voided/replaced) | excluded
 // (arrangement corrected); excluded → billable (manual revert w/ reason); voided is terminal. PURE DOMAIN.
 import type { RbDayStatus } from "../contracts";

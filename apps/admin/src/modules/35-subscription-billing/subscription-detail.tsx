@@ -1,5 +1,5 @@
-import { Button, Glyph, StatusPill, useApiClient, useRequestGuard } from "@wardenx/ui";
-import type { operations } from "@wardenx/ui";
+import { Button, Glyph, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
 // dunning state (on the row), a usage drill-down (GET /api/admin/usage/:orgId/current), and its refund

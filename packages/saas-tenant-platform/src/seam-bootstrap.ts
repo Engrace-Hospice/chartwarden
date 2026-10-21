@@ -1,4 +1,4 @@
-// @wardenx/saas-tenant-platform — boot-time seam registration + the M34 seam registry (M34 §4.6).
+// @chartwarden/saas-tenant-platform — boot-time seam registration + the M34 seam registry (M34 §4.6).
 //
 // M34's seams are PACKAGE-OWNED, not M1-registry seams: the critical D5 contract (`TenantKeyProvider`)
 // is imported by M1's envelope helper FROM this package (dependency runs M1 → M34's interface), so the

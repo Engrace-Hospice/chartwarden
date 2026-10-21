@@ -8,7 +8,7 @@ import {
   cardSurface,
   t,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

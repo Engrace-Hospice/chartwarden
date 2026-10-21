@@ -1,4 +1,4 @@
-// @wardenx/terminology — annual deprecation remediation rollup (M38-T07, spec §7.3, §2.6).
+// @chartwarden/terminology — annual deprecation remediation rollup (M38-T07, spec §7.3, §2.6).
 //
 // The day a new code-system version activates and deprecates codes, every tenant with active
 // records (problem list, claim line, order) on a now-deprecated code must be told (§7.3). The

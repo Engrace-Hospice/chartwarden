@@ -3,7 +3,7 @@
 // `billing-typebox.ts`. All money is WHOLE INTEGER CENTS, PRE-wage-index (the wage index is applied at assembly).
 // Org / actor / membership binding is server-side — no body field carries an org id or the entering membership.
 import { type Static, Type } from "@sinclair/typebox";
-import { ValidationError } from "@wardenx/types";
+import { ValidationError } from "@chartwarden/types";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });

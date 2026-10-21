@@ -2440,7 +2440,7 @@ Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC
 > | 10 HOPE | 8, 9, 36, 38 | 1, 9, 36, 38 | Same ADR-0007 inversion (M8 edge dropped). |
 > | 11 Orders | 6, 8, 36, 38, 40 | 1, 6, 36, 38, 40 | Same ADR-0007 inversion (M8 edge dropped). |
 > | 22 Documents | — | 1, 5 | M22 reads the patient spine directly. |
-> | 35 Subscription Billing | 34 | (see manifest) | M35 may import `@wardenx/auth`, **not** the M34 shell registry. |
+> | 35 Subscription Billing | 34 | (see manifest) | M35 may import `@chartwarden/auth`, **not** the M34 shell registry. |
 >
 > Every module additionally depends on **1 (Foundation)**, which this table leaves implicit for rows
 > 5 and later; the manifest states it explicitly because the boundary checker needs it.
@@ -3091,7 +3091,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 ### 25.7 Error Handling
 
-**Pattern:** Typed error classes (`WardenXError`, `ValidationError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `DegradedError`). Never throw strings. Route handlers convert to standard error envelope via Fastify error handler.
+**Pattern:** Typed error classes (`ChartWardenError`, `ValidationError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `DegradedError`). Never throw strings. Route handlers convert to standard error envelope via Fastify error handler.
 
 **Implementation:** Module 1 §4.3 error envelope contract.
 
@@ -3167,7 +3167,7 @@ summarized here with pointers; the linked file is authoritative in each case.
 | **The module manifest** | Single source of truth for every module's `codePaths`, `dependsOn` and `ownedTables` (40 modules, 464 tables). Edit it, then run `bun run scaffold`. **Both** the `.ts` and `.cjs` copies must change together. | `architecture/module-manifest.{ts,cjs}` |
 | **Architecture fitness** | `bun run arch:fitness` (read the gate count/chain from `package.json`). A green run proves architectural coherence, **not** feature completeness. Read the chain from `package.json`, never from prose. | `ARCHITECTURE_25_15_FITNESS.md`, `scripts/check-*.ts` |
 | **dependency-cruiser boundaries** | Enforces the import graph the manifest declares, plus the vendor-adapter mandate, domain purity, and "leaves stay leaves". | `architecture/.dependency-cruiser.cjs` |
-| **Seams (`getSeam`)** | The cross-module call mechanism. A seam creates **no** dependency-cruiser edge — it is typed off `SeamContracts` in the leaf `@wardenx/types`. A seam consumer that binds an uncatalogued event **crashes boot**. | `packages/types/src/seams.ts`, `bootstrap/seams/` |
+| **Seams (`getSeam`)** | The cross-module call mechanism. A seam creates **no** dependency-cruiser edge — it is typed off `SeamContracts` in the leaf `@chartwarden/types`. A seam consumer that binds an uncatalogued event **crashes boot**. | `packages/types/src/seams.ts`, `bootstrap/seams/` |
 | **`withOrgContext` / `withPlatformContext`** | Every tenant-scoped query runs inside `withOrgContext`, which sets `app.org_id` for RLS. `withPlatformContext` is the audited cross-tenant escape hatch. Seams open their **own** context, so a seam call must not sit inside an already-open write transaction. | `packages/tenancy/src/context.ts` |
 | **Step-up ABAC** | `requireStepUp(opKey)` is a `requireAbac` over the `step_up_recent` predicate. It is the one guard that **cannot** be satisfied by a break-glass grant. Tenants may tighten the platform floor per operation (§4.3.2, D9). | `03-authorization/abac-predicates.ts` |
 | **Named ABAC predicates** | `requireAbac(action, "<name>")` resolves a **registered name**, never an inline closure. M3's registry fails closed, so an unregistered name is a permanently dead 403 route with the build green — which `arch:abac-predicates` is what catches. | `packages/auth/src/abac/registry.ts` |

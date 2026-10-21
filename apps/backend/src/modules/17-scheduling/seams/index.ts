@@ -16,7 +16,7 @@ import type {
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { type CredentialSeamDeps, registerCredentialSeam } from "./credentials";
 import {

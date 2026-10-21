@@ -15,8 +15,8 @@
 import { createHmac } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import type { StripeClient } from "@wardenx/subscription-billing";
+import { createDbClient } from "@chartwarden/db";
+import type { StripeClient } from "@chartwarden/subscription-billing";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -178,7 +178,7 @@ describe.skipIf(!DB_URL)("M35 billing runtime - LIVE Postgres", () => {
     const verifierFor = (customerOnStripe: string | null, type = "card") => ({
       async verifyAttachable(input: { stripeCustomerId: string; stripePaymentMethodId: string }) {
         if (customerOnStripe !== input.stripeCustomerId) {
-          const { PaymentMethodRejectedError } = await import("@wardenx/subscription-billing");
+          const { PaymentMethodRejectedError } = await import("@chartwarden/subscription-billing");
           throw new PaymentMethodRejectedError("not_attached_to_customer", "not yours");
         }
         return {

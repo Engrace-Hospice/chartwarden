@@ -6,7 +6,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
-} from "@wardenx/ui";
+} from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot — refill request detail (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (refill detail). Read-only view
 // of a single refill request (§2.7 D9): the source medication-order reference, the request status / age, the
@@ -14,7 +14,7 @@ import {
 // never edited). The approve/deny write actions (mint-on-approve, no-mint-on-deny, schedule-aware refill cap)
 // fill in as their write surface hardens; the SERVER enforces the refill_inbox_scope ABAC + the controlled-
 // substance refill rules (21 CFR 1306.22) and SUD-consent gating (ADR-0030 — out-of-scope refills 404). Reads
-// GET /api/v1/refills/:id via the typed client. Leaves only (@wardenx/ui).
+// GET /api/v1/refills/:id via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";

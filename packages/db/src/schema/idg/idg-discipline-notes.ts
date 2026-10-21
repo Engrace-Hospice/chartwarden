@@ -1,4 +1,4 @@
-// @wardenx/db — `idg_discipline_note` (M14 spec extension: per-discipline note taking in the live meeting).
+// @chartwarden/db — `idg_discipline_note` (M14 spec extension: per-discipline note taking in the live meeting).
 // One free-text note written DURING a `live` meeting on behalf of ONE discipline, either about ONE agenda
 // patient (`patient_id` set) or for the meeting as a whole (`patient_id` NULL = a meeting-level note for that
 // discipline). Same shape as `idg_agenda_item`: a PHI-bearing child of `idg_meeting` (cascade FK + the

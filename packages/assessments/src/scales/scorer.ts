@@ -1,4 +1,4 @@
-// @wardenx/assessments — the per-scale scorer contract (§3.1 `scales/<scale>/`, §4.3, D6).
+// @chartwarden/assessments — the per-scale scorer contract (§3.1 `scales/<scale>/`, §4.3, D6).
 //
 // Every scale's module exports one {@link ScaleScorer}: the server-authoritative `score()` (D6 — the
 // API ignores any client-sent `score`), the human `interpret()` band label, and the published
@@ -6,7 +6,7 @@
 // (`significant-change.ts`) keys off the canonical numeric `score`. M9-T03 lands the four representative
 // scorers the plan pins (PPS / FAST / PAINAD / ESAS-r); the remaining ten scales register the same shape
 // when their routes/tests land.
-import type { ScaleType } from "@wardenx/types";
+import type { ScaleType } from "@chartwarden/types";
 
 /** The server-authoritative scoring of one captured scale: the canonical numeric + its interpretation. */
 export interface ScaleScoreResult {

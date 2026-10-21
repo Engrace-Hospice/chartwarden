@@ -1,4 +1,4 @@
-// @wardenx/quality — the pure DAY reductions behind SSVI metrics 3 and 7. Pure. No IO.
+// @chartwarden/quality — the pure DAY reductions behind SSVI metrics 3 and 7. Pure. No IO.
 //
 // Both are defined over routine-home-care DAYS joined to skilled-VISIT days, which no single module holds: M6
 // owns the level-of-care spans, M8 owns which days a skilled discipline (RN, LPN, MSW) visited. The worker reads

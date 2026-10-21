@@ -1,4 +1,4 @@
-// @wardenx/billing — the date Medicare itself gives a NOE / NOTR answer. PURE.
+// @chartwarden/billing — the date Medicare itself gives a NOE / NOTR answer. PURE.
 //
 // Timeliness is judged by the MAC's date, not by when our cron happened to pull the acknowledgment:
 //   * 277CA: the claim-level STC segment carries the status information effective date (STC02, format D8).

@@ -10,7 +10,7 @@
 // cross-module fan-outs target M22 (ECR/PI artifact render+store), M28 (FHIR DocumentReference), M30
 // (HQRP financial context), M33 (dashboards/worklists), M34 (tenant compliance gate), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

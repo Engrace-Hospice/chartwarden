@@ -1,4 +1,4 @@
-// @wardenx/audit — PHI read-route `config.auditRead` shape + normalization (M4 §2.5, §3.4).
+// @chartwarden/audit — PHI read-route `config.auditRead` shape + normalization (M4 §2.5, §3.4).
 //
 // A PHI read route declares its read-audit intent on its Fastify route `config.auditRead`. The
 // composition root's coverage hook (apps/backend/src/bootstrap/plugins/read-audit.ts) reads it at

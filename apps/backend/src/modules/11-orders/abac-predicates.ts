@@ -1,11 +1,11 @@
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 // apps/backend/src/modules/11-orders/abac-predicates.ts — M11-T06 (§4.7).
 //
 // The named ABAC predicate resolvers M11 OWNS and registers into M3's named-predicate registry (M3 §3.4).
 // Each is a typed `(context, target) => boolean` evaluated server-side AFTER RBAC passes:
 //
 //   discipline_can_order  — §2.1 / §4.7: does ANY of the caller's session-assembled disciplines satisfy the
-//        kind's author matrix (`@wardenx/orders` `disciplineCanOrder`)? The target's `kind` is lifted from
+//        kind's author matrix (`@chartwarden/orders` `disciplineCanOrder`)? The target's `kind` is lifted from
 //        the request body by the author route's `getTarget`; the SUBJECT (the caller's discipline set) is
 //        never read from the body. A discipline outside the kind's matrix is a structural floor — break-
 //        glass cannot grant it (§4.6 discipline floor).
@@ -20,8 +20,8 @@ import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "
 // The §4.7 `caseload_or_scope` predicate is SHARED (registered by M5/M6/M7) — M11 binds it by USING the name
 // at the route (it is each clinical key's default ABAC), not by re-registering it. Registration is
 // idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { disciplineCanOrder, signerEligible } from "@wardenx/orders";
-import type { OrderKind } from "@wardenx/types";
+import { disciplineCanOrder, signerEligible } from "@chartwarden/orders";
+import type { OrderKind } from "@chartwarden/types";
 import type { OrderAbacResolver } from "./routes/service";
 
 /**
@@ -47,7 +47,7 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
 
 /**
  * Assemble the actor's order discipline set from the session role keys (never client input), normalized to
- * the lower-case keys the `@wardenx/orders` matrices compare.
+ * the lower-case keys the `@chartwarden/orders` matrices compare.
  *
  * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
  * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was

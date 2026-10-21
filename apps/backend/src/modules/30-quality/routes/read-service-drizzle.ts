@@ -4,8 +4,8 @@
 //
 // Implements the SAME {@link M30ReadRouteService} interface the route plugins compose over, but every
 // read opens ONE `withOrgContext(db, {organizationId, userId}, tx => …)` transaction (the M1
-// @wardenx/tenancy helper) so Postgres RLS scopes every statement to `app.org_id` — keeping tenant
-// scoping in one home. Inside the tx it reads through the @wardenx/quality data-port REPOSITORIES (each
+// @chartwarden/tenancy helper) so Postgres RLS scopes every statement to `app.org_id` — keeping tenant
+// scoping in one home. Inside the tx it reads through the @chartwarden/quality data-port REPOSITORIES (each
 // takes the `tx` handle) and projects the rows to the deliberately-narrowed read DTOs. Mirrors the
 // 33-reporting/routes/read-service-drizzle.ts precedent (one `read(orgId, fn)` helper, one builder
 // returning the service, DTO mappers above it).
@@ -16,7 +16,7 @@
 // cursor-paginated via `paginate()` (the §4.1.2 keyset helper) over a bounded, RLS-scoped, partition-key
 // DESC-ordered window — the 33-reporting drilldown-audit precedent (fetch a bounded set, paginate in
 // memory). Aggregate measure reads project the materialized `quality_measure_value` ledger and label each
-// measure from the @wardenx/quality MEASURE_CATALOG (the calculators themselves are worker-phase: a read
+// measure from the @chartwarden/quality MEASURE_CATALOG (the calculators themselves are worker-phase: a read
 // request never fetches upstream-seam state to compute a value that was never materialized — it returns
 // `latestValue: null`).
 //
@@ -28,7 +28,7 @@
 // frozen-schema column the DTO names does not exist (e.g. a separate incident state-history / investigation
 // table, the PIP charterer, a CAHPS export-job store), the projection degrades safely (empty / null) and
 // the route still returns a faithful record of what the schema holds.
-import { schema } from "@wardenx/db";
+import { schema } from "@chartwarden/db";
 import {
   CahpsRepository,
   IncidentRepository,
@@ -45,9 +45,9 @@ import {
   buildRiskRegister,
   riskBandFromScore,
   unavailableReasonOf,
-} from "@wardenx/quality";
-import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+} from "@chartwarden/quality";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { toCahpsExportJobView } from "../cahps/export-job-store";
 import type { M30ReadActor } from "./actor";
@@ -328,7 +328,7 @@ function mapCopCitation(row: schema.CopComplianceStatus): CopCitationView {
 
 /**
  * Build the Drizzle-backed {@link M30ReadRouteService}. Every method opens one `withOrgContext`
- * transaction (RLS-scoped to the actor's org) and reads through the @wardenx/quality repositories on the
+ * transaction (RLS-scoped to the actor's org) and reads through the @chartwarden/quality repositories on the
  * tx handle, projecting to the read DTOs. The route plugins gate each method on the §4.6 permission +
  * (PHI routes) `requirePatientScope()` BEFORE the call reaches here — this layer assumes an authorized,
  * org-bound actor and never re-derives the org from anything but `actor.organizationId`.

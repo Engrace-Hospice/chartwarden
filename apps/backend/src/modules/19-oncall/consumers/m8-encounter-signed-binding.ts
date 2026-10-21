@@ -26,8 +26,8 @@
 // OUT OF SCOPE HERE, STATED SO IT IS NOT MISTAKEN FOR DONE: the §4.8 encounter-creator RETRY worker (re-invoking
 // M8's `EncounterCreator` for a call parked with no linked encounter after an M8 outage) and the
 // `documented → closed` 30-minute-grace worker are separate pieces; this binding closes only the D8 edge.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionId,
   EncounterId,
@@ -36,7 +36,7 @@ import type {
   OrgId,
   PatientId,
   TriageCallId,
-} from "@wardenx/types";
+} from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildDocumentedAlert } from "../alerts";

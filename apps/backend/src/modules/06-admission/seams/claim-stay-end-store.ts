@@ -7,8 +7,8 @@
 // Only a COMPLETED discharge_event counts (a voided row never happened; a pending-cosign for-cause filing leaves
 // the admission active, D11). A transfer-out is the latest `transfer_event` with direction `out`. A revocation is
 // the earliest election period completed by cause `revocation`. Three set-based reads per call, RLS-scoped.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 const DE = schema.dischargeEvents;

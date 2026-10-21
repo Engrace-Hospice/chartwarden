@@ -9,7 +9,7 @@
 // what gets recorded. The detector's own wording never reaches here — the same reasoning that denylists
 // `device_attestation.failure_reason`: a precise account of what the platform looks for, filed in a
 // table many roles can read, is a map for whoever wants to avoid being looked for.
-import { type AuditContext, type AuditExecutor, audit } from "@wardenx/audit";
+import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
 /** The three device-attestation audit event types. */
 export const DEVICE_ATTESTATION_AUDIT_EVENTS = {

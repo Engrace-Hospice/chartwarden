@@ -1,4 +1,4 @@
-// @wardenx/auth · identity — 2FA secret at-rest encryption (M2, ADR-0034 §2).
+// @chartwarden/auth · identity — 2FA secret at-rest encryption (M2, ADR-0034 §2).
 //
 // Pure AES-256-GCM seal/open for the TOTP secret + backup codes. SERVER-ONLY (node:crypto) — never
 // bundled into the browser (the "./client" export does not import this). The encrypting Better Auth

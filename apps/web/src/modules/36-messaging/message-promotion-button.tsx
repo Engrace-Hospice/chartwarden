@@ -1,8 +1,8 @@
 // M36 WP 3.7 - the message-row "Propose for chart" trigger plus the caller's own proposals on this message (status chip,
 // Withdraw). It renders nothing unless the tenant has chart proposals on (the list route's `enabled`) AND the viewer holds
 // messaging.promote AND the channel is a patient's care-team conversation; the server stays the authority on all three.
-import type { ChartPromotionDto } from "@wardenx/types";
-import { Button, StatusPill } from "@wardenx/ui";
+import type { ChartPromotionDto } from "@chartwarden/types";
+import { Button, StatusPill } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";

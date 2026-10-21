@@ -39,7 +39,7 @@ export function planAttempt(
     return {
       adapter: "manual",
       status: "needs_manual",
-      reason: "Filed outside WardenX. Record the receipt from the channel.",
+      reason: "Filed outside ChartWarden. Record the receipt from the channel.",
     };
   }
   const avail = electronic.availability(organizationId);

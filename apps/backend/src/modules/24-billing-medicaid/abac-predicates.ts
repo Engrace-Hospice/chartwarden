@@ -16,10 +16,10 @@
 //
 // DEFERRAL: the per-PATIENT caseload narrowing of `medicaid_claim_in_billing_manager_caseload` binds when the
 // M5 CaseloadProvider seam binds; the provider-entity scope (GAP-145) is enforced now.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import { type DbClient, schema } from "@wardenx/db";
-import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
-import { withOrgContext } from "@wardenx/tenancy";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 
 /** The §4.8 predicate names M24 OWNS and registers into M3 (six). Single-owner registry. */

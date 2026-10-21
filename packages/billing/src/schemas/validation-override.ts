@@ -1,4 +1,4 @@
-// @wardenx/billing — override schemas: route #16 `POST /validation-results/:resultId:override` and
+// @chartwarden/billing — override schemas: route #16 `POST /validation-results/:resultId:override` and
 // route #17 `GET /validation-overrides` (org-wide override audit view) — §4.1 / §4.2.
 //
 // Only a FAILED result may be overridden, only by an actor whose role matches the rule's

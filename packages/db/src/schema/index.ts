@@ -1,4 +1,4 @@
-// @wardenx/db — Drizzle schema BARREL (M1-owned, the central multi-tenant PostgreSQL
+// @chartwarden/db — Drizzle schema BARREL (M1-owned, the central multi-tenant PostgreSQL
 // schema surface). Each module adds its `ownedTables` here as it lands in Phase 1;
 // check-table-ownership.ts / check-tenancy.ts / check-ddl-legality.ts enforce the
 // moment a table appears. drizzle-kit reads this barrel (drizzle.config.ts) to

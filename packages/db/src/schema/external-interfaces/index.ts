@@ -1,4 +1,4 @@
-// @wardenx/db — Module 29 (External Interfaces) schema barrel: the eleven `ownedTables`
+// @chartwarden/db — Module 29 (External Interfaces) schema barrel: the eleven `ownedTables`
 // `architecture/module-manifest.ts` gives M29 (§3.3).
 //
 // TENANT-SCOPED (nine) — organization_id NOT NULL, RLS keyed ONLY on app.org_id (§3.5):

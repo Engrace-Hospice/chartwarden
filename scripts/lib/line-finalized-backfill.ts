@@ -12,7 +12,7 @@
  * It never recomputes: the roll-up is rebuilt from the ledger and the projection recomputed by the nightly tick
  * (`jobs/index.ts`), after the dispatcher has drained the replayed events. Safe to run again.
  */
-import { capYearForDate } from "@wardenx/cap-management";
+import { capYearForDate } from "@chartwarden/cap-management";
 import type {
   BillingDb,
   WriteOutboxPort,

@@ -14,9 +14,9 @@
 // error is retried up to {@link MAX_RENDER_ATTEMPTS} times (`render_attempts` is a text column, parsed here), then
 // settles `failed`. `failure_reason` carries the error CLASS and message only — never the payload (PHI-bearing,
 // audit-denylisted). A terminal failure raises the critical `m22.document.render_failed` alert.
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { DocumentRenderer } from "@wardenx/types";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import type { DocumentRenderer } from "@chartwarden/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import { asc, eq } from "drizzle-orm";

@@ -1,4 +1,4 @@
-// @wardenx/evv-aggregators — Module 18 per-state EVV-aggregator adapter package (the §25.14 adapter-mandate
+// @chartwarden/evv-aggregators — Module 18 per-state EVV-aggregator adapter package (the §25.14 adapter-mandate
 // boundary). This is the ONLY place a state-EVV-aggregator vendor's endpoint, credentials, and payload shape
 // may live; dependency-cruiser forbids any other module from importing a vendor SDK or hitting a vendor URL.
 //
