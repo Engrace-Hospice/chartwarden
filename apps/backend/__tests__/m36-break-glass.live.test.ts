@@ -22,6 +22,7 @@ import { buildServer } from "../src/bootstrap/index";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { createBreakGlassReadAccess } from "../src/modules/36-messaging/break-glass/break-glass-read-access";
+import { createBreakGlassReviewSweep } from "../src/modules/36-messaging/break-glass/break-glass-review-sweep";
 import { createBreakGlassService } from "../src/modules/36-messaging/break-glass/break-glass-service";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import {
@@ -1014,6 +1015,74 @@ describe.skipIf(!DB_URL)("M36 ADR-0087 break-glass tables - LIVE Postgres", () =
         (await send(on, "GET", `${API}/reviews/${randomUUID()}`, reviewerUser)).statusCode,
       ).toBe(404);
       await cleanup(grant.id);
+    });
+
+    it("S4 the overdue sweep alerts once per open review three days after its grant ended: never earlier, never once reviewed, never while live", async () => {
+      const emitted: Array<{
+        orgId: string;
+        correlationId: string;
+        payload: Record<string, unknown>;
+      }> = [];
+      const sweep = createBreakGlassReviewSweep({
+        db: kit.handle.db,
+        alerts: {
+          emit: async (orgId, input) => {
+            emitted.push({ orgId, correlationId: input.correlationId, payload: input.payload });
+            return { alertId: "a", resolvedRecipientCount: 1 };
+          },
+        },
+      });
+      // The guard (correctly) forbids moving a grant's instants, so age rows with the guard switched off, as the superuser.
+      const GUARD = "trg_message_break_glass_grant_guard";
+      const age = async (grantId: string, endedDaysAgo: number) => {
+        await kit.admin.query(`ALTER TABLE message_break_glass_grant DISABLE TRIGGER ${GUARD}`);
+        try {
+          await kit.admin.query(
+            `UPDATE message_break_glass_grant
+                SET expires_at = now() - ($2::int * interval '1 day'),
+                    granted_at = now() - ($2::int * interval '1 day') - interval '23 hours'
+              WHERE id=$1`,
+            [grantId, endedDaysAgo],
+          );
+        } finally {
+          await kit.admin.query(`ALTER TABLE message_break_glass_grant ENABLE TRIGGER ${GUARD}`);
+        }
+      };
+      const reviewOf = async (grantId: string) =>
+        (
+          await kit.one<{ id: string }>(
+            "SELECT id FROM message_break_glass_review WHERE grant_id=$1",
+            [grantId],
+          )
+        )[0].id;
+      const old = await seed(invoker, "4 hours", "other", WHY, groupChannel);
+      const recent = await seed(both, "4 hours", "other", WHY, groupChannel);
+      const reviewed = await seed(memberInvoker, "4 hours", "other", WHY, groupChannel);
+      const live = await seed(nobody, "4 hours", "other", WHY, groupChannel);
+      await age(old, 4);
+      await age(recent, 1);
+      await age(reviewed, 4);
+      await kit.one(
+        "UPDATE message_break_glass_review SET reviewer_user_id=$2, reviewed_at=now(), outcome='reviewed' WHERE grant_id=$1",
+        [reviewed, reviewerUser],
+      );
+      const first = await sweep.overdueForOrg(ORG_A);
+      expect(first.overdue).toBe(1);
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]).toMatchObject({
+        orgId: ORG_A,
+        correlationId: `break-glass:${await reviewOf(old)}:overdue`,
+      });
+      expect(emitted[0]?.payload).toMatchObject({
+        grantId: old,
+        overdueAfterDays: 3,
+        deepLink: "/messaging/governance/break-glass",
+      });
+      expect(JSON.stringify(emitted[0]?.payload)).not.toMatch(/Covering|justification|name/i);
+      // A later tick sees the same review and re-emits the SAME correlation id (the alert dedupe absorbs it).
+      await sweep.overdueForOrg(ORG_A);
+      expect(new Set(emitted.map((e) => e.correlationId)).size).toBe(1);
+      await cleanup(old, recent, reviewed, live);
     });
 
     it("an expired grant is renewable only by a NEW justified request: the old one stays on record, ended, with its own review", async () => {

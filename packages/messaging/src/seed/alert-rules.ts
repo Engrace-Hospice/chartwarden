@@ -1139,6 +1139,22 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: true,
     enabled: true,
   },
+  // A break-glass review still open three days after its grant ended (ADR-0087 D5, a default pending compliance confirmation): the hourly
+  // `break_glass_review_sweep` raises it once per review. Same audience and same lock as the grant alert: an unanswered review is the
+  // control failing, so a tenant may tighten it but never disable or re-route it.
+  {
+    eventType: "m36.break_glass.review_overdue",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "permission_holders",
+    resolverArgs: {
+      permissionKeys: ["messaging.break_glass.review"],
+      fallbackToTenantAdmins: true,
+    },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
   // ── M11 stuck lab-order recovery (F-201, #248) ─────────────────────────────────────────────────────────────────────
   // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
   // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a
@@ -1578,6 +1594,7 @@ export const SYSTEM_LOCKED_EVENT_TYPES = [
   "system.backup_failure",
   "m3.breakglass.invoked",
   "m36.break_glass.granted",
+  "m36.break_glass.review_overdue",
   "m20.safety.coverage_gap_detected",
   "m19.oncall.coverage_gap_detected",
   "m37.shift.rn_uncovered",

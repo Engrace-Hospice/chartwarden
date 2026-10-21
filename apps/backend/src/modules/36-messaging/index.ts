@@ -454,6 +454,13 @@ export {
   M36_BREAKGLASS_ALERT_CONSUMER,
   buildM36BreakGlassAlertConsumer,
 } from "./outbox-consumers/breakglass-alert";
+// WP 5.8 (ADR-0087): the hourly overdue-review sweep (an open review three days after its grant ended -> one alert).
+export { createBreakGlassReviewSweep } from "./break-glass/break-glass-review-sweep";
+export {
+  breakGlassReviewTick,
+  registerM36BreakGlassReviewWorker,
+  scheduleM36BreakGlassReviewJobs,
+} from "./break-glass/break-glass-review-worker";
 // WP 5.8 (ADR-0087): M36's own break-glass grant -> a generic in-app alert for the reviewers.
 export {
   M36_BREAK_GLASS_NOTIFICATION_CONSUMER,

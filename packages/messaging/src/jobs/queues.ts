@@ -51,6 +51,7 @@ export const MESSAGING_QUEUES = {
   ackEscalationTimer: "messaging.ack_escalation_timer",
   ackEscalationSweep: "messaging.ack_escalation_sweep",
   reminderSweep: "messaging.reminder_sweep",
+  breakGlassReviewSweep: "messaging.break_glass_review_sweep",
 } as const;
 
 /** A queue name from the catalog. */
@@ -218,6 +219,20 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "handoffId; row locked FOR UPDATE and re-checked (state='offered' and past the policy-capped deadline) in the close transaction",
   },
+  // WP 5.8 (ADR-0087): an hourly sweep that raises the overdue alert for each break-glass review still open three days after its grant
+  // ended. The alert is unique on (organization, correlation id) with the review id in the id, so a retried or overlapping tick re-emits
+  // harmlessly and never alerts twice. Concurrency 1: one sweeper; a missed tick is made up by the next. Runs for flag-off tenants too
+  // (accountability for a grant that exists must not stall on a flag).
+  "messaging.break_glass_review_sweep": {
+    name: "messaging.break_glass_review_sweep",
+    priority: 5,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.break_glass_review_sweep.dlq",
+    idempotency:
+      "alert correlationId = break-glass:<reviewId>:overdue; the (organization, correlation_id) alert dedupe absorbs a repeat emit",
+  },
   // WP 4.4 (ADR-0070): ONE delayed job per (request, tier, window deadline) with a deterministic job id, so a duplicate add is a
   // no-op. The job only WAKES the escalation: the database decides what is due and the guarded write decides who escalates, so a
   // retry, a duplicate or a second worker cannot escalate twice. Five attempts with exponential backoff; a payload that is not
@@ -284,4 +299,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   ackEscalationSweep: "* * * * *",
   /** reminder_sweep: every minute (raises the alert of each reminder that came due). */
   reminderSweep: "* * * * *",
+  /** break_glass_review_sweep: hourly at :20 (alerts the compliance reviewers to a review still open three days after its grant ended). */
+  breakGlassReviewSweep: "20 * * * *",
 } as const;

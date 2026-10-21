@@ -1484,6 +1484,7 @@ import {
   buildTaskDeps,
   buildUrgentDeps,
   createAttachmentService,
+  createBreakGlassReviewSweep,
   createBullmqTimerPort,
   createDbAckQueueStatsReader,
   createDbMessagingProvider,
@@ -1504,6 +1505,7 @@ import {
   mountMessagingWebhookRoutes,
   registerM36AckEscalationWorkers,
   registerM36AttachmentScanWorker,
+  registerM36BreakGlassReviewWorker,
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
@@ -1513,6 +1515,7 @@ import {
   registerMessagingSeams,
   scheduleM36AckEscalationJobs,
   scheduleM36AttachmentScanJobs,
+  scheduleM36BreakGlassReviewJobs,
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
@@ -9137,6 +9140,48 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     } else {
       app.log.warn(
         "M36 handoff expiry disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; open handoffs stay offered",
+      );
+    }
+
+    // ── M36 WP 5.8 (ADR-0087, PROPOSED) — `messaging.break_glass_review_sweep` (hourly): a break-glass review still open three days after its
+    // grant ended raises one overdue alert to the review-permission holders (idempotent on the review id). Active-org fan-out needs the
+    // platform pool. Runs for flag-off tenants too: accountability for a grant that exists must not stall on a flag.
+    if (platformDbHandle) {
+      const m36BreakGlassReviewSweep = createBreakGlassReviewSweep({
+        db: dbHandle.db,
+        alerts: getSeam("AlertEmitter") as AlertEmitter,
+      });
+      const m36BreakGlassReviewWorkers = registerM36BreakGlassReviewWorker({
+        connection: queueConnection,
+        overdueForOrg: m36BreakGlassReviewSweep.overdueForOrg,
+        activeOrgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+          reason: "M36 WP 5.8 break_glass_review_sweep active-org fan-out",
+        }),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 break-glass review sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36BreakGlassReviewWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36BreakGlassReviewWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36BreakGlassReviewQueues = await scheduleM36BreakGlassReviewJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36BreakGlassReviewQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 break-glass review sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 break-glass review sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; overdue reviews raise no alert",
       );
     }
 

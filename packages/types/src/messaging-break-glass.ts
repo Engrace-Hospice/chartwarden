@@ -132,3 +132,6 @@ export interface CompleteBreakGlassReviewRequest {
   outcome: BreakGlassReviewOutcome;
   note?: string;
 }
+
+/** The alert raised once a review is still open this many days after its grant ended (rule `m36.break_glass.review_overdue`, system_locked). */
+export const BREAK_GLASS_REVIEW_OVERDUE_ALERT = "m36.break_glass.review_overdue";

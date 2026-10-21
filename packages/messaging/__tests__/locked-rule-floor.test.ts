@@ -42,6 +42,7 @@ describe("assertLockedRulePatchAllowed", () => {
       "system.backup_failure",
       "m3.breakglass.invoked",
       "m36.break_glass.granted",
+      "m36.break_glass.review_overdue",
     ]) {
       expect(
         codeOf(() => assertLockedRulePatchAllowed(ev, { recipientResolver: "broadcast" })),
@@ -252,6 +253,7 @@ describe("isSystemLockedEventType (promotes a legacy unlocked clone on update â€
       "system.backup_failure",
       "m3.breakglass.invoked",
       "m36.break_glass.granted",
+      "m36.break_glass.review_overdue",
     ])
       expect(isSystemLockedEventType(ev)).toBe(true);
   });
