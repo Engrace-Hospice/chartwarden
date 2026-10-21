@@ -125,6 +125,25 @@ PR A merged as #538; its migrations landed as 1144 and 1145 (renumbered on merge
   email to `(slug, display_name)` of active memberships. No link or organization is ever shown in the response.
 - **Portal** is built with `base: "/portal/"` and served under `/portal/` of the tenant host, same origin as `/api`.
 
+**Phase 4 backend build notes** (branch `feat/tenant-subdomains-b`, backend half only; the SPA work is separate).
+`bootstrap/tenant-app-origin.ts` is `tenantAppOrigin(orgId)` (slug read under the org's own `withOrgContext`, no
+extra privileged path; unset base or an unreadable slug falls back to the global origin). It feeds the staff invite
+(`deliverInvite` and the echoed `inviteUrl`), the auditor redeem link, portal invitations and funeral-home /
+collaborator links (landing base `<origin>/portal`; `PORTAL_APP_URL` is honoured only when `TENANT_BASE_DOMAIN` is
+unset) and the M34 first-admin link (`<origin>/tenant-invite/<token>`, via an optional `acceptBaseUrlFor` on the
+invitation port; `M34_INVITATION_ACCEPT_URL` still applies when the base is unset). The link-delivery port gained
+`organizationId`. Better Auth reset / magic-link URLs are rewritten to the request origin by
+`rewriteLinkToRequestOrigin` only when `Origin` is a tenant origin the matcher trusts and equals the request `Host`.
+Migration 1146 adds `resolve_tenant_public(label)` and `tenant_links_for_email(email)` (same SECURITY DEFINER shape
+as 1145; the second returns active memberships in active orgs, capped at 20). `GET /api/v1/public/tenant` and
+`POST /api/v1/public/find-my-organization` live in M2 (`routes/public-tenant-routes.ts`); both 404 unless the base
+domain is set. The find route answers 202 for every well-formed address; the per-IP budget (10 / 15 min) answers 429,
+the per-sha256(email) budget (3 / 15 min) silently suppresses the send, and the lookup and send run after the reply.
+`tenantSessionClassGuard` (registered right after the host guard, acting only where it stamped `tenantHostOrgId`)
+answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1/portal/*` plus session plumbing
+(`/api/auth/`, `/api/v1/auth/`, `/api/v1/public/`, `/health`, `/ready`) and for a staff-class session on
+`/api/v1/portal/*` other than `/api/v1/portal/sign-in/*`. It is off in single-host mode, so the demo is unchanged.
+
 ### Phase 5 — edge and environment (PR B)
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.
 - Pangolin wildcard resource plus exact-host resources for reserved names (they take precedence).

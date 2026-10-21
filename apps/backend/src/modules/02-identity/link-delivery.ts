@@ -26,10 +26,12 @@ export function createLinkDelivery(input: {
   readonly transport: LinkEmailTransport;
   /** The SPA origin that serves the landing page (no trailing slash needed). */
   readonly baseUrl: string;
+  /** Per-organization landing origin (tenant host + `/portal`); wins over `baseUrl` when it answers. */
+  readonly baseUrlFor?: (organizationId: string) => Promise<string | undefined>;
 }): LinkDeliveryPort {
-  const base = input.baseUrl.replace(/\/$/, "");
   return {
-    async deliver({ kind, email, token, expiresAt }) {
+    async deliver({ kind, organizationId, email, token, expiresAt }) {
+      const base = ((await input.baseUrlFor?.(organizationId)) ?? input.baseUrl).replace(/\/$/, "");
       const url = `${base}${LANDING_PATH[kind]}#token=${encodeURIComponent(token)}`;
       await input.transport.send({
         to: email,

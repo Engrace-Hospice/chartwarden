@@ -58,7 +58,7 @@ import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from 
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
-import { mintInvitationToken } from "../invitation-token";
+import { acceptBaseUrlForOrg, mintInvitationToken } from "../invitation-token";
 import { createTenantShredEraserCallback } from "../shred-eraser-adapter";
 import { assertM34ShredPreflight } from "../shred-preflight";
 import { createTenantExportBundleSink } from "../tenant-export-bundle-sink";
@@ -138,6 +138,7 @@ export interface M34WorkerDeps {
         readonly expiresAt: Date;
       }): Promise<void>;
       readonly acceptBaseUrl: string;
+      readonly acceptBaseUrlFor?: (organizationId: string) => Promise<string | undefined>;
     };
     readonly outbox: {
       publish(
@@ -429,7 +430,7 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         if (existing) return { invitationId: existing.id };
 
         const { tokenHash, invitationUrl } = mintInvitationToken(
-          deps.provision.invitation.acceptBaseUrl,
+          await acceptBaseUrlForOrg(deps.provision.invitation, input.organizationId),
         );
         // Insert first, send second, in one transaction: a failed insert then never leaves an emailed link with no
         // row, and a failed send rolls the row back so the retry mints a fresh token (only the hash is stored).

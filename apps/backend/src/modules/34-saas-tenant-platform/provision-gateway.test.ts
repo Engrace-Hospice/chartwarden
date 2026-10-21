@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { acceptBaseUrlForOrg } from "./invitation-token";
 import { createM34ProvisionGateway } from "./provision-gateway";
 
 const config = {
@@ -89,5 +90,16 @@ describe("M34 provision gateway", () => {
       gateway.destructionStorage.destroyTenantScope({ organizationId: "org-1" }),
     ).rejects.toThrow("invalid storage destruction receipt");
     expect(requests[0]).toMatchObject({ expectedPrefix: "tenant-org-1/" });
+  });
+
+  it("accept base: the per-organization base wins when bound and answering, else the global env URL", async () => {
+    const http = { request: async () => ({ status: 200, body: {} }) };
+    const global = createM34ProvisionGateway(config, http);
+    expect(await acceptBaseUrlForOrg(global.invitation, "org-1")).toBe("https://app.invalid/tenant-invitations");
+    const perOrg = createM34ProvisionGateway(config, http, async (orgId) =>
+      orgId === "org-1" ? "https://acme.chartwarden.com/tenant-invite" : undefined,
+    );
+    expect(await acceptBaseUrlForOrg(perOrg.invitation, "org-1")).toBe("https://acme.chartwarden.com/tenant-invite");
+    expect(await acceptBaseUrlForOrg(perOrg.invitation, "org-2")).toBe("https://app.invalid/tenant-invitations");
   });
 });

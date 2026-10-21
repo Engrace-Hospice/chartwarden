@@ -36,6 +36,15 @@ describe("portal invitation email delivery", () => {
     expect(message.text).toContain("https://portal.example.com/accept-invitation?token=a%20b%2Fc");
   });
 
+  it("builds the link on the organization's own portal base when one resolves", async () => {
+    await expect(
+      createPortalInvitationDelivery({
+        baseUrl: "https://portal.example.com",
+        baseUrlFor: async () => "https://acme.chartwarden.com/portal/",
+      }).deliver(input()),
+    ).resolves.toEqual({ inviteUrl: "https://acme.chartwarden.com/portal/accept-invitation?token=t0k3n" });
+  });
+
   it("hands the link back to the admin when no transport is bound, and sends nothing without a base url", async () => {
     await expect(
       createPortalInvitationDelivery({ baseUrl: "https://portal.example.com" }).deliver(input()),

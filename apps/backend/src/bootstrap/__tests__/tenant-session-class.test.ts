@@ -1,0 +1,61 @@
+import type { FastifyRequest } from "fastify";
+import { describe, expect, it } from "vitest";
+import { sessionClassPathVerdict, tenantSessionClassGuard } from "../tenant-session-class";
+
+const PORTAL = ["patient_portal", "caregiver_portal", "bereaved_portal"];
+
+describe("sessionClassPathVerdict", () => {
+  it.each(PORTAL)("%s: allowed on the portal API and session plumbing, refused on staff paths", (cls) => {
+    for (const p of [
+      "/api/v1/portal/care-summary",
+      "/api/v1/portal/sign-in/establish",
+      "/api/auth/get-session",
+      "/api/v1/auth/csrf",
+      "/api/v1/public/tenant",
+      "/health",
+      "/ready",
+    ]) {
+      expect(sessionClassPathVerdict(cls, p), p).toBe("allowed");
+    }
+    for (const p of ["/api/v1/patients", "/api/v1/me", "/api/v1/portalx/foo", "/api/v1/auditors/redeem"]) {
+      expect(sessionClassPathVerdict(cls, p), p).toBe("portal-session-on-staff-path");
+    }
+  });
+
+  it("staff: refused on /api/v1/portal/* except the pre-bind sign-in routes", () => {
+    expect(sessionClassPathVerdict("staff", "/api/v1/portal/care-summary")).toBe("staff-session-on-portal-path");
+    expect(sessionClassPathVerdict("staff", "/api/v1/portal/sessions/current")).toBe("staff-session-on-portal-path");
+    expect(sessionClassPathVerdict("staff", "/api/v1/portal/sign-in/accounts")).toBe("allowed");
+    expect(sessionClassPathVerdict("staff", "/api/v1/portal/sign-in/establish")).toBe("allowed");
+    expect(sessionClassPathVerdict("staff", "/api/v1/patients")).toBe("allowed");
+  });
+
+  it("other classes and unauthenticated requests are not this hook's concern", () => {
+    for (const cls of ["auditor", "external_collaborator", "funeral_home", undefined]) {
+      expect(sessionClassPathVerdict(cls, "/api/v1/portal/care-summary")).toBe("allowed");
+      expect(sessionClassPathVerdict(cls, "/api/v1/patients")).toBe("allowed");
+    }
+  });
+});
+
+describe("tenantSessionClassGuard", () => {
+  const req = (url: string, attributes?: Record<string, unknown>) =>
+    ({ url, context: { attributes } }) as unknown as FastifyRequest;
+
+  it("answers 401 SESSION_CLASS_MISMATCH on a tenant host", async () => {
+    await expect(
+      tenantSessionClassGuard(req("/api/v1/patients?x=1", { tenantHostOrgId: "o", sessionClass: "patient_portal" })),
+    ).rejects.toMatchObject({ code: "SESSION_CLASS_MISMATCH", statusCode: 401 });
+    await expect(
+      tenantSessionClassGuard(req("/api/v1/portal/care-summary", { tenantHostOrgId: "o", sessionClass: "staff" })),
+    ).rejects.toMatchObject({ code: "SESSION_CLASS_MISMATCH" });
+  });
+
+  it("does nothing off a tenant host (demo, apex, reserved) or for a matching class", async () => {
+    await expect(tenantSessionClassGuard(req("/api/v1/patients", { sessionClass: "patient_portal" }))).resolves.toBeUndefined();
+    await expect(tenantSessionClassGuard(req("/api/v1/patients"))).resolves.toBeUndefined();
+    await expect(
+      tenantSessionClassGuard(req("/api/v1/portal/care-summary", { tenantHostOrgId: "o", sessionClass: "patient_portal" })),
+    ).resolves.toBeUndefined();
+  });
+});

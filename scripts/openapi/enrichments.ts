@@ -48,6 +48,11 @@ import {
   VerifyFactorRequestSchema as M2AuditorVerifyFactorRequestSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-enrolment";
 import {
+  FindMyOrganizationRequestSchema as M2FindMyOrganizationRequestSchema,
+  FindMyOrganizationResponseSchema as M2FindMyOrganizationResponseSchema,
+  PublicTenantResponseSchema as M2PublicTenantResponseSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/public-tenant-routes";
+import {
   AuditorRedeemRequestSchema as M2AuditorRedeemRequestSchema,
   AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
@@ -6657,6 +6662,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mint a per-deceased funeral-home magic link, 72h, one-time (caseload ABAC; 409 unless the patient is deceased)",
     body: M2FuneralInviteRequestSchema,
     response: M2FuneralInviteResponseSchema,
+  },
+  "GET /api/v1/public/tenant": {
+    summary:
+      "Unauthenticated: the organization this tenant host serves ({ status, displayName? } - the name only for an active or created organization); 404 TENANT_HOST_UNKNOWN off a tenant host (ADR-0049 Phase 4)",
+    response: M2PublicTenantResponseSchema,
+  },
+  "POST /api/v1/public/find-my-organization": {
+    summary:
+      "Unauthenticated: always 202 { status: \"sent\" } for a well-formed email; mails the person the sign-in address of each active organization they belong to (one email, only if any). Per-IP and per-email budgets; nothing about membership is returned (ADR-0049 Phase 4)",
+    body: M2FindMyOrganizationRequestSchema,
+    response: M2FindMyOrganizationResponseSchema,
+    status: 202,
   },
   "POST /api/v1/auditors/redeem": {
     summary:

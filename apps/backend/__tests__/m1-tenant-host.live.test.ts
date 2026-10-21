@@ -16,6 +16,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import { createCachingTenantHostResolver, createTenantHostGuard } from "../src/bootstrap/tenant-host";
 import { createDbTenantHostResolver } from "../src/bootstrap/tenant-host-resolver-db";
+import { createBudgetedRateLimiter, createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { tenantSessionClassGuard } from "../src/bootstrap/tenant-session-class";
+import { createDbTenantAppOrigin } from "../src/bootstrap/tenant-app-origin-db";
+import { createDbPublicTenantLookups } from "../src/modules/02-identity/public-tenant-db";
+import { registerPublicTenantRoutes } from "../src/modules/02-identity/routes/public-tenant-routes";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -28,6 +33,10 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
   let closeDb: () => Promise<void>;
   let app: FastifyInstance;
   let sessionOrg: string | undefined;
+  let sessionClass: string | undefined;
+  let appDb: unknown;
+  const sent: { to: string; text: string }[] = [];
+  const background: Promise<void>[] = [];
   const orgs: Record<string, string> = {};
 
   const get = (host: string, url = "/api/v1/ping") => app.inject({ method: "GET", url, headers: { host } });
@@ -63,8 +72,14 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
     // Rename through the database, so the alias comes from the trigger and not from the test.
     await admin.query("UPDATE organization SET slug='sunrise-hospice' WHERE id=$1", [orgs.sunrise]);
 
+    await admin.query("INSERT INTO \"user\" (id,email) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Nurse@Example.test')");
+    await admin.query(
+      "INSERT INTO membership (user_id,organization_id,status) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',$1,'active')",
+      [orgs.eagle],
+    );
     const { createDbClient } = await import("@chartwarden/db");
     const handle = createDbClient({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
+    appDb = handle.db;
     closeDb = async () => {
       await (handle as { close?: () => Promise<void> }).close?.();
     };
@@ -73,14 +88,29 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
     applyErrorHandler(app);
     app.decorateRequest("context", null as never);
     app.addHook("onRequest", async (request) => {
-      (request as { context: unknown }).context = { attributes: {}, organizationId: sessionOrg };
+      (request as { context: unknown }).context = {
+        attributes: sessionClass ? { sessionClass } : {},
+        organizationId: sessionOrg,
+      };
     });
     const guard = createTenantHostGuard({
       baseDomain: BASE,
       resolver: createCachingTenantHostResolver(createDbTenantHostResolver(handle.db as never)),
     });
     if (guard) app.addHook("onRequest", guard);
+    app.addHook("onRequest", tenantSessionClassGuard);
     app.get("/api/v1/ping", async () => ({ ok: true }));
+    app.get("/api/v1/portal/care-summary", async () => ({ ok: true }));
+    app.get("/api/v1/portal/sign-in/accounts", async () => ({ ok: true }));
+    const store = createInMemoryRateLimitStore();
+    registerPublicTenantRoutes(app, {
+      baseDomain: BASE,
+      ...createDbPublicTenantLookups(handle.db as never),
+      emailTransport: { send: async (m) => void sent.push(m) },
+      ipLimiter: createBudgetedRateLimiter(store, { limit: 4, windowMs: 60_000, keyPrefix: "ip" }),
+      emailLimiter: createBudgetedRateLimiter(store, { limit: 100, windowMs: 60_000, keyPrefix: "em" }),
+      defer: (work) => void background.push(work()),
+    });
   }, 600_000);
 
   afterAll(async () => {
@@ -116,5 +146,64 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
     expect([paused.statusCode, codeOf(paused.json())]).toEqual([403, "TENANT_SUSPENDED"]);
     const gone = await get("gone.chartwarden.com");
     expect([gone.statusCode, codeOf(gone.json())]).toEqual([410, "TENANT_CLOSED"]);
+  });
+
+  // --- Phase 4: session class vs path on a tenant host (portal and staff share one cookie) ---
+  it("401s a staff session on /api/v1/portal/* and a portal session on a staff path; sign-in stays reachable", async () => {
+    sessionOrg = undefined;
+    sessionClass = "staff";
+    const staffOnPortal = await get("eagle.chartwarden.com", "/api/v1/portal/care-summary");
+    expect([staffOnPortal.statusCode, codeOf(staffOnPortal.json())]).toEqual([401, "SESSION_CLASS_MISMATCH"]);
+    expect((await get("eagle.chartwarden.com", "/api/v1/portal/sign-in/accounts")).statusCode).toBe(200);
+    expect((await get("eagle.chartwarden.com")).statusCode).toBe(200);
+    sessionClass = "patient_portal";
+    const portalOnStaff = await get("eagle.chartwarden.com");
+    expect([portalOnStaff.statusCode, codeOf(portalOnStaff.json())]).toEqual([401, "SESSION_CLASS_MISMATCH"]);
+    expect((await get("eagle.chartwarden.com", "/api/v1/portal/care-summary")).statusCode).toBe(200);
+    sessionClass = undefined;
+  });
+
+  // --- Phase 4: unauthenticated public routes over the real SECURITY DEFINER functions, as chartwarden_app ---
+  it("GET /api/v1/public/tenant names an active tenant, 404s elsewhere, and returns no name for a suspended one", async () => {
+    sessionOrg = undefined;
+    const ok = await get("eagle.chartwarden.com", "/api/v1/public/tenant");
+    expect([ok.statusCode, ok.json()]).toEqual([200, { status: "active", displayName: "D" }]);
+    const apex = await get("chartwarden.com", "/api/v1/public/tenant");
+    expect([apex.statusCode, codeOf(apex.json())]).toEqual([404, "TENANT_HOST_UNKNOWN"]);
+    const reserved = await get("app.chartwarden.com", "/api/v1/public/tenant");
+    expect(reserved.statusCode).toBe(404);
+    // The host guard refuses a suspended tenant before the route runs.
+    expect((await get("paused.chartwarden.com", "/api/v1/public/tenant")).statusCode).toBe(403);
+  });
+
+  it("POST /api/v1/public/find-my-organization: 202 for everyone; one email only for a real active membership", async () => {
+    const post = (email: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/public/find-my-organization",
+        headers: { host: "app.chartwarden.com" },
+        payload: { email },
+      });
+    const hit = await post("nurse@example.test");
+    const miss = await post("nobody@example.test");
+    expect([hit.statusCode, hit.json()]).toEqual([202, { status: "sent" }]);
+    expect([miss.statusCode, miss.json()]).toEqual([202, { status: "sent" }]);
+    await Promise.all(background.splice(0));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.to).toBe("nurse@example.test");
+    expect(sent[0]?.text).toContain("https://eagle.chartwarden.com/");
+    // Per-IP budget (4): two used above, two more allowed, the next is 429.
+    await post("a@example.test");
+    await post("b@example.test");
+    expect((await post("c@example.test")).statusCode).toBe(429);
+  });
+
+  it("tenantAppOrigin reads the org's CURRENT slug under its own tenant context (renamed org -> new slug)", async () => {
+    const origin = createDbTenantAppOrigin(appDb as never, { TENANT_BASE_DOMAIN: BASE, WEB_APP_URL: "https://demo.test" });
+    expect(await origin.appOrigin(orgs.sunrise as string)).toBe("https://sunrise-hospice.chartwarden.com");
+    expect(await origin.portalOrigin(orgs.eagle as string)).toBe("https://eagle.chartwarden.com/portal");
+    expect(await origin.appOrigin("99999999-9999-4999-8999-999999999999")).toBe("https://demo.test");
+    const single = createDbTenantAppOrigin(appDb as never, { WEB_APP_URL: "https://demo.test" });
+    expect(await single.appOrigin(orgs.eagle as string)).toBe("https://demo.test");
   });
 });

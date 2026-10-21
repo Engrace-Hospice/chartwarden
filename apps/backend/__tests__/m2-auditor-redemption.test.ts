@@ -113,6 +113,17 @@ describe("auditor link delivery", () => {
     expect(sent[0]?.text).toContain(`#token=${link.token}`);
   });
 
+  it("uses the organization's own origin when one resolves", async () => {
+    const sent: Array<{ to: string; text: string }> = [];
+    const delivery = createAuditorLinkEmailDelivery({
+      transport: { send: async (m) => void sent.push(m) },
+      baseUrl: undefined,
+      baseUrlFor: async () => "https://acme.chartwarden.com",
+    });
+    await delivery.deliver(link);
+    expect(sent[0]?.text).toContain("https://acme.chartwarden.com/auditor/redeem?org=");
+  });
+
   it("FAILS CLOSED without a web origin (and never puts the token in the error)", async () => {
     const delivery = createAuditorLinkEmailDelivery({
       transport: { send: async () => undefined },

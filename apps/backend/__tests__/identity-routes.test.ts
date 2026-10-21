@@ -105,6 +105,7 @@ function makeServer(
     actors?: Actor | null | "context";
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
+    appOriginFor?: IdentityRouteDeps["appOriginFor"];
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
     dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
     /** GAP-008 — defaults to a recording stub that allows; `null` binds NO guard. */
@@ -175,6 +176,7 @@ function makeServer(
     audit: auditSink.executor,
     ...(opts.emailTransport ? { emailTransport: opts.emailTransport } : {}),
     ...(opts.webAppBaseUrl ? { webAppBaseUrl: opts.webAppBaseUrl } : {}),
+    ...(opts.appOriginFor ? { appOriginFor: opts.appOriginFor } : {}),
     ...(opts.roleAttacher ? { roleAttacher: opts.roleAttacher } : {}),
     ...(opts.dashboardSeeder ? { dashboardSeeder: opts.dashboardSeeder } : {}),
     ...(opts.proposedRoleGuard === null
@@ -972,6 +974,35 @@ describe("M2-T06 identity route inventory", () => {
       expect(transport.sent[0]!.to).toBe("new@example.com");
       expect(transport.sent[0]!.text).toContain(body.inviteUrl);
       await app.close();
+    });
+
+    it("per-org origin wins over webAppBaseUrl; an unresolved org falls back to it", async () => {
+      const resolved = makeServer({
+        emailTransport: capturingEmailTransport(),
+        webAppBaseUrl: "https://app.wardenx.example",
+        appOriginFor: async () => "https://acme.chartwarden.com",
+      });
+      const res = await resolved.app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "new@example.com" },
+      });
+      expect((res.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/acme\.chartwarden\.com\/invite\//);
+      await resolved.app.close();
+      const fallback = makeServer({
+        emailTransport: capturingEmailTransport(),
+        webAppBaseUrl: "https://app.wardenx.example",
+        appOriginFor: async () => undefined,
+      });
+      const res2 = await fallback.app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "new2@example.com" },
+      });
+      expect((res2.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/app\.wardenx\.example\/invite\//);
+      await fallback.app.close();
     });
 
     it("without webAppBaseUrl configured: create omits inviteUrl (token stays out of the body)", async () => {

@@ -590,6 +590,7 @@ export class LinkError extends Error {
 export interface LinkDeliveryPort {
   deliver(input: {
     readonly kind: "external_collaborator" | "funeral_home";
+    readonly organizationId: string;
     readonly email: string;
     readonly token: string;
     readonly expiresAt: Date;
@@ -651,6 +652,8 @@ export interface IdentityRouteDeps {
    * Omitted → the route falls back to a relative path only (no origin to safely guess).
    */
   webAppBaseUrl?: string;
+  /** Phase 4 (ADR-0049) — the staff SPA origin for ONE organization's links; wins over `webAppBaseUrl` when it answers. */
+  appOriginFor?: (organizationId: string) => Promise<string | undefined>;
   /**
    * GAP-043 — the per-membership NAMED APPROVAL AUTHORITY surface (§3.7). Omitted → the three
    * elevated-approval routes are not mounted at all, rather than mounted over a store that cannot

@@ -23,7 +23,7 @@ import { passkey } from "@better-auth/passkey";
 import { type DbClient, schema } from "@chartwarden/db";
 import { betterAuth } from "better-auth";
 import { hostOnlyCookieOptions } from "./host-only-cookies";
-import type { TenantOriginMatcher } from "./tenant-origin";
+import { type TenantOriginMatcher, rewriteLinkToRequestOrigin } from "./tenant-origin";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
@@ -381,7 +381,12 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           options.onAuditError?.(err, event);
         }
       },
-      sendResetPassword: async (data: { user: { email: string }; url: string; token: string }) => {
+      sendResetPassword: async (
+        rawData: { user: { email: string }; url: string; token: string },
+        request?: Request,
+      ) => {
+        // Phase 4: on a tenant host the link opens on that host (see rewriteLinkToRequestOrigin for the guards).
+        const data = { ...rawData, url: await rewriteLinkToRequestOrigin(rawData.url, request, options.tenantOrigins) };
         if (options.sendResetPassword) {
           await options.sendResetPassword(data);
           return;
@@ -455,7 +460,11 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
         // server-side; the link is delivered through M36's transactional email transport, bound to this
         // port at the composition root (FB-T14). Stamping the session CLASS on consume is the §3 follow-up.
-        sendMagicLink: async ({ email, url }: { email: string; url: string }) => {
+        sendMagicLink: async (
+          { email, url: rawUrl }: { email: string; url: string },
+          ctx?: { request?: Request },
+        ) => {
+          const url = await rewriteLinkToRequestOrigin(rawUrl, ctx?.request, options.tenantOrigins);
           await emailTransport.send({
             to: email,
             subject: "Your ChartWarden sign-in link",

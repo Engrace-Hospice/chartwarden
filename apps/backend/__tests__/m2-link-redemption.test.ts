@@ -63,6 +63,7 @@ describe("funeral link delivery", () => {
     });
     await delivery.deliver({
       kind: "funeral_home",
+      organizationId: ORG,
       email: "d@home.test",
       token: "tok.en/+=",
       expiresAt: new Date("2026-10-10T00:00:00Z"),
@@ -73,11 +74,26 @@ describe("funeral link delivery", () => {
     expect(sent[0]?.text).not.toMatch(/patient|deceased|decedent/i);
     await delivery.deliver({
       kind: "external_collaborator",
+      organizationId: ORG,
       email: "c@x.test",
       token: "t",
       expiresAt: new Date(),
     });
     expect(sent[1]?.text).toContain("/collaborator/redeem#token=t");
+  });
+
+  it("lands on the organization's own portal base when one is resolved, else the global base", async () => {
+    const sent: { to: string; subject: string; text: string }[] = [];
+    const delivery = createLinkDelivery({
+      transport: { send: async (m) => void sent.push(m) },
+      baseUrl: "https://portal.test/",
+      baseUrlFor: async (orgId) => (orgId === ORG ? "https://acme.chartwarden.com/portal" : undefined),
+    });
+    const input = { kind: "funeral_home", email: "d@home.test", token: "t", expiresAt: new Date() } as const;
+    await delivery.deliver({ ...input, organizationId: ORG });
+    await delivery.deliver({ ...input, organizationId: "other-org" });
+    expect(sent[0]?.text).toContain("https://acme.chartwarden.com/portal/funeral/redeem#token=t");
+    expect(sent[1]?.text).toContain("https://portal.test/funeral/redeem#token=t");
   });
 });
 

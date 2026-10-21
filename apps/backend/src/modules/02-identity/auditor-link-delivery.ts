@@ -38,15 +38,18 @@ export function buildAuditorRedeemUrl(
 export function createAuditorLinkEmailDelivery(input: {
   readonly transport: AuditorLinkEmailTransport;
   readonly baseUrl: string | undefined;
+  /** Per-organization staff origin (tenant host); wins over `baseUrl` when it answers. */
+  readonly baseUrlFor?: (organizationId: string) => Promise<string | undefined>;
 }): { deliver(link: AuditorLinkDeliveryInput): Promise<void> } {
   return {
     async deliver(link) {
-      if (!input.baseUrl) {
+      const baseUrl = (await input.baseUrlFor?.(link.organizationId)) ?? input.baseUrl;
+      if (!baseUrl) {
         throw new Error(
           "no web origin configured (WEB_APP_URL / BETTER_AUTH_URL): cannot build the auditor link",
         );
       }
-      const url = buildAuditorRedeemUrl(input.baseUrl, link.organizationId, link.token);
+      const url = buildAuditorRedeemUrl(baseUrl, link.organizationId, link.token);
       await input.transport.send({
         to: link.auditorEmail,
         subject: "Your ChartWarden auditor access link",

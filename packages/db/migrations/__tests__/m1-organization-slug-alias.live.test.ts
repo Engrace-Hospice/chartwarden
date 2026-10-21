@@ -183,4 +183,63 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
       expect(await asApp(ORG_A, () => errorCode(() => db.query(sql)))).toBe(INSUFFICIENT_PRIVILEGE);
     }
   });
+  // Migration 1146 — the two public, pre-sign-in lookups. Both are callable with no org bound and answer for ONE input.
+  describe("migration 1146 — public tenant lookups", () => {
+    const ORG_C = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1"; // active
+    const ORG_D = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1"; // created
+    const ORG_E = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1"; // suspended
+    const USER_1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const USER_2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const publicAsApp = (label: string) =>
+      asApp("", async () => (await db.query("SELECT * FROM resolve_tenant_public($1)", [label])).rows);
+    const linksAsApp = (email: string) =>
+      asApp("", async () => (await db.query("SELECT * FROM tenant_links_for_email($1)", [email])).rows);
+
+    beforeAll(async () => {
+      for (const [id, slug, name, status] of [
+        [ORG_C, "beacon", "Beacon Care", "active"],
+        [ORG_D, "dawn", "Dawn Hospice", "created"],
+        [ORG_E, "stopped", "Stopped Hospice", "suspended"],
+      ]) {
+        await db.query("INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,'L',$3,$4)", [id, slug, name, status]);
+      }
+      await db.query("INSERT INTO \"user\" (id,email) VALUES ($1,'Nurse@Example.test'),($2,'pending@example.test')", [USER_1, USER_2]);
+      for (const [user, org, status] of [
+        [USER_1, ORG_C, "active"],
+        [USER_1, ORG_D, "active"], // org not active yet
+        [USER_1, ORG_E, "active"], // org suspended
+        [USER_2, ORG_C, "pending"], // membership not active
+      ]) {
+        await db.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,$3)", [user, org, status]);
+      }
+      await rename(ORG_C, "beacon-care"); // `beacon` becomes a retired alias
+    });
+
+    it("resolve_tenant_public: name only for an active or created organization, via slug or alias", async () => {
+      expect(await publicAsApp("beacon-care")).toEqual([{ status: "active", display_name: "Beacon Care" }]);
+      expect(await publicAsApp("beacon")).toEqual([{ status: "active", display_name: "Beacon Care" }]);
+      expect(await publicAsApp("dawn")).toEqual([{ status: "created", display_name: "Dawn Hospice" }]);
+      expect(await publicAsApp("stopped")).toEqual([{ status: "suspended", display_name: null }]);
+      expect(await publicAsApp("nobody")).toEqual([]);
+      expect(await publicAsApp("%")).toEqual([]);
+    });
+
+    it("tenant_links_for_email: only ACTIVE memberships in ACTIVE organizations, matched case-insensitively", async () => {
+      expect(await linksAsApp("nurse@example.test")).toEqual([{ slug: "beacon-care", display_name: "Beacon Care" }]);
+      expect(await linksAsApp("NURSE@EXAMPLE.TEST")).toEqual([{ slug: "beacon-care", display_name: "Beacon Care" }]);
+      expect(await linksAsApp("pending@example.test")).toEqual([]);
+      expect(await linksAsApp("unknown@example.test")).toEqual([]);
+      expect(await linksAsApp("%")).toEqual([]);
+    });
+
+    it("both functions are executable by the app role only", async () => {
+      const { rows } = await db.query(
+        `SELECT has_function_privilege('chartwarden_app','resolve_tenant_public(text)','EXECUTE') AS pub_app,
+                has_function_privilege('chartwarden_readonly','resolve_tenant_public(text)','EXECUTE') AS pub_ro,
+                has_function_privilege('chartwarden_app','tenant_links_for_email(text)','EXECUTE') AS links_app,
+                has_function_privilege('chartwarden_readonly','tenant_links_for_email(text)','EXECUTE') AS links_ro`,
+      );
+      expect(rows[0]).toEqual({ pub_app: true, pub_ro: false, links_app: true, links_ro: false });
+    });
+  });
 });

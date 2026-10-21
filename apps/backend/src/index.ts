@@ -121,6 +121,7 @@ import {
   assertProductionEnv,
   buildServer,
   createCachingTenantHostResolver,
+  createDbTenantAppOrigin,
   createDbTenantHostResolver,
   createSessionAuthenticate,
   createTenantHostGuard,
@@ -131,6 +132,7 @@ import {
   parseTenantBaseDomain,
   registerEraser,
   registerSeam,
+  webAppBaseUrlFromEnv,
   withM24LaunchGatewayDefault,
 } from "./bootstrap/index";
 import {
@@ -323,6 +325,8 @@ import {
   mountSessionStepUpRoutes,
   registerAuditorEnrolmentRoutes,
   registerAuditorRedeemRoutes,
+  registerPublicTenantRoutes,
+  createDbPublicTenantLookups,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
@@ -3306,6 +3310,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // ADR-0049 Phase 4 — where an organization's emailed links point (its own subdomain when TENANT_BASE_DOMAIN is set,
+  // else the global origin exactly as before). Undefined without a database: no org to name, global origins apply.
+  const tenantAppOrigin = dbHandle ? createDbTenantAppOrigin(dbHandle.db) : undefined;
+  const appOriginFor = tenantAppOrigin ? (orgId: string) => tenantAppOrigin.appOrigin(orgId) : undefined;
+  const portalOriginFor = tenantAppOrigin
+    ? (orgId: string) => tenantAppOrigin.portalOrigin(orgId)
+    : undefined;
   // GAP-037 — the DoseSpot adapter. UNBOUND unless `DOSESPOT_TENANT_CONFIGS` holds a complete config for a tenant:
   // an unconfigured tenant gets a non-retryable DegradedError from every call, is never queued for transmission,
   // and keeps activating orders locally. The breaker's open/close edges are collected here and published as
@@ -3479,7 +3490,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     ? m34ProvisionGatewayConfigFromEnv(process.env)
     : null;
   const m34ProvisionGateway = m34ProvisionConfig
-    ? createM34ProvisionGateway(m34ProvisionConfig)
+    ? createM34ProvisionGateway(
+        m34ProvisionConfig,
+        undefined,
+        // Tenant host set: the first-admin link is `<tenant origin>/tenant-invite/<token>`; unset keeps M34_INVITATION_ACCEPT_URL.
+        parseTenantBaseDomain() && appOriginFor
+          ? async (orgId) => {
+              const origin = await appOriginFor(orgId);
+              return origin ? `${origin}/tenant-invite` : undefined;
+            }
+          : undefined,
+      )
     : null;
   const m34TenantStorageConfig = s3ObjectStoreConfigFromEnv(process.env);
   const m34TenantStorage = m34TenantStorageConfig
@@ -4167,10 +4188,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
   // to the Vite origin, matching every other dev fallback in this file. Undefined only if production
   // sets neither — the invite route then omits `inviteUrl` rather than guess a wrong origin.
-  const webAppBaseUrl =
-    process.env.WEB_APP_URL ??
-    process.env.BETTER_AUTH_URL ??
-    (process.env.NODE_ENV === "production" ? undefined : "http://localhost:5173");
+  const webAppBaseUrl = webAppBaseUrlFromEnv(process.env);
   // GAP-115 follow-up / M31 sign-in - the §5.3.1 failed-attempt budgets for the two NEW unauthenticated-or-pre-org
   // doors (link redemption, portal session establishment). Same store as the login throttle (Valkey when REDIS_URL is
   // set, per-replica otherwise), each under its OWN key prefix so a run against one door cannot lock out another.
@@ -4200,7 +4218,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const linkLandingBaseUrl = process.env.PORTAL_APP_URL ?? webAppBaseUrl;
   const linkDelivery =
     linkLandingBaseUrl && emailBinding.linkDeliveryAvailable
-      ? createLinkDelivery({ transport: emailTransport, baseUrl: linkLandingBaseUrl })
+      ? createLinkDelivery({
+          transport: emailTransport,
+          baseUrl: linkLandingBaseUrl,
+          ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
+        })
       : undefined;
   // GAP-002/GAP-004 — M2 §8.1 authentication audit trail (login, failure, lockout, logout, 2FA, passkey,
   // session revoke, password reset). Audit-write loss is logged loudly but never fails the auth request.
@@ -4598,6 +4620,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             createAuditorLinkEmailDelivery({
               transport: linkEmailTransport,
               baseUrl: webAppBaseUrl,
+              ...(appOriginFor ? { baseUrlFor: appOriginFor } : {}),
             }),
           );
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
@@ -4632,6 +4655,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db), {
             emailTransport,
             webAppBaseUrl,
+            ...(appOriginFor ? { appOriginFor } : {}),
             // GAP-008 — both halves share the LIVE rbac resolver (same §2.5 cache the routes use): the
             // guard bounds a proposal at invite time, the attacher re-bounds it by the INVITER's
             // permissions at accept. Without an engine handle the resolver is empty ⇒ fail closed.
@@ -4767,6 +4791,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               }),
               ipLimiter: auditorLimiter("auditor-enrol:ip", 60),
               userLimiter: auditorLimiter("auditor-enrol:user", 30),
+            });
+          }
+          // ADR-0049 Phase 4 — unauthenticated tenant discovery: the host's public name for the sign-in page, and the
+          // `app.` landing's "email me my organization's address". Both 404 unless TENANT_BASE_DOMAIN is set.
+          {
+            const publicTenantStore = rateLimitStore ?? createInMemoryRateLimitStore();
+            const publicTenantLimiter = (keyPrefix: string, limit: number) =>
+              createBudgetedRateLimiter(publicTenantStore, {
+                limit,
+                windowMs: 15 * 60 * 1000,
+                keyPrefix,
+                onStoreError: (err) => app.log.warn({ err }, "public tenant rate-limit store error"),
+              });
+            registerPublicTenantRoutes(app, {
+              baseDomain: tenantBaseDomain,
+              ...createDbPublicTenantLookups(dbHandle.db),
+              emailTransport,
+              ipLimiter: publicTenantLimiter("find-my-org:ip", 10),
+              emailLimiter: publicTenantLimiter("find-my-org:email", 3),
+              onBackgroundError: (err) => app.log.warn({ err }, "find-my-organization email failed"),
             });
           }
           mountAuditRoutes(app, dbHandle.db, {
@@ -5903,6 +5947,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             delivery: createPortalInvitationDelivery({
               transport: emailTransport,
               baseUrl: process.env.PORTAL_APP_URL ?? webAppBaseUrl,
+              ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
             }),
             uploadIntake: buildPortalUploadIntakePort(dbHandle.db),
             // GAP-158 - accepting an invitation issued for a roster caregiver claims that caregiver for the login.

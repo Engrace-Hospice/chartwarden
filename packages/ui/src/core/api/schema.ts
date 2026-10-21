@@ -19273,6 +19273,23 @@ export interface paths {
         patch: operations["patchApiV1ProviderentitiesById"];
         trace?: never;
     };
+    "/api/v1/public/find-my-organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unauthenticated: always 202 { status: "sent" } for a well-formed email; mails the person the sign-in address of each active organization they belong to (one email, only if any). Per-IP and per-email budgets; nothing about membership is returned (ADR-0049 Phase 4) */
+        post: operations["postApiV1PublicFindmyorganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/signup-intents": {
         parameters: {
             query?: never;
@@ -19301,6 +19318,23 @@ export interface paths {
         put?: never;
         /** Consume the single-use email-verification token (idempotent re-consume → 409) */
         post: operations["postApiV1PublicSignupintentsByTokenHashVerifyemail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unauthenticated: the organization this tenant host serves ({ status, displayName? } - the name only for an active or created organization); 404 TENANT_HOST_UNKNOWN off a tenant host (ADR-0049 Phase 4) */
+        get: operations["getApiV1PublicTenant"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -81888,6 +81922,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1PublicFindmyorganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "sent";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PublicSignupintents: {
         parameters: {
             query?: never;
@@ -81944,6 +82009,31 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         verified: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PublicTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        displayName?: string;
                     };
                 };
             };

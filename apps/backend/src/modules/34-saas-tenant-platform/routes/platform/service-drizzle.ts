@@ -60,6 +60,7 @@ import { NotFoundError, ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type InvitationDeliveryPort,
+  acceptBaseUrlForOrg,
   canInviteFirstAdmin,
   mintInvitationToken,
 } from "../../invitation-token";
@@ -780,7 +781,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           Date.now() + (args.expiresInDays ?? FIRST_ADMIN_INVITATION_TTL_DAYS) * 86_400_000,
         );
         const { tokenHash, invitationUrl } = mintInvitationToken(
-          deps.invitationDelivery.acceptBaseUrl,
+          await acceptBaseUrlForOrg(deps.invitationDelivery, account.organizationId),
         );
         // Insert, then send, in one transaction: a failed send rolls the new row back and leaves the old link intact.
         // Known window: a commit failure AFTER a successful send leaves an emailed link with no row (the old link stays
