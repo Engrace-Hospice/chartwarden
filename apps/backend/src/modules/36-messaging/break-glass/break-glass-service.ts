@@ -354,6 +354,10 @@ export function createBreakGlassService(deps: BreakGlassServiceDeps): BreakGlass
           .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
           .limit(1);
         if (!channel) throw new NotFoundError("channel", input.channelId);
+        // Serialise this holder's requests so two concurrent ones cannot both pass the count below (check-then-insert).
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`break-glass:${orgId}:${userId}`}, 58))`,
+        );
         // One fresh step-up must not buy unlimited grants (and alerts): bound the live ones and a rolling day's worth.
         const [counts] = await tx
           .select({
