@@ -260,7 +260,7 @@ const M3_ROLE_TEMPLATE_BACKFILL_JOB_ID = "m3-role-template-backfill";
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
 // construction, so the probe can never touch a real tenant bucket (`tenant-<orgId>`).
-const READINESS_PROBE_BUCKET = "wardenx-readiness";
+const READINESS_PROBE_BUCKET = "chartwarden-readiness";
 const READINESS_PROBE_KEY = ".probe";
 /** AC-05 — SECURITY_HARDENING §22.1: 5 signup intents per IP per hour on the public surface. */
 const PUBLIC_SIGNUP_HOURLY_LIMIT = 5;

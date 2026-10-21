@@ -1,6 +1,6 @@
 // apps/backend/src/modules/38-terminology/jobs/platform-objects.ts — the PLATFORM terminology bucket (GAP-108).
 //
-// Release files live in ONE platform bucket (`TERMINOLOGY_PLATFORM_BUCKET`, default `wardenx-platform-terminology`),
+// Release files live in ONE platform bucket (`TERMINOLOGY_PLATFORM_BUCKET`, default `chartwarden-platform-terminology`),
 // never in a tenant bucket: they are reference data, and the licensed ones (SNOMED CT, LOINC, the RxNorm full
 // release) must not be copied around. M38 may not import M22's S3 client (architecture §25.15), so the SigV4 store is
 // declared STRUCTURALLY here and the composition root passes M22's real adapter. The bucket itself is an ops
@@ -39,7 +39,7 @@ export interface PlatformS3Slice {
   }>;
 }
 
-export const DEFAULT_PLATFORM_BUCKET = "wardenx-platform-terminology";
+export const DEFAULT_PLATFORM_BUCKET = "chartwarden-platform-terminology";
 const READ_URL_TTL_SECONDS = 120;
 const OCTET_STREAM = "application/octet-stream";
 
