@@ -141,8 +141,10 @@ export function buildM11AssessmentSuggestionConsumer(deps: AssessmentSuggestionD
       const updated = [...banner, action.entry];
       const { legacyKey, newKey } = bannerKeys(payload.patientId);
       const serialised = JSON.stringify(updated);
-      await deps.redis.set(legacyKey, serialised, "EX", BANNER_TTL_SEC);
+      // New key first: if the second write throws, legacy is still unwritten, so the redelivery (which
+      // short-circuits on a legacy hit) redoes both instead of leaving the new key permanently behind.
       await deps.redis.set(newKey, serialised, "EX", BANNER_TTL_SEC);
+      await deps.redis.set(legacyKey, serialised, "EX", BANNER_TTL_SEC);
 
       await withOrgContext(
         deps.db,

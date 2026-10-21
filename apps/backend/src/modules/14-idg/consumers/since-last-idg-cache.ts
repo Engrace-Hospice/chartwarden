@@ -124,8 +124,10 @@ async function writeEntry(
 ): Promise<void> {
   const { legacyKey, newKey } = cacheKeys(patientId);
   const serialised = JSON.stringify(entry);
-  await redis.set(legacyKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
+  // New key first: a failure on the second write leaves legacy unwritten, so the redelivery (which
+  // short-circuits on a legacy hit) redoes both instead of leaving the new key permanently behind.
   await redis.set(newKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
+  await redis.set(legacyKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
 }
 
 /**
