@@ -151,14 +151,14 @@ describe("§7.2 no PHI leaves the perimeter in out-of-band payloads", () => {
         alertOrMessage: redTeamAlert,
         channel,
         recipientUserId: "u-1",
-        baseUrl: "https://app.wardenx.test",
+        baseUrl: "https://app.chartwarden.test",
       });
       const serialized = JSON.stringify(out);
       expect(serialized).not.toContain(PHI);
       expect(serialized).not.toContain("Jane");
       // Only the content-free allowlist (id + generic short + deep link) crosses.
       expect(Object.keys(out).sort()).toEqual(["deepLink", "notificationDeliveryId", "short"]);
-      expect(out.deepLink).toBe("https://app.wardenx.test/n/nd-1"); // carries no patient/channel id
+      expect(out.deepLink).toBe("https://app.chartwarden.test/n/nd-1"); // carries no patient/channel id
     }
   });
 });

@@ -36,7 +36,7 @@ describe("§12.3 append-only GRANT verification", () => {
 
   it("ignores non-app roles and tables outside the audit allowlist", () => {
     const grants: GrantSnapshot[] = [
-      { role: "wardenx_migrator", table: "audit_event", privileges: ["UPDATE"] },
+      { role: "chartwarden_migrator", table: "audit_event", privileges: ["UPDATE"] },
       { role: "chartwarden_app", table: "patient", privileges: ["UPDATE"] },
     ];
     expect(verifyAppendOnly(grants, { auditTables: ["audit_event"] })).toEqual([]);

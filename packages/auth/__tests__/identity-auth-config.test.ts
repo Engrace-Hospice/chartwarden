@@ -49,20 +49,20 @@ describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
 describe("native origins stay separate from browser/WebAuthn origins", () => {
   const env = {
     NODE_ENV: "production",
-    BETTER_AUTH_URL: "https://api.wardenx.health",
-    TRUSTED_ORIGINS: "https://app.wardenx.health,https://portal.wardenx.health",
+    BETTER_AUTH_URL: "https://api.chartwarden.health",
+    TRUSTED_ORIGINS: "https://app.chartwarden.health,https://portal.chartwarden.health",
     MOBILE_AUTH_TRUSTED_ORIGINS: "chartwarden://,chartwarden-staging://,chartwarden://",
   };
 
   it("adds exact native schemes to Better Auth only", () => {
     expect(resolveWebTrustedOrigins(env)).toEqual([
-      "https://app.wardenx.health",
-      "https://portal.wardenx.health",
+      "https://app.chartwarden.health",
+      "https://portal.chartwarden.health",
     ]);
     expect(resolveMobileAuthOrigins(env)).toEqual(["chartwarden://", "chartwarden-staging://"]);
     expect(resolveTrustedOrigins(env)).toEqual([
-      "https://app.wardenx.health",
-      "https://portal.wardenx.health",
+      "https://app.chartwarden.health",
+      "https://portal.chartwarden.health",
       "chartwarden://",
       "chartwarden-staging://",
     ]);
@@ -70,16 +70,16 @@ describe("native origins stay separate from browser/WebAuthn origins", () => {
 
   it("never uses a native scheme as a WebAuthn expectedOrigin", () => {
     expect(resolvePasskeyOrigins(env)).toEqual([
-      "https://app.wardenx.health",
-      "https://portal.wardenx.health",
-      "https://api.wardenx.health",
+      "https://app.chartwarden.health",
+      "https://portal.chartwarden.health",
+      "https://api.chartwarden.health",
     ]);
   });
 
   it.each([
     "*",
     "null",
-    "https://mobile.wardenx.health",
+    "https://mobile.chartwarden.health",
     "chartwarden://callback",
     "chartwarden://*",
     "exp://",

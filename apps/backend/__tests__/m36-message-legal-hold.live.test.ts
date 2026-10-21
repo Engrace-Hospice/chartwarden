@@ -12,7 +12,7 @@
  *   5. PERMISSION  messaging.retention.manage is in the catalog table and granted to the three roles.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { withOrgContext } from "@chartwarden/tenancy";
 import { DegradedError, messagingHoldLockName } from "@chartwarden/types";

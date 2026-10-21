@@ -87,7 +87,7 @@ const ROLES = [
   "chartwarden_admin",
   "chartwarden_readonly",
   "chartwarden_audit_writer",
-  "wardenx_platform_live_test",
+  "chartwarden_platform_live_test",
 ];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -782,17 +782,17 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       // A BYPASSRLS login with SELECT on `organization` only — the shape of `chartwarden_platform_login` (the real role
       // is created out-of-band by ops, so the suite stands up its own stand-in of the same privilege class).
       await admin.query(
-        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wardenx_platform_live_test') THEN
-           CREATE ROLE wardenx_platform_live_test LOGIN BYPASSRLS PASSWORD 'platform_live_test'; END IF; END $$;`,
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='chartwarden_platform_live_test') THEN
+           CREATE ROLE chartwarden_platform_live_test LOGIN BYPASSRLS PASSWORD 'platform_live_test'; END IF; END $$;`,
       );
-      await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform_live_test");
-      await admin.query("GRANT SELECT ON organization TO wardenx_platform_live_test");
+      await admin.query("GRANT USAGE ON SCHEMA public TO chartwarden_platform_live_test");
+      await admin.query("GRANT SELECT ON organization TO chartwarden_platform_live_test");
       await admin.query("UPDATE organization SET status='active' WHERE id IN ($1,$2)", [
         ORG_A,
         ORG_B,
       ]);
       const platformUrl = new URL(DB_URL as string);
-      platformUrl.username = "wardenx_platform_live_test";
+      platformUrl.username = "chartwarden_platform_live_test";
       platformUrl.password = "platform_live_test";
       const platformHandle = createDbClient({ connectionString: platformUrl.toString() });
       try {

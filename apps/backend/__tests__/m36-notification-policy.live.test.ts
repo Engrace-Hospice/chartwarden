@@ -12,7 +12,7 @@
  *      executable by PUBLIC; flags of one tenant do not leak to another.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:notification-policy:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";

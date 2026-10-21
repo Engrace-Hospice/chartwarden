@@ -18,7 +18,7 @@
  *   9. FLAG         off => 404 / disabled list.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:promotions:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";

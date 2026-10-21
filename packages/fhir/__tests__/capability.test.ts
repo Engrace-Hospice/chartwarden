@@ -22,7 +22,7 @@ const catalog: FhirCapabilityCatalog = {
   fhirVersion: "4.0.1",
   releaseTag: "2026.08.0",
   publicationDate: "2026-08-01",
-  baseUrl: "https://fhir.wardenx.com/fhir/r4",
+  baseUrl: "https://fhir.chartwarden.com/fhir/r4",
   resources: [
     {
       type: "Patient",

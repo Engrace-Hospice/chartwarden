@@ -17,7 +17,7 @@ import {
 } from "../src/bootstrap/realtime";
 
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
-const ORIGIN = "https://app.wardenx.test";
+const ORIGIN = "https://app.chartwarden.test";
 const ORG_ID = "org_1";
 const HINT = { kind: "message.new", cursor: "c1", ids: { channelId: "ch_1", messageId: "msg_1" } };
 

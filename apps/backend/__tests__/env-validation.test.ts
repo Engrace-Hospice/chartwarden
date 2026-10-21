@@ -24,8 +24,8 @@ const GOOD: EnvLike = {
   NODE_ENV: "production",
   DATABASE_URL: "postgres://u:p@host:5432/db",
   BETTER_AUTH_SECRET: "x".repeat(32),
-  BETTER_AUTH_URL: "https://app.wardenx.cloud",
-  TRUSTED_ORIGINS: "https://app.wardenx.cloud",
+  BETTER_AUTH_URL: "https://app.chartwarden.cloud",
+  TRUSTED_ORIGINS: "https://app.chartwarden.cloud",
   // 32 bytes base64-encoded
   TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
   // M24 §8.7 — the master KEK for state trading-partner secrets (also 32 bytes base64).
@@ -35,18 +35,18 @@ const GOOD: EnvLike = {
   EVV_OFFLINE_FINGERPRINT_KEY: "e".repeat(32),
   // TASK-010 — the remaining Phase 2 (SEC-005/OPS-010) required vars.
   REDIS_URL: "rediss://user:pass@host:6379",
-  M23_X12_GATEWAY_URL: "https://x12.wardenx.cloud",
+  M23_X12_GATEWAY_URL: "https://x12.chartwarden.cloud",
   M23_X12_GATEWAY_TOKEN: "x".repeat(32),
-  M23_MAC_GATEWAY_URL: "https://mac.wardenx.cloud",
+  M23_MAC_GATEWAY_URL: "https://mac.chartwarden.cloud",
   M23_MAC_GATEWAY_TOKEN: "m".repeat(32),
-  M34_PROVISION_GATEWAY_URL: "https://provision.wardenx.cloud",
+  M34_PROVISION_GATEWAY_URL: "https://provision.chartwarden.cloud",
   M34_PROVISION_GATEWAY_TOKEN: "p".repeat(32),
-  M34_INVITATION_ACCEPT_URL: "https://app.wardenx.cloud/tenant-invitations",
+  M34_INVITATION_ACCEPT_URL: "https://app.chartwarden.cloud/tenant-invitations",
   // F-035 (#95) — the `aud` every SMART Backend Services client assertion must carry.
-  FHIR_TOKEN_ENDPOINT_URL: "https://fhir.wardenx.cloud/fhir/oauth2/token",
+  FHIR_TOKEN_ENDPOINT_URL: "https://fhir.chartwarden.cloud/fhir/oauth2/token",
   DATABASE_PLATFORM_URL: "postgres://u:p@platform-host:5432/db",
-  PASSKEY_RP_ID: "app.wardenx.cloud",
-  WEBAUTHN_RP_ID: "app.wardenx.cloud",
+  PASSKEY_RP_ID: "app.chartwarden.cloud",
+  WEBAUTHN_RP_ID: "app.chartwarden.cloud",
   MESSAGING_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
   CURSOR_SIGNING_KEY: "z".repeat(32),
   TRUSTED_PROXY_CIDRS: "10.0.0.0/8",
@@ -79,7 +79,7 @@ describe("collectEnvProblems", () => {
     expect(collectEnvProblems({ ...GOOD, TRUSTED_ORIGINS: "chartwarden://" })).toEqual([
       { key: "TRUSTED_ORIGINS", problem: expect.stringMatching(/HTTP\(S\) origins/) },
     ]);
-    for (const invalid of ["*", "exp://", "https://app.wardenx.cloud", "chartwarden://callback"]) {
+    for (const invalid of ["*", "exp://", "https://app.chartwarden.cloud", "chartwarden://callback"]) {
       expect(collectEnvProblems({ ...GOOD, MOBILE_AUTH_TRUSTED_ORIGINS: invalid })).toEqual([
         {
           key: "MOBILE_AUTH_TRUSTED_ORIGINS",
@@ -305,7 +305,7 @@ describe("#115 — reserved placeholder hosts", () => {
 
   it("leaves real hosts alone — including the loopback a co-located service legitimately uses", () => {
     for (const host of [
-      "app.wardenx.cloud",
+      "app.chartwarden.cloud",
       "storage.wardenx.chartwarden.cloud",
       "postgres",
       "valkey",
@@ -326,11 +326,11 @@ describe("#115 — reserved placeholder hosts", () => {
   it("extracts hosts from URLs, connection strings, origin lists and bare names", () => {
     expect(hostnamesIn("https://gw.example.invalid/dek/unwrap")).toEqual(["gw.example.invalid"]);
     expect(hostnamesIn("postgresql://u:p%40ss@db-host:5432/wardenx")).toEqual(["db-host"]);
-    expect(hostnamesIn("https://a.wardenx.cloud, https://b.wardenx.cloud")).toEqual([
-      "a.wardenx.cloud",
-      "b.wardenx.cloud",
+    expect(hostnamesIn("https://a.chartwarden.cloud, https://b.chartwarden.cloud")).toEqual([
+      "a.chartwarden.cloud",
+      "b.chartwarden.cloud",
     ]);
-    expect(hostnamesIn("app.wardenx.cloud")).toEqual(["app.wardenx.cloud"]);
+    expect(hostnamesIn("app.chartwarden.cloud")).toEqual(["app.chartwarden.cloud"]);
   });
 
   it("does not mistake a secret for a hostname", () => {
@@ -439,7 +439,7 @@ describe("GAP-146 — the M24 launch-gateway gate is an opt-out production switc
 describe("M36 transactional email (Postmark) credentials", () => {
   const POSTMARK = {
     POSTMARK_SERVER_TOKEN: "pm-token-0123456789abcdef",
-    POSTMARK_FROM_ADDRESS: "no-reply@mail.wardenx.health",
+    POSTMARK_FROM_ADDRESS: "no-reply@mail.chartwarden.health",
     POSTMARK_SENDER_VERIFIED: "true",
   };
   it("is optional as a whole: none set leaves the provider unbound without refusing the boot", () => {

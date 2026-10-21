@@ -16,7 +16,7 @@
  *   7. the database refuses a person writing failed_unreachable; the empty actor may; a human can still reassign out of it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:ack-delivery-failure:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import {

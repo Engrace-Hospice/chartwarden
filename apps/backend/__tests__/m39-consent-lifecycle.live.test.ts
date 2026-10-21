@@ -95,10 +95,10 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
           ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'part_2',
           true,false,true,false,true,true,'consent_record','v1')`,
     );
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-m39-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden-m39-test'");
     const appUrl = new URL(DB_URL as string);
     appUrl.username = "chartwarden_app";
-    appUrl.password = "wardenx-m39-test";
+    appUrl.password = "chartwarden-m39-test";
     handle = createDbClient({
       connectionString: appUrl.toString(),
     });

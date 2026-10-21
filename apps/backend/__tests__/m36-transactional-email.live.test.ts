@@ -69,7 +69,7 @@ const ROLES = [
 ];
 const ORIGIN = "http://localhost:3000";
 const SERVER_TOKEN = "pm-live-SERVER-TOKEN-0123456789abcdef";
-const FROM = "no-reply@mail.wardenx.health";
+const FROM = "no-reply@mail.chartwarden.health";
 const DECEASED = "11111111-1111-4111-8111-111111111111";
 
 interface Received {
@@ -170,7 +170,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
         ? {
             linkDelivery: createLinkDelivery({
               transport: binding.linkEmailTransport,
-              baseUrl: "https://portal.wardenx.test",
+              baseUrl: "https://portal.chartwarden.test",
             }),
           }
         : {}),
@@ -373,7 +373,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
     await expect(
       createAuditorLinkEmailDelivery({
         transport: unbound.linkEmailTransport,
-        baseUrl: "https://app.wardenx.test",
+        baseUrl: "https://app.chartwarden.test",
       }).deliver({
         organizationId: "o",
         engagementId: "e",

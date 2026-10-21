@@ -64,10 +64,10 @@ describe.skipIf(!DB_URL)("GAP-004 death cascade — LIVE Postgres", () => {
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-gap004','GAP-004 Org','GAP-004 Org')",
       [ORG],
     );
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-gap004-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden-gap004-test'");
     const appUrl = new URL(DB_URL as string);
     appUrl.username = "chartwarden_app";
-    appUrl.password = "wardenx-gap004-test";
+    appUrl.password = "chartwarden-gap004-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
   }, 120_000);
 

@@ -869,7 +869,7 @@ describe("M2-T06 identity route inventory", () => {
           }),
         ],
         emailTransport: transport,
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
       });
       await app.inject({
         method: "POST",
@@ -902,7 +902,7 @@ describe("M2-T06 identity route inventory", () => {
           }),
         ],
         emailTransport: transport,
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
       });
       await app.inject({
         method: "POST",
@@ -935,7 +935,7 @@ describe("M2-T06 identity route inventory", () => {
       const { app, invitations } = makeServer({
         seed: [], // no membership for admin_1
         emailTransport: transport,
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
       });
       const res = await app.inject({
         method: "POST",
@@ -957,7 +957,7 @@ describe("M2-T06 identity route inventory", () => {
       const transport = capturingEmailTransport();
       const { app } = makeServer({
         emailTransport: transport,
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
       });
       const res = await app.inject({
         method: "POST",
@@ -967,7 +967,7 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(201);
       const body = res.json() as { inviteUrl?: string };
-      expect(body.inviteUrl).toMatch(/^https:\/\/app\.wardenx\.example\/invite\//);
+      expect(body.inviteUrl).toMatch(/^https:\/\/app\.chartwarden\.example\/invite\//);
       expect(transport.sent).toHaveLength(1);
       expect(transport.sent[0]!.to).toBe("new@example.com");
       expect(transport.sent[0]!.text).toContain(body.inviteUrl);
@@ -1012,7 +1012,7 @@ describe("M2-T06 identity route inventory", () => {
       const transport = capturingEmailTransport();
       const { app, invitations } = makeServer({
         emailTransport: transport,
-        webAppBaseUrl: "https://app.wardenx.example",
+        webAppBaseUrl: "https://app.chartwarden.example",
       });
       await app.inject({
         method: "POST",

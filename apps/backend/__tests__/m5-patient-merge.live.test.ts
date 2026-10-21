@@ -70,10 +70,10 @@ describe.skipIf(!DB_URL)("F-171 direct patient merge — LIVE Postgres", () => {
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'actor@f171.test')`, [ACTOR]);
-    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-f171-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'chartwarden-f171-test'");
     const appUrl = new URL(DB_URL as string);
     appUrl.username = "chartwarden_app";
-    appUrl.password = "wardenx-f171-test";
+    appUrl.password = "chartwarden-f171-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
   }, 120_000);
 

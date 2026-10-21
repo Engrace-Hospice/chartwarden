@@ -361,7 +361,7 @@ describe("§7.2 — composed PHI never traverses the out-of-band sanitizer (§4.
       },
       channel: "sms",
       recipientUserId: "u-ordering",
-      baseUrl: "https://app.wardenx.example",
+      baseUrl: "https://app.chartwarden.example",
     });
     const blob = JSON.stringify(sanitized);
     expect(blob).not.toContain("Jane Doe");

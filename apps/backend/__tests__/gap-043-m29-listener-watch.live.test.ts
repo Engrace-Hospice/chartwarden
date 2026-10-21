@@ -14,7 +14,7 @@
  * own live suite, gap-086-m29-listener, which also proves the heartbeat fact is written).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap043:listener-watch:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the chartwarden_* roles.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";

@@ -729,12 +729,12 @@ describe("M10-T06 — §4.9.1 out-of-band PHI strip", () => {
       patientDisplayName: "Jane Doe",
       windowState: "closing",
       hoursUntilDeadline: 12,
-      ctaUrl: "https://app/wardenx/hope/123",
+      ctaUrl: "https://app/chartwarden/hope/123",
     });
     const oob = buildOutOfBandPayload(alert);
     expect(oob.body).not.toContain("Jane");
     expect(oob.body).not.toContain("02_huv1");
-    expect(oob.ctaUrl).toBe("https://app/wardenx/hope/123");
+    expect(oob.ctaUrl).toBe("https://app/chartwarden/hope/123");
   });
 });
 

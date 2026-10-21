@@ -99,7 +99,7 @@ beforeAll(() => {
       "-days",
       "1",
       "-subj",
-      "/CN=wardenx-test-lab-receiver",
+      "/CN=chartwarden-test-lab-receiver",
     ]);
     tlsCertPem = readFileSync(certPath, "utf8");
     tlsKeyPem = readFileSync(keyPath, "utf8");

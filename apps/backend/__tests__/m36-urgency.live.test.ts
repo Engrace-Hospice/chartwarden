@@ -22,7 +22,7 @@
  *  11. GRANTS        migration 1105 grants receive only to qualified clinical role keys.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:urgency:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";

@@ -404,7 +404,7 @@ describe("M28-fhir-inject — R1/R2: anonymous discovery", () => {
 
 // ── R3 — token mint: well-formed body still fails CLOSED (documented Phase-1 posture, not a bug) ───────
 describe("M28-fhir-inject — R3: token mint", () => {
-  const TOKEN_URL = "https://fhir.wardenx.test/fhir/oauth2/token";
+  const TOKEN_URL = "https://fhir.chartwarden.test/fhir/oauth2/token";
 
   it("mints for a valid api key, and the minted token is accepted as a bearer", async () => {
     // The assertion that matters. A mint whose product is never presented proves the endpoint returned
@@ -1060,7 +1060,7 @@ describe("M28-fhir-inject — admin: tenant config (R37-R39)", () => {
       headers: SUPER,
       payload: {
         tenantFhirHost: "fhir.partner.example.org",
-        identifierUriBase: "https://wardenx.example/fhir",
+        identifierUriBase: "https://chartwarden.example/fhir",
       },
     });
     expect(write.statusCode).toBe(200);
@@ -1086,7 +1086,7 @@ describe("M28-fhir-inject — admin: tenant config (R37-R39)", () => {
       headers: SUPER,
       payload: {
         tenantFhirHost: "fhir.partner.example.org",
-        identifierUriBase: "https://wardenx.example/fhir",
+        identifierUriBase: "https://chartwarden.example/fhir",
       },
     });
     const rotate = await app.inject({

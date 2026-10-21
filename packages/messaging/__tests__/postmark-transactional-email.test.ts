@@ -53,7 +53,7 @@ function build(responses: Array<Response | Error>, extra: { maxAttempts?: number
   const sleeps: number[] = [];
   const transport = createPostmarkTransactionalEmailTransport({
     serverToken: TOKEN,
-    from: "no-reply@wardenx.test",
+    from: "no-reply@chartwarden.test",
     fetch,
     log: (l) => logs.push(l),
     sleep: async (ms) => {
@@ -73,7 +73,7 @@ describe("Postmark transactional email adapter", () => {
     expect(calls[0]?.url).toBe("https://api.postmarkapp.com/email");
     expect(calls[0]?.headers["X-Postmark-Server-Token"]).toBe(TOKEN);
     expect(calls[0]?.body).toMatchObject({
-      From: "no-reply@wardenx.test",
+      From: "no-reply@chartwarden.test",
       To: TO,
       Subject: EMAIL.subject,
       TextBody: EMAIL.text,
@@ -147,7 +147,7 @@ describe("Postmark transactional email adapter", () => {
 describe("resolvePostmarkConfig", () => {
   const GOOD = {
     POSTMARK_SERVER_TOKEN: TOKEN,
-    POSTMARK_FROM_ADDRESS: "no-reply@wardenx.test",
+    POSTMARK_FROM_ADDRESS: "no-reply@chartwarden.test",
     POSTMARK_SENDER_VERIFIED: "true",
   };
   it("binds only with token + From + verified attestation", () => {

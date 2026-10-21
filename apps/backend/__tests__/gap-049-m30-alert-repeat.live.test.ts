@@ -14,7 +14,7 @@
  * event it would receive). Those are covered by their own suites; this one owns the repeat half.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap049:alert-repeat:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";

@@ -43,7 +43,7 @@ function buildApp(lines: LogLine[] = []) {
   app.addHook("onRequest", async (request) => {
     (request as { context?: { correlationId: string } }).context = { correlationId: "cid-test" };
   });
-  app.post("/wardenx-error", async () => {
+  app.post("/chartwarden-error", async () => {
     throw new ChartWardenError("NOT_FOUND", "the thing was not found", 404);
   });
   app.post("/boom", async () => {
@@ -77,7 +77,7 @@ const ERROR = 50;
 describe("applyErrorHandler", () => {
   it("maps a thrown ChartWardenError to its own code + statusCode (unchanged baseline)", async () => {
     const app = buildApp();
-    const res = await app.inject({ method: "POST", url: "/wardenx-error", payload: {} });
+    const res = await app.inject({ method: "POST", url: "/chartwarden-error", payload: {} });
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({
       error: { code: "NOT_FOUND", message: "the thing was not found", correlationId: "cid-test" },
@@ -174,7 +174,7 @@ describe("applyErrorHandler — diagnosable failures reach the caller (F-022 / #
   it("keeps a 4xx ChartWardenError at info with no error object attached", async () => {
     const lines: LogLine[] = [];
     const app = buildApp(lines);
-    await app.inject({ method: "POST", url: "/wardenx-error", payload: {} });
+    await app.inject({ method: "POST", url: "/chartwarden-error", payload: {} });
     const logged = lines.find((l) => l.msg === "handled error");
     expect(logged?.level).toBe(INFO);
     expect(logged?.err).toBeUndefined();

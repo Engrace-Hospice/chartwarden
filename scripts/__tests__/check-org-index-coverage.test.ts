@@ -22,7 +22,7 @@ afterAll(() => {
 
 /** Parse a one-off migration corpus written to a temp dir. */
 function parse(sql: string) {
-  const dir = mkdtempSync(join(tmpdir(), "wardenx-orgidx-"));
+  const dir = mkdtempSync(join(tmpdir(), "chartwarden-orgidx-"));
   dirs.push(dir);
   writeFileSync(join(dir, "0001_fixture.sql"), sql);
   return analyzeMigrations(dir);

@@ -16,7 +16,7 @@
  *   9. DESTRUCTION   chartwarden_destruction can read and remove the org's own row only.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:sbar:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";

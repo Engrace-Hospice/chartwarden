@@ -19,7 +19,7 @@ const REAL_403 = {
   error: {
     code: "FORBIDDEN",
     correlationId: "88099631-3b63-4fe4-8c48-b0f92c92ffe5",
-    documentationUrl: "https://docs.wardenx.app/errors/FORBIDDEN",
+    documentationUrl: "https://docs.chartwarden.app/errors/FORBIDDEN",
     message: "abac predicate 'clinician_self' denied for 'safety.consent.read_self'",
   },
 };

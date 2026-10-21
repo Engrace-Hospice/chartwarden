@@ -18,7 +18,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:promotion-targets:live
  * Use a PRIVATE pgvector/pgvector:pg18 container (max_locks_per_transaction=2048): the suite resets the public schema and the
- * wardenx_* roles.
+ * chartwarden_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";

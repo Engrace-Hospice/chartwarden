@@ -22,7 +22,7 @@
  *  12. FLAG          off => 404 on the ask, {enabled:false} on options.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:medication-question:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
 import {

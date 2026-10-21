@@ -25,8 +25,8 @@ const ctx: SearchContext = {
   organizationId: "org-1",
   recipientClientId: "client-1",
   allowedScopes: ["system/DiagnosticReport.read"],
-  tenantFhirHost: "engrace.fhir.wardenx.com",
-  identifierUriBase: "https://engrace.fhir.wardenx.com",
+  tenantFhirHost: "engrace.fhir.chartwarden.com",
+  identifierUriBase: "https://engrace.fhir.chartwarden.com",
   redactSudContent: false,
 };
 

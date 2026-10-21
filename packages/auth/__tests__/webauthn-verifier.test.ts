@@ -26,8 +26,8 @@ function storeWith(cred: StoredPasskey | null): {
   };
 }
 
-const ORIGIN = "https://app.wardenx.test";
-const RPID = "wardenx.test";
+const ORIGIN = "https://app.chartwarden.test";
+const RPID = "chartwarden.test";
 
 describe("createWebauthnAssertionVerifier (M2 §4.4)", () => {
   it("rejects an assertion with no credential id (malformed)", async () => {

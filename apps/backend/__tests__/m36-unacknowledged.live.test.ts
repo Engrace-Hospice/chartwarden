@@ -15,7 +15,7 @@
  *   6. OPS NUMBERS    the per-org stats reader the gauges and the notice use, under RLS.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:unacknowledged:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AckQueueItemDto, AckQueueResponse } from "@chartwarden/types";
