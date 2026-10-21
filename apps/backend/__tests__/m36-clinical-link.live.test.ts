@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.2 - clinical links, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.2 - clinical links, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit and read-audit
  * plumbing). Only the OWNING-MODULE seams are in-memory fakes (their `linkSummary` lands on other branches).
@@ -48,7 +48,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000c0001";
 const ORG_B = "22222222-2222-4222-8222-2222000c0002";
@@ -226,7 +226,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.2 clinical links - LIVE Postgres", () => {
     u2 = await seedUser("u2", ORG_A);
     outsider = await seedUser("out", ORG_A);
     orgBUser = await seedUser("b", ORG_B);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     appConn = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await appConn.connect();
@@ -296,7 +296,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.2 clinical links - LIVE Postgres", () => {
       const grants = (
         await one<{ privilege_type: string }>(
           `SELECT privilege_type FROM information_schema.role_table_grants
-            WHERE table_name='clinical_link' AND grantee='wardenx_app' ORDER BY 1`,
+            WHERE table_name='clinical_link' AND grantee='chartwarden_app' ORDER BY 1`,
         )
       ).map((g) => g.privilege_type);
       expect(grants).toEqual(["DELETE", "INSERT", "SELECT"]);
@@ -594,7 +594,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.2 clinical links - LIVE Postgres", () => {
     });
   });
 
-  describe("tenancy and audit (as wardenx_app)", () => {
+  describe("tenancy and audit (as chartwarden_app)", () => {
     it("org B sees none of org A's rows; an org A insert and any UPDATE are rejected", async () => {
       const total = await count(
         `SELECT count(*)::int AS n FROM clinical_link WHERE organization_id=$1`,

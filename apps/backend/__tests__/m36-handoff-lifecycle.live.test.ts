@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.5 - the handoff LIFECYCLE around the routes, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.5 - the handoff LIFECYCLE around the routes, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The expiry tick, the REAL outbox dispatcher and notification consumer over the REAL `AlertEmitter` (platform-default
  * rules seeded by `wireAlertRuleSeed`, supervisors resolved from the seeded `role_set`), and the offboarding path.

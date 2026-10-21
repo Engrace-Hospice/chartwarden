@@ -3,7 +3,7 @@
  *
  * `statistics-refresh` always failed (every `statisticsSeams.*` port threw `M27WorkerPortUnbound`) and
  * `statistic_data` could not be filled. This suite drives the real thing end to end as the NOBYPASSRLS
- * `wardenx_app` role: the four org-explicit source seams (M6 service census, M5 payer program, M8 completed
+ * `chartwarden_app` role: the four org-explicit source seams (M6 service census, M5 payer program, M8 completed
  * visits, M16 bereavement census) each against real rows, then the whole `runStatisticsRefresh` job through the
  * production Drizzle repos, the catalog-validating outbox publisher and the real FTE source (M27's own wage import).
  *
@@ -28,7 +28,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-1111-1111-1111-111111111080";
 const OTHER_ORG = "11111111-1111-1111-1111-111111111081";
@@ -274,7 +274,7 @@ describe.skipIf(!DB_URL)("GAP-080 M27 statistics refresh — LIVE Postgres", () 
       ],
     );
 
-    await q(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await q(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 600_000);
 

@@ -153,7 +153,7 @@ export function createDbRoleStore(db: DbClient): RoleStore {
       return withOrgContext(db, ctx(organizationId), async (tx) => {
         // Platform templates (org_id NULL) + this org's own roles. The `role_org` read policy admits
         // both (migration 0025 widened USING to `org_id = app.org_id OR org_id IS NULL`), so templates
-        // stay visible under the real wardenx_app role; writes remain org-strict (WITH CHECK).
+        // stay visible under the real chartwarden_app role; writes remain org-strict (WITH CHECK).
         const rows = (await tx
           .select(ROLE_COLUMNS)
           .from(schema.roles)
@@ -169,7 +169,7 @@ export function createDbRoleStore(db: DbClient): RoleStore {
 
     async get(roleId: string): Promise<RoleView | null> {
       // By-id read under the AMBIENT request org (withOrgContextFromRequest) so RLS scopes by
-      // app.org_id under wardenx_app; a system template (org_id NULL) stays visible in any scope.
+      // app.org_id under chartwarden_app; a system template (org_id NULL) stays visible in any scope.
       return withOrgContextFromRequest(db, async (tx) => {
         const rows = (await tx
           .select(ROLE_COLUMNS)
@@ -215,7 +215,7 @@ export function createDbRoleStore(db: DbClient): RoleStore {
     // it, so `app.org_id` was unset, `current_setting('app.org_id', true)::uuid` was NULL, the policy
     // predicate was NULL and the read matched NOTHING — every `PATCH /api/v1/roles/:id` threw
     // `role <id> not found` as a raw 500 under real RLS. It looked fine in development because
-    // `db:migrate` grants `wardenx_app` BYPASSRLS there (it says so, loudly, on every run), which is
+    // `db:migrate` grants `chartwarden_app` BYPASSRLS there (it says so, loudly, on every run), which is
     // precisely the difference this suite is live to catch. `get` in this same file already used the
     // ambient form; update/delete did not.
     async update(roleId, patch): Promise<RoleView> {

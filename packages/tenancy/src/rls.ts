@@ -14,7 +14,7 @@ export type RlsPolicyOptions = {
   tableName: string;
   /** Tenant-key column. Default 'organization_id' (the three-column rule's anchor). */
   orgIdColumn?: string;
-  /** Role the policy applies to. Default 'wardenx_app' (the tenant-scoped app role). */
+  /** Role the policy applies to. Default 'chartwarden_app' (the tenant-scoped app role). */
   appRole?: string;
   /** Policy name. Default '<tableName>_org_isolation'. */
   policyName?: string;
@@ -37,7 +37,7 @@ export function generateRlsPolicy(opts: RlsPolicyOptions): string {
   const {
     tableName,
     orgIdColumn = "organization_id",
-    appRole = "wardenx_app",
+    appRole = "chartwarden_app",
     policyName = `${tableName}_org_isolation`,
     allowNullOrgId = false,
   } = opts;
@@ -76,7 +76,7 @@ export function generateRlsPolicyViaJoin(opts: {
     joinFkColumn,
     joinPkColumn = "id",
     joinOrgIdColumn = "organization_id",
-    appRole = "wardenx_app",
+    appRole = "chartwarden_app",
     policyName = `${tableName}_org_isolation`,
   } = opts;
 

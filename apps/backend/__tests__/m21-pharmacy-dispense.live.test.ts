@@ -4,7 +4,7 @@
  *
  * The event is emitted through the REAL catalog-validating publisher under M12's catalog (not a hand-built
  * row), read back from `outbox_event`, and fed to the consumer, which runs as the real NOBYPASSRLS
- * `wardenx_app` role. The contract under test:
+ * `chartwarden_app` role. The contract under test:
  *   - correlation by `data.contents[].medicationOrderId` -> one append-only fact per correlated request;
  *   - NO `comfort_kit_dispatch` row is ever created and no request status changes (no fabricated §1304
  *     chain-of-custody);
@@ -32,7 +32,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -180,7 +180,7 @@ describe.skipIf(!DB_URL)(
           )
         ).rows[0].id as string;
       }
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
       consumer = buildM21PharmacyDispenseConsumer({ db: handle.db });
@@ -290,7 +290,7 @@ describe.skipIf(!DB_URL)(
       expect((await factsFor(ev.id))[0]?.outcome).toBe("no_correlating_request");
     });
 
-    it("does not correlate across tenants, and RLS hides the other tenant's facts from wardenx_app", async () => {
+    it("does not correlate across tenants, and RLS hides the other tenant's facts from chartwarden_app", async () => {
       const orderId = randomUUID();
       const reqB = await seedRequest(ORG_B, "comfort_kit_deploy", [orderId]);
       const evA = await emit(ORG_A, basePayload(orderId), orderId);
@@ -314,7 +314,7 @@ describe.skipIf(!DB_URL)(
       expect(idsA.some((r) => r.source_event_id === evA.id)).toBe(true);
     });
 
-    it("wardenx_app cannot UPDATE or DELETE a fact (append-only)", async () => {
+    it("chartwarden_app cannot UPDATE or DELETE a fact (append-only)", async () => {
       const orderId = randomUUID();
       await seedRequest(ORG_A, "comfort_kit_deploy", [orderId]);
       const ev = await emit(ORG_A, basePayload(orderId), orderId);

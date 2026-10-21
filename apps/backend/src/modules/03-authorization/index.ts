@@ -167,7 +167,7 @@ export function createTenantAuditExecutor(db: DbClient): AuditExecutor {
  * over that durable store + db, so an ABAC-denied access under open glass is allowed AND audited at
  * `critical` (audit #M3 — previously test-only/in-memory). The route audit sink is the DURABLE
  * Drizzle path (`audit: db` — `AuditExecutor` is structurally `insert(table).values(row)`, the M2
- * precedent; migration 0119 gave `wardenx_app` the INSERT policy that makes it legal under RLS), so
+ * precedent; migration 0119 gave `chartwarden_app` the INSERT policy that makes it legal under RLS), so
  * every M3 lifecycle event (role grant/revoke, break-glass, engagement) lands in `audit_event`
  * instead of a per-process Map. Engagements are durable too (GAP-011: `createDbEngagementStore`). The
  * remaining route deps (auditor sessions, compliance notifier, anti-escalation resolver) are still in-memory — recorded in the TASK-001 in-memory

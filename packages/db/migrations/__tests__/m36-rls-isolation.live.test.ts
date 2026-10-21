@@ -3,7 +3,7 @@
  *
  * M36's pure suites exercise the channel/alert routing machinery but never touch a database, so they cannot
  * catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant that leaks across tenants. This
- * applies the real migrations to a real Postgres and drives the policies as the unprivileged `wardenx_app`
+ * applies the real migrations to a real Postgres and drives the policies as the unprivileged `chartwarden_app`
  * role (no BYPASSRLS), covering all SEVEN org-scoped M36 tenant tables (the loop-generated `_org_isolation`
  * policy in 0017 §2).
  *
@@ -19,7 +19,7 @@
  *     not a pure org-isolation policy (would trip the "no IS NULL escape" assertion).
  *   • user_notification_preferences — NOT excluded any more. It was, justified as "keyed on app.user_id
  *     (the user's own rows), not app.org_id" — and that justification was the bug: the table carries
- *     organization_id and is not in NON_ORG_SCOPED, so it IS org-scoped, and its only wardenx_app policy
+ *     organization_id and is not in NON_ORG_SCOPED, so it IS org-scoped, and its only chartwarden_app policy
  *     scoped nothing by the org at all (F-005, #21). It is covered by its own describe block below
  *     rather than by the COVERED sweep, because the sweep's `withOrg` helper sets no app.user_id and so
  *     cannot even reach this policy.
@@ -40,7 +40,7 @@ import { MODULES } from "../../../../architecture/module-manifest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** channel_member.user_id / message.author_user_id / message_receipt.user_id carry real FKs to `user`,
@@ -81,7 +81,7 @@ describe.skipIf(!DB_URL)(
     let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -255,9 +255,9 @@ describe.skipIf(!DB_URL)(
     // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -326,7 +326,7 @@ describe.skipIf(!DB_URL)(
 
     // ── GAP-167 — alert_receipt (0243) shipped with NO grant and NO RLS: live 42501 on every alert-inbox
     // request until 0247. It is a pure child of `alert` (no organization_id), so it is NOT in the loop-driven
-    // COVERED sweep above; its parent-join policy gets its own proof here, as `wardenx_app`.
+    // COVERED sweep above; its parent-join policy gets its own proof here, as `chartwarden_app`.
     it("alert_receipt: org A sees its receipt, org B cannot (parent-join RLS, 0247)", async () => {
       const seenByA = await withOrg(ORG_A, () =>
         db.query("SELECT count(*)::int AS n FROM alert_receipt WHERE id=$1", [a.alertReceipt]),
@@ -338,7 +338,7 @@ describe.skipIf(!DB_URL)(
       expect(seenByB.rows[0].n).toBe(0);
     });
 
-    it("alert_receipt: wardenx_app holds the grant (markAlertRead UPDATE reaches the row, no 42501)", async () => {
+    it("alert_receipt: chartwarden_app holds the grant (markAlertRead UPDATE reaches the row, no 42501)", async () => {
       const res = await withOrg(ORG_A, () =>
         db.query("UPDATE alert_receipt SET read_at = now() WHERE id=$1", [a.alertReceipt]),
       );
@@ -409,7 +409,7 @@ describe.skipIf(!DB_URL)(
     // (the user's own rows), not app.org_id". That justification is the finding: the table carries
     // `organization_id` (FK -> organization) and a unique index on (user_id, organization_id), so it IS
     // org-scoped — it is not in check-tenancy.ts's NON_ORG_SCOPED list, unlike `presence` and
-    // `delivery_endpoint` beside it. Its only wardenx_app policy (migration 0017) constrained neither
+    // `delivery_endpoint` beside it. Its only chartwarden_app policy (migration 0017) constrained neither
     // USING nor WITH CHECK by the org, and a PERMISSIVE policy is the WHOLE of what the role may reach,
     // so there was no tenant moat on this table at all.
     //
@@ -423,7 +423,7 @@ describe.skipIf(!DB_URL)(
         user: string,
         fn: () => Promise<T>,
       ): Promise<T> {
-        await db.query("SET ROLE wardenx_app");
+        await db.query("SET ROLE chartwarden_app");
         await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
         await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
         try {
@@ -528,7 +528,7 @@ describe.skipIf(!DB_URL)(
         const { rows } = await db.query<{ policyname: string; qual: string; with_check: string }>(
           `SELECT policyname, qual, with_check FROM pg_policies
             WHERE schemaname='public' AND tablename='user_notification_preferences'
-              AND permissive='PERMISSIVE' AND roles::text LIKE '%wardenx_app%'`,
+              AND permissive='PERMISSIVE' AND roles::text LIKE '%chartwarden_app%'`,
         );
         expect(rows.length).toBeGreaterThan(0);
         for (const r of rows) {

@@ -9,10 +9,10 @@
  *
  * Two things had to be true for the sync to run, and only one was obvious:
  *   1. the ports had to exist (nppes/stores-drizzle.ts);
- *   2. `wardenx_app` — the role the app pool connects as — had SELECT and NOTHING ELSE on both tables
- *      (migration 0148 reserved every write to `wardenx_admin`, a credential no process holds). Migration
+ *   2. `chartwarden_app` — the role the app pool connects as — had SELECT and NOTHING ELSE on both tables
+ *      (migration 0148 reserved every write to `chartwarden_admin`, a credential no process holds). Migration
  *      0199's `nppes_writer_*` SECURITY DEFINER functions are that write path. This suite runs the whole
- *      orchestration as the NOBYPASSRLS `wardenx_app` role precisely so a missing GRANT fails it.
+ *      orchestration as the NOBYPASSRLS `chartwarden_app` role precisely so a missing GRANT fails it.
  *
  * The CMS NPI Registry is stubbed at the ONE injected `fetch` edge; everything below it — the Luhn gate,
  * the response projection, the §4.7.1 cache diff, the circuit breaker, the run-log checkpoints and the
@@ -34,7 +34,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 // Luhn-valid NPIs (the client short-circuits an invalid one as `invalid_format` without spending a
 // request, so a made-up number would silently never reach the stub).
@@ -231,7 +231,7 @@ describe.skipIf(!DB_URL)("GAP-045 M29 NPPES platform sync — LIVE Postgres", ()
       ],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     requested = [];
   }, 180_000);
@@ -241,7 +241,7 @@ describe.skipIf(!DB_URL)("GAP-045 M29 NPPES platform sync — LIVE Postgres", ()
     if (admin) await admin.end();
   });
 
-  it("`wardenx_app` cannot write either NPPES table directly — the SECURITY DEFINER path is the only one", async () => {
+  it("`chartwarden_app` cannot write either NPPES table directly — the SECURITY DEFINER path is the only one", async () => {
     // The premise of migration 0199. If this ever starts passing, the sync no longer needs the functions
     // and something has quietly widened the grant.
     const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });

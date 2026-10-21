@@ -6,7 +6,7 @@
 // other overlays as they land), all `mdm_provisional` rows, and all `mdm_baa_record` rows. The
 // org-less CANONICAL entities (physician/facility/payer) are shared registry-sourced reference data
 // — they survive the tenant and are NEVER touched (§7.8); at the DB they are out of reach anyway
-// (the tenant `wardenx_app` role has no write grant on canonical, M40-T03).
+// (the tenant `chartwarden_app` role has no write grant on canonical, M40-T03).
 //
 // Pure orchestration over the {@link MdmEraseStore} port — the in-memory store implements it for the
 // slice/tests; the Drizzle-backed store implements it over the overlay/provisional/baa tables in

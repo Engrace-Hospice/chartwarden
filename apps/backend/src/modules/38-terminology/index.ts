@@ -50,7 +50,7 @@ export { createDbTerminologyStore } from "./terminology-store-db";
 
 // GAP-063 — the six §4.1 routes that had no registration anywhere: the value-set catalog, the §7.3
 // tenant remediation report, and the four platform-ops `/api/v1/admin/terminology/*` routes. The
-// admin write door is migration 0206's `terminology_loader` SECURITY DEFINER pair (`wardenx_app` has
+// admin write door is migration 0206's `terminology_loader` SECURITY DEFINER pair (`chartwarden_app` has
 // no canonical write grant, §7.4), and the platform-only conjunct is M38's own ABAC predicate.
 export {
   type TerminologyOpsStore,

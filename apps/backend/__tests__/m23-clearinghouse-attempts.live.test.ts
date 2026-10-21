@@ -1,7 +1,7 @@
 /**
  * M23 (ADR-0053 D4) — the durable `SubmissionAttemptStore` over `clearinghouse_submission_attempt`.
  *
- * Runs the package's framework-free ATTEMPT_STORE_CONTRACT against the real table as the NOBYPASSRLS `wardenx_app`
+ * Runs the package's framework-free ATTEMPT_STORE_CONTRACT against the real table as the NOBYPASSRLS `chartwarden_app`
  * role (so a cross-tenant leak or a missing grant fails here, not in prod), then proves what only Postgres can:
  * RLS isolation, the immutable-identity / final-status guard, and that the app role cannot delete history.
  *
@@ -27,7 +27,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const IDS: AttemptStoreContractIds = {
   orgA: "11111111-1111-4111-8111-1111ca7ea001",
@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'op@ca7e.test')`, [
       CONTRACT_OPERATOR_ID,
     ]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   });
 
@@ -171,7 +171,7 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
     );
     await admin.query("BEGIN");
     try {
-      await admin.query("SET LOCAL ROLE wardenx_destruction");
+      await admin.query("SET LOCAL ROLE chartwarden_destruction");
       await admin.query("SELECT set_config('app.org_id', $1, true)", [IDS.orgA]);
       const del = await admin.query("DELETE FROM clearinghouse_submission_attempt");
       expect(del.rowCount).toBe(1);

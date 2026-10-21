@@ -1,6 +1,6 @@
 /**
  * GAP-158 - the caregiver -> M2 user link (M5, migration 0462) and the M40 grief-resource catalog (migration 0463),
- * LIVE Postgres, driven as the RLS-enforced `wardenx_app` role.
+ * LIVE Postgres, driven as the RLS-enforced `chartwarden_app` role.
  *
  * Proves what unit tests cannot: the link UPDATE actually matches a row (first writer wins, idempotent, a different
  * user conflicts, an unknown caregiver is not-found), the seam read resolves the PRIMARY current caregiver's user
@@ -28,12 +28,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 

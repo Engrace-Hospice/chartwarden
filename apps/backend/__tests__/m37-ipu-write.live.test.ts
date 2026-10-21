@@ -1,6 +1,6 @@
 /**
  * M37-T11 — the IPU write lifecycle proven against real Postgres. Drives the production
- * `buildDrizzleIpuRouteService` as the NOBYPASSRLS `wardenx_app` role: unit create, the admission
+ * `buildDrizzleIpuRouteService` as the NOBYPASSRLS `chartwarden_app` role: unit create, the admission
  * lifecycle (open → request-bed → assign-bed → discharge with the bed-cleaning cross-effects), the restraint
  * workflow (apply → reassess), and the `ipu_record` destruction eraser. Gated on a live DB:
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m37:write:live
@@ -58,7 +58,7 @@ const VALIDATING_OUTBOX = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "44444444-4444-4444-4444-444444444444";
@@ -182,7 +182,7 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
       [ORG_A],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m37@x.test')`, [USER]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

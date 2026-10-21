@@ -1,5 +1,5 @@
 /**
- * M36 transactional email provider (Postmark adapter), end to end, LIVE Postgres, as the RLS-enforced `wardenx_app`.
+ * M36 transactional email provider (Postmark adapter), end to end, LIVE Postgres, as the RLS-enforced `chartwarden_app`.
  *
  * The REAL composition (`bindTransactionalEmail`, the same function `index.ts` boots with) binds the REAL Postmark
  * adapter to a LOCAL FAKE HTTP SERVER standing in for api.postmarkapp.com (no network). What it proves:
@@ -59,12 +59,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORIGIN = "http://localhost:3000";

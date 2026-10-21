@@ -530,7 +530,7 @@ export async function returnSupplyRequest(
 // ── catalog + template writes (rows 12, 14–16, 18, 19) ─────────────────────────────────────────────────
 
 /** Row 12 — create a canonical HCPCS-keyed SKU. PLATFORM-ONLY: `supply_item` carries no organization_id, so
- *  the permission is the first gate and the `wardenx_admin`-only RLS write policy is the backstop. */
+ *  the permission is the first gate and the `chartwarden_admin`-only RLS write policy is the backstop. */
 export async function createSupplyItem(
   client: ApiClient,
   body: ReqBody<operations["postApiV1SuppliesSupplyitems"]>,

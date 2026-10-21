@@ -3,7 +3,7 @@
  * every M34 alert rule is seeded: an `m34.tenant.shred_pending_approval` emit produces a notification row for the
  * platform security owner, and a compliance-officer rule reaches the tenant's compliance officer.
  *
- * Connects as the real NOBYPASSRLS `wardenx_app` role. Proves migration 0740 (enum values + the SECURITY DEFINER
+ * Connects as the real NOBYPASSRLS `chartwarden_app` role. Proves migration 0740 (enum values + the SECURITY DEFINER
  * platform-role reader) applies and that a tenant member without the platform-owned role is not a recipient.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m34:alert-resolvers:live
@@ -28,7 +28,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const PLATFORM_ORG = "22222222-2222-4222-8222-222222222222";
@@ -124,7 +124,7 @@ describe.skipIf(!DB_URL)("M34 alert resolvers - LIVE Postgres (GAP-057)", () => 
     ).rejects.toThrow(/role_platform_authority_platform_owned/);
     await membership(U_SQUATTER, TENANT);
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     emitter = createDrizzleAlertEmitter(handle.db, {
       extendResolvers: m34ResolverExtension(

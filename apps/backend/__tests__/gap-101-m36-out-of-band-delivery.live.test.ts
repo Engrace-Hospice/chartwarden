@@ -2,7 +2,7 @@
  * GAP-101 — M36 out-of-band delivery workers + vendor-webhook reconcile, END TO END over real Postgres.
  *
  * Nothing on the persistence side is stubbed: the dispatch store and the webhook service run as the
- * NOBYPASSRLS `wardenx_app` role (migration 0355's SECURITY DEFINER endpoint/locator functions included)
+ * NOBYPASSRLS `chartwarden_app` role (migration 0355's SECURITY DEFINER endpoint/locator functions included)
  * through the REAL catalog-validating outbox publisher. The ONLY fakes are the vendor transports — vendors
  * are external, so a test double stands where Twilio/Postmark/web-push would.
  *
@@ -25,7 +25,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "33333333-3333-3333-3333-333333333333";
@@ -147,7 +147,7 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
       USER_A,
       USER_B,
     ]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));
     const outbox = {
@@ -455,7 +455,7 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
 
   it("CROSS-TENANT: org B's sweep and endpoint resolution never reach org A's deliveries", async () => {
     const a = await delivery(ORG_A, USER_A, "sms");
-    // org B's own claim (as wardenx_app, RLS-enforced) must not see org A's pending row
+    // org B's own claim (as chartwarden_app, RLS-enforced) must not see org A's pending row
     const claimedByB = await store.claimBatch(ORG_B, "sms", 50, NOW, 120_000);
     expect(claimedByB.map((c) => c.deliveryId)).not.toContain(a.id);
     expect((await row(a.id)).attempt_count).toBe(0);

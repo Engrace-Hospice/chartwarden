@@ -12,7 +12,7 @@
  * POLICY for the role, so the grant was dead on arrival (RLS-enabled with no permissive policy is
  * default-deny; 0159 then FORCE'd RLS so not even ownership exempts it). Migration 0206 adds both.
  *
- * Everything below runs as the NOBYPASSRLS `wardenx_app` role, so a missing GRANT, a missing POLICY or
+ * Everything below runs as the NOBYPASSRLS `chartwarden_app` role, so a missing GRANT, a missing POLICY or
  * a missing function fails the suite rather than passing on a superuser connection (GAP-086).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m38:admin:live
@@ -35,10 +35,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "terminology_loader",
 ];
 
@@ -147,7 +147,7 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
               ('terminal_dx','Terminal diagnosis',NULL,'hospice')`,
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     ops = createDbTerminologyOpsStore(handle.db);
   }, 240_000);
@@ -167,7 +167,7 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
 
   // ── the write door (the substance of GAP-063's admin half) ──────────────────────────────────────
   describe("version registration through terminology_loader", () => {
-    it("writes a real row as wardenx_app — the grant that was dead without a row policy", async () => {
+    it("writes a real row as chartwarden_app — the grant that was dead without a row policy", async () => {
       // 0015 granted terminology_loader INSERT on code_system_version and created no policy naming it.
       // With RLS enabled (and FORCE'd by 0159) this INSERT matched nothing and reported success. If
       // migration 0206's policy is removed, this assertion is what fails.
@@ -293,8 +293,8 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
       expect(`${cause?.message ?? err}`).toMatch(/TERMINOLOGY_UNKNOWN_SYSTEM/);
     });
 
-    it("§7.4 lockdown holds: wardenx_app still cannot write a canonical table directly", async () => {
-      // The function is the ONLY door. If the 0206 policy had been written for wardenx_app instead of
+    it("§7.4 lockdown holds: chartwarden_app still cannot write a canonical table directly", async () => {
+      // The function is the ONLY door. If the 0206 policy had been written for chartwarden_app instead of
       // terminology_loader, this would succeed and the lockdown would be gone.
       const direct = new Client({ connectionString: appRoleUrl(DB_URL as string) });
       await direct.connect();
@@ -355,14 +355,14 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
       return r.rows[0].id as string;
     }
 
-    it("returns EVERY tenant's extensions from one wardenx_app connection", async () => {
+    it("returns EVERY tenant's extensions from one chartwarden_app connection", async () => {
       await seedExtension(ORG_A, "I50.22");
       await seedExtension(ORG_B, "I50.23");
       const rows = await ops.listTenantExtensions({});
       expect(rows.map((r) => r.organizationId).sort()).toEqual([ORG_A, ORG_B].sort());
     });
 
-    it("a DIRECT read of the same table as wardenx_app sees nothing — the RLS policy still stands", async () => {
+    it("a DIRECT read of the same table as chartwarden_app sees nothing — the RLS policy still stands", async () => {
       // This is why the governance view is a definer FUNCTION and not a grant: on the tenant pool the
       // org-scoped policy applies, so a plain SELECT would silently show one tenant while the page
       // claimed to show all of them.

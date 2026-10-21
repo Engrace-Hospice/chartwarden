@@ -1,5 +1,5 @@
 /**
- * Phase 3 (DDE/Stedi plan) — hospice claim-line assembly over REAL Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * Phase 3 (DDE/Stedi plan) — hospice claim-line assembly over REAL Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * `claim-assembly.ts` previously emitted only the level-of-care lines, billed CHC as one day-unit and added the SIA
  * add-on into the claim total. This proves the corrected assembly against the real schema (migration 1054 + the
@@ -40,7 +40,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 
@@ -63,7 +63,7 @@ const physician = (npi: string, firstName?: string, lastName?: string) => ({
   licenseUnexpiredOnServiceDates: true,
 });
 
-describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let providerEntityId: string;
@@ -102,7 +102,7 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
         [USER, ORG],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     actor = { organizationId: ORG, userId: USER, membershipId, actorKind: "user" };
     // The tenant-entered visit-charge schedule (migration 1056) every visit is billed from, entered through the real
@@ -232,7 +232,7 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
           effectiveFrom: "2025-01-01",
           effectiveTo: null,
         }),
-        // REAL: the windowed read of the schedule entered in beforeAll, under RLS as wardenx_app.
+        // REAL: the windowed read of the schedule entered in beforeAll, under RLS as chartwarden_app.
         visitChargeVersions: buildM23ReferenceDataAdapter(handle.db as never).visitChargeVersions,
       },
       ruleRegistry: registry,

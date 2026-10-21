@@ -3,7 +3,7 @@
 // only sanctioned reader, so this Drizzle adapter lives here (not the M4 backend dir).
 //
 // Every read runs inside `withOrgContext`, so RLS scopes rows to the tenant (`audit_event` grants
-// wardenx_app SELECT on its own org's rows only). All list reads are cursor-paginated newest-first; the
+// chartwarden_app SELECT on its own org's rows only). All list reads are cursor-paginated newest-first; the
 // opaque cursor encodes the last row's (createdAt, id) for stability across the partitioned table. The
 // filter/access/scope predicates are pushed to SQL so pagination is exact (LIMIT n+1).
 import { type DbClient, schema } from "@chartwarden/db";

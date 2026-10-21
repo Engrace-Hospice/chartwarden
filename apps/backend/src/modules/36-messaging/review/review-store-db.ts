@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/review/review-store-db.ts - WP 3.8: the `messaging_review_item` rows (ADR-0065).
 //
 // Writes take the caller's `tx` (the service or the queue owns the transaction). Every statement names the organization on
-// top of RLS. `wardenx_app` may INSERT and UPDATE only the decision columns and has no DELETE: nothing here removes a row.
+// top of RLS. `chartwarden_app` may INSERT and UPDATE only the decision columns and has no DELETE: nothing here removes a row.
 // WP 3.9 queues its own rows through `queueReviewItems` (same table, source 'care_team_change').
 import { schema } from "@chartwarden/db";
 import { REVIEW_LIST_DEFAULT, REVIEW_LIST_MAX } from "@chartwarden/messaging";

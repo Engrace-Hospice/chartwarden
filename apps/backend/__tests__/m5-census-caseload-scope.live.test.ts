@@ -10,7 +10,7 @@
  * M12 `refillInboxWhere` lesson ("a post-read `rows.filter(...)` returns the same rows ... while still
  * reading every refill in the tenant") applied to the surface with 5,000 rows in it.
  *
- * Drives the PRODUCTION Drizzle service as the NOBYPASSRLS `wardenx_app` role, so RLS is the backstop
+ * Drives the PRODUCTION Drizzle service as the NOBYPASSRLS `chartwarden_app` role, so RLS is the backstop
  * under the narrowing rather than a substitute for it.
  *
  * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
@@ -27,10 +27,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-00000000000a";

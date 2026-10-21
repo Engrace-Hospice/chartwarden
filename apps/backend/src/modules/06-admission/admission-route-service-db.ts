@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission — PRODUCTION AdmissionRouteService (M6L-T01 reads, T02–T03 writes).
 //
 // READS (referral inbox, admission census + detail, election periods, compliance windows) run as real
-// Drizzle queries under `withOrgContext`, RLS-scoped as the unprivileged `wardenx_app` role. The WRITE
+// Drizzle queries under `withOrgContext`, RLS-scoped as the unprivileged `chartwarden_app` role. The WRITE
 // lifecycle is real for T02 (referral intake → triage → accept → draft-from-referral cascade → NOR ack →
 // activate → hold/resume), T03 (election statement draft/sign/void; election period create/patch; CTI
 // draft/hospice-MD sign [recert activates its period]/attending sign/void/mark-late), and T04 (F2F

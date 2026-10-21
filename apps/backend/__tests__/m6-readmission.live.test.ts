@@ -1,5 +1,5 @@
 /**
- * Readmission workflow, END TO END over real Postgres (the NOBYPASSRLS `wardenx_app` role, the real catalog-validating
+ * Readmission workflow, END TO END over real Postgres (the NOBYPASSRLS `chartwarden_app` role, the real catalog-validating
  * outbox publisher and dispatcher):
  *
  *   discharge (live) → the patient's chart moves to discharged → readmission context suggests period 2 and reports
@@ -108,7 +108,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -319,7 +319,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       );
     // 42 CFR 418.26(b) — the medical director who signs the live-discharge orders.
     await seedPhysicianRole(admin, ORG, MD);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     registerAdmissionSeams({ store: createDrizzleAdmissionReaderStore(handle.db) });
@@ -526,7 +526,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     ]);
 
     // ── …merged with another hospice's period from HETS (CWF is beneficiary-level): 10 days that ended 20 days
-    //    before our first stay. The claim assembly's carry-over read (M23's own eligibility_check, as wardenx_app).
+    //    before our first stay. The claim assembly's carry-over read (M23's own eligibility_check, as chartwarden_app).
     const hetsPayload = {
       hospicePeriods: [
         {
@@ -885,7 +885,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     const patientB = randomUUID();
     await seedM5Patient(admin, ORG_B, patientB);
 
-    // The readmission context of A's stay is invisible from ORG_B (RLS as wardenx_app + explicit org predicate).
+    // The readmission context of A's stay is invisible from ORG_B (RLS as chartwarden_app + explicit org predicate).
     expect(await readmission.getReadmissionContext(ORG_B, stayOfA, {})).toBeNull();
     // ORG_B's plan for A's patient knows nothing of A's history.
     const plan = await readmission.getPatientBenefitPeriodPlan(ORG_B, patientA, {});
@@ -931,7 +931,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       await superuser.close();
     }
   }, 120_000);
-  it("admission_intake_scope as wardenx_app: intake reaches its own org's readmission candidate only", async () => {
+  it("admission_intake_scope as chartwarden_app: intake reaches its own org's readmission candidate only", async () => {
     // Arrange: ORG has a live-discharged stay (patientFree) and an ACTIVE stay (patientActive); ORG_B has a patient.
     const patientFree = randomUUID();
     const stayFree = await admit(patientFree, {}, `${daysAgo(10)}T00:00:00.000Z`);
@@ -1047,7 +1047,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
   });
   // ── admitting clinicians: migration 0379 + `admission_clinical_site_scope`, through the REAL routes ──────────────
   // RBAC from the DB (`role` / `role_permission` / `membership_role`, granted by re-running 0379 once the roles exist),
-  // ABAC over the Drizzle resolver, the DB-backed write + worklist services — all on the NOBYPASSRLS `wardenx_app`
+  // ABAC over the Drizzle resolver, the DB-backed write + worklist services — all on the NOBYPASSRLS `chartwarden_app`
   // connection. The request context (org, user, roles, site scope) is what the authenticate hook assembles in
   // production; here a header shim stands in for it.
 
@@ -1085,7 +1085,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
   }
   const MIGRATION_0379 = "0379_m6_clinician_admission_default_grants.sql";
 
-  it("ADMITTING CLINICIANS as wardenx_app: an RN opens a new admission and a readmission at their own site; another site, another org and a missing grant are refused", async () => {
+  it("ADMITTING CLINICIANS as chartwarden_app: an RN opens a new admission and a readmission at their own site; another site, another org and a missing grant are refused", async () => {
     // Arrange — site A is `providerId` (+ its one location, where activation sites the chart); site B is a second
     // provider entity of ORG.
     const siteB = (

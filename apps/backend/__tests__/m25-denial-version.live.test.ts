@@ -1,6 +1,6 @@
 /**
  * M25 denial `version` on the read routes, proven against real Postgres through the REAL Fastify routes +
- * the REAL Drizzle read/write services, connected as the NOBYPASSRLS `wardenx_app` role.
+ * the REAL Drizzle read/write services, connected as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Every denial transition is optimistic-concurrency (`If-Match: <version>`), but the read routes did not
  * return `version`, so a client had nothing to send. `toDenialItem` now projects it. This suite proves the
@@ -47,7 +47,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PERMISSIONS = ["denial.worklist.read", "denial.read"];

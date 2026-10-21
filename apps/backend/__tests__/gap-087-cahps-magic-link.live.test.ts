@@ -1,6 +1,6 @@
 /**
  * `cahps_export_job` (M30, GAP-087) and `auditor_magic_link` (M2, GAP-011) Drizzle paths, LIVE Postgres, as the
- * RLS-enforced `wardenx_app` role. Both are update-heavy lifecycle tables whose guards live in the WHERE clause
+ * RLS-enforced `chartwarden_app` role. Both are update-heavy lifecycle tables whose guards live in the WHERE clause
  * (live-job convergence, predecessor-state-only transitions, single-use consume) - exactly what mocks cannot prove.
  * Gated on a live DB:
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-087:live
@@ -27,12 +27,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "11111111-1111-4111-8111-111111118701";

@@ -6,7 +6,7 @@
  * database — so it cannot catch anything Postgres does at runtime (a wrong policy
  * predicate, a missing WITH CHECK, or a recursing trigger). This test applies the actual
  * migrations to a real Postgres and exercises the policies as the unprivileged
- * `wardenx_app` role (no BYPASSRLS), proving cross-tenant denial for real.
+ * `chartwarden_app` role (no BYPASSRLS), proving cross-tenant denial for real.
  *
  * It also pins the regression that the simulation missed: audit_event is RANGE-partitioned
  * by month, so an audited write routes to a dated child and the audit trigger fires with
@@ -27,10 +27,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -45,7 +45,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
   /** Run `fn` as the unprivileged app role with app.org_id = `org` (RLS enforced). */
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -131,9 +131,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
   // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
   // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
@@ -234,7 +234,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // ── M38 Terminology — platform-shared RLS + canonical lockdown (§9.2 / §9.4) ─────────────
   // The migrations applied above already include 0014/0015 (M38). This proves on REAL Postgres
   // the two halves of the M38 access model that the pure unit suites cannot reach:
-  //   • the 12 platform tables are public-read (USING (true)) but locked to wardenx_app for
+  //   • the 12 platform tables are public-read (USING (true)) but locked to chartwarden_app for
   //     writes — only `terminology_loader` writes canonical (§7.4) — and return identical rows
   //     under any tenant context (§9.4 public-read positive test);
   //   • value_set_tenant_extension is the one org-scoped table — standard app.org_id RLS, an
@@ -249,7 +249,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     beforeAll(async () => {
       // Seed canonical terminology as superuser (RLS + table grants bypassed). This stands in for
-      // the `terminology_loader` SECURITY DEFINER load path; wardenx_app must never reach it.
+      // the `terminology_loader` SECURITY DEFINER load path; chartwarden_app must never reach it.
       await db.query(
         "INSERT INTO code_system (id,name,license_source) VALUES ('icd10cm','ICD-10-CM','CMS/NCHS public domain')",
       );
@@ -297,7 +297,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       );
     }, 60_000);
 
-    it("§7.4 wardenx_app CANNOT write canonical terminology (code_system + concept table)", async () => {
+    it("§7.4 chartwarden_app CANNOT write canonical terminology (code_system + concept table)", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query("INSERT INTO code_system (id,name,license_source) VALUES ('snomed','x','y')"),
@@ -406,9 +406,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     let messageId: string;
     let alertId: string;
 
-    /** Run `fn` as wardenx_app with both app.org_id and app.user_id set (user-scoped policies). */
+    /** Run `fn` as chartwarden_app with both app.org_id and app.user_id set (user-scoped policies). */
     async function withOrgUser<T>(org: string, user: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
       try {
@@ -626,10 +626,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // The migrations applied above include 0018/0019 (M40). This proves on REAL Postgres the M40
   // access model the pure unit suites cannot reach:
   //   • canonical (external_physician/facility/payer) is org-less platform master data — public-read
-  //     to every tenant, and wardenx_app can NEVER write it (§7.4: only mdm_canonical_writer can);
+  //     to every tenant, and chartwarden_app can NEVER write it (§7.4: only mdm_canonical_writer can);
   //   • external_physician_tenant_overlay is org-scoped — Org A sees its overlay, Org B sees none,
   //     and Org B cannot write an Org-A overlay row (§7.3 two-tenant overlay isolation, WITH CHECK);
-  //   • merge_request is the platform-ops surface — no wardenx_app grant at all;
+  //   • merge_request is the platform-ops surface — no chartwarden_app grant at all;
   //   • the M4 write-audit trigger fires on the overlay write and scrubs `contract_terms` (§3.7).
   describe("M40 MDM — canonical lockdown, overlay isolation, audit (§3.6–3.7 / §7.3–7.4)", () => {
     let physicianId: string;
@@ -637,7 +637,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     beforeAll(async () => {
       // Seed canonical MDM as superuser (RLS + table grants bypassed). This stands in for the
-      // mdm_canonical_writer SECURITY DEFINER load path (NPPES sync / admin merge); wardenx_app
+      // mdm_canonical_writer SECURITY DEFINER load path (NPPES sync / admin merge); chartwarden_app
       // must never reach it (§7.4).
       const phy = await db.query(
         `INSERT INTO external_physician (npi,first_name,last_name,status)
@@ -664,7 +664,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       );
     }, 60_000);
 
-    it("§7.4 wardenx_app CANNOT write canonical MDM (external_physician + facility + payer)", async () => {
+    it("§7.4 chartwarden_app CANNOT write canonical MDM (external_physician + facility + payer)", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query(
@@ -717,7 +717,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 merge_request is platform-ops only — wardenx_app has no grant", async () => {
+    it("§3.6 merge_request is platform-ops only — chartwarden_app has no grant", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("SELECT count(*) FROM merge_request")),
       ).rejects.toThrow();
@@ -829,7 +829,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(a.rows[0].n).toBe(b.rows[0].n);
     });
 
-    it("§7.4 wardenx_app CANNOT write the platform consent-type floor (dual-grant: writer-role only)", async () => {
+    it("§7.4 chartwarden_app CANNOT write the platform consent-type floor (dual-grant: writer-role only)", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query(
@@ -893,7 +893,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
   // ── M6 Admission, Election & Certification — org-scoped RLS, no-DELETE, audit scrub (§3.6–3.7 / §9.3) ─
   // 0026/0027 (M6) applied above. Proves on REAL Postgres: every M6 row is tenant-isolated on
-  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); wardenx_app has
+  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); chartwarden_app has
   // NO DELETE on any M6 table (§3.6 supersession-via-status); the M4 write-audit trigger scrubs the
   // §3.7 intake-PII denylist (referral.patient_name_at_receipt) while non-sensitive columns pass through.
   describe("M6 Admission — cross-tenant isolation, no-DELETE, audit scrub (§3.6–3.7 / §9.3)", () => {
@@ -933,7 +933,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 no M6 table has a DELETE grant for wardenx_app (supersession via status, not deletes)", async () => {
+    it("§3.6 no M6 table has a DELETE grant for chartwarden_app (supersession via status, not deletes)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM referral WHERE id=$1", [REF_A])),
       ).rejects.toThrow();
@@ -952,7 +952,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
   // ── M8 Encounters & Visit Notes — org-scoped RLS, no-DELETE, audit scrub (§3.3–3.4 / §9.3) ──────────
   // 0030/0031 (M8) applied above. Proves on REAL Postgres: every M8 encounter is tenant-isolated on
-  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); wardenx_app has NO
+  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); chartwarden_app has NO
   // DELETE on any M8 table (§3.6 — an encounter is voided, never deleted); the M4 write-audit trigger
   // scrubs the §8.1 free-text PHI denylist (encounter.late_entry_reason) while structured columns
   // (encounter_type) pass through.
@@ -1029,7 +1029,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 no M8 table has a DELETE grant for wardenx_app (encounters are voided, never deleted)", async () => {
+    it("§3.6 no M8 table has a DELETE grant for chartwarden_app (encounters are voided, never deleted)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM encounter WHERE id=$1", [ENC_A8])),
       ).rejects.toThrow();
@@ -1050,7 +1050,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // 0032/0033 (M9) applied above. Proves on REAL Postgres: clinical_assessment is tenant-isolated on
   // app.org_id even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned
   // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 3);
-  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); scale_license
+  // chartwarden_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); scale_license
   // is org-scoped config (§9.4 bullet 4); the M4 write-audit trigger scrubs the `data`/`correction_reason`
   // denylist (§3.1/§8.1) while the structured `scale_type` passes through.
   describe("M9 Clinical Assessments — cross-tenant isolation, correction trigger, audit scrub (§9.4 / §3.4–3.6)", () => {
@@ -1133,7 +1133,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 clinical_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+    it("§3.6 clinical_assessment has NO DELETE grant for chartwarden_app (corrections supersede, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM clinical_assessment WHERE id=$1", [ASMT_A9])),
       ).rejects.toThrow();
@@ -1197,7 +1197,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // 0034/0035 (M10) applied above. Proves on REAL Postgres: hope_assessment is tenant-isolated on app.org_id
   // even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned (target_date)
   // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 4);
-  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); the
+  // chartwarden_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); the
   // hope_timepoint_schedule child is org-scoped; the M4 write-audit trigger scrubs the
   // data/clinical_context_snapshot/late_completion_reason_code denylist (§3.1/§8.1) while the structured
   // rfa_kind passes through.
@@ -1282,7 +1282,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 hope_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+    it("§3.6 hope_assessment has NO DELETE grant for chartwarden_app (corrections supersede, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM hope_assessment WHERE id=$1", [ASMT_A10])),
       ).rejects.toThrow();
@@ -1367,7 +1367,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // ── M11 Orders — org-scoped RLS, append-only no-DELETE, audit scrub (§7.7 / §3.4–3.7 / §9.3)
   // 0036/0037 (M11) applied above. Proves on REAL Postgres: order_record is tenant-isolated on app.org_id
   // even with app authorization stubbed open (§9.3 layer-independence); the WITH CHECK blocks a cross-tenant
-  // write; wardenx_app has NO DELETE (orders supersede via correction / discontinue, never delete — §3.6);
+  // write; chartwarden_app has NO DELETE (orders supersede via correction / discontinue, never delete — §3.6);
   // the monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the data/indication_text
   // denylist (D11 / §8.1) while the structured kind column passes through; the order_signature child is
   // org-scoped.
@@ -1448,7 +1448,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 order_record has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+    it("§3.6 order_record has NO DELETE grant for chartwarden_app (orders supersede/discontinue, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM order_record WHERE id=$1", [ORD_A11])),
       ).rejects.toThrow();
@@ -1479,7 +1479,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // ── M12 DoseSpot Prescribing — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §7.6 / §9.4)
   // 0038/0039 (M12) applied above. Proves on REAL Postgres: medication_order is tenant-isolated on app.org_id
   // even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant
-  // write; wardenx_app has NO DELETE (orders are append + status-transition, never deleted — §3.6); the
+  // write; chartwarden_app has NO DELETE (orders are append + status-transition, never deleted — §3.6); the
   // monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the whole `data` jsonb (all
   // clinician free-text — sig_free_text / indication / notes — lives inside the per-class payload, §7.6) while
   // the structured med_class column passes through; the refill_request child is org-scoped and scrubs its
@@ -1562,7 +1562,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 medication_order has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+    it("§3.6 medication_order has NO DELETE grant for chartwarden_app (orders supersede/discontinue, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM medication_order WHERE id=$1", [MO_A12])),
       ).rejects.toThrow();
@@ -1603,7 +1603,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // ── M13 eMAR & Med Administration — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §9.4)
   // 0040/0041 (M13) applied above. Proves on REAL Postgres: administration_record is tenant-isolated on
   // app.org_id even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a
-  // cross-tenant write; wardenx_app has NO DELETE (administrations supersede via correction / void, never delete
+  // cross-tenant write; chartwarden_app has NO DELETE (administrations supersede via correction / void, never delete
   // — §3.6); the RANGE-partitioned (administered_at) parent's M4 write-audit trigger scrubs BOTH the top-level
   // free-text columns (notes / refusal_reason / …) AND the nested per-mode `data` json-paths (sig_free_text /
   // titrationReason / …, §3.6 D12) while the structured `mode` column passes through; the scheduled_dose child is
@@ -1672,7 +1672,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 administration_record has NO DELETE grant for wardenx_app (administrations supersede/void, never delete)", async () => {
+    it("§3.6 administration_record has NO DELETE grant for chartwarden_app (administrations supersede/void, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM administration_record WHERE id=$1", [AR_A13])),
       ).rejects.toThrow();
@@ -1705,7 +1705,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // 0042/0043 (M14) applied above. Proves on REAL Postgres: idg_decision (the canonical cross-module decision
   // record) + idg_patient_packet (the RANGE-partitioned-by-built_at survey artifact, D12) are tenant-isolated on
   // app.org_id even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a
-  // cross-tenant write; wardenx_app has NO DELETE on either (decisions supersede, packets freeze — never delete);
+  // cross-tenant write; chartwarden_app has NO DELETE on either (decisions supersede, packets freeze — never delete);
   // the M4 write-audit trigger scrubs BOTH the top-level free-text columns AND the nested json-paths — for
   // idg_decision the per-kind `payload` narrative keys (rationaleText / …), for idg_patient_packet the top-level
   // cover summaries + discipline_views AND the nested `built_snapshot` keys (discipline_views / sinceLastIdg) —
@@ -1785,7 +1785,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.3 idg_decision + idg_patient_packet have NO DELETE grant for wardenx_app (decisions supersede / packets freeze, never delete)", async () => {
+    it("§3.3 idg_decision + idg_patient_packet have NO DELETE grant for chartwarden_app (decisions supersede / packets freeze, never delete)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM idg_decision WHERE id=$1", [DEC_A14])),
       ).rejects.toThrow();
@@ -1842,7 +1842,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // ── M17 Scheduling — org-scoped RLS, append-only no-DELETE, PHI-column audit scrub (§3.5 / §3.6 / §9.3/§9.4)
   // 0044/0045 (M17) applied above. Proves on REAL Postgres: `visit` (the central scheduling aggregate,
   // PARTITION BY RANGE service_date, D14) is tenant-isolated on app.org_id even with app authorization stubbed
-  // open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant write; wardenx_app has NO DELETE on
+  // open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant write; chartwarden_app has NO DELETE on
   // `visit` or `visit_state_history` (visits are cancelled/voided + the history is append-only — destruction is
   // the admin eraseFn, §3.6); the M4 write-audit trigger scrubs the §3.6 free-text denylist on `visit`
   // (scheduler_internal_notes / cancellation_reason / reschedule_reason / no_show_reason / evv_missing_reason)
@@ -1936,7 +1936,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.6 visit + visit_state_history have NO DELETE grant for wardenx_app (visits void, history is append-only)", async () => {
+    it("§3.6 visit + visit_state_history have NO DELETE grant for chartwarden_app (visits void, history is append-only)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query("DELETE FROM visit WHERE id=$1", [VIS_A17])),
       ).rejects.toThrow();
@@ -1985,7 +1985,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // satellites (`evv_geofence_evaluation`, `evv_geofence_policy`, `evv_device`, `evv_missing_resolution`,
   // `evv_aggregator_submission`). Every table is tenant-isolated on app.org_id even with app authorization
   // stubbed wide open (§9.4 "disable application-layer ABAC; RLS still blocks cross-tenant"); the WITH CHECK
-  // blocks a cross-tenant write; a cross-tenant UPDATE affects ZERO rows; wardenx_app has NO DELETE on any of
+  // blocks a cross-tenant write; a cross-tenant UPDATE affects ZERO rows; chartwarden_app has NO DELETE on any of
   // the six (events append-only via the §3.2 immutability trigger, the rest destruction-by-eraseFn only);
   // `evv_event` UPDATE is narrowed to the two supersede markers by the append-only trigger (correction-of-record
   // is an APPEND, never an in-place edit, D2); and the M4 write-audit trigger scrubs the §3.6 denylist (GPS
@@ -2150,7 +2150,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(a.rows[0].status).toBe("rejected");
     });
 
-    it("§3.6 wardenx_app has NO DELETE grant on any of the six owned tables (eraseFn-only destruction)", async () => {
+    it("§3.6 chartwarden_app has NO DELETE grant on any of the six owned tables (eraseFn-only destruction)", async () => {
       for (const table of OWNED_TABLES) {
         await expect(
           withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [A_ROW[table]])),
@@ -2207,7 +2207,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // 0048/0049 (M22) applied above. Proves on REAL Postgres (M22 spec §8.8 cross-tenant isolation): the
   // `document` aggregate root is tenant-isolated on app.org_id even with app authorization stubbed open
   // — Org A can SELECT only its own document and Org B cannot (no leak through crafted ids); the WITH
-  // CHECK blocks a cross-tenant INSERT; wardenx_app has NO DELETE on `document` (§3.2 — a document is
+  // CHECK blocks a cross-tenant INSERT; chartwarden_app has NO DELETE on `document` (§3.2 — a document is
   // superseded/voided, never row-deleted; only `document_tag` is user-deletable); and the M4 write-audit
   // trigger scrubs the §3.6 free-text PHI denylist (document.title — may carry a patient name) while the
   // structured columns (retention_class, status) pass through.
@@ -2252,7 +2252,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.2 no DELETE grant on document for wardenx_app (supersession/void, not deletes)", async () => {
+    it("§3.2 no DELETE grant on document for chartwarden_app (supersession/void, not deletes)", async () => {
       await expect(
         withOrg(ORG_A, () => db.query('DELETE FROM "document" WHERE id=$1', [DOC_A22])),
       ).rejects.toThrow();
@@ -2282,7 +2282,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       // canonical app.org_id, no OR-ing FOR ALL pair, the three-column rule — and never asks whether a
       // policy exists AT ALL. So an org-scoped table could ship with zero RLS and every gate stayed
       // green. `feature_flag_evaluation` did exactly that: created in 0000 with organization_id,
-      // granted 4 DML privileges to wardenx_app in 0001, and never given a policy — a per-tenant,
+      // granted 4 DML privileges to chartwarden_app in 0001, and never given a policy — a per-tenant,
       // per-user record of which capabilities a named user was served, readable by every tenant.
       //
       // Asserted against pg_class, NOT by grepping the migrations, for two reasons: M36 enables RLS
@@ -2333,7 +2333,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     it("every RLS table is FORCEd — ownership is not a bypass", async () => {
       // ENABLE does not apply to the table's OWNER. scripts/db/migrate.ts connects as
-      // `DATABASE_ADMIN_URL ?? DATABASE_URL`, so one run with only DATABASE_URL makes `wardenx_app`
+      // `DATABASE_ADMIN_URL ?? DATABASE_URL`, so one run with only DATABASE_URL makes `chartwarden_app`
       // the owner of every table and silently exempts it from all 370 policies — and ownership is not
       // BYPASSRLS, so the boot guard in apps/backend/src/index.ts would not catch it either.
       const r = await db.query<{ relname: string }>(
@@ -2351,7 +2351,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     it("the 11 platform-only zero-policy tables (migration 0159) each have a reachable policy", async () => {
       // These tables have no organization_id, so the org-scoped "has at least one policy" check above
-      // never sees them — they were RLS-enabled with a GRANT to wardenx_admin/tenant_platform_writer
+      // never sees them — they were RLS-enabled with a GRANT to chartwarden_admin/tenant_platform_writer
       // but zero CREATE POLICY, which makes the grant dead: default-deny applies to every non-owner
       // role, including the one that was supposedly granted access.
       const PLATFORM_ZERO_POLICY_TABLES = [
@@ -2388,7 +2388,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       // Policies live on the parent and govern parent-routed access only; a leaf is reached directly
       // by naming it. Before 0118 all 429 leaves had `relrowsecurity = false`, so the ONLY thing
       // preventing direct access was the absence of a GRANT — and one
-      // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO wardenx_app` would have exposed every
+      // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO chartwarden_app` would have exposed every
       // partition of audit_event, clinical_assessment, medication_order, administration_record,
       // evv_event, visit and claim cross-tenant. Leaves carry NO policies on purpose: RLS on + zero
       // policies = default-deny for direct access, while the parent keeps governing normal traffic.

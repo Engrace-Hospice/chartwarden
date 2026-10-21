@@ -9,7 +9,7 @@
  * `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`), and — F-124 (#251) —
  * `terminology`, over M38's registered `TerminologyProvider.expand()`; `mdm.resolveProviderEntity` and two
  * of `referenceData`'s four methods are also real (#250). This proves each against real rows under real
- * RLS (`CHARTWARDEN_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
+ * RLS (`CHARTWARDEN_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `chartwarden_app` role via
  * `handle.db`, never the admin/superuser client used only to seed). F-122 also fixes a genuine,
  * previously-undocumented production defect: `EncounterReaderStore.encounterFacts` — and therefore
  * `BillableEncounterReader.billability` for EVERY caller, not only M23 — had been live-registered since
@@ -98,7 +98,7 @@ const testProviderCcnPort: ProviderCcnPort = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const U = "00000000-0000-0000-0000-0000000000ff";
@@ -401,7 +401,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       [M6_USER, M6_MD, M6_ATTENDING],
     );
 
-    // `_live-app-role.ts` (GAP-086): grants wardenx_app LOGIN + a password and PROVES the returned url
+    // `_live-app-role.ts` (GAP-086): grants chartwarden_app LOGIN + a password and PROVES the returned url
     // actually connects as the NOBYPASSRLS app role, not a superuser — a bare-superuser handle would
     // make every "never resolves another org's row" assertion below pass vacuously.
     const appConnectionString = await appRoleConnectionString(admin, DB_URL!);

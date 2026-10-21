@@ -1,7 +1,7 @@
 /**
  * GAP-161 - the m32 outbox events, LIVE Postgres, through the REAL catalog-validating publisher and the REAL
- * Drizzle stores on the RLS-enforced `wardenx_app` role (the same shape the composition root wires: platform-scoped
- * governance writes ride `wardenx_app` with a null-org outbox row).
+ * Drizzle stores on the RLS-enforced `chartwarden_app` role (the same shape the composition root wires: platform-scoped
+ * governance writes ride `chartwarden_app` with a null-org outbox row).
  *
  * A unit test with a fake publisher cannot tell you the payload satisfies the catalog schema, that a platform-scoped
  * emit is accepted by the null-org outbox function, or that the emit commits in the SAME transaction as the row -
@@ -38,12 +38,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const JOB_ID = "m32-events-live-test";
@@ -55,7 +55,7 @@ const MEMBERSHIP = "b0000000-0000-4000-8000-000000006101";
 describe.skipIf(!DB_URL)("GAP-161 m32 events, LIVE Postgres", () => {
   let admin: Client;
   let app: ReturnType<typeof createDbClient>;
-  // The M32 governance tables grant wardenx_app SELECT only (writes are wardenx_admin on the platform credential), so the
+  // The M32 governance tables grant chartwarden_app SELECT only (writes are chartwarden_admin on the platform credential), so the
   // platform-scoped stores take a privileged handle here; tenant-scoped stores run as the RLS-enforced app role.
   let privileged: ReturnType<typeof createDbClient>;
   let capabilityId = "";

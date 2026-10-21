@@ -4,7 +4,7 @@
  * `bereavement_contact` encounter (D15 / §7.5): one `in_person_visit` contact-log row carrying
  * `source_encounter_id`, the outreach `completed`, and `m16.bereavement.outreach_completed` published
  * through the REAL catalog-validating publisher (`buildTxOutboxPublisher` over the boot catalog, callerModule
- * `m16`) — all as the NOBYPASSRLS `wardenx_app` role, so the cross-tenant case is a real RLS assertion.
+ * `m16`) — all as the NOBYPASSRLS `chartwarden_app` role, so the cross-tenant case is a real RLS assertion.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m16:encounter-signed:live
  */
@@ -23,7 +23,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111130";
 const ORG_B = "22222222-2222-2222-2222-222222222130";
 
@@ -163,7 +163,7 @@ describe.skipIf(!DB_URL)("GAP-130 — M16 m8.encounter.signed in-person completi
         [ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // THE REAL PUBLISHER: the boot catalog's payload validation + namespace check, the composition root's

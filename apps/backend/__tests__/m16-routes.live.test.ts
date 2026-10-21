@@ -1,5 +1,5 @@
 /**
- * GAP-136 — the M16 bereavement §4.1 ROUTES against REAL Postgres, as the NOBYPASSRLS `wardenx_app`
+ * GAP-136 — the M16 bereavement §4.1 ROUTES against REAL Postgres, as the NOBYPASSRLS `chartwarden_app`
  * role. Until this suite, nothing drove `routes/write-service-drizzle.ts` / `read-service-drizzle.ts`
  * end to end: the M16 live suites covered the outbox consumers, the crons and table RLS only. This one
  * mounts the production plugins (`mountM16Routes`) over the production Drizzle services exactly as the
@@ -63,10 +63,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "a1600000-0000-4000-8000-0000000000a1";

@@ -150,7 +150,7 @@ export interface DrizzleBillingEraseStoreOptions {
 
 /**
  * The REAL Drizzle-backed `BillingEraseStore` (§3.7). Runs on the PRIVILEGED M4 destruction-cert connection
- * the composition root binds (wardenx_admin — migration 0077 grants `wardenx_app` no DELETE on any M23
+ * the composition root binds (chartwarden_admin — migration 0077 grants `chartwarden_app` no DELETE on any M23
  * table, so the app-role `withOrgContext` path cannot destroy; the M24/M26 sibling posture). Every WHERE
  * therefore carries the explicit `organization_id` predicate — a certificate can never reach across tenants.
  *
@@ -693,7 +693,7 @@ export function createDrizzleBillingEraseStore(
  * hook M5/M6/M22/M27/M30 use — the composition root passes its bootstrap `registerEraser` as
  * `deps.registerEraser` (M23 cannot import the M1-owned bootstrap registry). The in-memory slice store is
  * the default; prod injects `createDrizzleBillingEraseStore(db)` bound to the PRIVILEGED M4 destruction-cert
- * connection (wardenx_admin — the app role holds no DELETE on any M23 table, migration 0077).
+ * connection (chartwarden_admin — the app role holds no DELETE on any M23 table, migration 0077).
  *
  * TODO(M23 boot-wiring, Integrate phase): (1) add `"billing_record"` to the `@chartwarden/types` `DataClass`
  * union + `REQUIRED_ERASERS` so the deny-stub exists to register over; (2) have the M4 org-destruction

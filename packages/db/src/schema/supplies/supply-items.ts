@@ -6,7 +6,7 @@
 //
 // TENANCY (ARCH-011 / ADR-0010 — the DELIBERATE opt-out): `supply_item` is registered in the
 // `NON_ORG_SCOPED` set of scripts/check-tenancy.ts. Dual-grant RLS in migration 0106: read-all
-// `USING (is_active = true)` TO wardenx_app, writes only via wardenx_admin (the platform catalog loader).
+// `USING (is_active = true)` TO chartwarden_app, writes only via chartwarden_admin (the platform catalog loader).
 // It audits through the M1 baseline `wardenx_audit_trigger()` rather than the M4 generator, because the
 // generator's body reads `NEW.organization_id`, which this table does not have (the M22 form_template
 // precedent). Effective-dating (`effective_from`/`effective_to`) is how a HCPCS code is retired without

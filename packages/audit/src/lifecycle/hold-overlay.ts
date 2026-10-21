@@ -1,6 +1,6 @@
 // @chartwarden/audit - the legal-hold OVERLAY materialiser (M4 spec §2.6 / §10.6; GAP-008; ADR-0051).
 //
-// A hold cannot flip `audit_event.retention_class` (the column is in the integrity hash and `wardenx_app` has no UPDATE on the
+// A hold cannot flip `audit_event.retention_class` (the column is in the integrity hash and `chartwarden_app` has no UPDATE on the
 // table), so a hold is recorded as rows in the append-only `legal_hold_audit_event` overlay: one per (hold, audit row). This
 // module turns a hold's `criteria` into a SQL predicate over `audit_event` and writes the overlay in DAY WINDOWS, each in its
 // own tenant-context transaction - bounded, idempotent (ON CONFLICT DO NOTHING) and resumable from `materialised_through`.

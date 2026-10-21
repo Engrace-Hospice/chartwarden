@@ -2,7 +2,7 @@
 //
 // Proves the PHI write-audit trigger generator without live infra:
 //   • SHAPE — emits the §3.3 function/owner/trigger triad, scrubbing the denylist into the diff.
-//   • HARDENING — SECURITY DEFINER + `OWNER TO wardenx_audit_writer` + hardened search_path (M04-F06).
+//   • HARDENING — SECURITY DEFINER + `OWNER TO chartwarden_audit_writer` + hardened search_path (M04-F06).
 //   • PHI-GUARDS — the generated trigger satisfies the arch:gaps audit-trigger heuristic (acceptance).
 //   • DENYLIST — explicit columns ∪ named categories, deduped + deterministic (§5.1, D10).
 //   • SAFETY — rejects non-identifier table/column names and refuses to self-audit audit_event.
@@ -25,7 +25,7 @@ describe("generateAuditTrigger — §3.3 DDL shape", () => {
 
   it("emits the per-table function, owner change, and trigger", () => {
     expect(ddl).toContain("CREATE OR REPLACE FUNCTION audit_phi_write_encounter() RETURNS trigger");
-    expect(ddl).toContain("ALTER FUNCTION audit_phi_write_encounter() OWNER TO wardenx_audit_writer;");
+    expect(ddl).toContain("ALTER FUNCTION audit_phi_write_encounter() OWNER TO chartwarden_audit_writer;");
     expect(ddl).toContain(
       'CREATE TRIGGER "trg_audit_encounter" AFTER INSERT OR UPDATE OR DELETE ON encounter',
     );
@@ -167,9 +167,9 @@ describe("one-time DDL — audit_scrub helper + writer grants (M04-F06)", () => 
 
   it("grants the writer role INSERT-only access via a targeted RLS policy (no BYPASSRLS)", () => {
     const grants = auditWriterGrantsDDL();
-    expect(grants).toContain("GRANT INSERT ON audit_event TO wardenx_audit_writer;");
+    expect(grants).toContain("GRANT INSERT ON audit_event TO chartwarden_audit_writer;");
     expect(grants).toContain("CREATE POLICY audit_writer_insert ON audit_event");
-    expect(grants).toContain("FOR INSERT TO wardenx_audit_writer WITH CHECK (true)");
+    expect(grants).toContain("FOR INSERT TO chartwarden_audit_writer WITH CHECK (true)");
     expect(grants).not.toContain("BYPASSRLS");
   });
 });

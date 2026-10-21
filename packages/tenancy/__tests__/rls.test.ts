@@ -43,13 +43,13 @@ describe("generateRlsPolicy (M1-T05 §3.13)", () => {
     expect(tenancyGateAccepts(sql)).toBe(true);
     expect(sql).toContain("ALTER TABLE patient ENABLE ROW LEVEL SECURITY;");
     expect(sql).toContain("CREATE POLICY patient_org_isolation ON patient");
-    expect(sql).toContain("FOR ALL TO wardenx_app");
+    expect(sql).toContain("FOR ALL TO chartwarden_app");
     expect(sql).toContain("current_setting('app.org_id', true)::uuid");
     // symmetric USING + WITH CHECK so a tenant can neither read nor write cross-org.
     expect(sql).toContain(
       "WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)",
     );
-    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE, DELETE ON patient TO wardenx_app;");
+    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE, DELETE ON patient TO chartwarden_app;");
   });
 
   it("default policy never carries the banned OR-IS-NULL write shape", () => {

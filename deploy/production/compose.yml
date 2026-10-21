@@ -211,9 +211,9 @@ services:
     environment:
       PROCESS_ROLE: api
       PORT: "3000"
-      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
       MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
@@ -265,9 +265,9 @@ services:
       # where the listener's feed ports are reachable from this container (the compose service name by default).
       M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
       M29_LISTENER_PROBE_HOST: ${M29_LISTENER_PROBE_HOST:-hl7-listener}
-      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
       MESSAGING_ATTACHMENT_SCANNER: clamd
       CLAMD_HOST: clamav
@@ -333,9 +333,9 @@ services:
       M29_MLLP_LISTENER_ENABLED: ${M29_MLLP_LISTENER_ENABLED:-false}
       # GAP-043 — when on, the worker-role watcher pages listener_down; this process then only leaves its heartbeat.
       M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
-      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
@@ -406,8 +406,8 @@ services:
     environment:
       BETTER_AUTH_URL: http://localhost:3000
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
-      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
       CHARTWARDEN_SEED_CREDENTIALS_FILE: /tmp/CREDENTIALS.production.md
       CHARTWARDEN_SEED_ALLOW_PRODUCTION: "yes-reseed-demo"

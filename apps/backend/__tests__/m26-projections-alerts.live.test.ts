@@ -1,6 +1,6 @@
 /**
  * GAP-035 / 037 / 038 / 039 / 040 / 041 — M26 cap projections, inpatient denominator, methodology lock and the
- * band-escalation alerts reaching a PERSON, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role, through the
+ * band-escalation alerts reaching a PERSON, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role, through the
  * real catalog-validating outbox publisher, the real platform-default `alert_rule` seed and the real M36 emitter.
  *
  * Before: recompute() wrote only agency + inpatient snapshots (no per-patient band ever existed), the cron
@@ -33,7 +33,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG = "11111111-aaaa-4aaa-8aaa-111111111111";
 const ORG_B = "22222222-aaaa-4aaa-8aaa-222222222222";

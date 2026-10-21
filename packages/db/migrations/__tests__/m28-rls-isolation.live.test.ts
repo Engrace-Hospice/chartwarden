@@ -4,12 +4,12 @@
  * M28 shipped 🟢 with every gate green but with its Live column reading `0/8 ⚠️` — the eight owned
  * tables were named in NO `*.live.test.ts`, so the per-tenant RLS the migration DECLARES had never been
  * OBSERVED against a real server. Reading 0137 tells you a policy exists; it cannot tell you the policy
- * is correct, that `wardenx_app` is NOBYPASSRLS, that the two partitioned tables are actually sealed at
+ * is correct, that `chartwarden_app` is NOBYPASSRLS, that the two partitioned tables are actually sealed at
  * the leaf, or that the §3.6 denylist really scrubs `secret_cipher`/`payload` out of the audit trail.
- * This file connects as `wardenx_app`, sets `app.org_id` to each of two tenants in turn, and asserts
+ * This file connects as `chartwarden_app`, sets `app.org_id` to each of two tenants in turn, and asserts
  * no leakage — the same shape as every other module's suite (the M32 AI-Platform precedent).
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
  * every assertion below vacuously. That is asserted FIRST, before a single isolation case runs (the
  * M15-T07 lesson).
  *
@@ -27,13 +27,13 @@
  *      Both halves are asserted.
  *   2. **ONE PLATFORM-SHARED table**, `fhir_capability_snapshot`, no organization_id: `FOR SELECT
  *      USING (true)` so a client can read the conformance contract from inside any tenant, and NO write
- *      grant to `wardenx_app` at all (writes are `wardenx_admin` at boot). "Both tenants see the same
+ *      grant to `chartwarden_app` at all (writes are `chartwarden_admin` at boot). "Both tenants see the same
  *      row" is the CORRECT answer here and a leak everywhere else, so the sweep is not uniform.
  *
  * TWO FURTHER INVARIANTS GET THEIR OWN CASES because each is a rule the migration states and only a
  * database can hold:
  *
- *   · **`wardenx_app` has DELETE on NOTHING in M28.** The §3.7 eraser SHREDS in place (zero the cipher,
+ *   · **`chartwarden_app` has DELETE on NOTHING in M28.** The §3.7 eraser SHREDS in place (zero the cipher,
  *     replace the payload with the destroyed sentinel, soft-delete the client) rather than deleting rows
  *     — the rows ARE the §164.528 disclosure-accounting evidence. The privilege is withheld so an
  *     attempted delete is a permission error, not a code-review convention.
@@ -59,7 +59,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -100,7 +100,7 @@ describe.skipIf(!DB_URL)(
     let snapshotId: string;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -238,9 +238,9 @@ describe.skipIf(!DB_URL)(
       if (db) await db.end();
     });
 
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -321,7 +321,7 @@ describe.skipIf(!DB_URL)(
         `SELECT c.relname AS table_name,
               c.relrowsecurity AS rls,
               c.relforcerowsecurity AS forced,
-              has_table_privilege('wardenx_app', c.oid, 'SELECT') AS sel
+              has_table_privilege('chartwarden_app', c.oid, 'SELECT') AS sel
          FROM pg_inherits i
          JOIN pg_class c ON c.oid = i.inhrelid
          JOIN pg_class p ON p.oid = i.inhparent
@@ -338,7 +338,7 @@ describe.skipIf(!DB_URL)(
           leaf.forced,
           `${leaf.table_name} has RLS but not FORCE — the table owner still bypasses it`,
         ).toBe(true);
-        expect(leaf.sel, `${leaf.table_name} is directly readable by wardenx_app`).toBe(false);
+        expect(leaf.sel, `${leaf.table_name} is directly readable by chartwarden_app`).toBe(false);
       }
 
       // A leaf must carry NO policies: parent policies govern parent-routed access, and a leaf policy would
@@ -382,25 +382,25 @@ describe.skipIf(!DB_URL)(
       expect(fromB.rowCount).toBe(1);
     });
 
-    it("gives wardenx_app NO write on the platform-shared CapabilityStatement", async () => {
+    it("gives chartwarden_app NO write on the platform-shared CapabilityStatement", async () => {
       for (const privilege of ["INSERT", "UPDATE", "DELETE"]) {
         const { rows } = await db.query<{ has: boolean }>(
-          "SELECT has_table_privilege('wardenx_app', $1, $2) AS has",
+          "SELECT has_table_privilege('chartwarden_app', $1, $2) AS has",
           [PLATFORM_SHARED, privilege],
         );
-        expect(rows[0].has, `wardenx_app may ${privilege} ${PLATFORM_SHARED}`).toBe(false);
+        expect(rows[0].has, `chartwarden_app may ${privilege} ${PLATFORM_SHARED}`).toBe(false);
       }
     });
 
     // ── privileges: no DELETE anywhere (§3.7 shreds in place) ─────────────────────────────────────────
 
-    it("grants wardenx_app DELETE on NOTHING in M28 — the eraser shreds in place", async () => {
+    it("grants chartwarden_app DELETE on NOTHING in M28 — the eraser shreds in place", async () => {
       for (const table of ALL_TABLES) {
         const { rows } = await db.query<{ has: boolean }>(
-          "SELECT has_table_privilege('wardenx_app', $1, 'DELETE') AS has",
+          "SELECT has_table_privilege('chartwarden_app', $1, 'DELETE') AS has",
           [table],
         );
-        expect(rows[0].has, `wardenx_app may DELETE ${table}`).toBe(false);
+        expect(rows[0].has, `chartwarden_app may DELETE ${table}`).toBe(false);
       }
     });
 

@@ -1,5 +1,5 @@
 /**
- * M25 electronic submission, milestone 6a (hospice ADR/TPE/QIC PRD) - LIVE Postgres as the NOBYPASSRLS `wardenx_app`
+ * M25 electronic submission, milestone 6a (hospice ADR/TPE/QIC PRD) - LIVE Postgres as the NOBYPASSRLS `chartwarden_app`
  * role, through the real services, the real M22 / M23 seams and the real catalog-validating publisher.
  *
  * Proves what the pure suites cannot: every ADR response, appeal, reopening request and QIC escalation request leaves
@@ -68,7 +68,7 @@ if (!FormatRegistry.Has("date-time")) {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const NARRATIVE = "The redetermination overlooked the timely face-to-face note enclosed here.";
@@ -1073,7 +1073,7 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
       expect(view).toMatchObject({ noAttemptRecord: true, proofMissing: false, attempts: [] });
     });
 
-    it("hides another tenant's attempts and refuses its writes (RLS, as wardenx_app)", async () => {
+    it("hides another tenant's attempts and refuses its writes (RLS, as chartwarden_app)", async () => {
       const id = await submittedAppeal();
       const [att] = await attempts("appeal_case_id", id);
       const other = actorOf(memberB, ORG_B, userB);

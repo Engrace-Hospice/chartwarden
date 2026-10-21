@@ -24,7 +24,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";

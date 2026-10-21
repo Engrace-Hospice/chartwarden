@@ -1,6 +1,6 @@
 // WP 3.5 live-suite support (not a test file): the database/app-role bootstrap, the user and channel seeding, the real
 // catalog-validating outbox publisher, the handoff binding and the HTTP helpers both handoff live suites share.
-// Every handoff write runs as the NOBYPASSRLS `wardenx_app` role; the superuser `admin` connection only seeds and inspects.
+// Every handoff write runs as the NOBYPASSRLS `chartwarden_app` role; the superuser `admin` connection only seeds and inspects.
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -27,11 +27,11 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 export const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 export const ROLES = [
-  "wardenx_destruction",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
 ];
 export const HANDOFF_FLAG = "messaging.handoffs";
 export const STAFF_KEYS = ["messaging.read", "messaging.send", "patient.read"];
@@ -120,7 +120,7 @@ export async function bootLiveKit(
     `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'${tag}-a','A','A'),($2,'${tag}-b','B','B')`,
     [orgA, orgB],
   );
-  await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+  await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
   const handle = createDbClient({ connectionString: appRoleUrl(dbUrl) });
   const appConn = new Client({ connectionString: appRoleUrl(dbUrl) });
   await appConn.connect();

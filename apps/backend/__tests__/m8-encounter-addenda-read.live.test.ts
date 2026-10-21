@@ -1,7 +1,7 @@
 /**
  * GAP-027 — `GET /api/v1/encounters/:encounterId` returns the encounter's `addenda[]` (oldest first), proven
  * against real Postgres through the REAL Fastify route + the REAL Drizzle route service + Fastify's
- * response handling, connected as the NOBYPASSRLS `wardenx_app` role.
+ * response handling, connected as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The in-memory route suite proves the field is shaped; it cannot prove the production query reads the right
  * rows, orders them, scopes them by tenant under RLS, or that nothing on the wire strips the field. Covers:
@@ -40,7 +40,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** patient_id / admission_id carry NO FK on `encounter` — literals are fine (the M8 read suite does the same). */
@@ -343,7 +343,7 @@ describe.skipIf(!DB_URL)("M8 encounter addenda on GET /encounters/:id — LIVE P
     expect((await getEncounter(ORG_A, "a1", encounterOf.foreignOwn)).statusCode).toBe(404);
   });
 
-  it("RLS on the table itself: as wardenx_app, an org A context sees none of org B's addenda rows", async () => {
+  it("RLS on the table itself: as chartwarden_app, an org A context sees none of org B's addenda rows", async () => {
     const service = createDbEncounterRouteService(handle.db);
     const a = await service.getEncounter(ORG_A, encounterOf.withAddenda);
     expect(a.addenda?.map((x) => x.status)).toEqual(["signed", "finalized", "draft"]);

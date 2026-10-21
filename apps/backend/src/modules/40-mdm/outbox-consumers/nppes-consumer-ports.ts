@@ -10,8 +10,8 @@
 //
 // THE FOUR WRITE/READ SHAPES, and why each takes the path it does:
 //   · canonical READ — `external_physician` is org-less with a `USING (true)` read policy for
-//     `wardenx_app`, so this is a plain query on the pooled handle. No org context exists to set.
-//   · canonical WRITE — through the migration-0202 SECURITY DEFINER functions. `wardenx_app` holds SELECT
+//     `chartwarden_app`, so this is a plain query on the pooled handle. No org context exists to set.
+//   · canonical WRITE — through the migration-0202 SECURITY DEFINER functions. `chartwarden_app` holds SELECT
 //     and nothing else on the table; that is §3.6's deliberate posture and this adapter does not weaken it.
 //   · outbox EMIT — platform-wide (`organizationId: null`), because a canonical change belongs to no
 //     tenant. Routes through the migration-0186 SECURITY DEFINER insert inside the publisher.

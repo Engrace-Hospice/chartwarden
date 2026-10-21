@@ -14,7 +14,7 @@
 // M20-F03 — `organization_id` IS NOT NULL. §3.3 sketches `organization_id` nullable with "NULL =
 // platform-seeded", and §3.2 Phase E overrules it in the same document: platform polygons live in a
 // SEPARATE pattern-2 platform-shared table (`safety_high_risk_area_platform`, `USING (true)` SELECT,
-// mutations via `wardenx_admin`), never as NULL-org rows here, because a NULL-org row in a tenant-scoped
+// mutations via `chartwarden_admin`), never as NULL-org rows here, because a NULL-org row in a tenant-scoped
 // table is invisible to its own tenant under RLS and reachable by an `OR organization_id IS NULL` policy
 // that ADR-0010 D3 forbids. That platform table is NOT in the manifest's thirteen `ownedTables`, so it is
 // not created here — adding a fourteenth owned table is a manifest change, and Wave P2-2 acceptance #1

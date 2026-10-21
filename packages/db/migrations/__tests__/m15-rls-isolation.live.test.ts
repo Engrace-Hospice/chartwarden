@@ -5,12 +5,12 @@
  * §2.2 lifecycle, the 418.78 volunteer domain and the §4.1 authz composition, but they never touch a
  * database — so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant that
  * leaks across tenants. This test applies the real migrations to a real Postgres and exercises the policies
- * as the unprivileged `wardenx_app` role, proving cross-tenant denial for real on ALL 11 org-scoped M15
+ * as the unprivileged `chartwarden_app` role, proving cross-tenant denial for real on ALL 11 org-scoped M15
  * tables under the canonical `organization_id = current_setting('app.org_id')` ONE-SHAPE policy (ADR-0010
  * D3 — no second PERMISSIVE provider-entity policy; the PE/location narrowing the eight patient-bearing
  * tables carry is M3 ABAC at the handler, never a second policy that would OR rather than AND).
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies every
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies every
  * assertion below vacuously. That is asserted first, before a single isolation case runs.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** A membership sentinel — M15 stores membership ids without a cross-module FK (M2 owns that table). */
@@ -71,7 +71,7 @@ describe.skipIf(!DB_URL)(
     let a: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -264,9 +264,9 @@ describe.skipIf(!DB_URL)(
       if (db) await db.end();
     });
 
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -279,13 +279,13 @@ describe.skipIf(!DB_URL)(
       );
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
       expect(policyBlocks.length).toBe(11);
-      // 0307 (F-234) adds one more tenant policy (the wardenx_destruction one is a different role's).
+      // 0307 (F-234) adds one more tenant policy (the chartwarden_destruction one is a different role's).
       const applicationPolicy = (
         readFileSync(
           join(MIGRATIONS_DIR, "0307_m15_discipline_plan_idg_decision_application.sql"),
           "utf8",
         ).match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []
-      ).filter((b) => b.includes("TO wardenx_app"));
+      ).filter((b) => b.includes("TO chartwarden_app"));
       expect(applicationPolicy).toHaveLength(1);
       for (const block of [...policyBlocks, ...applicationPolicy]) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
@@ -362,10 +362,10 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow();
     });
 
-    it("wardenx_app holds no DELETE on the M15 tables — destruction runs through the eraser (§8.5)", async () => {
+    it("chartwarden_app holds no DELETE on the M15 tables — destruction runs through the eraser (§8.5)", async () => {
       const { rows } = await db.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND privilege_type='DELETE' AND table_name = ANY($1)`,
+       WHERE grantee='chartwarden_app' AND privilege_type='DELETE' AND table_name = ANY($1)`,
         [COVERED.map((c) => c.table)],
       );
       expect(rows.map((r) => r.table_name)).toEqual([]);

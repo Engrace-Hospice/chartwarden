@@ -1,7 +1,7 @@
 /**
  * F-217 — LIVE Postgres proof that the F2F/CTI ADEQUACY predicate (`certification/adequacy.ts`) actually
  * gates benefit-period activation through M6's production write service (`signCtiHospiceMd`, the path that
- * advances any period >= 2), as the real NOBYPASSRLS `wardenx_app` role, with the REAL catalog-validating
+ * advances any period >= 2), as the real NOBYPASSRLS `chartwarden_app` role, with the REAL catalog-validating
  * outbox publisher (`_m6-outbox.ts`) — so the additive `adequacy` field on `m6.election.period_started` is
  * checked against the boot catalog schema, not waved through a no-op.
  *
@@ -43,7 +43,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-11111111217a";
 const ORG_B = "22222222-2222-2222-2222-22222222217b";
 const USER = "33333333-3333-3333-3333-33333333217a";
@@ -69,7 +69,7 @@ const dayOffset = (offset: number): string =>
  */
 const EXPECTED_START = dayOffset(10);
 
-describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (wardenx_app role)", () => {
+describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (chartwarden_app role)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
@@ -274,7 +274,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     svc = createDbAdmissionRouteService(
@@ -535,7 +535,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
     });
   });
 
-  describe("cross-tenant isolation (real wardenx_app role, RLS)", () => {
+  describe("cross-tenant isolation (real chartwarden_app role, RLS)", () => {
     it("another org cannot sign or activate this org's recert CTI; nothing changes", async () => {
       const a = await activate();
       const { periodId, cti } = await recert(a.admissionId, 2);

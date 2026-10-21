@@ -15,6 +15,8 @@ import { generateAuditTrigger } from "../src/index";
 
 const MIGRATIONS_DIR = join(__dirname, "../../db/migrations");
 const read = (file: string): string => readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+// 0163/0164 were applied before the role rename (1139), so they say `wardenx_audit_writer`; the generator now emits `chartwarden_`.
+const asApplied = (sql: string): string => sql.replaceAll("chartwarden_", "wardenx_");
 
 describe("0163_care_plan_version_state_snapshot_redaction.sql — matches the generator verbatim", () => {
   it("contains generateAuditTrigger's function+owner DDL for care_plan_version's corrected denylist", () => {
@@ -29,9 +31,9 @@ describe("0163_care_plan_version_state_snapshot_redaction.sql — matches the ge
     // the SEMANTICALLY LOAD-BEARING pieces (the function body, the denylist array, the retention
     // class, the owner grant) are present verbatim rather than a brittle whole-string match.
     const migration = read("0163_care_plan_version_state_snapshot_redaction.sql");
-    const functionBody = generated.slice(
+    const functionBody = asApplied(generated).slice(
       0,
-      generated.indexOf("ALTER FUNCTION") + "ALTER FUNCTION audit_phi_write_care_plan_version() OWNER TO wardenx_audit_writer;".length,
+      asApplied(generated).indexOf("ALTER FUNCTION") + "ALTER FUNCTION audit_phi_write_care_plan_version() OWNER TO wardenx_audit_writer;".length,
     );
     expect(migration).toContain(functionBody);
   });
@@ -54,9 +56,9 @@ describe("0164_lab_observation_value_sud_redaction.sql — matches the generator
       retentionClass: "compliance_42cfr_part2",
     });
     const migration = read("0164_lab_observation_value_sud_redaction.sql");
-    const functionBody = generated.slice(
+    const functionBody = asApplied(generated).slice(
       0,
-      generated.indexOf("ALTER FUNCTION") +
+      asApplied(generated).indexOf("ALTER FUNCTION") +
         "ALTER FUNCTION audit_phi_write_lab_observation_value() OWNER TO wardenx_audit_writer;".length,
     );
     expect(migration).toContain(functionBody);

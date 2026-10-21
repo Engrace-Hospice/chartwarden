@@ -133,6 +133,7 @@ jobs:
           - { name: "M21 Supplies/DME", script: "test:rls:live:m21" }
           - { name: "M23 Billing-Medicare", script: "test:rls:live:m23" }
           - { name: "M23 per-diem-rate rename (1069)", script: "test:m23:per-diem-rate-rename:live" }
+          - { name: "Role rename (1139)", script: "test:roles-rename:live" }
           - { name: "M24 Billing-Medicaid", script: "test:rls:live:m24" }
           - { name: "M25 Remittance", script: "test:rls:live:m25" }
           - { name: "M26 Cap Management", script: "test:rls:live:m26" }
@@ -191,7 +192,7 @@ jobs:
     #
     # These are a different proof from `rls-live` above, which asserts the POLICIES at the table level.
     # These drive the production Drizzle route services — the real write lifecycles, the real transactional
-    # outbox publisher, the real seams — as the NOBYPASSRLS `wardenx_app` role. Turning them on found 23 of
+    # outbox publisher, the real seams — as the NOBYPASSRLS `chartwarden_app` role. Turning them on found 23 of
     # 25 red, including a suite whose license assertion only held for two thirds of any given day.
     #
     # Grouped per MODULE (read + write in one runner) rather than one job per script: every suite resets the
@@ -371,7 +372,7 @@ jobs:
           # open. Live because the D10 redelivery guard is a partial unique index, the coalesce grain is a
           # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
-          # ADR-0057 item 12 - the real tier-1 EscalationRouter as wardenx_app: real shift read, patient/policy/zone reads, two-org isolation, the 2026-11-01 New York repeated hour on absolute instants, back-to-back shifts, pure read.
+          # ADR-0057 item 12 - the real tier-1 EscalationRouter as chartwarden_app: real shift read, patient/policy/zone reads, two-org isolation, the 2026-11-01 New York repeated hour on absolute instants, back-to-back shifts, pure read.
           - { name: "M19 Escalation router", scripts: "test:m19:escalation-router:live" }
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
           - { name: "M19 After-hours request", scripts: "test:m19:afterhours-requested:live" }
@@ -379,11 +380,11 @@ jobs:
           # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
           # reset-the-delay debounce is an `ON CONFLICT ... DO UPDATE` against a partial-unique index and
           # the `FOR UPDATE SKIP LOCKED` claim are both statements about Postgres, and cross-tenant
-          # isolation runs on the real NOBYPASSRLS `wardenx_app` role.
+          # isolation runs on the real NOBYPASSRLS `chartwarden_app` role.
           - { name: "M19 Roster-sync debounce", scripts: "test:m19:roster-sync-debounce:live" }
           # GAP-057 (M19 §4.8 Tier-1 crons): shift-open / shift-close / coverage-gap watchdog. Live because the
           # due predicates, the (status, version)-guarded UPDATE, the same-tx outbox row and the cross-tenant
-          # isolation (real NOBYPASSRLS wardenx_app role + real catalog-validating publisher) are Postgres facts.
+          # isolation (real NOBYPASSRLS chartwarden_app role + real catalog-validating publisher) are Postgres facts.
           - { name: "M19 Tier-1 crons", scripts: "test:m19:tier1-crons:live" }
           - { name: "M19 triage crons", scripts: "test:m19:triage-crons:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
@@ -396,15 +397,15 @@ jobs:
           # detector) + `m20.coverage-gap-watchdog.cron`. Live because the per-row `FOR UPDATE` decision,
           # the overdue/escalated stamp CHECKs and the real catalog-validating outbox publish are Postgres.
           - { name: "M20 Overdue detector", scripts: "test:m20:overdue-detector:live" }
-          # M23 durable clearinghouse attempt store: the package contract run against the real table as wardenx_app, plus RLS isolation, the identity/final-row guard and no-delete.
+          # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
-          # M1 FoundationSiteReader.allLocationsOpenInOrg (M2 provisioning location check) + the lifecycle store org-name read, as wardenx_app.
+          # M1 FoundationSiteReader.allLocationsOpenInOrg (M2 provisioning location check) + the lifecycle store org-name read, as chartwarden_app.
           - { name: "Foundation site reader", scripts: "test:foundation-site-reader:live" }
           # GAP-136: the §4.1 route plugins over the Drizzle READ + WRITE services end to end (check-ins,
           # SOS spine, incidents + OSHA sign-off, policy/subscriptions/areas, board, consent) as the
-          # NOBYPASSRLS wardenx_app role with the real catalog-validating publisher.
+          # NOBYPASSRLS chartwarden_app role with the real catalog-validating publisher.
           - { name: "M20 routes", scripts: "test:m20:routes:live" }
-          # GAP-032: the M40 tenant-curated PSAP catalog the SOS terminus resolves (RLS as wardenx_app, the
+          # GAP-032: the M40 tenant-curated PSAP catalog the SOS terminus resolves (RLS as chartwarden_app, the
           # partial-unique defaults, the CHECKs and the seam reader over a real polygon are Postgres).
           - { name: "M40 PSAP jurisdiction", scripts: "test:m40:psap-jurisdiction:live" }
           - {
@@ -432,7 +433,7 @@ jobs:
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
           # GAP-043 - the worker-role watcher decides listener_down/recovered from heartbeat + TCP probe + frames; real
-          # publisher, relay, M36 consumer and RLS as wardenx_app; LIVE by necessity.
+          # publisher, relay, M36 consumer and RLS as chartwarden_app; LIVE by necessity.
           - { name: "M29 listener-health watcher - dead listener, probe, outbox, M36 page", scripts: "test:gap043:listener-watch:live" }
           # GAP-086: the `sud_test_loinc` M38 value set is seeded (mig 0500) and the real M29 adapter flags it.
           - { name: "M29 SUD test-LOINC seed (GAP-086)", scripts: "test:m29:sud-loinc-seed:live" }
@@ -467,7 +468,7 @@ jobs:
           - { name: "M1 MAC-portal health status", scripts: "test:m1:mac-portal-health:live" }
           # F-020 (#49): the ORG-scoped relay's own live proof — delivery, retry/backoff, the `failed`
           # DLQ terminal, deferred routing, record-only completion and the retention purge, driven as
-          # NOBYPASSRLS `wardenx_app`. It had existed since TASK-006 with no package.json script and no
+          # NOBYPASSRLS `chartwarden_app`. It had existed since TASK-006 with no package.json script and no
           # job, so nothing had ever run it: the same GAP-086 shape this job was created for. Wired
           # while fixing the two catalog mismatches that kept the relay from booting at all.
           - { name: "M1 outbox dispatcher relay", scripts: "test:m1:outbox-dispatcher:live" }
@@ -506,7 +507,7 @@ jobs:
               name: "M3 membership_role.scope - shape CHECK, quarantine, fail-closed reach",
               scripts: "test:gap007:grant-scope:live",
             }
-          # GAP-049 - the repeat half of the M30 §4.9 cadences on the real emitter and RLS as wardenx_app; LIVE by necessity.
+          # GAP-049 - the repeat half of the M30 §4.9 cadences on the real emitter and RLS as chartwarden_app; LIVE by necessity.
           - {
               name: "M30 alert repeat cadences - sentinel/abuse/outbreak/threshold",
               scripts: "test:gap049:alert-repeat:live",
@@ -535,7 +536,7 @@ jobs:
           # committed. LIVE by necessity — an in-memory audit sink and the one prior live test that touches
           # mountIdentityRoutes (a superuser connection) both cannot exhibit an RLS refusal.
           - {
-              name: "M2 audit/outbox RLS — real wardenx_app role",
+              name: "M2 audit/outbox RLS — real chartwarden_app role",
               scripts: "test:m2:outbox-audit-rls:live",
             }
           # §11 D19 (#205 hard half) — `organization.status` had no UPDATE anywhere in the codebase, so
@@ -544,34 +545,34 @@ jobs:
           # revocation is a real cross-table DELETE, and the catalog-validating publisher's refuse-on-
           # mismatch behavior is a statement about the real dispatcher.
           - {
-              name: "M2 organization-lifecycle — real wardenx_app role",
+              name: "M2 organization-lifecycle — real chartwarden_app role",
               scripts: "test:m2:organization-lifecycle:live",
             }
           # POST /provider-entities seals the EIN through the real tax-id cipher: the column holds a v1 envelope
           # (never the EIN), a failing tenant key answers 503 and writes no row, and org B cannot read org A's row.
           - {
-              name: "M2 tax-id cipher — real wardenx_app role",
+              name: "M2 tax-id cipher — real chartwarden_app role",
               scripts: "test:m2:tax-id-cipher:live",
             }
           # A new tenant's org gets every platform-ops operator as an active member bound to the platform-owned
           # `platform_ops` role, so `role_set[platform_ops]` alerts reach someone. Idempotent; never reactivates.
           - {
-              name: "M34 platform-staff binding — real wardenx_app role",
+              name: "M34 platform-staff binding — real chartwarden_app role",
               scripts: "test:m34:platform-staff-binding:live",
             }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
-          # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
+          # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS chartwarden_app,
           # so it fails if 0206's policy or its SECURITY DEFINER functions go missing.
           - { name: "M38 terminology admin", scripts: "test:m38:admin:live" }
           # GAP-108: M38's terminology LOADER + the nine §4.3 jobs. Before this there was no worker at all and
-          # the load route only registered a version row. As NOBYPASSRLS wardenx_app (writes via the 0364
+          # the load route only registered a version row. As NOBYPASSRLS chartwarden_app (writes via the 0364
           # `terminology_loader_*` definer functions): load -> stage -> active, checksum-mismatch failure with no
           # residue, resume from staged, two versions coexisting, the licence-attestation gate for
           # snomed/loinc/rxnorm, per-tenant deprecation-scan isolation, and a real BullMQ run over Valkey.
           - { name: "M38 terminology loader + jobs", scripts: "test:m38:loader:live" }
           # M38 search filters: `inValueSet` (platform members + the caller's tenant extensions under RLS) and
-          # `billableOnly` for every system, driven through the REAL search route as NOBYPASSRLS wardenx_app.
+          # `billableOnly` for every system, driven through the REAL search route as NOBYPASSRLS chartwarden_app.
           - { name: "M38 terminology search", scripts: "test:m38:search:live" }
           # GAP-098: the SEC-052 oversized-hold DISCOVERY surface — the cross-tenant platform-ops list
           # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
@@ -597,7 +598,7 @@ jobs:
             }
           # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
           # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles
-          # and then relies on `wardenx_app` being refused a grant — a suite sharing a runner with one that
+          # and then relies on `chartwarden_app` being refused a grant — a suite sharing a runner with one that
           # re-grants anything would make that assertion pass or fail for the wrong reason.
           - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
           # The tenant shred's identity eraser and M36's messaging eraser share ONE sole-tenant-user rule
@@ -634,7 +635,7 @@ jobs:
           # Auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral): a link issued by M3 and stored hashed by
           # M2 becomes a signed, engagement-scoped, read-only `auditor` session - single use, expiring, tenant-
           # scoped, rate-limited, audited, least-privilege, closed with the engagement window. Real Better Auth,
-          # real authenticate hook, real RBAC, as the NOBYPASSRLS wardenx_app role.
+          # real authenticate hook, real RBAC, as the NOBYPASSRLS chartwarden_app role.
           - { name: "M2 auditor link redemption", scripts: "test:m2:auditor-redemption:live" }
           - { name: "M2 auditor enrolment (BAA + 2FA)", scripts: "test:m2:auditor-enrolment:live" }
           # M4 `audit.seal_partition` + `audit.integrity_sample`: the sealed audit hash chain and its sampled
@@ -653,7 +654,7 @@ jobs:
           # `app.user_id` policies, which PostgreSQL UNIONs into EVERY org-scoped session — a
           # cross-org read on every authenticated request. 0215 replaces them with a SECURITY DEFINER
           # function; this drives `listForUser` (which had no live coverage) through the production
-          # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
+          # repository as chartwarden_app, so the hand-written raw-query row mapping is proven too.
           - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
           # F-158 (#248) — M2's first outbox consumer: the M39 consent-revocation session-termination
           # cascade, `portal_access` scope.
@@ -771,7 +772,7 @@ jobs:
           - { name: "M3 role-template materialization", scripts: "test:m3:role-templates:live" }
           - { name: "M4 legal-hold supremacy at destruction", scripts: "test:m4:legal-hold-supremacy:live" }
           # GAP-008 - a legal hold is an append-only overlay, not a retention_class flip (ADR-0043): materialiser, DELETE guard,
-          # BEFORE DELETE trigger as the real wardenx_destruction role, partition-detach attestation, tenant isolation.
+          # BEFORE DELETE trigger as the real chartwarden_destruction role, partition-detach attestation, tenant isolation.
           - { name: "M4 legal-hold overlay - materialise, DELETE guard, trigger, detach, RLS", scripts: "test:gap008:legal-hold-overlay:live" }
           # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
           - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
@@ -811,32 +812,32 @@ jobs:
           - { name: "M36 acknowledgment requests", scripts: "test:m36:ack-requests:live" }
           # ADR-0081 (PROPOSED) - role-based send: one urgent message to the confirmed on-call person with the ROLE stored on the request (addressed_role, migration 1129) and the resolved person as the assignee, replay after the roster moved, changed resolution (409), coverage gap and the real deny-stub (422), flag off (404), response tracking off (503), key/patient/tenant refusals - every refusal writes nothing; the role CHECK and immutability trigger; tenancy.
           - { name: "M36 role-based send", scripts: "test:m36:role-send:live" }
-          # ADR-0082 S1 (PROPOSED) - message_afterhours_triage_link (migration 1132): forced org RLS as wardenx_app, unique message/event, once-only reply columns (app role and superuser), identity fixed, and the caller-chosen outbox event id committed atomically with the link.
+          # ADR-0082 S1 (PROPOSED) - message_afterhours_triage_link (migration 1132): forced org RLS as chartwarden_app, unique message/event, once-only reply columns (app role and superuser), identity fixed, and the caller-chosen outbox event id committed atomically with the link.
           - { name: "M36 after-hours triage link", scripts: "test:m36:afterhours-link:live" }
-          # ADR-0085 G1 (PROPOSED) - one-thread read grant table (migration 1135): FORCEd RLS as wardenx_app (cross-org reads nothing), insert/revoke-only guard (no other column moves, one revoke, no app DELETE, database-clock granted_at/revoked_at), one live grant per (request, grantee), reason and window CHECKs, expiry judged on now(), audit rows.
+          # ADR-0085 G1 (PROPOSED) - one-thread read grant table (migration 1135): FORCEd RLS as chartwarden_app (cross-org reads nothing), insert/revoke-only guard (no other column moves, one revoke, no app DELETE, database-clock granted_at/revoked_at), one live grant per (request, grantee), reason and window CHECKs, expiry judged on now(), audit rows.
           - { name: "M36 thread access grant", scripts: "test:m36:thread-grant:live" }
-          # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1138): wardenx_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
+          # ADR-0086 (PROPOSED) / WP 5.6 S2 - message legal-hold overlay (migration 1138): chartwarden_app records but cannot update or delete overlay rows, cross-tenant reads nothing, the SECURITY DEFINER backstop refuses DELETE and body_cipher UPDATE of a held message with 23001 (destruction credential and app edit) and allows both after release, the tenant eraser refuses cleanly under a hold.
           - { name: "M36 message legal hold", scripts: "test:m36:message-legal-hold:live" }
-          # ADR-0086 (PROPOSED) / WP 5.6 S4 - retention and legal-hold governance routes with REAL Better Auth sessions as wardenx_app: 403 without the key or a fresh step-up, other tenant = unknown 404, short reason 422, stale preview count 409 RELEASE_PREVIEW_STALE, apply and release audited with the reason and the overlay materialised in the same transaction, a held message edit is a typed 409, responses carry ids/counts/dates/hold names only.
+          # ADR-0086 (PROPOSED) / WP 5.6 S4 - retention and legal-hold governance routes with REAL Better Auth sessions as chartwarden_app: 403 without the key or a fresh step-up, other tenant = unknown 404, short reason 422, stale preview count 409 RELEASE_PREVIEW_STALE, apply and release audited with the reason and the overlay materialised in the same transaction, a held message edit is a typed 409, responses carry ids/counts/dates/hold names only.
           - { name: "M36 retention governance", scripts: "test:m36:retention-governance:live" }
-          # ADR-0083 (PROPOSED) / WP 5.5 - session and device controls with REAL Better Auth sessions, the real realtime server and Valkey emitter (which this job provides): a revoked session gets 401 on its next REST call, its socket is closed (re-check set to 10 min, so the close is the revoke's), the endpoint it registered is expired while another session's stays verified, audit row without secrets, foreign / other-tenant / repeat revoke is one 404, officer variant (key, stale step-up refused, other tenant sees nothing), re-register after revoke, current-session revoke, RLS as wardenx_app.
+          # ADR-0083 (PROPOSED) / WP 5.5 - session and device controls with REAL Better Auth sessions, the real realtime server and Valkey emitter (which this job provides): a revoked session gets 401 on its next REST call, its socket is closed (re-check set to 10 min, so the close is the revoke's), the endpoint it registered is expired while another session's stays verified, audit row without secrets, foreign / other-tenant / repeat revoke is one 404, officer variant (key, stale step-up refused, other tenant sees nothing), re-register after revoke, current-session revoke, RLS as chartwarden_app.
           - { name: "M36 session and device controls", scripts: "test:m36:session-devices:live" }
-          # ADR-0084 (PROPOSED) / WP 5.9 - workforce offboarding (Workflow F) with REAL Better Auth sessions, the real supervisor reassign, task and handoff sweeps, session revoke and alert emitter: preview changes nothing; execute moves the request an eligible colleague can take (history names officer and reason), leaves the one nobody can take assigned and visible with ONE supervisor alert, surfaces the untracked urgent message, revokes both sessions (next REST call 401) and expires every endpoint, ends memberships, removes scheduled send / reminder / snooze, keeps the draft and past messages, leaves M19 untouched; re-run is a no-op, a step that failed once resumes; no step-up / no key / no review key / other tenant refused (foreign = unknown 404); audit rows carry counts only; RLS as wardenx_app.
+          # ADR-0084 (PROPOSED) / WP 5.9 - workforce offboarding (Workflow F) with REAL Better Auth sessions, the real supervisor reassign, task and handoff sweeps, session revoke and alert emitter: preview changes nothing; execute moves the request an eligible colleague can take (history names officer and reason), leaves the one nobody can take assigned and visible with ONE supervisor alert, surfaces the untracked urgent message, revokes both sessions (next REST call 401) and expires every endpoint, ends memberships, removes scheduled send / reminder / snooze, keeps the draft and past messages, leaves M19 untouched; re-run is a no-op, a step that failed once resumes; no step-up / no key / no review key / other tenant refused (foreign = unknown 404); audit rows carry counts only; RLS as chartwarden_app.
           - { name: "M36 workforce offboarding", scripts: "test:m36:workforce-offboarding:live" }
           # WP 4.4 (ADR-0070) - durable escalation timers: the guarded exactly-once escalation, ack-vs-deadline in both orders, reassign re-arm, delete cancel, tenancy, the DB backstops, and on the Valkey this job provides: a worker killed mid-timer, a duplicate job, a flushed Redis recovered by the sweeper, the DLQ landing and its audit row.
           - { name: "M36 ack escalation timers", scripts: "test:m36:ack-escalation:live" }
-          # WP 4.5 (ADR-0071) - delivery-failure handling: a simulated push+SMS outage through the real delivery settlement and event -> one failed_unreachable (history, audit, id-only event, supervisor alert, ops notice) before the deadline; a bound router escalates now; replay + 8-way concurrency write once; ack vs failure in both orders; flag off, non-assignee, reminder alerts and pre-reassign alerts do nothing; tenant isolation as wardenx_app; the DB refuses a person writing failed_unreachable.
+          # WP 4.5 (ADR-0071) - delivery-failure handling: a simulated push+SMS outage through the real delivery settlement and event -> one failed_unreachable (history, audit, id-only event, supervisor alert, ops notice) before the deadline; a bound router escalates now; replay + 8-way concurrency write once; ack vs failure in both orders; flag off, non-assignee, reminder alerts and pre-reassign alerts do nothing; tenant isolation as chartwarden_app; the DB refuses a person writing failed_unreachable.
           - { name: "M36 ack delivery failure", scripts: "test:m36:ack-delivery-failure:live" }
           - { name: "M36 delivery target (deep link)", scripts: "test:m36:delivery-target:live" }
-          # WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue as wardenx_app: every waiting request listed (pending, escalated, failed_unreachable; acknowledged/resolved/cancelled and other tenants never), filters only narrow, paging reproduces the list at every size incl. shared deadlines, restricted rows carry no ids, 403 without messaging.review, read-audit, read-only, ops stats under RLS.
+          # WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue as chartwarden_app: every waiting request listed (pending, escalated, failed_unreachable; acknowledged/resolved/cancelled and other tenants never), filters only narrow, paging reproduces the list at every size incl. shared deadlines, restricted rows carry no ids, 403 without messaging.review, read-audit, read-only, ops stats under RLS.
           - { name: "M36 unacknowledged queue", scripts: "test:m36:unacknowledged:live" }
-          # ADR-0078 - the card's reassign picker and the supervisor reassign as wardenx_app: eligible-only candidates, a supervisor outside the channel moves pending/escalated/failed_unreachable requests with actor and reason recorded and no ids returned, acknowledged/closed refused, migration-1126 guard backstops, notices, request_ref on restricted queue rows, replay and rate limit.
+          # ADR-0078 - the card's reassign picker and the supervisor reassign as chartwarden_app: eligible-only candidates, a supervisor outside the channel moves pending/escalated/failed_unreachable requests with actor and reason recorded and no ids returned, acknowledged/closed refused, migration-1126 guard backstops, notices, request_ref on restricted queue rows, replay and rate limit.
           - { name: "M36 supervisor reassign", scripts: "test:m36:ack-supervisor-reassign:live" }
           # ADR-0079 - unreachable watch (G-5), supervisor page + unpaged notice (G-3), stalled-escalation figure and Valkey notice claim (G-4).
           - { name: "M36 unreachable watch + supervisor page", scripts: "test:m36:ack-unwatched:live" }
-          # WP 4.6 (ADR-0073) - notification policy: both flags per tenant, routine push skipped in quiet hours while the designated urgent push is planned (trail says bypassed), verified endpoints only, class floor (critical = push + sms), tenant isolation of the endpoint reader as wardenx_app.
+          # WP 4.6 (ADR-0073) - notification policy: both flags per tenant, routine push skipped in quiet hours while the designated urgent push is planned (trail says bypassed), verified endpoints only, class floor (critical = push + sms), tenant isolation of the endpoint reader as chartwarden_app.
           - { name: "M36 notification policy", scripts: "test:m36:notification-policy:live" }
-          # WP 4.10 (ADR-0077) - snooze and reminders as wardenx_app: owner/tenant isolation of both tables and both SECURITY DEFINER readers, an open acknowledgment request refuses a snooze (route + trigger) and voids one opened earlier, an urgent alert still gets its push while snoozed, a mention is quieted out-of-band only (never in-app), the 24h/30d CHECKs and the 25-reminder cap under concurrency, the reminder sweep (one alert, no body, crash-safe, stale/deleted/flag-off), idempotent retry, audit.
+          # WP 4.10 (ADR-0077) - snooze and reminders as chartwarden_app: owner/tenant isolation of both tables and both SECURITY DEFINER readers, an open acknowledgment request refuses a snooze (route + trigger) and voids one opened earlier, an urgent alert still gets its push while snoozed, a mention is quieted out-of-band only (never in-app), the 24h/30d CHECKs and the 25-reminder cap under concurrency, the reminder sweep (one alert, no body, crash-safe, stale/deleted/flag-off), idempotent retry, audit.
           - { name: "M36 snooze and reminders", scripts: "test:m36:snooze-reminder:live" }
           # WP 3.5 - handoff lifecycle: the expiry tick with the real dispatcher + AlertEmitter (supervisor role rule, needs_attention fallback), flag-off tenants, lowered policy, offboarding both directions, sockets dropped when resolution fails.
           - { name: "M36 handoff lifecycle", scripts: "test:m36:handoff-lifecycle:live" }
@@ -937,7 +938,7 @@ jobs:
               scripts: "test:f235:doclens-m5-writeback:live",
             }
           # F-236 (#ADR-0048) — DocLens stages 2–4 (Docling → classify → extract → ground → DEK-encrypted
-          # candidates) as wardenx_app, plus the M32 pipeline over its REAL stores: local_only routing to the
+          # candidates) as chartwarden_app, plus the M32 pipeline over its REAL stores: local_only routing to the
           # local backend, ciphertext ledger payloads, the token-cap and ai.full gates.
           - {
               name: "F-236 DocLens intake + live M32 pipeline",
@@ -964,7 +965,7 @@ jobs:
           # source `doclens_intake`; never a medication_order — D10/D12) and → M5 UNVERIFIED allergies, through
           # the real publisher, dispatcher and both consumers + M22's provenance back-ref; MAT / SUD-page lines
           # excluded, redelivery idempotent, a repeat fax flagged `duplicate`; the reconcile path mints no
-          # order; the allergy routes verify / entered-in-error; RLS denial as wardenx_app.
+          # order; the allergy routes verify / entered-in-error; RLS denial as chartwarden_app.
           - {
               name: "F-238 DocLens medication history + allergies",
               scripts: "test:f238:doclens-clinical-writeback:live",
@@ -1025,7 +1026,7 @@ jobs:
             }
           # F-218/F-219/F-224 (#248) — the three M19 triage pairs: the explicit caregiver/attending summary
           # request -> M22 render (migration 0290), and the GIP-proposal seam pull M14 (flagged events) and
-          # M37 (intake worklist) share, on the real wardenx_app role.
+          # M37 (intake worklist) share, on the real chartwarden_app role.
           - {
               name: "F-218/219/224 M19 triage pairs",
               scripts: "test:f218-f219-f224:m19-triage-pairs:live",
@@ -1073,7 +1074,7 @@ jobs:
             }
           # COP27 workstream B (42 CFR 418.24(c)) — hospice coverage determinations on M12 medication orders
           # and M21 dme/supply requests: real catalog-validating publisher, DB CHECK backstop, the
-          # NonCovered*Reader seams, cross-tenant RLS as wardenx_app.
+          # NonCovered*Reader seams, cross-tenant RLS as chartwarden_app.
           - {
               name: "COP27 hospice coverage determinations",
               scripts: "test:cop27:hospice-coverage:live",
@@ -1104,7 +1105,7 @@ jobs:
           # GAP-048 — the §4.9 crons: 13-month auto-close, miss-deadline, anniversary lookahead.
           - { name: "M16 cron workers", scripts: "test:m16:cron-workers:live" }
           # GAP-136 — the §4.1 plan / contact / outreach / dashboard routes over the Drizzle services,
-          # one plan from eligible to cosigned early close, as the NOBYPASSRLS wardenx_app role.
+          # one plan from eligible to cosigned early close, as the NOBYPASSRLS chartwarden_app role.
           - { name: "M16 routes", scripts: "test:m16:routes:live" }
           - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
@@ -1385,7 +1386,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999
@@ -1538,7 +1539,7 @@ jobs:
       #
       # `POST /encounters/:id/finalize` seals the assembled narrative under the tenant DEK, which needs
       # BOTH halves of M34's key envelope: the platform KEK that wraps it (`M34_TENANT_KEK`) and a
-      # credential that may SELECT `tenant_key_ring` — migration 0052 §5 REVOKES that from `wardenx_app`
+      # credential that may SELECT `tenant_key_ring` — migration 0052 §5 REVOKES that from `chartwarden_app`
       # by design, so the request path physically cannot read a wrapped DEK and the platform login is
       # what resolves it. Without them the finalize is a 503 `HEARTHNOTE_CIPHER_UNBOUND`, which is the
       # fail-closed answer working correctly and which no spec could get past.
@@ -1549,7 +1550,7 @@ jobs:
       # live for the whole suite rather than a branch nothing but a boot check has taken.
       PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
       CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
+      DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
       # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
       # deployment's lives in its secret manager (ADR-0045).
       M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=

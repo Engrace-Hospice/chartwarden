@@ -3,7 +3,7 @@
  * §164.526 request while the first is still open. The intake inserts ON CONFLICT DO NOTHING against
  * migration 0323's partial unique index and reads the open row back; this fake models that index
  * (unique on patient + dedupe key over `pending` rows only) so the orchestration is pinned without a DB.
- * The real index and the concurrent case are proven as `wardenx_app` in auth.live.test.ts.
+ * The real index and the concurrent case are proven as `chartwarden_app` in auth.live.test.ts.
  */
 import { describe, expect, it } from "vitest";
 import {

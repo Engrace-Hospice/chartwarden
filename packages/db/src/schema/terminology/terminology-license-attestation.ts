@@ -2,7 +2,7 @@
 // operator's attestation that the licence behind a non-public code system (UMLS/SNOMED, Regenstrief/LOINC,
 // UMLS/RxNorm) is held. A load of such a system is refused without an active row; `attributionText` is the text
 // the licence requires to accompany the data and is exposed with it. Platform-shared (NON_ORG_SCOPED), read-all
-// for wardenx_app, written only through the `terminology_loader` functions. Not PHI.
+// for chartwarden_app, written only through the `terminology_loader` functions. Not PHI.
 import { sql } from "drizzle-orm";
 import { check, date, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { codeSystemId } from "../../enums";

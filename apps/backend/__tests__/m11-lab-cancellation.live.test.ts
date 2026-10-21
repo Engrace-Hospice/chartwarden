@@ -6,7 +6,7 @@
  * already sent. The specs DO support telling a human: `lab-cancellation-required.ts` consumes `m11.order.discontinued`
  * and `m11.order.corrected` and raises the M36 alert (ids only) when the order may still be at the lab. This drives:
  *
- *   sign (as the NOBYPASSRLS `wardenx_app` role, real catalog-validating publisher) → `m11.order.hl7_orm_requested` →
+ *   sign (as the NOBYPASSRLS `chartwarden_app` role, real catalog-validating publisher) → `m11.order.hl7_orm_requested` →
  *   M29's real T08 worker → a STUB `MllpTransport` AA → F-177's applier → `transmitted` → discontinue / correct →
  *   the relay → the consumer → ONE alert.
  *
@@ -54,7 +54,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -259,7 +259,7 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
       `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
       [USER_B, ORG_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     await admin.query(
@@ -517,7 +517,7 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
 
   // ── Tenancy ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  it("another tenant's order id is invisible to the consumer (RLS as wardenx_app) → NO alert", async () => {
+  it("another tenant's order id is invisible to the consumer (RLS as chartwarden_app) → NO alert", async () => {
     const { id } = await transmittedOrder();
     await discontinue(id);
     alerts = [];

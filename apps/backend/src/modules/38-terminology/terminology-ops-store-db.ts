@@ -3,11 +3,11 @@
 //
 // TENANCY, three shapes:
 //   • The catalog / deprecation / load-history reads hit platform-shared reference tables whose 0015
-//     policy is `FOR SELECT TO wardenx_app USING (true)`. They run on the pooled handle with NO org
+//     policy is `FOR SELECT TO chartwarden_app USING (true)`. They run on the pooled handle with NO org
 //     context — there is no tenant dimension to scope (`code_system_version` et al. carry no
 //     organization_id), and wrapping them in `withOrgContext` would suggest one exists.
 //   • The two WRITES call the migration-0206 `terminology_loader` SECURITY DEFINER functions.
-//     `wardenx_app` has no INSERT/UPDATE grant on any canonical table (§7.4) and must never get one,
+//     `chartwarden_app` has no INSERT/UPDATE grant on any canonical table (§7.4) and must never get one,
 //     so `db.execute(sql\`SELECT * FROM terminology_loader_…\`)` is the whole write surface.
 //   • The governance view calls `terminology_admin_list_value_set_extensions`, a definer function, for
 //     the same reason inverted: `value_set_tenant_extension` IS org-scoped, so a cross-tenant read on

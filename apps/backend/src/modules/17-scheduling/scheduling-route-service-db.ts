@@ -4,7 +4,7 @@
 // The screen-driving READS (visit lists / day-week-map views, the proposal inbox, recurring cadences,
 // clinician availability, time-off, portal upcoming, productivity metrics) run as real Drizzle queries over
 // the M17-owned tables inside `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged
-// `wardenx_app` role. `visit` + `visit_state_history` are PARTITIONED BY RANGE (service_date / transitioned_at)
+// `chartwarden_app` role. `visit` + `visit_state_history` are PARTITIONED BY RANGE (service_date / transitioned_at)
 // with a DEFAULT catch-all leaf — reads query the parent, inserts route to the current-month leaf; the D6
 // per-clinician visit-overlap GiST EXCLUDE lives on the leaves and fires at publish (proposed → published).
 //
@@ -40,7 +40,7 @@
 //       provider_entity_id + location_id per the schema intent;
 //   (5) route optimisation stays OFF (`scheduling.route_optimization`) → `optimizeDay` emits the §7.9
 //       `m17.route_optimization_degraded` event and returns the degraded (scheduled-order) result;
-//   (6) `upsertAvailability` MERGES per (membership, day_of_week) — wardenx_app has no DELETE grant on any M17
+//   (6) `upsertAvailability` MERGES per (membership, day_of_week) — chartwarden_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
 import {

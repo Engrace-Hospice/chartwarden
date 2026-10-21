@@ -43,7 +43,7 @@ export async function countM36Tables(adminUrl: string): Promise<Record<string, n
   });
 }
 
-/** RLS flags, policies, grants to wardenx_app and triggers per M36 table: what a lossy restore would silently drop. */
+/** RLS flags, policies, grants to chartwarden_app and triggers per M36 table: what a lossy restore would silently drop. */
 export async function catalogFingerprint(adminUrl: string): Promise<Record<string, string>> {
   return withClient(adminUrl, async (c) => {
     const out: Record<string, string> = {};
@@ -62,7 +62,7 @@ export async function catalogFingerprint(adminUrl: string): Promise<Record<strin
       ).rows;
       const grants = (
         await c.query(
-          `SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name=$1 AND grantee='wardenx_app' ORDER BY 1`,
+          `SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name=$1 AND grantee='chartwarden_app' ORDER BY 1`,
           [table],
         )
       ).rows.map((r) => r.privilege_type);
@@ -222,7 +222,7 @@ export async function hashVerifyAll(
   }
 }
 
-/** As wardenx_app on the restored DB: not superuser/bypassrls, no GUC => nothing, org A cannot see org B. */
+/** As chartwarden_app on the restored DB: not superuser/bypassrls, no GUC => nothing, org A cannot see org B. */
 export async function rlsChecks(appUrl: string, orgA: string, orgB: string): Promise<Check[]> {
   return withClient(appUrl, async (c) => {
     const role = (
@@ -255,10 +255,10 @@ export async function rlsChecks(appUrl: string, orgA: string, orgB: string): Pro
       orgA,
       `SELECT count(*)::int AS n FROM audit_event WHERE organization_id='${orgB}'`,
     );
-    const roleOk = role.u === "wardenx_app" && !role.rolsuper && !role.rolbypassrls;
+    const roleOk = role.u === "chartwarden_app" && !role.rolsuper && !role.rolbypassrls;
     return [
       {
-        name: "restored DB: wardenx_app logs in, is NOT superuser/BYPASSRLS",
+        name: "restored DB: chartwarden_app logs in, is NOT superuser/BYPASSRLS",
         ok: roleOk,
         detail: `${role.u} super=${role.rolsuper} bypassrls=${role.rolbypassrls}`,
       },

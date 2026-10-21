@@ -7,7 +7,7 @@
 //   fhir_bulk_export_job · fhir_bulk_export_artifact · fhir_inbound_resource · fhir_read_disclosure
 //
 // PLATFORM-SHARED (one) — fhir_capability_snapshot, no organization_id: the conformance statement is the
-// same for every tenant, so read-all `USING (true)` to wardenx_app, writes only via wardenx_admin.
+// same for every tenant, so read-all `USING (true)` to chartwarden_app, writes only via chartwarden_admin.
 //
 // TWO ARE PARTITIONED MONTHLY (§3.3) and therefore carry a composite primary key declared in SQL:
 // `fhir_client_session` on `issued_at` (operational, 90-day purge) and `fhir_inbound_resource` on

@@ -93,8 +93,8 @@ export interface DrizzleMessagingEraseDeps {
  *     the only lawful write path — and the M4 trigger attributes the delete to the offboarded
  *     user whose rows they are. Refuses loudly when the cross-tenant resolver is not bound.
  *
- * GRANT CAVEAT (0017 §6): `presence` DELETE is granted to wardenx_admin only (and carries no
- * DELETE policy for wardenx_app), so the presence leg is refused by Postgres until deployment
+ * GRANT CAVEAT (0017 §6): `presence` DELETE is granted to chartwarden_admin only (and carries no
+ * DELETE policy for chartwarden_app), so the presence leg is refused by Postgres until deployment
  * grants the erase path DELETE — the erase fails loudly rather than certifying presence rows
  * destroyed while they survive.
  */

@@ -3,7 +3,7 @@
  *
  * `createDbSystemDashboardSeeder` is the DB layer of the fix: for every currently-`active` report base
  * (3 today — census/productivity/EVV), ensure a system-authored, org-shared `report_view` exists. This
- * drives it as the NOBYPASSRLS `wardenx_app` role (GAP-086) so the RLS + the partial unique-index
+ * drives it as the NOBYPASSRLS `chartwarden_app` role (GAP-086) so the RLS + the partial unique-index
  * idempotency guard (`report_definition_system_org_base_uq`, migration 0248) are proven, not assumed.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m33:system-dashboards:live

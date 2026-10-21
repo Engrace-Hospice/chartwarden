@@ -1,5 +1,5 @@
 // apps/backend/__tests__/_m12-live-harness.ts — shared setup for the GAP-037 M12 cron live suites: a fresh schema
-// (all migrations), two tenants, the real NOBYPASSRLS `wardenx_app` connection, and the REAL catalog-validating
+// (all migrations), two tenants, the real NOBYPASSRLS `chartwarden_app` connection, and the REAL catalog-validating
 // transactional publisher. Only the DoseSpot vendor is a test double (`_fake-dosespot-vendor.ts`).
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -100,7 +100,7 @@ export async function setupM12Live(dbUrl: string): Promise<M12Live> {
       )
     ).rows[0].id as string;
   }
-  await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+  await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
   const handle = createDbClient({ connectionString: appRoleUrl(dbUrl) });
   const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
   const outbox: DoseSpotWriteOutboxPort = {

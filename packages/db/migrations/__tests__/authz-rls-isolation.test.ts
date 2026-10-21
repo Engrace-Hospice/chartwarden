@@ -111,6 +111,6 @@ describe("M3-T11 — RLS backstop & layer-independence, every org-scoped M3 tabl
 // ── Tracked proof obligation gated on infrastructure this run does not exercise here ──
 describe("M3-T11 — deferred proof obligation (infra-gated)", () => {
   // §9.3 live: the same denial against a real Postgres, exercised as the unprivileged
-  // wardenx_app role (the shared live harness applies 0009 and runs the policies).
+  // chartwarden_app role (the shared live harness applies 0009 and runs the policies).
   it.todo("§9.3 live: org A authorization rows invisible under an org B session on real RLS");
 });

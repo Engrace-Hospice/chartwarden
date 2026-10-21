@@ -51,7 +51,7 @@ export interface PriorConcept {
   readonly isBillableLeaf: boolean;
 }
 
-/** The data port over the `terminology_loader` write door + wardenx_app reads. */
+/** The data port over the `terminology_loader` write door + chartwarden_app reads. */
 export interface LoaderStorePort {
   getVersion(versionId: string): Promise<LoaderVersion | null>;
   /** Insert a chunk into staging; `reset` clears this version's staging first (a restart from `loading`). */

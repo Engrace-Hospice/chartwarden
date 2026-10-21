@@ -32,7 +32,7 @@ export const encounterCarePlanLinks = pgTable(
     goalId: uuid("goal_id"), // M7 goal (logical)
     interventionId: uuid("intervention_id"), // M7 intervention (logical)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    // F-064 (mig 0231) — the soft invalidate. `wardenx_app` holds DELETE on no M8 table (§3.6
+    // F-064 (mig 0231) — the soft invalidate. `chartwarden_app` holds DELETE on no M8 table (§3.6
     // append-only), so removing a mis-clicked link on a DRAFT encounter marks the row rather than
     // dropping it; the M4 write-audit trail is only as good as the rows it describes.
     removedAt: timestamp("removed_at", { withTimezone: true }),

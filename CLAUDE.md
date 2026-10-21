@@ -76,8 +76,8 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 
 - **Bound is not computing; green gates are proxies.** After adding an outbox consumer, grep
   `apps/backend/src/index.ts` for its factory — `arch:outbox-bindings` and `check:boot:platform` do not prove it is wired.
-- **Prove RLS live, not on a superuser connection.** Live suites must connect as the real NOBYPASSRLS `wardenx_app` role (`_live-app-role.ts`); a cross-tenant assertion on a superuser proves nothing.
-- **Never run live suites against the shared Docker cluster.** They `DROP ROLE wardenx_app`. Use a private `pgvector/pgvector:pg18` container on its own port with a fresh database per suite, one database at a time (roles are cluster-global, so drop the previous suite's database first).
+- **Prove RLS live, not on a superuser connection.** Live suites must connect as the real NOBYPASSRLS `chartwarden_app` role (`_live-app-role.ts`); a cross-tenant assertion on a superuser proves nothing.
+- **Never run live suites against the shared Docker cluster.** They `DROP ROLE chartwarden_app`. Use a private `pgvector/pgvector:pg18` container on its own port with a fresh database per suite, one database at a time (roles are cluster-global, so drop the previous suite's database first).
 - **DoseSpot is unbound until configured.** `DOSESPOT_TENANT_CONFIGS` must hold a complete entry for a tenant before the M12 adapter sends anything; vendor field names are unverified until tested against a DoseSpot sandbox (`docs/history/m12-dosespot-adapter.md`).
 - **Use the real catalog-validating publisher in tests**, not `NOOP_OUTBOX`; every payload/emit-site change needs the real-publisher live suite.
 - **A value set or seam is not seeded just because its definition exists.** A gate that depends on reference data (e.g. M29's `sud_test_loinc`) must have that data in the database: `packages/terminology` seed lists are TS data until a migration inserts them. Prove membership live through the real adapter, not by reading the definition.

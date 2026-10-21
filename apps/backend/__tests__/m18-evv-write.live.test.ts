@@ -1,7 +1,7 @@
 /**
  * M18L — the Drizzle EVV write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role. M18 has NO state-transition triggers (only the M4
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role. M18 has NO state-transition triggers (only the M4
  * audit + the `evv_event` append-only trigger), so the service performs every capture/device/policy/resolution/
  * submission transition itself, composing the pure `domain/*` machines: capture (INSERT `evv_event` +
  * `evv_geofence_evaluation`), device self-register + approve/suspend, geofence tenant-tighten + per-address
@@ -41,7 +41,7 @@ import { TEST_COORDS_DEK_VERSION, createTestEvvCoordsCipher } from "./_m18-coord
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 /** The patient-address coordinate every in-geofence capture below is taken at (GAP-054). */
 const ADDRESS_BASELINE = { lat: 45.523, lng: -122.6789 };
@@ -214,7 +214,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       );
       seeded[org] = { pe, location, member, device };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

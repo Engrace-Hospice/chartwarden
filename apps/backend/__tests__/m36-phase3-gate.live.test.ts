@@ -1,5 +1,5 @@
 /**
- * M36 Phase 3 gate - simulated hospice cases that cross work packages, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 Phase 3 gate - simulated hospice cases that cross work packages, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The single-WP live suites already prove each rule on its own. These two scenarios prove the rules still hold when the
  * work packages run together on one patient, over the REAL route stack, the REAL catalog-validating outbox publisher, the

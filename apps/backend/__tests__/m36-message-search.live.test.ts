@@ -1,5 +1,5 @@
 /**
- * M36 WP 2.7a in-conversation search (option A, decrypt-and-filter), LIVE Postgres as the NOBYPASSRLS `wardenx_app`
+ * M36 WP 2.7a in-conversation search (option A, decrypt-and-filter), LIVE Postgres as the NOBYPASSRLS `chartwarden_app`
  * role through the real route stack:
  *   - returns only live, currently viewable messages of ONE channel (never a tombstone, an old edit body, another
  *     channel, another tenant, or a removed member's view);
@@ -38,7 +38,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG = "11111111-1111-4111-8111-1111000f0277";
 const ORG_B = "22222222-2222-4222-8222-2222000f0277";
@@ -197,7 +197,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
     room = await seedChannel(ORG, "Search room", [u1, u2]);
     other = await seedChannel(ORG, "Search other", [u1, u2]);
     foreign = await seedChannel(ORG_B, "Foreign room", [userB]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     service = createDbMessagingRouteService(handle.db, { kek: KEK });
 

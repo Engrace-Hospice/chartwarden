@@ -143,7 +143,7 @@ describe("§7.4 Tenants cannot write canonical (engine half; DB grant → live s
     await service.approveMerge(MERGE_ID, "ops"); // platform-ops only (route-gated, T07)
     dup = await provider.resolvePhysician(ORG_A, DUPLICATE);
     expect(dup?.resolvedFrom).toBe(DUPLICATE);
-    // The DB lockdown (`wardenx_app` has no canonical write grant; only `mdm_canonical_writer`) is
+    // The DB lockdown (`chartwarden_app` has no canonical write grant; only `mdm_canonical_writer`) is
     // proven on real Postgres in the live RLS suite.
   });
 });

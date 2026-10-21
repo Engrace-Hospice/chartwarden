@@ -176,7 +176,7 @@ export function buildDrizzleM26WriteService(
         }
         // D3 — a tenant has now SNAPSHOTTED the constant, so it must never be amended again. Stamps
         // `first_tenant_use_at` once (the first open wins) through the 0392 SECURITY DEFINER function —
-        // wardenx_app has no UPDATE on the platform table. Same transaction as the snapshot.
+        // chartwarden_app has no UPDATE on the platform table. Same transaction as the snapshot.
         await tx.execute(sql`SELECT cap_platform_loader_mark_constant_in_use(${input.capYear})`);
         await outbox.publish(tx, {
           eventName: "m26.cap.year_opened",
@@ -605,9 +605,9 @@ export function buildDrizzleM26WriteService(
     },
 
     async publishConstant(actor, input: PublishConstantInput) {
-      // Platform-shared write — §3.5/0089 REVOKEs INSERT/UPDATE/DELETE on this table from wardenx_app
+      // Platform-shared write — §3.5/0089 REVOKEs INSERT/UPDATE/DELETE on this table from chartwarden_app
       // (BYPASSRLS bypasses row-level security, not this separate GRANT-level revoke), so the write
-      // routes through the SECURITY DEFINER function migration 0189 grants wardenx_app EXECUTE on —
+      // routes through the SECURITY DEFINER function migration 0189 grants chartwarden_app EXECUTE on —
       // the same platform-writer pattern migrations 0186-0188 use for outbox_event/audit_event/
       // report_run/materialized_view_metadata. No org context (platform table).
       await db.execute(sql`

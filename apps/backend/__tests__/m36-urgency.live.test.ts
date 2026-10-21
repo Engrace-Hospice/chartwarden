@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.1 - the urgency model ("Urgent clinical"), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.1 - the urgency model ("Urgent clinical"), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing, the M1
  * idempotency store) over the REAL catalog-validating outbox publisher (not NOOP_OUTBOX).
@@ -608,7 +608,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
       await expect(insert(rn)).resolves.toBeDefined();
     });
 
-    it("wardenx_app cannot see another tenant's urgent message (RLS)", async () => {
+    it("chartwarden_app cannot see another tenant's urgent message (RLS)", async () => {
       const made = (await send(app, nurse, {})).json();
       await kit.appConn.query("SELECT set_config('app.org_id', $1, false)", [ORG_B]);
       const seen = await kit.appConn.query("SELECT 1 FROM message WHERE id=$1", [made.message_id]);

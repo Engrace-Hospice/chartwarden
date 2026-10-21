@@ -1,5 +1,5 @@
 /**
- * WP 2.13 / ADR-0058 P1 — message bodies on the M34 wrapped-DEK ring, LIVE Postgres as the NOBYPASSRLS `wardenx_app`.
+ * WP 2.13 / ADR-0058 P1 — message bodies on the M34 wrapped-DEK ring, LIVE Postgres as the NOBYPASSRLS `chartwarden_app`.
  *
  * Proves, over a real tenant_key_ring + the real M34 TenantKeyProvider (not a stub):
  *   - the generated `body_envelope_version` marker (1 legacy / 2 ring) and both schemes readable through one service;
@@ -65,13 +65,13 @@ const NO_MESSAGE_HOLDS = {
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
   "wp213_resealer",
-  "wardenx_m36_reseal",
+  "chartwarden_m36_reseal",
 ];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111111136a1";
@@ -84,7 +84,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
   let platformHandle: { db: DbClient; close: () => Promise<void> };
-  /** Logs in as a member of wardenx_m36_reseal: the only credential that may re-seal a revision (migration 1090). */
+  /** Logs in as a member of chartwarden_m36_reseal: the only credential that may re-seal a revision (migration 1090). */
   let resealHandle: { db: DbClient; close: () => Promise<void> };
   const accountOf: Record<string, string> = {};
   let kekAdapter: ReturnType<typeof createPlatformKekAdapter>;
@@ -211,25 +211,25 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'wp213_platform'");
-    // The same COLUMN grants scripts/db/provision-runtime-roles.ts gives wardenx_platform (this suite's platform login
-    // stands in as wardenx_admin, the m34 live-suite precedent): the scheme marker only, never the ciphertext.
+    await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'wp213_platform'");
+    // The same COLUMN grants scripts/db/provision-runtime-roles.ts gives chartwarden_platform (this suite's platform login
+    // stands in as chartwarden_admin, the m34 live-suite precedent): the scheme marker only, never the ciphertext.
     await admin.query(
-      'GRANT SELECT ("organization_id", "body_envelope_version") ON "message", "message_revision" TO wardenx_admin',
+      'GRANT SELECT ("organization_id", "body_envelope_version") ON "message", "message_revision" TO chartwarden_admin',
     );
     await admin.query(
-      'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO wardenx_admin',
+      'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO chartwarden_admin',
     );
-    // The platform login's audited bypass entry (migration 0187 grants the writer to wardenx_app only).
+    // The platform login's audited bypass entry (migration 0187 grants the writer to chartwarden_app only).
     await admin.query(
-      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_admin",
+      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO chartwarden_admin",
     );
     const platformUrl = new URL(DB_URL as string);
-    platformUrl.username = "wardenx_admin";
+    platformUrl.username = "chartwarden_admin";
     platformUrl.password = "wp213_platform";
     platformHandle = createDbClient({ connectionString: platformUrl.toString() });
     await admin.query(
-      "CREATE ROLE wp213_resealer LOGIN NOBYPASSRLS PASSWORD 'wp213_resealer' IN ROLE wardenx_m36_reseal",
+      "CREATE ROLE wp213_resealer LOGIN NOBYPASSRLS PASSWORD 'wp213_resealer' IN ROLE chartwarden_m36_reseal",
     );
     const resealUrl = new URL(DB_URL as string);
     resealUrl.username = "wp213_resealer";

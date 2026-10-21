@@ -118,7 +118,7 @@ export const AI_KILL_SWITCH_CLEAR: AiKillSwitchVerdict = {
  * The disjunction from the header. `rows` is every `ai_kill_switch_state` row for the capability that
  * the caller may see — which, under 0116's `ai_kill_switch_read` policy, is the platform row plus their
  * own; a row belonging to ANOTHER tenant is filtered here as well as by RLS, because a cache built
- * under `wardenx_admin` would otherwise let one agency's pause stop another agency's calls.
+ * under `chartwarden_admin` would otherwise let one agency's pause stop another agency's calls.
  *
  * The PLATFORM row is reported as the decider when both are active: the operator's first question about
  * a stopped capability is "is this just us?", and answering with the tenant row would say yes when a
@@ -240,7 +240,7 @@ export function aiKillSwitchDemotionPlanFor(
  * Does this activation have to run on the platform credential?
  *
  * Yes for every platform-wide row. 0116 splits `ai_kill_switch_state`'s policies by command precisely
- * so `wardenx_app` cannot INSERT a NULL-org row — without that split any tenant admin could mint a
+ * so `chartwarden_app` cannot INSERT a NULL-org row — without that split any tenant admin could mint a
  * platform-wide kill and stop a capability for every other agency. Stated here as a rule so the service
  * chooses the credential from the SCOPE rather than from which store method it happened to call.
  */

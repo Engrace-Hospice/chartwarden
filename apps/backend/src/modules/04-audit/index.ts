@@ -117,7 +117,7 @@ export interface MountAuditRoutesOptions {
  * deps shape, so mounting them together here means a future route can't be exported-but-never-
  * called again the way the accounting route was (GAP-002's actual bug). The `audit.elevated_access`
  * meta-event sink is the DURABLE Drizzle path (`createTenantAuditExecutor(db)` — `AuditExecutor` is structurally
- * `insert(table).values(row)`, the M2 precedent; migration 0119 makes the `wardenx_app` INSERT
+ * `insert(table).values(row)`, the M2 precedent; migration 0119 makes the `chartwarden_app` INSERT
  * legal under RLS), so an auditor's elevated-access meta-event survives the process instead of
  * dying in a Map.
  */

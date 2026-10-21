@@ -13,7 +13,7 @@ import type {
 // THREE PORTS, SPLIT BY CREDENTIAL — the M32-T03/T04 posture, continued:
 //
 //   · `AiKillSwitchStore`         — `ai_kill_switch_state` is M32's ONE mixed-scope table, and the split
-//     is what the port has to encode. 0116 gives `wardenx_app` a SELECT policy that admits the platform
+//     is what the port has to encode. 0116 gives `chartwarden_app` a SELECT policy that admits the platform
 //     row plus the caller's own, but INSERT/UPDATE policies that admit ONLY the caller's own — so a
 //     PLATFORM-scoped write has to run on the platform credential. `activate`/`deactivate` therefore
 //     take the scope from the row (`organizationId === null`), never from an argument the caller could

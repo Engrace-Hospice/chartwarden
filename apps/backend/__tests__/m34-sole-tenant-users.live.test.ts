@@ -13,8 +13,8 @@
  * rows, through the real `withPlatformContext` entry and its mandatory `platform.bypass_invoked` audit.
  *
  * The resolver runs on the platform credential (`DATABASE_PLATFORM_URL`) by design — "has no membership
- * elsewhere" is a cross-tenant read `wardenx_app` can never prove under RLS. The suite builds the SAME
- * `wardenx_platform` carrier + BYPASSRLS `wardenx_platform_login` that `scripts/db/provision-runtime-roles.ts`
+ * elsewhere" is a cross-tenant read `chartwarden_app` can never prove under RLS. The suite builds the SAME
+ * `chartwarden_platform` carrier + BYPASSRLS `chartwarden_platform_login` that `scripts/db/provision-runtime-roles.ts`
  * provisions, with only the two grants this read needs (`membership` SELECT, the 0187 audit function) —
  * so a missing production grant fails here, not in a shred.
  *
@@ -34,12 +34,12 @@ import { m34PlatformBypassAuditor } from "../src/index";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const JOB_ID = "m34-shred-sole-tenant-resolver-live-test";
@@ -138,17 +138,17 @@ describe.skipIf(!DB_URL)("M34 shred × M36 D9 — sole-tenant users, LIVE Postgr
 
     // Mirrors scripts/db/provision-runtime-roles.ts: the NOLOGIN carrier holds the grants; BYPASSRLS is
     // an attribute (never inherited), so it sits on the login role itself.
-    await admin.query("CREATE ROLE wardenx_platform NOLOGIN");
-    await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform");
-    await admin.query("GRANT SELECT ON membership TO wardenx_platform");
+    await admin.query("CREATE ROLE chartwarden_platform NOLOGIN");
+    await admin.query("GRANT USAGE ON SCHEMA public TO chartwarden_platform");
+    await admin.query("GRANT SELECT ON membership TO chartwarden_platform");
     await admin.query(
-      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_platform",
+      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO chartwarden_platform",
     );
     await admin.query(
-      "CREATE ROLE wardenx_platform_login LOGIN IN ROLE wardenx_platform BYPASSRLS PASSWORD 'sole34_platform'",
+      "CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform BYPASSRLS PASSWORD 'sole34_platform'",
     );
     platformHandle = createDbClient({
-      connectionString: urlAs("wardenx_platform_login", "sole34_platform"),
+      connectionString: urlAs("chartwarden_platform_login", "sole34_platform"),
     });
     registerPlatformJob(JOB_ID);
   }, 240_000);

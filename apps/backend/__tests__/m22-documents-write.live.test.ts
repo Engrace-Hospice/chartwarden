@@ -1,7 +1,7 @@
 /**
  * M22L — the Drizzle Documents write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role over the M22-owned `documents/*` tables under
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role over the M22-owned `documents/*` tables under
  * `withOrgContext`: document upload + the append-only version ledger, tag add/remove + legal-hold guard, patch,
  * intake batch upload + classify-confirm + the extraction review machine (open / record-decision / bulk-approve
  * / resolve-discrepancy / complete / abandon / discard), tenant-overlay publish (§2.5 optimistic concurrency),
@@ -26,7 +26,7 @@ import { rotateIntakeRetentionForOrg } from "../src/modules/22-documents/workers
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBER = "33333333-3333-3333-3333-333333333333"; // document created_by etc. carry no FK — literal ok
@@ -131,9 +131,9 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ]);
     tmpl.election = { templateId, versionId };
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'wardenx_app_test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx_app_test'");
     const runtimeUrl = new URL(DB_URL as string);
-    runtimeUrl.username = "wardenx_app";
+    runtimeUrl.username = "chartwarden_app";
     runtimeUrl.password = "wardenx_app_test";
     handle = createDbClient({
       connectionString: runtimeUrl.toString(),
@@ -976,7 +976,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     expect(crossTenant.items).toHaveLength(0);
   });
 
-  it("RLS: org B cannot patch or read org A's document (404 under the wardenx_app policy)", async () => {
+  it("RLS: org B cannot patch or read org A's document (404 under the chartwarden_app policy)", async () => {
     const docId = await seedDocument(ORG_A);
     await expect(svc.getDocument(ORG_B, docId)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.patchDocument(ORG_B, ACTOR, docId, { title: "hijack" })).rejects.toMatchObject(

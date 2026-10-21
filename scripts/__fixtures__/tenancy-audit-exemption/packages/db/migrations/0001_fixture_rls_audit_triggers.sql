@@ -29,14 +29,14 @@ CREATE TRIGGER trg_audit_fixture_note AFTER INSERT OR UPDATE OR DELETE ON fixtur
 -- 2. THE VIOLATION — an org-scoped table whose only tenant policy keys on the USER and nothing else.
 ALTER TABLE "fixture_note" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY fixture_note_self ON fixture_note
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);--> statement-breakpoint
 
 -- 3. NOT a violation — the same user key as a CONJUNCT beside the org predicate. This is the shape
 --    #21 was remediated into, and it is defence in depth, not a hole. It must not be reported.
 CREATE POLICY fixture_ok_self ON fixture_ok
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (
     organization_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid
@@ -48,6 +48,6 @@ CREATE POLICY fixture_ok_self ON fixture_ok
 
 -- 4. Violating when created, DROPped and replaced by 0002 — the end state is what counts.
 CREATE POLICY fixture_superseded_self ON fixture_super
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);

@@ -5,7 +5,7 @@
  * lapsed 418.78 volunteer gate was only ever caught fail-closed at read time (the stored status never
  * flipped, assignments never inactivated, the hour ledger was never written).
  *
- * Nothing is stubbed on the write side: the worker functions run as the NOBYPASSRLS `wardenx_app` role
+ * Nothing is stubbed on the write side: the worker functions run as the NOBYPASSRLS `chartwarden_app` role
  * through the REAL catalog-validating outbox publisher (a payload the M15 catalog rejects rolls the tick
  * back and fails HERE), and the hour aggregator reads signed volunteer visits through M8's REAL
  * `SignedEncountersReader` over the real `encounter` table.
@@ -39,7 +39,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -156,7 +156,7 @@ describe.skipIf(!DB_URL)("GAP-044 — M15 crons, LIVE Postgres", () => {
         [USER_V, ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerEncounterSeams({ store: createDrizzleEncounterReaderStore(handle.db) });
 
@@ -466,7 +466,7 @@ describe.skipIf(!DB_URL)("GAP-044 — M15 crons, LIVE Postgres", () => {
     expect(never.status).toBe("unavailable");
     expect(never.reason).toContain("not been computed");
 
-    // Cross-tenant: org B's actor sees neither org A's ledger nor its denominator (RLS as wardenx_app).
+    // Cross-tenant: org B's actor sees neither org A's ledger nor its denominator (RLS as chartwarden_app).
     const other = (await readService.getVolunteerHourRatio(
       actorFor(ORG_B),
       query(ORG_A) as never,

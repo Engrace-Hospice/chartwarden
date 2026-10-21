@@ -1,6 +1,6 @@
 /**
  * M12 DoseSpot VENDOR BOUNDARY (F-230, #248) — OUR side of the boundary, over real Postgres as the real
- * NOBYPASSRLS `wardenx_app` role, with the REAL catalog-validating transactional publisher.
+ * NOBYPASSRLS `chartwarden_app` role, with the REAL catalog-validating transactional publisher.
  *
  * The only thing faked is the vendor itself: `FakeDoseSpotVendor` / `FakeDoseSpotWebhookSender`
  * (`_fake-dosespot-vendor.ts`, a clearly-labelled TEST DOUBLE at the `DoseSpotClient` port / the HTTP delivery).
@@ -207,7 +207,7 @@ describe.skipIf(!DB_URL)(
           )
         ).rows[0].id as string;
       }
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
       outbox = {
@@ -562,7 +562,7 @@ describe.skipIf(!DB_URL)(
             [ORG_A, p, orderId, rx, receipt, `ev-${randomUUID()}`],
           );
         }
-        // The eraser runs on the admin/destruction credential in production (`destructionDb`); wardenx_app has no DELETE.
+        // The eraser runs on the admin/destruction credential in production (`destructionDb`); chartwarden_app has no DELETE.
         const eraseHandle = createDbClient({ connectionString: DB_URL as string });
         try {
           const store = createDrizzleMedicationOrderEraseStore(eraseHandle.db);

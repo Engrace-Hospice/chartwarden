@@ -12,7 +12,7 @@
  * table with its own lost-write crash window).
  *
  * This suite proves BOTH halves of the fix, over the real Drizzle store, the real catalog-validating
- * publisher, and the real dispatcher, under RLS as the NOBYPASSRLS `wardenx_app` role:
+ * publisher, and the real dispatcher, under RLS as the NOBYPASSRLS `chartwarden_app` role:
  *
  *   1. A genuinely DIFFERENT request against an aggregate that already has a document now renders a NEW
  *      VERSION rather than silently no-op'ing — `m8.encounter.addendum_signed` after `.signed`,
@@ -77,7 +77,7 @@ import { MEDICATION_ORDER } from "./_m22-form-fixtures";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -159,7 +159,7 @@ describe.skipIf(!DB_URL)("F-168 — document-request idempotency granularity, LI
       "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
       [MEMBER, USER, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // M22's ONE render consumer's `eventTypes` spans every producing module's declared event — the

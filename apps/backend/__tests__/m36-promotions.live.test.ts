@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.7 - chart promotion, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.7 - chart promotion, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the read-audit plugin) over the
  * REAL catalog-validating outbox publisher (not NOOP_OUTBOX), the REAL message-body cipher (the snapshot reader opens the
@@ -12,7 +12,7 @@
  *   4. WITHDRAW     requester only; a withdrawn request can be proposed again.
  *   5. OUTCOME      the owner's decided event (real publisher) is applied by the consumer; redelivery converges; an event from
  *                   the wrong owner (or a spoofed payload owner) is ignored; an accepted outcome beats withdrawn/superseded.
- *   6. BACKSTOPS    the database refuses editing identity columns, a decided row and any DELETE by wardenx_app.
+ *   6. BACKSTOPS    the database refuses editing identity columns, a decided row and any DELETE by chartwarden_app.
  *   7. AUDIT        trigger rows carry neither patient_id nor the body hash; the read event lands WITH the resource id.
  *   8. NO TEXT      no stored column, outbox row or audit row contains the message text; the seam re-reads it with the real cipher.
  *   9. FLAG         off => 404 / disabled list.
@@ -494,7 +494,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
       expect(lostList.json()).toEqual({ promotions: [] });
     });
 
-    it("raw SQL as wardenx_app in the other tenant sees no row; a cross-org insert is rejected", async () => {
+    it("raw SQL as chartwarden_app in the other tenant sees no row; a cross-org insert is rejected", async () => {
       const { ch, msg, patient } = await scene();
       await propose(requester, ch, msg);
       await kit.appConn.query("BEGIN");
@@ -653,7 +653,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
   });
 
   describe("database backstops", () => {
-    it("wardenx_app cannot DELETE, cannot edit identity or attribution columns, and cannot touch a decided row", async () => {
+    it("chartwarden_app cannot DELETE, cannot edit identity or attribution columns, and cannot touch a decided row", async () => {
       const { ch, msg } = await scene();
       const id = (await propose(requester, ch, msg)).json().promotion.id as string;
       const orgTx = async (sql: string) => {

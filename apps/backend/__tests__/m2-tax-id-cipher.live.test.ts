@@ -1,6 +1,6 @@
 /**
  * M2 — POST /provider-entities seals the EIN through the real tax-id cipher, LIVE Postgres, real NOBYPASSRLS
- * `wardenx_app`. The unit suite (`tax-id-cipher.test.ts`, `gap-115-m2-org-admin.test.ts`) proves the cipher and the
+ * `chartwarden_app`. The unit suite (`tax-id-cipher.test.ts`, `gap-115-m2-org-admin.test.ts`) proves the cipher and the
  * route against an in-memory store and a stub cipher; this proves what only a real catalog can:
  *   - `provider_entity.tax_id_encrypted` holds a `v2.` envelope, never the EIN, and it opens back to the EIN;
  *   - a failing tenant key answers 503 and writes NO row (the NOT NULL column is never filled with a placeholder);
@@ -34,7 +34,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f2060101";
 const ORG_B = "22222222-2222-4222-8222-2222f2060102";
@@ -73,7 +73,7 @@ function keyRing(failing: () => boolean): TaxIdKeyProvider {
   return { dekForOrg: dek, dekForOrgVersion: (orgId) => dek(orgId) };
 }
 
-describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real wardenx_app role", () => {
+describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real chartwarden_app role", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let app: ReturnType<typeof buildServer>;
@@ -111,7 +111,7 @@ describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real wardenx_app r
          ($1,'f2060-a@example.test','Admin A'),($2,'f2060-b@example.test','Admin B')`,
       [ADMIN_A, ADMIN_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     resetAuthorizationContract();

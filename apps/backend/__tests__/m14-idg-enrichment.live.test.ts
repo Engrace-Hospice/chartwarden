@@ -1,6 +1,6 @@
 /**
  * M14 IDG read enrichment — the two org-explicit, BATCHED cross-module seam reads, proven against real
- * Postgres as the unprivileged NOBYPASSRLS `wardenx_app` role (never a superuser connection):
+ * Postgres as the unprivileged NOBYPASSRLS `chartwarden_app` role (never a superuser connection):
  *   • M5 `patientDisplayLabelsForOrg` — "First L." + MRN last-4 for a set of patient ids, ONE query, and a
  *     cross-tenant / unknown id is simply ABSENT (RLS + the explicit organization_id predicate);
  *   • M6 `idgRecertWindowsForOrg` — per-patient recert / face-to-face window over M6's own window math:
@@ -21,13 +21,13 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PHYSICIAN = "55555555-5555-5555-5555-555555555555";
 
-describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   const ids: Record<string, string> = {};
@@ -136,7 +136,7 @@ describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as wardenx
     const b = await admissionFor(ORG_B, ids.bPatient, "B");
     await period(ORG_B, b.admission, 2, "ninety_day", "active", -100, 10);
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 
@@ -209,7 +209,7 @@ describe.skipIf(!DB_URL)("M14 read enrichment seams — LIVE Postgres as wardenx
     });
   });
 
-  it("M6: a patient with no live admission and a cross-tenant patient are ABSENT (RLS, wardenx_app)", async () => {
+  it("M6: a patient with no live admission and a cross-tenant patient are ABSENT (RLS, chartwarden_app)", async () => {
     const map = await idgRecertWindowsForOrg(handle.db, ORG_A, [ids.px, ids.bPatient]);
     expect(map.size).toBe(0);
     const b = await idgRecertWindowsForOrg(handle.db, ORG_B, [ids.bPatient, ids.p2]);

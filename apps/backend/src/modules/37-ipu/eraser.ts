@@ -2,7 +2,7 @@
 //
 // M37 registers an eraseFn with M4's destruction-cert workflow (§7.7). Under a destruction certificate it
 // deletes the patient's IPU subtree in FK order (satellites → the ipu_admission root), plus the patient's
-// per-patient visitor restrictions. M37 tables GRANT DELETE to wardenx_app (migration 0153), so the delete
+// per-patient visitor restrictions. M37 tables GRANT DELETE to chartwarden_app (migration 0153), so the delete
 // runs under RLS in the tenant pool — no BYPASSRLS. Registered via the composition root's registerModuleErasers
 // hook over the Phase-0 `ipu_record` deny-stub (it runs AFTER wireErasers() / before validateErasers()).
 //

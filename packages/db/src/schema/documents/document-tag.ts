@@ -1,5 +1,5 @@
 // @chartwarden/db — `document_tag` (M22 §3.3). User/structured tags on a document. The one table
-// `wardenx_app` may DELETE (tags are user-removable, §3.2 Phase 2.3). Org-scoped; `tag_value` is
+// `chartwarden_app` may DELETE (tags are user-removable, §3.2 Phase 2.3). Org-scoped; `tag_value` is
 // DENYLISTED when `tag_kind='free'` (may carry PHI, §3.6 — row-conditional in the trigger).
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";

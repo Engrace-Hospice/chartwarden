@@ -41,7 +41,7 @@
  * writes the row, the real `createOutboxDispatcher` claims and delivers it, M29's real
  * `createDrizzleM29PublishedSeamStore`-backed `LabObservationReader` seam resolves the observation, the real
  * `DocumentRenderer` renders, and the real Drizzle seam store writes `document`/`document_version`, under
- * RLS, as the NOBYPASSRLS `wardenx_app` role. `ConsentEvaluator` is stubbed (both directions driven) — same
+ * RLS, as the NOBYPASSRLS `chartwarden_app` role. `ConsentEvaluator` is stubbed (both directions driven) — same
  * convention `m28-fhir-gateway.live.test.ts` uses for the identical M39 seam.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f171:m22-lab-backref:live
@@ -75,7 +75,7 @@ import { ORDER_RECORD } from "./_m22-form-fixtures";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -249,7 +249,7 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       __resetSeamsForTest();

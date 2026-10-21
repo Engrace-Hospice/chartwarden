@@ -1,6 +1,6 @@
 /**
  * M4 §4.4 `audit.seal_partition` + `audit.integrity_sample` (the batch-11 GAP-014 deferral) — LIVE Postgres as
- * the real NOBYPASSRLS `wardenx_app` role. Proves on a real database:
+ * the real NOBYPASSRLS `chartwarden_app` role. Proves on a real database:
  *   1. a disabled org is `skipped` (recorded, never a clean pass) and nothing is sealed;
  *   2. closed months are sealed in order, each linked to the previous seal; the open month is never sealed;
  *   3. an intact chain verifies (`match`);
@@ -45,10 +45,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 
@@ -151,7 +151,7 @@ describe.skipIf(!DB_URL)("M4 audit hash-chain seal + sampled verification — LI
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m4i@x.test')`, [USER]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     for (const month of MONTHS) idsByMonth[month] = await seedEvents(ORG_A, month, 4);

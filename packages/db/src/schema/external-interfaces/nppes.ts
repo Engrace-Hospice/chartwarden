@@ -2,7 +2,7 @@
 // records and the nightly-sync orchestration log (W-XI-11/12).
 //
 // PLATFORM-SHARED (NO organization_id) BY DESIGN — the NPPES registry is the same public directory for
-// every tenant, so both are READ-ALL `USING (true)` to wardenx_app and WRITTEN only by wardenx_admin under
+// every tenant, so both are READ-ALL `USING (true)` to chartwarden_app and WRITTEN only by chartwarden_admin under
 // the platform-role nightly sync (D11; the M28 fhir_capability_snapshot / M38 code_system precedent). Both
 // are listed in check-tenancy's NON_ORG_SCOPED set with that justification. They are NOT partitioned.
 //

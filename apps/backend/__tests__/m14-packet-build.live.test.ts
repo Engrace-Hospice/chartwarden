@@ -83,10 +83,10 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_platform_live_test",
 ];
 
@@ -331,7 +331,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           carePlanContextForOrg: (organizationId: string, patientId: string, asOfIso: string) =>
             idgPacketCarePlanContextForOrg(handle.db, organizationId, patientId, asOfIso),
         },
-        // §2.4 cover recert/F2F facts — the REAL M6 seam over the real wardenx_app connection.
+        // §2.4 cover recert/F2F facts — the REAL M6 seam over the real chartwarden_app connection.
         recertWindows: {
           recertWindowsForOrg: (
             organizationId: string,
@@ -342,7 +342,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       };
     }
 
-    /** §2.4 flagged-event sources + HOPE context — the REAL org-explicit seams over the wardenx_app connection. */
+    /** §2.4 flagged-event sources + HOPE context — the REAL org-explicit seams over the chartwarden_app connection. */
     function sectionPorts() {
       return {
         flaggedEventSources: [
@@ -518,7 +518,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       await applyMigrations();
       await seedOrgProviderLocation(ORG_A, "org-a");
       await seedOrgProviderLocation(ORG_B, "org-b");
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
       outbox = {
@@ -777,9 +777,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(readyRows[0].payload.coordinatorMembershipId).toEqual(expect.any(String));
     });
 
-    it("active-org enumeration: the TENANT pool (wardenx_app) sees ZERO orgs under `organization` RLS; the PLATFORM pool " +
+    it("active-org enumeration: the TENANT pool (chartwarden_app) sees ZERO orgs under `organization` RLS; the PLATFORM pool " +
       "sees them — and the cron fed by the platform-bound enumerator actually builds", async () => {
-      // A BYPASSRLS login with SELECT on `organization` only — the shape of `wardenx_platform_login` (the real role
+      // A BYPASSRLS login with SELECT on `organization` only — the shape of `chartwarden_platform_login` (the real role
       // is created out-of-band by ops, so the suite stands up its own stand-in of the same privilege class).
       await admin.query(
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wardenx_platform_live_test') THEN
@@ -917,7 +917,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     });
 
     it("render payload NAMES: org/location header + named carry-forward assignees come from the REAL org-explicit " +
-      "seams (as wardenx_app), ride the render payload ONLY (never built_snapshot), are tenant-scoped, and degrade", async () => {
+      "seams (as chartwarden_app), ride the render payload ONLY (never built_snapshot), are tenant-scoped, and degrade", async () => {
       const assignee = "5a5a5a5a-0000-4000-8000-0000000000a1";
       const assigneeB = "5a5a5a5a-0000-4000-8000-0000000000b1";
       await admin.query(

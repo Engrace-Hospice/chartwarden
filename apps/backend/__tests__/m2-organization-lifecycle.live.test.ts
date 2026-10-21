@@ -1,5 +1,5 @@
 /**
- * §11 D19 — M2's org activate/suspend/close capability, LIVE Postgres, real NOBYPASSRLS `wardenx_app`.
+ * §11 D19 — M2's org activate/suspend/close capability, LIVE Postgres, real NOBYPASSRLS `chartwarden_app`.
  *
  * Closes the M2 "hard half" (#205): `organization.status` had NO UPDATE anywhere in the codebase before
  * `organization-lifecycle.ts` — the four `m2.organization.*` / `m2.session.created` events M35's §4.12
@@ -56,14 +56,14 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f2050101";
 const ORG_B = "22222222-2222-4222-8222-2222f2050102";
 const USER = "33333333-3333-4333-8333-3333f2050103";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050104";
 
-describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real wardenx_app role", () => {
+describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real chartwarden_app role", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
 
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       `INSERT INTO "user" (id,email,name) VALUES ($1,'f11d19@example.test','F11D19 User')`,
       [USER],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
 
@@ -226,7 +226,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
 
   // §4.7 `user.deactivate` "platform_ops (any)" — POST /api/v1/platform/users/:id/deactivate, driven
   // through the route with the REAL directory / session writer / org-scoped audit + outbox, and the REAL
-  // RBAC store + actor-enrichment reader, all as `wardenx_app`. Only session authentication (a header
+  // RBAC store + actor-enrichment reader, all as `chartwarden_app`. Only session authentication (a header
   // shim naming the user + bound org) and the step-up ceremony are stood in for.
   describe("platform user deactivate (§4.7 platform_ops any)", () => {
     const ORG_OPS = "55555555-5555-4555-8555-5555f2050105";
@@ -401,7 +401,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
         membershipsRevoked: 2,
       });
       expect(await targetStatus()).toBe("deactivated");
-      // §2.2.1 "All memberships revoked" — in BOTH orgs, written as wardenx_app (RLS re-pointed per org);
+      // §2.2.1 "All memberships revoked" — in BOTH orgs, written as chartwarden_app (RLS re-pointed per org);
       // the operator's own membership in ORG_OPS is untouched.
       const ms = await admin.query<{ organization_id: string; status: string }>(
         `SELECT organization_id, status FROM membership WHERE user_id=$1 ORDER BY organization_id`,
@@ -453,7 +453,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       await app.close();
     });
 
-    it("the tenant path (deactivateFromOrg) revokes the sole membership too, as wardenx_app", async () => {
+    it("the tenant path (deactivateFromOrg) revokes the sole membership too, as chartwarden_app", async () => {
       const SOLE = "99999999-9999-4999-8999-9999f2050109";
       await admin.query(
         `INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`,
@@ -511,7 +511,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       );
     });
 
-    it("the bare table read the old store did FAILS for wardenx_app with no org bound (why 0324 exists)", async () => {
+    it("the bare table read the old store did FAILS for chartwarden_app with no org bound (why 0324 exists)", async () => {
       await expect(
         handle.db.execute(
           sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`,
@@ -519,7 +519,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       ).rejects.toThrow();
     });
 
-    it("peek resolves the invitation with no org context, as wardenx_app, and does not consume it", async () => {
+    it("peek resolves the invitation with no org context, as chartwarden_app, and does not consume it", async () => {
       const store = createDbInvitationStore(handle.db);
       const detail = await store.peek(TOKEN);
       expect(detail).toMatchObject({
@@ -576,7 +576,7 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       ).rejects.toThrow();
     });
 
-    it("markEmailVerified flips email_verified for the account, as wardenx_app, and only that account", async () => {
+    it("markEmailVerified flips email_verified for the account, as chartwarden_app, and only that account", async () => {
       const reader = createDbUserIdentityReader(handle.db);
       const flag = async (id: string) =>
         (await admin.query(`SELECT email_verified FROM "user" WHERE id=$1`, [id])).rows[0]

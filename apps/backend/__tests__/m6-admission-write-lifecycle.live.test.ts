@@ -1,7 +1,7 @@
 /**
  * M6L-T02 — the Drizzle referral + admission WRITE lifecycle, proven against real Postgres.
  *
- * Drives the production `createDbAdmissionRouteService` writes as the NOBYPASSRLS `wardenx_app` role,
+ * Drives the production `createDbAdmissionRouteService` writes as the NOBYPASSRLS `chartwarden_app` role,
  * asserting the referral intake state machine (received → under_review → qualified → converted, which
  * mints the admission draft) and the admission's (pending → NOR ack → activate), optimistic concurrency (stale `ifVersion` → 409), the §2.5 side effects (the 4 compliance
  * windows the createAdmission cascade opens, the NOR window it closes, `activated_at`), the R-AC-01
@@ -28,7 +28,7 @@ import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -97,7 +97,7 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
         [id, ORG_A, providerEntityId, locationId, mrn],
       );
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

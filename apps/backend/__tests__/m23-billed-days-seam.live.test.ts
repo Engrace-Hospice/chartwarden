@@ -20,7 +20,7 @@ import { buildM23PatientDaysProvider } from "../src/modules/23-billing-medicare/
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const FY_START = "2025-10-01";
 const FY_END = "2026-09-30";

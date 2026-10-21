@@ -296,7 +296,7 @@ export async function backfillBodiesForOrg(
   deps: {
     readonly db: DbClient;
     readonly cipher: MessageBodyCipher;
-    /** Connection as a member of `wardenx_m36_reseal` (the only role that may re-seal a revision). Required for a real run. */
+    /** Connection as a member of `chartwarden_m36_reseal` (the only role that may re-seal a revision). Required for a real run. */
     readonly resealDb?: DbClient;
   },
   organizationId: string,
@@ -307,7 +307,7 @@ export async function backfillBodiesForOrg(
   assertBodyBackfillAllowed(opts.env ?? process.env, dryRun);
   if (!dryRun && !deps.resealDb) {
     throw new BodyBackfillRefusedError(
-      "a real run needs deps.resealDb (the wardenx_m36_reseal credential)",
+      "a real run needs deps.resealDb (the chartwarden_m36_reseal credential)",
     );
   }
   const batchSize = Math.max(1, opts.batchSize ?? BODY_BACKFILL_DEFAULT_BATCH_SIZE);

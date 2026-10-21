@@ -2,7 +2,7 @@
  * M23 DRAFT-claim delete / re-assembly — LIVE Postgres proof (migration 1061).
  *
  * `DELETE /billing/claims/:id` used to die with 42501 `permission denied for table claim_line` because the app role had
- * no DELETE grant on `claim_line` (0077). This proves, as the real NOBYPASSRLS `wardenx_app` role (`_live-app-role.ts`):
+ * no DELETE grant on `claim_line` (0077). This proves, as the real NOBYPASSRLS `chartwarden_app` role (`_live-app-role.ts`):
  *   - a draft claim with lines and every append-only child (HIPPS, SIA, validation run/result/override, state history)
  *     is deleted through the real `deleteDraftClaim`, children included, and the deletes land in `audit_event`;
  *   - a non-draft claim (every other state) can neither be deleted by the service nor by raw SQL on claim / claim_line,
@@ -25,7 +25,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -132,7 +132,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
     return rows[0].n as number;
   }
 
-  /** Run `fn` on a fresh wardenx_app connection scoped to `org`; always rolls back. */
+  /** Run `fn` on a fresh chartwarden_app connection scoped to `org`; always rolls back. */
   async function asApp<T>(org: string, fn: (c: Client) => Promise<T>): Promise<T> {
     const c = new Client({ connectionString: appUrl });
     await c.connect();
@@ -317,7 +317,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
   it("keeps the destruction role able to erase a non-draft claim's lines and claim (per-patient eraser)", async () => {
     const { claimId } = await seedClaim(ORG_A, "PAID");
     await admin.query("DROP ROLE IF EXISTS m23_destroyer");
-    await admin.query("CREATE ROLE m23_destroyer LOGIN PASSWORD 'x' IN ROLE wardenx_destruction");
+    await admin.query("CREATE ROLE m23_destroyer LOGIN PASSWORD 'x' IN ROLE chartwarden_destruction");
     const url = new URL(DB_URL as string);
     url.username = "m23_destroyer";
     url.password = "x";

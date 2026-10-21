@@ -1,5 +1,5 @@
 /**
- * M25 TPE program tracker (hospice ADR/TPE/QIC PRD, milestone 5) - LIVE Postgres as the NOBYPASSRLS `wardenx_app`
+ * M25 TPE program tracker (hospice ADR/TPE/QIC PRD, milestone 5) - LIVE Postgres as the NOBYPASSRLS `chartwarden_app`
  * role, through the real service, the real M23 claim seam and the real route plugin.
  *
  * Proves what the pure suites cannot: no threshold exists until the organization records one and a round keeps the
@@ -35,7 +35,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const TPE_TABLES = ["tpe_mac_rule", "tpe_program", "tpe_round", "tpe_round_claim"];

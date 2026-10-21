@@ -1,5 +1,5 @@
 /**
- * device_attestation RLS "empty GUC" regression — LIVE Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * device_attestation RLS "empty GUC" regression — LIVE Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * `createDbSessionContextStore` (packages/auth/src/identity/db-session-store.ts) LEFT JOINs
  * `device_attestation` from a bare (non-`withOrgContext`) query, because it resolves the session
@@ -35,10 +35,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
 ];
 
@@ -92,7 +92,7 @@ describe.skipIf(!DB_URL)("device_attestation RLS — empty-GUC-after-reuse", () 
       [SESSION_ID, USER, ORG_A],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     // max: 1 — pins the pool to ONE physical connection, so the poisoning transaction below and the
     // session read after it are guaranteed to run on the same connection (the bug's precondition).
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string), max: 1 });

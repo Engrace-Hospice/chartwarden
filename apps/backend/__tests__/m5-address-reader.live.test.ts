@@ -2,7 +2,7 @@
  * F-229 (#248) — LIVE Postgres proof of M5's `PatientAddressReader.primaryAddress` (the full-street-address
  * read `m21 <- m11.order.supply_fulfillment_requested` needs and no published seam answered).
  *
- * Runs as the real NOBYPASSRLS `wardenx_app` role:
+ * Runs as the real NOBYPASSRLS `chartwarden_app` role:
  *   - returns the current PRIMARY address in full, and only that row (history, non-primary and mailing
  *     rows never leak in);
  *   - null when the patient has no current primary address;
@@ -22,7 +22,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -91,7 +91,7 @@ describe.skipIf(!DB_URL)("F-229 — M5 PatientAddressReader.primaryAddress — L
        VALUES ($1,'m5-addr-a','M5 ADDR A','M5 ADDR A'), ($2,'m5-addr-b','M5 ADDR B','M5 ADDR B')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 

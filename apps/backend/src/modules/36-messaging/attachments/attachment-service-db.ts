@@ -170,7 +170,7 @@ export interface AttachmentServiceDeps {
   /** After a deadline aborts a port call, how long to wait for it to really stop before giving up on it. Default 5 s. */
   readonly abortGraceMs?: number;
   /**
-   * The credential that may DELETE `message_attachment` rows (`wardenx_destruction`; the app role has no DELETE grant).
+   * The credential that may DELETE `message_attachment` rows (`chartwarden_destruction`; the app role has no DELETE grant).
    * Absent => the orphan reaper is a no-op and abandoned uploads accumulate (bytes and rows) until it is bound.
    */
   readonly reaperDb?: DbClient | undefined;

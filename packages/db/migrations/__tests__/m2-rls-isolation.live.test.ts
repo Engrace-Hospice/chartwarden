@@ -5,7 +5,7 @@
  * `organization_id` and a tenant `_org` policy — the other two are USER-owned, cross-org auth
  * credentials that are deliberately left un-RLS'd (a user legitimately spans orgs, so org-keyed RLS
  * cannot express user ownership — 0006's authority note, matching M1's user/session/account/verification).
- * So the two RLS'd tables are exactly the ones this suite drives, as the unprivileged `wardenx_app`
+ * So the two RLS'd tables are exactly the ones this suite drives, as the unprivileged `chartwarden_app`
  * role (no BYPASSRLS), against the real migrations on a real Postgres:
  *   • `organization_invitation` — a pending invite carries the token_hash that lets its bearer JOIN an
  *     org; a cross-tenant read/write would leak or forge the credential that grants org membership.
@@ -32,7 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** A single seeded `user` is enough: it backs `organization_invitation.inviter_id` (FK → user, nullable)
@@ -60,7 +60,7 @@ describe.skipIf(!DB_URL)(
     let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -161,9 +161,9 @@ describe.skipIf(!DB_URL)(
     // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);

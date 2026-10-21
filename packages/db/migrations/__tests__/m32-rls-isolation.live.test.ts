@@ -2,13 +2,13 @@
  * M32 AI Platform — §8.2 cross-tenant isolation: the LIVE Postgres proof (§3.3 / §3.5 / ADR-0010).
  *
  * §8.2 lists four enforcement layers and puts RLS first: "every owned table has per-tenant policies; the
- * `wardenx_app` role cannot SELECT cross-tenant rows. Verified by the RLS-isolation test suite which
- * connects as `wardenx_app`, sets `app.org_id` to each of N tenants in sequence, and asserts no row
+ * `chartwarden_app` role cannot SELECT cross-tenant rows. Verified by the RLS-isolation test suite which
+ * connects as `chartwarden_app`, sets `app.org_id` to each of N tenants in sequence, and asserts no row
  * leakage." That sentence describes THIS file. Layer 2 (in-process scope tagging) is asserted in
  * `apps/backend/__tests__/ai-workflow-acceptance.test.ts`; layers 3 and 4 (per-tenant DEK, per-tenant
  * HNSW index) belong to M1 and to a Phase-2 embeddings sidecar respectively.
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
  * every assertion below vacuously. That is asserted FIRST, before a single isolation case runs (the
  * M15-T07 lesson).
  *
@@ -16,7 +16,7 @@
  *
  *   1. **SIX PLATFORM-SHARED tables** (`ai_capability`, `ai_capability_lifecycle_event`,
  *      `ai_capability_calibration`, `ai_model_backend`, `ai_prompt_template`, `ai_evaluation_run`) are
- *      readable from inside EVERY tenant and writable by `wardenx_admin` alone. "Both tenants see the
+ *      readable from inside EVERY tenant and writable by `chartwarden_admin` alone. "Both tenants see the
  *      same row" is the CORRECT answer here and a leak everywhere else, so the sweep cannot be uniform.
  *   2. **SIX TENANT-SCOPED tables** on the canonical `app.org_id` policy — including the two PARTITIONED
  *      ones, whose policy and grants are declared on the parent only. What that actually buys is a
@@ -33,10 +33,10 @@
  * THREE FURTHER INVARIANTS GET THEIR OWN CASES because each is a rule the migration states and only a
  * database can hold:
  *
- *   · **`wardenx_app` has DELETE on NOTHING in M32.** `ai_invocation` is the §164.528 disclosure ledger
+ *   · **`chartwarden_app` has DELETE on NOTHING in M32.** `ai_invocation` is the §164.528 disclosure ledger
  *     and §3.7's destruction is a DEK shred, not a row delete. The privilege is withheld so an attempted
  *     delete is a permission error rather than a code-review convention, and the trigger refuses it a
- *     second time for `wardenx_admin`.
+ *     second time for `chartwarden_admin`.
  *   · **The §3.5 immutability triggers**, which are the §8.1 T4 mitigation: the two append-only tables
  *     refuse UPDATE outright, and `ai_invocation` freezes its request side and provenance while leaving
  *     `hitl_outcome` writable. The ONE cipher edit it admits is the §3.7 shred sentinel — which is what
@@ -62,7 +62,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -91,7 +91,7 @@ const TENANT_SCOPED: { table: string; key: keyof SeedIds }[] = [
   { table: "ai_kill_switch_state", key: "tenantKill" },
 ];
 
-/** The six §3.3 platform-shared tables — read-all inside any tenant, writes via wardenx_admin. */
+/** The six §3.3 platform-shared tables — read-all inside any tenant, writes via chartwarden_admin. */
 const PLATFORM_SHARED = [
   "ai_capability",
   "ai_capability_lifecycle_event",
@@ -116,7 +116,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
   let platformKillId: string;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -326,9 +326,9 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     if (db) await db.end();
   });
 
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
@@ -380,7 +380,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     // THIS CASE USED TO ASSERT `rls === false` ON EVERY LEAF, describing the absent GRANT as the thing
     // keeping leaves unreadable — i.e. it pinned the hole in place as though it were the design. It is
     // not a design: a partition-manager script or a maintenance session running
-    // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO wardenx_app` would have made every partition of
+    // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO chartwarden_app` would have made every partition of
     // the §164.528 disclosure ledger readable BY EVERY TENANT, with no policy to stop it, and this
     // suite would have stayed green throughout. Migration 0118 closes it: every leaf now has RLS
     // ENABLED and FORCED, carries NO policies of its own, and therefore DEFAULT-DENIES direct access
@@ -399,7 +399,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
       `SELECT c.relname AS table_name,
               c.relrowsecurity AS rls,
               c.relforcerowsecurity AS forced,
-              has_table_privilege('wardenx_app', c.oid, 'SELECT') AS sel
+              has_table_privilege('chartwarden_app', c.oid, 'SELECT') AS sel
          FROM pg_inherits i
          JOIN pg_class c ON c.oid = i.inhrelid
          JOIN pg_class p ON p.oid = i.inhparent
@@ -415,7 +415,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
         leaf.forced,
         `${leaf.table_name} has RLS but not FORCE — the table owner still bypasses it`,
       ).toBe(true);
-      expect(leaf.sel, `${leaf.table_name} is directly readable by wardenx_app`).toBe(false);
+      expect(leaf.sel, `${leaf.table_name} is directly readable by chartwarden_app`).toBe(false);
     }
 
     // A leaf must carry NO policies: parent policies govern parent-routed access, and a leaf policy
@@ -456,14 +456,14 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     }
   });
 
-  it("gives wardenx_app NO write on the platform-shared six", async () => {
+  it("gives chartwarden_app NO write on the platform-shared six", async () => {
     for (const table of PLATFORM_SHARED) {
       for (const privilege of ["INSERT", "UPDATE", "DELETE"]) {
         const { rows } = await db.query<{ has: boolean }>(
-          "SELECT has_table_privilege('wardenx_app', $1, $2) AS has",
+          "SELECT has_table_privilege('chartwarden_app', $1, $2) AS has",
           [table, privilege],
         );
-        expect(rows[0].has, `wardenx_app may ${privilege} ${table}`).toBe(false);
+        expect(rows[0].has, `chartwarden_app may ${privilege} ${table}`).toBe(false);
       }
     }
   });
@@ -507,26 +507,26 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
 
   // ── privileges: no DELETE anywhere, no UPDATE on the append-only pair ────────────────────────────
 
-  it("grants wardenx_app DELETE on NOTHING in M32", async () => {
+  it("grants chartwarden_app DELETE on NOTHING in M32", async () => {
     for (const table of ALL_TABLES) {
       const { rows } = await db.query<{ has: boolean }>(
-        "SELECT has_table_privilege('wardenx_app', $1, 'DELETE') AS has",
+        "SELECT has_table_privilege('chartwarden_app', $1, 'DELETE') AS has",
         [table],
       );
-      expect(rows[0].has, `wardenx_app may DELETE ${table}`).toBe(false);
+      expect(rows[0].has, `chartwarden_app may DELETE ${table}`).toBe(false);
     }
   });
 
   it("grants no UPDATE on the append-only pair, and the trigger refuses one anyway", async () => {
     for (const table of APPEND_ONLY) {
       const { rows } = await db.query<{ has: boolean }>(
-        "SELECT has_table_privilege('wardenx_app', $1, 'UPDATE') AS has",
+        "SELECT has_table_privilege('chartwarden_app', $1, 'UPDATE') AS has",
         [table],
       );
-      expect(rows[0].has, `wardenx_app may UPDATE ${table}`).toBe(false);
+      expect(rows[0].has, `chartwarden_app may UPDATE ${table}`).toBe(false);
     }
     // As SUPERUSER, past every grant: the trigger is the second line, and it is the one that stops
-    // `wardenx_admin` from rewriting the sum the W2 hard cap is computed from.
+    // `chartwarden_admin` from rewriting the sum the W2 hard cap is computed from.
     await expect(
       db.query("UPDATE ai_token_ledger SET input_tokens = 0 WHERE id = $1", [a.ledger]),
     ).rejects.toThrow(/M32_TOKEN_LEDGER_APPEND_ONLY/);
@@ -565,7 +565,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
   });
 
   it("admits the §3.7 SHRED as the one cipher write — which is why destruction needs no bypass", async () => {
-    // Run it as `wardenx_app`, exactly as the eraser does under `withOrgContext`: no session variable,
+    // Run it as `chartwarden_app`, exactly as the eraser does under `withOrgContext`: no session variable,
     // no elevated role, no bypass parameter. The empty bytea is the sentinel; the two nullable ciphers
     // go to NULL. Anything else on those columns is refused (the case above).
     const shredded = await withOrg(ORG_A, () =>

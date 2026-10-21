@@ -1,5 +1,5 @@
 /**
- * M36 WP 2.8 - message templates and saved replies, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 2.8 - message templates and saved replies, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack mounted by `mountMessagingRoutes` (so the composition wiring is proved, not assumed) over the
  * Drizzle TemplateService: personal replies private to their owner, shared templates, the platform floor and a tenant
@@ -33,7 +33,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0028";
 const ORG_B = "22222222-2222-4222-8222-2222000f0028";
 const emergency = PLATFORM_MESSAGE_TEMPLATES.find((t) => t.requiredPhrases.length > 0)!;
@@ -80,7 +80,7 @@ function shape(res: { statusCode: number; body: string }): string {
 
 describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
   let admin: Client;
-  let appClient: Client; // a raw wardenx_app connection for RLS assertions
+  let appClient: Client; // a raw chartwarden_app connection for RLS assertions
   let handle: { db: DbClient; close: () => Promise<void> };
   let app: FastifyInstance;
   let alice: string; // org A sender
@@ -140,7 +140,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
     return id;
   };
 
-  /** Run SQL as wardenx_app with the tenant GUCs set, in a transaction that is always rolled back. */
+  /** Run SQL as chartwarden_app with the tenant GUCs set, in a transaction that is always rolled back. */
   async function asApp<T>(orgId: string, userId: string, fn: () => Promise<T>): Promise<T> {
     await appClient.query("BEGIN");
     try {
@@ -176,7 +176,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
     carol = await seedUser("carol", ORG_B);
     carolBoss = await seedUser("carolboss", ORG_B);
     capUser = await seedUser("cap", ORG_A);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     appClient = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await appClient.connect();
@@ -247,7 +247,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
       }
     });
 
-    it("as wardenx_app a tenant can READ platform rows but never insert, update or delete one (RLS)", async () => {
+    it("as chartwarden_app a tenant can READ platform rows but never insert, update or delete one (RLS)", async () => {
       await asApp(ORG_A, boss, async () => {
         const seen = await appClient.query(
           `SELECT count(*)::int AS n FROM message_template WHERE scope='platform'`,
@@ -699,7 +699,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
       expect(a.startsWith("404")).toBe(true);
     });
 
-    it("tenant isolation of the overlay: as wardenx_app, org B sees and changes none of org A's overlays", async () => {
+    it("tenant isolation of the overlay: as chartwarden_app, org B sees and changes none of org A's overlays", async () => {
       await call("PUT", overlayUrl, boss, ORG_A, { title: "A only", body: null, isEnabled: true });
       await asApp(ORG_B, carolBoss, async () => {
         expect(
@@ -730,7 +730,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
       ).toBe("A only");
     });
 
-    it("tenant isolation of templates: as wardenx_app, org B sees none of org A's shared or personal rows and changes none", async () => {
+    it("tenant isolation of templates: as chartwarden_app, org B sees none of org A's shared or personal rows and changes none", async () => {
       await asApp(ORG_B, carolBoss, async () => {
         expect(
           (
@@ -830,7 +830,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
     });
   });
 
-  describe("tenant erase (wardenx_destruction)", () => {
+  describe("tenant erase (chartwarden_destruction)", () => {
     it("removes the tenant's saved replies, shared templates and overlays, and never a platform row or another tenant's", async () => {
       const { createDrizzleMessagingEraseStore } = await import(
         "../src/modules/36-messaging/erasers/messaging-eraser"
@@ -859,7 +859,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
       );
       await admin.query(
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp28_destroyer') THEN
-           CREATE ROLE wp28_destroyer LOGIN PASSWORD 'wp28_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+           CREATE ROLE wp28_destroyer LOGIN PASSWORD 'wp28_destroyer_pw' IN ROLE chartwarden_destruction; END IF; END $$;`,
       );
       const url = new URL(DB_URL as string);
       url.username = "wp28_destroyer";

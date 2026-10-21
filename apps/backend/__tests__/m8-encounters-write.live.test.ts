@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 /**
  * M8L-T02 — the Drizzle encounter WRITE lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role: draft creation, vitals/mileage authoring,
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role: draft creation, vitals/mileage authoring,
  * finalize (pins the vocab version), the §2.3 sign machine (RN direct-sign, the §7.4 D1 F2F dual-write,
  * and the LPN cosignature routing), the §2.4 D3 cosignature chain (acknowledge → sign), void, and the
  * addendum aggregate (draft → finalize → sign). Like the M7 write suite (and unlike the M6 outbox slices,
@@ -47,7 +47,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -264,7 +264,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       latestBatch: async (_patientId: unknown, scaleTypes: readonly string[]) =>
         scaleTypes.filter((s) => latestScales.has(s)).map((scaleType) => ({ scaleType }) as never),
     } as never);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -277,7 +277,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
     );
     // Registered after the app-role client exists — the M5 store reads `patient_assignment` under RLS as
-    // `wardenx_app`, the same role M8's own writes run as.
+    // `chartwarden_app`, the same role M8's own writes run as.
     registerSeam("CareTeamProvider", createCareTeamProvider(createDrizzleCareTeamStore(handle.db)));
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
     const outbox: EncounterWriteOutboxPort = {
@@ -742,8 +742,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     // The eraser has always handled `hearthnote_assembled_output` — it ran against a table that had never
     // held a row. This is the first time the §3.6 DEK-first shred has had one. Only the shred is driven
-    // here: the delete half runs as `wardenx_destruction` (0157), and this suite's connection is the
-    // NOBYPASSRLS `wardenx_app` role, which holds DELETE on no M8 table by design (append-only).
+    // here: the delete half runs as `chartwarden_destruction` (0157), and this suite's connection is the
+    // NOBYPASSRLS `chartwarden_app` role, which holds DELETE on no M8 table by design (append-only).
     const store = createDrizzleEncounterEraseStore(handle.db);
     await store.cryptoEraseHearthnote(ORG_A, PATIENT);
     const out = await admin.query(
@@ -838,7 +838,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     });
   });
 
-  // #92 — the vitals read-back, against real rows under the NOBYPASSRLS `wardenx_app` role. The pure
+  // #92 — the vitals read-back, against real rows under the NOBYPASSRLS `chartwarden_app` role. The pure
   // suite proves the projection over in-memory Maps; only this proves the SELECT returns the columns
   // the write actually persisted, that `captured_at` orders them, and that RLS scopes them by tenant.
   it("#92 listVitals round-trips the persisted measurements, newest capture first", async () => {
@@ -1417,7 +1417,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         "SELECT removed_at, removed_by_membership_id FROM encounter_care_plan_link WHERE id = $1",
         [link.id],
       );
-      // `wardenx_app` holds DELETE on no M8 table (§3.6 append-only), and the M4 write-audit trail is
+      // `chartwarden_app` holds DELETE on no M8 table (§3.6 append-only), and the M4 write-audit trail is
       // only as good as the rows it describes — so the row stays, marked and attributed.
       expect(rows).toHaveLength(1);
       expect(rows[0].removed_at).not.toBeNull();
@@ -1460,7 +1460,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(encounters.every((e) => e.id !== id)).toBe(true);
   });
 
-  // ── GAP-069 / GAP-070 — the M8 seam store runs on the REAL tables, as `wardenx_app` under RLS ─────────
+  // ── GAP-069 / GAP-070 — the M8 seam store runs on the REAL tables, as `chartwarden_app` under RLS ─────────
   describe("seam store over the real tables (GAP-069 / GAP-070)", () => {
     const REQ = { organizationId: ORG_A, userId: USER } as never;
     const seamStore = () =>

@@ -16,7 +16,7 @@ import {
 /**
  * M17L — the Drizzle scheduling write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12/M13, M17 has NO state-transition triggers,
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role. Like M12/M13, M17 has NO state-transition triggers,
  * so the service performs every visit / time-off / recurring / availability transition itself (composing the
  * pure `@chartwarden/scheduling` machines): the 8-state visit machine (create→publish · start · cancel · reschedule
  * · no-show · reassign), proposals (publish/dismiss), recurring create/discontinue, availability upsert, the
@@ -36,7 +36,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -177,7 +177,7 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       };
       seeded[org] = { pe, location, member: await mk(), member2: await mk() };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -529,7 +529,7 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     expect(await eventsFor(member)).toContain("m17.route_optimization_degraded");
   });
 
-  it("RLS: org B cannot see or mutate org A's visit (404 under the wardenx_app policy)", async () => {
+  it("RLS: org B cannot see or mutate org A's visit (404 under the chartwarden_app policy)", async () => {
     const { member } = seeded[ORG_A];
     const v = await newVisit(ORG_A, member);
     await expect(svc.getVisit(ORG_B, v.id)).rejects.toMatchObject({ statusCode: 404 });

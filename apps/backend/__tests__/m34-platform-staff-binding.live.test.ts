@@ -1,6 +1,6 @@
 /**
  * M34 — platform-ops operators are bound into a freshly provisioned tenant org, LIVE Postgres, real NOBYPASSRLS
- * `wardenx_app`. Before this, `role_set` alerts (stuck activation, oversized export hold) resolved
+ * `chartwarden_app`. Before this, `role_set` alerts (stuck activation, oversized export hold) resolved
  * to nobody in a new tenant, because `platform_ops` is bound per membership and the org had none. Proves:
  *   - every operator holding the platform-owned `platform_ops` role gets an ACTIVE membership + binding in the org,
  *     and M36's real `role_set` reader then returns exactly them (a plain tenant user is not an operator);
@@ -34,7 +34,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const HOME_ORG = "11111111-1111-4111-8111-1111f3400101";
 const NEW_ORG = "22222222-2222-4222-8222-2222f3400102";
@@ -46,7 +46,7 @@ const EXPIRY = new Date(Date.now() + 30 * 86_400_000).toISOString();
 const DEACTIVATED_OPS = "77777777-7777-4777-8777-7777f3400107";
 
 describe.skipIf(!DB_URL)(
-  "M34 platform-staff binding — LIVE Postgres, real wardenx_app role",
+  "M34 platform-staff binding — LIVE Postgres, real chartwarden_app role",
   () => {
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'pending')`,
         [PENDING_OPS, NEW_ORG],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     }, 240_000);
 

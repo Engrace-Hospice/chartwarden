@@ -1,5 +1,5 @@
 /**
- * GAP-084 — the M28 §4.8 workers, END TO END over real Postgres as the real NOBYPASSRLS `wardenx_app` role.
+ * GAP-084 — the M28 §4.8 workers, END TO END over real Postgres as the real NOBYPASSRLS `chartwarden_app` role.
  *
  * Before this change `POST /$export` inserted an `accepted` job that nothing ever ran (the poll answered
  * `output: []` forever), an unreviewed inbound proposal sat `pending` for ever, a rejected proposal's raw FHIR
@@ -54,7 +54,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -345,7 +345,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
         );
       }
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // THE REAL catalog-validating publisher (not NOOP_OUTBOX), with callerModule pinned to `m28` as boot does.
@@ -480,7 +480,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
         .map((l) => JSON.parse(l).id);
       expect(lines.sort()).toEqual([...patientsOf[ORG_B]].sort());
 
-      // The real wardenx_app role under B's context sees exactly B's rows.
+      // The real chartwarden_app role under B's context sees exactly B's rows.
       const seenByB = await withOrgContext(
         handle.db,
         { organizationId: ORG_B, userId: "" },
@@ -868,7 +868,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
       );
     });
 
-    it("accept / reject / cancel / revoke succeed as wardenx_app and the audit actor is the request's USER", async () => {
+    it("accept / reject / cancel / revoke succeed as chartwarden_app and the audit actor is the request's USER", async () => {
       const store = createDrizzleFhirGatewayStore(handle.db, { outbox: outbox as never });
       const toAccept = await seedProposal(ORG_A, { proposedAgoMs: HOUR_MS });
       const toReject = await seedProposal(ORG_A, { proposedAgoMs: HOUR_MS });

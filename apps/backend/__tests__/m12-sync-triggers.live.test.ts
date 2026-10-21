@@ -56,7 +56,7 @@ describe.skipIf(!DB_URL)(
     const providerOf: Record<string, string> = {};
     const locationOf: Record<string, string> = {};
 
-    /** `ROLES` (wardenx_app et al.) are CLUSTER-GLOBAL, not per-database — this suite runs against its own
+    /** `ROLES` (chartwarden_app et al.) are CLUSTER-GLOBAL, not per-database — this suite runs against its own
      *  fresh, dedicated database on a shared Postgres server (per this pass's own instruction never to run
      *  a destructive role reset against a container that might be shared), so it drops/recreates only the
      *  LOCAL `public` schema and leaves the cluster-wide roles alone; migration 0001's own `IF NOT EXISTS`
@@ -119,7 +119,7 @@ describe.skipIf(!DB_URL)(
 
     /** Enqueue through a real `withOrgContext` transaction — the shape every real `OutboxConsumerBinding`
      *  would run inside (the dispatcher wraps `handle()` in one), and the only way an RLS-enforced
-     *  `wardenx_app` connection can write this table at all (`app.org_id` must be set for the WITH CHECK to
+     *  `chartwarden_app` connection can write this table at all (`app.org_id` must be set for the WITH CHECK to
      *  match). */
     async function enqueueAs(org: string, input: EnqueueInput): Promise<EnqueueResult> {
       return withOrgContext(handle.db, { organizationId: org, userId: USER }, async (tx) => {
@@ -158,7 +158,7 @@ describe.skipIf(!DB_URL)(
           [USER, org],
         );
       }
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     }, 180_000);
 

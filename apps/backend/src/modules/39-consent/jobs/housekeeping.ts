@@ -15,7 +15,7 @@
 // `consent_expiration` cron flips the source first, and this runs the next night).
 //
 // DRAFT AUTO-EXPIRE. Housekeeping TTL only (M39-F13): unsigned drafts older than 30 days are deleted through the
-// migration-0472 SECURITY DEFINER function — `wardenx_app` has no DELETE on consent tables, and the function can
+// migration-0472 SECURITY DEFINER function — `chartwarden_app` has no DELETE on consent tables, and the function can
 // only ever remove `status='draft' AND signed_at IS NULL` rows. Not a retention commitment (§2.2.1).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";

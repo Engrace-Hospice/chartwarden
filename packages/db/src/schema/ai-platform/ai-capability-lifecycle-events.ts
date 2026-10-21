@@ -5,7 +5,7 @@
 // is no organization_id. Listed in check-tenancy.ts's NON_ORG_SCOPED set.
 //
 // APPEND-ONLY (§3.5): UPDATE and DELETE are both refused by the immutability trigger in migration 0116,
-// and `wardenx_app` is granted SELECT/INSERT only. This is the table an FDA inquiry or a deposition
+// and `chartwarden_app` is granted SELECT/INSERT only. This is the table an FDA inquiry or a deposition
 // reads to answer "who approved this and on what evidence" — a correction is a NEW transition row, never
 // an edit, because an edited approval is indistinguishable from an approval that never happened.
 //

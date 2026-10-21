@@ -2076,7 +2076,7 @@ function macPortalAggregateId(macJurisdiction: string): string {
  * in this file already uses: a `null` organizationId does NOT need a `withPlatformContext`-opened tx the way
  * an ordinary platform-scoped READ does — `buildTxOutboxPublisher`'s persist step routes a null-org record
  * through the `report_writer_insert_platform_outbox_event` SECURITY DEFINER function (migration 0186),
- * EXECUTE-granted directly to `wardenx_app` with no GUC precondition, so the plain `deps.db` handle (never
+ * EXECUTE-granted directly to `chartwarden_app` with no GUC precondition, so the plain `deps.db` handle (never
  * wrapped in `withOrgContext` here) is the correct tx to pass — the exact same shape M33's own platform-wide
  * `m33.lag.exceeded`/`.recovered` emits already use (`deps.outboxPublisher!.publish(db, {organizationId: null,
  * ...})`, `m33-jobs.ts`).

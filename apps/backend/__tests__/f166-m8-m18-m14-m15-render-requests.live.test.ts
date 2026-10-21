@@ -39,7 +39,7 @@
  * Nothing is stubbed on the M22 side: the real catalog-validating transactional publisher writes
  * each row, the real `createOutboxDispatcher` claims and delivers it, M22's real render consumer
  * resolves the template, renders through the real `DocumentRenderer`, and the real Drizzle seam
- * store writes `document` + `document_version`, under RLS, as the NOBYPASSRLS `wardenx_app` role.
+ * store writes `document` + `document_version`, under RLS, as the NOBYPASSRLS `chartwarden_app` role.
  * M8/M18/M14 have no producer exercised end-to-end here (M8/M18/M14 write services are large,
  * multi-step lifecycles) — every event is published directly through the real catalog-validating
  * publisher with the exact real payload shape each module's own catalog declares, the same
@@ -102,7 +102,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -183,7 +183,7 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
       "INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active')",
       [MEMBER, USER, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // M22's ONE render consumer's `eventTypes` spans every producing module's declared event — the
@@ -647,7 +647,7 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
   // M14 spec §13 — a late discipline-note ADDENDUM on an adjourned meeting appends a NEW VERSION of the SAME
   // minutes document carrying the 'Addenda' appendix. The producer is the REAL `createDbIdgBackend` write path
   // (real catalog-validating publisher, same tx as the addendum insert), the consumer the real dispatcher + M22
-  // render consumer + M14 back-ref, all as the NOBYPASSRLS `wardenx_app` role.
+  // render consumer + M14 back-ref, all as the NOBYPASSRLS `chartwarden_app` role.
   it("m14.discipline_note.addendum_recorded (real producer) appends a minutes version with the Addenda appendix; stamp stable; Part 2 elided; frozen snapshot untouched", async () => {
     const { meetingId, minutesId, packetId, patientId } = await seedMeetingChain(ORG_A, "ADD1");
     const frozen = [{ noteId: randomUUID(), bodyText: "FROZEN-BODY", bodyWithheld: false }];

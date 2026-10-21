@@ -1,7 +1,7 @@
 /**
  * M10 `hope-retention-scan` — the LIVE Postgres proof (GAP-181).
  *
- * Runs the real cron over real rows as the unprivileged `wardenx_app` role with the real catalog-validating
+ * Runs the real cron over real rows as the unprivileged `chartwarden_app` role with the real catalog-validating
  * outbox publisher: a record past its horizon is FLAGGED (and announced once), a legal hold / open iQIES
  * error / pending correction BLOCKS it, a submitted record keeps its 10-year CMS horizon, an unbound hold
  * port refuses to run, and — the invariant that matters — the scan never deletes a clinical row.
@@ -23,7 +23,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const NOW = new Date("2030-06-01T00:00:00.000Z");
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)("M10 hope-retention-scan — LIVE Postgres (GAP-181)", 
         [providerEntityId],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

@@ -5,9 +5,9 @@
  * protocol gate, the D6 disposition matrix, the D7 escalation ladder and the §4.1 authz composition, but
  * they never touch a database — so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or a
  * grant that lets a tenant edit the platform floor. This test applies the real migrations to a real
- * Postgres and exercises the policies as the unprivileged `wardenx_app` role.
+ * Postgres and exercises the policies as the unprivileged `chartwarden_app` role.
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
  * every assertion below vacuously. That is asserted FIRST, before a single isolation case runs (the
  * M15-T07 lesson).
  *
@@ -35,8 +35,8 @@
  *     makes a correction a NEW row (a "no" later corrected to "yes" means the call HAD a red flag, and
  *     that is what a suppression investigation reads), and the transition ledger is what §2.7 reconstructs
  *     an outage window from. Withholding UPDATE makes an in-place rewrite a permission error.
- *   • NO M19 table grants DELETE to `wardenx_app` at all. Destruction runs through the M4 eraser under
- *     `wardenx_admin`, never through a request.
+ *   • NO M19 table grants DELETE to `chartwarden_app` at all. Destruction runs through the M4 eraser under
+ *     `chartwarden_admin`, never through a request.
  *
  * NOTHING IN M19 IS PARTITIONED, and that is deliberate rather than an omission: a partition key would have
  * had to join every UNIQUE index, which would have destroyed both the D10 inbound-event redelivery guard
@@ -58,7 +58,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -111,7 +111,7 @@ describe.skipIf(!DB_URL)(
     let a: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -297,9 +297,9 @@ describe.skipIf(!DB_URL)(
       if (db) await db.end();
     });
 
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -480,11 +480,11 @@ describe.skipIf(!DB_URL)(
     });
 
     it.each(APPEND_ONLY)(
-      "%s is APPEND-ONLY: wardenx_app holds SELECT + INSERT and no UPDATE",
+      "%s is APPEND-ONLY: chartwarden_app holds SELECT + INSERT and no UPDATE",
       async (table) => {
         const { rows } = await db.query<{ privilege_type: string }>(
           `SELECT privilege_type FROM information_schema.role_table_grants
-         WHERE grantee='wardenx_app' AND table_name=$1`,
+         WHERE grantee='chartwarden_app' AND table_name=$1`,
           [table],
         );
         expect([...new Set(rows.map((r) => r.privilege_type))].sort()).toEqual([
@@ -494,10 +494,10 @@ describe.skipIf(!DB_URL)(
       },
     );
 
-    it("no M19 table grants DELETE to wardenx_app — destruction runs through the M4 eraser", async () => {
+    it("no M19 table grants DELETE to chartwarden_app — destruction runs through the M4 eraser", async () => {
       const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
         `SELECT table_name, privilege_type FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND table_name = ANY($1) AND privilege_type IN ('DELETE','TRUNCATE')`,
+       WHERE grantee='chartwarden_app' AND table_name = ANY($1) AND privilege_type IN ('DELETE','TRUNCATE')`,
         [ALL_TABLES],
       );
       expect(rows).toEqual([]);

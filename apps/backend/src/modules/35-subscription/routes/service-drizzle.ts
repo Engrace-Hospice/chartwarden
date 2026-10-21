@@ -902,7 +902,7 @@ export function buildDrizzleM35RouteService(
     },
 
     async applyPromoTenant(actor, promoCode): Promise<PromoApplicationView> {
-      // GAP-099 — the promo is a platform-shared catalog row `wardenx_app` can only SELECT, so the lock +
+      // GAP-099 — the promo is a platform-shared catalog row `chartwarden_app` can only SELECT, so the lock +
       // count increment run on the platform tx. The subscription is derived HERE from the verified actor
       // org (never from the request), and the application is written for that org explicitly.
       return platform(async (tx) => {

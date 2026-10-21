@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.6 - notification policy (ADR-0073), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.6 - notification policy (ADR-0073), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The REAL Drizzle AlertEmitter ports (rules, preferences through migration 0194, verified endpoints through migration 1123, the M1
  * feature-flag reader, persistence) with only the clock fixed. Proves:
@@ -32,7 +32,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-111111110046";
 const ORG_B = "22222222-2222-4222-8222-222222220046";
 const U = (n: number) => `33333333-3333-4333-8333-33333333004${n}`;
@@ -184,7 +184,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.6 notification policy - LIVE Postgres", () =>
                '{"tz":"America/Los_Angeles","ranges":[{"daysOfWeek":[0,1,2,3,4,5,6],"start":"21:00","end":"07:00"}],"severityOverride":"critical"}'::jsonb)`,
       [ASSIGNEE, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
 
@@ -319,13 +319,13 @@ describe.skipIf(!DB_URL)("M36 WP 4.6 notification policy - LIVE Postgres", () =>
     expect(cols.rows[0].r).toBe("TABLE(user_id uuid, channel text)");
     const priv = await admin.query(
       `SELECT has_function_privilege('public','delivery_endpoint_verified_channels_for_org_users(uuid,jsonb)','EXECUTE') AS pub,
-              has_function_privilege('wardenx_app','delivery_endpoint_verified_channels_for_org_users(uuid,jsonb)','EXECUTE') AS app`,
+              has_function_privilege('chartwarden_app','delivery_endpoint_verified_channels_for_org_users(uuid,jsonb)','EXECUTE') AS app`,
     );
     expect(priv.rows[0]).toEqual({ pub: false, app: true });
     const ownerRow = await admin.query(
       `SELECT pg_get_userbyid(proowner) AS o, prosecdef FROM pg_proc WHERE proname='delivery_endpoint_verified_channels_for_org_users'`,
     );
-    expect(ownerRow.rows[0]).toEqual({ o: "wardenx_admin", prosecdef: true });
+    expect(ownerRow.rows[0]).toEqual({ o: "chartwarden_admin", prosecdef: true });
   });
 
   it("flags are per tenant: tenant B with both flags off stays in-app only while A has them on", async () => {

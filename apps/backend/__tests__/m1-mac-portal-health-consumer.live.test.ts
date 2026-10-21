@@ -5,7 +5,7 @@
  * catalog-validating publisher (a payload that failed `Value.Check` against the registered TypeBox schema
  * would throw here and roll back — nothing forged), and M1's PLATFORM-scoped consumer
  * (`buildM1MacPortalHealthConsumer`) flips the per-jurisdiction `system_status` row — for real, as the
- * NOBYPASSRLS `wardenx_app` role (`system_status` carries no RLS at all, so this proves the role's plain
+ * NOBYPASSRLS `chartwarden_app` role (`system_status` carries no RLS at all, so this proves the role's plain
  * GRANT is sufficient, not that a policy predicate scopes it) — mirroring
  * `m1-lag-probe-status-consumer.live.test.ts`'s shape for the sibling GAP-099 platform event M33 already
  * proved.
@@ -14,12 +14,12 @@
  * entities across many tenants, so this is genuinely platform-wide, no single tenant it belongs to. Before
  * this fix `runMacPortalHealth` called only `alerts.dispatch()` and never `outbox.publish()` at all — this
  * suite is the first proof the producer half exists. The `outbox_event` row itself is verified with the
- * ADMIN (superuser) connection, not `wardenx_app`: `wardenx_app`'s own `outbox_event_org` RLS policy
+ * ADMIN (superuser) connection, not `chartwarden_app`: `chartwarden_app`'s own `outbox_event_org` RLS policy
  * (migration 0001) requires `organization_id = current_setting('app.org_id', true)::uuid`, which a NULL
  * `organization_id` row can never satisfy — the platform-write path (migration 0186's
  * `report_writer_insert_platform_outbox_event` SECURITY DEFINER function) intentionally bypasses that
  * policy on WRITE, and only the dispatcher's own SECURITY DEFINER claim functions (never a plain
- * `wardenx_app` SELECT) can read a platform row back, matching `outbox-dispatcher.ts`'s real `pollPlatform`
+ * `chartwarden_app` SELECT) can read a platform row back, matching `outbox-dispatcher.ts`'s real `pollPlatform`
  * mechanism, which this suite does not re-implement.
  *
  * Proves: a down transition publishes `.unavailable` (persisted with `organization_id IS NULL`, verified
@@ -49,7 +49,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 describe.skipIf(!DB_URL)(
   "F-16x (#248) — M23's mac-portal-health producer + M1's system-status consumer — LIVE Postgres",
@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)(
       await admin.connect();
       await resetSchema();
       await applyMigrations();
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       consumer = buildM1MacPortalHealthConsumer({ db: handle.db });
       const catalog = buildBootOutboxCatalog([M23_OUTBOX_EVENTS]);
@@ -103,7 +103,7 @@ describe.skipIf(!DB_URL)(
     }
 
     /** Every `outbox_event` row with this event type, read via the ADMIN (superuser/BYPASSRLS) connection
-     *  — see the file header for why `wardenx_app` itself cannot read a NULL-organization_id row back. */
+     *  — see the file header for why `chartwarden_app` itself cannot read a NULL-organization_id row back. */
     async function platformRowsFor(
       eventType: string,
     ): Promise<Array<{ payload: unknown; organization_id: string | null }>> {

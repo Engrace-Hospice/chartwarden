@@ -9,7 +9,7 @@ import { type EraseInput, createInMemoryEraserPorts } from "@chartwarden/audit";
 //     subject's ordinary rows — it never silently destroys protected SUD history;
 //   • the Drizzle ports' `performErasure` leg binds to the packages/audit destruction executor
 //     ONLY when a destruction-granted client is injected, and stays the loud UNBOUND throw
-//     otherwise (wardenx_app holds no DELETE — migration 0001 append-only).
+//     otherwise (chartwarden_app holds no DELETE — migration 0001 append-only).
 import type { DbClient } from "@chartwarden/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import { wireErasers } from "../src/bootstrap/erasers/providers";

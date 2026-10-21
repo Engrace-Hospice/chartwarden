@@ -4,7 +4,7 @@
  * M12's pure suites drive the 14-state medication-order machine (draft → signed → transmitted → active),
  * the verbal-order timer, the refill loop and the EPCS-OFF gate, but never touch a database, so they cannot
  * catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant that leaks across tenants. This
- * applies the real migrations to a real Postgres and drives the policies as the unprivileged `wardenx_app`
+ * applies the real migrations to a real Postgres and drives the policies as the unprivileged `chartwarden_app`
  * role (no BYPASSRLS), covering all SIX org-scoped M12 tables.
  *
  * Two of the six carry the risk that makes this worth more than a checkbox:
@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** `medication_order.prescriber_membership_id`, `dosespot_prescriber.membership_id` and
@@ -70,7 +70,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
   let b: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -237,9 +237,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
   // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
   // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);

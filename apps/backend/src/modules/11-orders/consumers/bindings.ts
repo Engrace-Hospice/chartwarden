@@ -39,7 +39,7 @@
 // writes either way, and `source_outbox_event_id` is what ties them back to the discharge.
 //
 // The read and both writes are M11-owned tables inside one `withOrgContext`, so RLS scopes them as
-// `wardenx_app`. The consumed event name is a STRING literal and no M6 schema is imported: M11 reads M6
+// `chartwarden_app`. The consumed event name is a STRING literal and no M6 schema is imported: M11 reads M6
 // solely through the foundation outbox, so this adds no `dependsOn` edge.
 import { type DbClient, schema } from "@chartwarden/db";
 import { transitionOrder } from "@chartwarden/orders";

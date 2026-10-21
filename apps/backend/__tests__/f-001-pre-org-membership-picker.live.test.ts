@@ -3,7 +3,7 @@
  * LIVE Postgres.
  *
  * The defect: migrations 0213/0214 served `GET /api/v1/auth/memberships` by adding two PERMISSIVE
- * `app.user_id` RLS policies for `wardenx_app`. PostgreSQL UNIONs every permissive policy matching a
+ * `app.user_id` RLS policies for `chartwarden_app`. PostgreSQL UNIONs every permissive policy matching a
  * role+command, and `withOrgContext()` sets `app.user_id` on ORDINARY requests too (M4 audit
  * attribution) — so those policies were live on every org-scoped request and widened each one into a
  * cross-org read of the caller's memberships and of the organizations behind them. Migration 0215
@@ -17,7 +17,7 @@
  * deserialization), so it is exactly the part a table-level policy test cannot cover. Before this
  * suite existed, `listForUser` had no live coverage at all.
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role, so a missing GRANT or EXECUTE fails it.
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role, so a missing GRANT or EXECUTE fails it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:pre-org-picker:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -39,7 +39,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f0010001";
 const ORG_B = "22222222-2222-4222-8222-2222f0010002";
@@ -97,7 +97,7 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
       [USER, ORG_A, ORG_B, OTHER_USER, ORG_FOREIGN],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     repo = createDbMembershipRepository(handle.db, createDbAdminMembershipReader(handle.db));
     users = createDbUserDirectory(handle.db);
@@ -177,7 +177,7 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
     );
     expect(visible).toBe(0);
   });
-  describe("GAP-001 createDbUserDirectory.deactivateFromOrg (as wardenx_app)", () => {
+  describe("GAP-001 createDbUserDirectory.deactivateFromOrg (as chartwarden_app)", () => {
     async function seedUser(id: string, email: string, memberships: [string, string][]) {
       await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,$2,'Gap One')`, [id, email]);
       for (const [org, status] of memberships) {

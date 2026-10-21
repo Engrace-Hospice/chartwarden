@@ -1,6 +1,6 @@
 /**
  * GAP-042 — M14 `idg.review-clock-sweep` over the REAL M6 active-admission seam, proven against real
- * Postgres as the NOBYPASSRLS `wardenx_app` role. The §418.56(d) clock is per ACTIVE admission (fallback
+ * Postgres as the NOBYPASSRLS `chartwarden_app` role. The §418.56(d) clock is per ACTIVE admission (fallback
  * `activated_at`): an admission with NO idg_patient_packet at all must still escalate. Also proves a stamped
  * review overrides activation, non-active admissions are not swept, the M6 read is keyset-paged, the real
  * catalog-validating publisher accepts the payload, and org A's sweep never touches org B's admissions.
@@ -26,10 +26,10 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_platform_live_test",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -176,7 +176,7 @@ describe.skipIf(!DB_URL)(
       await applyMigrations();
       await seedOrg(ORG_A, "org-a");
       await seedOrg(ORG_B, "org-b");
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
       outbox = {

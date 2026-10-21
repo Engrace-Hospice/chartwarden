@@ -26,7 +26,7 @@
  * idempotence is `scis_visit_kind_expected_uniq`; `mark_overdue` is only representable because
  * `m20_scis_overdue_stamped` refuses the state without the instant; the policy-version seed exists because
  * `safety_policy_version_id` is a real NOT NULL FK and `SafetyPolicyProvider` answers a fresh tenant with
- * an EMPTY version id; and the whole point of driving it as the NOBYPASSRLS `wardenx_app` role is that
+ * an EMPTY version id; and the whole point of driving it as the NOBYPASSRLS `chartwarden_app` role is that
  * `readAnchors` reaches M17's seam, which pins the tenant from the ambient scope the binding establishes.
  * An in-memory double answers all of it happily and proves none of it.
  *
@@ -56,7 +56,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-11110430a001";
 const ORG_B = "22222222-2222-4222-8222-22220430b002";
@@ -222,7 +222,7 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
       };
     }
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The REAL M17 seam over the same NOBYPASSRLS pool: `readAnchors` goes through it, and it resolves the

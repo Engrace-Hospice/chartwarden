@@ -3,7 +3,7 @@
  *
  * The platform reference tables `hospice_zip_county` / `hospice_cbsa_county` / `hospice_cbsa_wage_index` are loaded by
  * the migration from the CMS FY2026/FY2027 hospice wage-index files and the Census ZCTA crosswalk
- * (scripts/data/hospice-cbsa/build_hospice_cbsa_migration.py). This proves, on the migrated NOBYPASSRLS `wardenx_app`
+ * (scripts/data/hospice-cbsa/build_hospice_cbsa_migration.py). This proves, on the migrated NOBYPASSRLS `chartwarden_app`
  * role (`_live-app-role.ts`), that:
  *   - real ZIPs resolve through `buildHospiceCbsaReader` to the CMS CBSA / rural / transition code for the claim's
  *     fiscal year (urban, a micropolitan-rural ZIP, a metropolitan division, a transition county);
@@ -30,7 +30,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const FY2027_END = "2027-03-31"; // fiscal_year_starting 2026
 const FY2026_END = "2026-03-31"; // fiscal_year_starting 2025

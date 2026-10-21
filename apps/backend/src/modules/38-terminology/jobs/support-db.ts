@@ -1,6 +1,6 @@
 // apps/backend/src/modules/38-terminology/jobs/support-db.ts — the Drizzle bindings for the two follow-up jobs:
 // value-set expansion materialisation and concept embeddings (GAP-108). Both write through the migration-0364
-// `terminology_loader_*` functions; reads are plain `USING (true)` selects as `wardenx_app`.
+// `terminology_loader_*` functions; reads are plain `USING (true)` selects as `chartwarden_app`.
 import { type DbClient, schema } from "@chartwarden/db";
 import type { CodeSystemId, ValueSetMemberRow } from "@chartwarden/terminology";
 import {

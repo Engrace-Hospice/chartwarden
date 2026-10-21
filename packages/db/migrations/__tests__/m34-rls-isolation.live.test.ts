@@ -7,7 +7,7 @@
  * unit suites in packages/saas-tenant-platform exercise the lifecycle/worker orchestration but
  * never touch a database, so they cannot catch a wrong policy predicate, a missing WITH CHECK, or
  * a base-table grant that leaks ciphertext. This test applies the actual migrations to a real
- * Postgres and exercises the policies as the unprivileged `wardenx_app` role (no BYPASSRLS),
+ * Postgres and exercises the policies as the unprivileged `chartwarden_app` role (no BYPASSRLS),
  * proving cross-tenant denial for real on all 14 tenant-scoped M34 tables.
  *
  * It covers, under the canonical `organization_id = current_setting('app.org_id')` predicate:
@@ -15,7 +15,7 @@
  *   tenant_key_ring_metadata_v masking view) · tenant_key_destruction_log · onboarding_task ·
  *   support_consent_grant · support_session (+ support_session_event) · dsar_export_job (+
  *   dsar_export_job_event) · tenant_export_job (+ tenant_export_job_event) · platform_tenant_baa_record.
- * Plus the §3.10 lockdown that wardenx_app's SELECT on the tenant_key_ring BASE table is REVOKED
+ * Plus the §3.10 lockdown that chartwarden_app's SELECT on the tenant_key_ring BASE table is REVOKED
  * (the wrapped-DEK ciphertext is reachable only through the org-filtered metadata view).
  *
  * Those 14 are every ORG-SCOPED M34 table. The other 3 of the 17 manifest-owned tables
@@ -37,10 +37,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
   "tenant_platform_writer",
 ];
@@ -67,9 +67,9 @@ type SeedIds = {
   baaRecord: string;
 };
 
-// The 13 tenant-scoped tables proven through a direct base-table SELECT under wardenx_app. The
+// The 13 tenant-scoped tables proven through a direct base-table SELECT under chartwarden_app. The
 // 14th — tenant_key_ring — is proven separately via its masking view because the base-table SELECT
-// is REVOKED from wardenx_app (§3.10). A row's `id` PK uniquely identifies org A's seeded row.
+// is REVOKED from chartwarden_app (§3.10). A row's `id` PK uniquely identifies org A's seeded row.
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "tenant_account", key: "tenantAccount" },
   { table: "tenant_account_status_event", key: "statusEvent" },
@@ -91,8 +91,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
 // 3 owned tables are PLATFORM / org-less by design — no organization_id column, hence no canonical
 // app.org_id tenant policy — so they are deliberately EXCLUDED from the org sweep, not gaps:
 //   • onboarding_task_template — platform-shared read-only catalog (0052 §3: SELECT USING(true), no org).
-//   • tenant_signup_intent     — pre-organization signup funnel (0052 §15: RLS on, NO wardenx_app policy).
-//   • tenant_signup_token      — pre-organization acceptance token (0052 §16: RLS on, NO wardenx_app policy).
+//   • tenant_signup_intent     — pre-organization signup funnel (0052 §15: RLS on, NO chartwarden_app policy).
+//   • tenant_signup_token      — pre-organization acceptance token (0052 §16: RLS on, NO chartwarden_app policy).
 
 describe.skipIf(!DB_URL)(
   "M34 SaaS Tenant Platform — RLS cross-tenant denial — LIVE Postgres (§9.3)",
@@ -103,7 +103,7 @@ describe.skipIf(!DB_URL)(
 
     /** Run `fn` as the unprivileged app role with app.org_id = `org` (RLS enforced). */
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -318,9 +318,9 @@ describe.skipIf(!DB_URL)(
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
     // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -419,7 +419,7 @@ describe.skipIf(!DB_URL)(
         [ORG_D, tenantAccountId],
       );
 
-      await db.query("SET ROLE wardenx_admin");
+      await db.query("SET ROLE chartwarden_admin");
       try {
         await db.query("SELECT set_config('app.destroyed_by_membership_id', $1, false)", [
           actorMembershipId,
@@ -452,7 +452,7 @@ describe.skipIf(!DB_URL)(
       });
       expect(ring.rows[0].destroyed_at).toBeTruthy();
       const appExecute = await db.query(
-        "SELECT has_function_privilege('wardenx_app','m34_destroy_tenant_key_ring(uuid,uuid)','EXECUTE') AS can",
+        "SELECT has_function_privilege('chartwarden_app','m34_destroy_tenant_key_ring(uuid,uuid)','EXECUTE') AS can",
       );
       expect(appExecute.rows[0].can).toBe(false);
     });
@@ -492,15 +492,15 @@ describe.skipIf(!DB_URL)(
 
     // ── tenant_key_ring (§3.10 ciphertext lockdown + cross-tenant denial via the masking view) ────
     describe("tenant_key_ring — base-table SELECT revoked, view-scoped, cross-tenant denial (§3.10)", () => {
-      it("wardenx_app cannot SELECT the tenant_key_ring base table at all (SELECT revoked)", async () => {
+      it("chartwarden_app cannot SELECT the tenant_key_ring base table at all (SELECT revoked)", async () => {
         await expect(
           withOrg(ORG_A, () => db.query("SELECT count(*) FROM tenant_key_ring")),
         ).rejects.toThrow(/permission denied/i);
       });
 
-      it("wardenx_app has NO column SELECT privilege on the wrapped-DEK ciphertext", async () => {
+      it("chartwarden_app has NO column SELECT privilege on the wrapped-DEK ciphertext", async () => {
         const r = await db.query(
-          "SELECT has_column_privilege('wardenx_app','tenant_key_ring','current_dek_kek_wrapped_ciphertext','SELECT') AS can",
+          "SELECT has_column_privilege('chartwarden_app','tenant_key_ring','current_dek_kek_wrapped_ciphertext','SELECT') AS can",
         );
         expect(r.rows[0].can).toBe(false);
       });
@@ -564,7 +564,7 @@ describe.skipIf(!DB_URL)(
       ).rejects.toThrow();
     });
 
-    it("§3.10 tenant_account is SELECT-only to wardenx_app (no tenant UPDATE path)", async () => {
+    it("§3.10 tenant_account is SELECT-only to chartwarden_app (no tenant UPDATE path)", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query("UPDATE tenant_account SET plan_label='x' WHERE id = $1", [a.tenantAccount]),

@@ -5,7 +5,7 @@
  * stays signed, `transmission_status='failed'`, `transmission_failure_reason='orm_refused:<reason>'`. After someone
  * fixes the fact nothing retried. `resendLabTransmission` is the explicit, authorized, audited re-run. This drives:
  *
- *   refused order → the fact is FIXED (real UPDATE on the M5 patient row) → resend (as the NOBYPASSRLS `wardenx_app`
+ *   refused order → the fact is FIXED (real UPDATE on the M5 patient row) → resend (as the NOBYPASSRLS `chartwarden_app`
  *   role, real catalog-validating publisher) → `m11.order.hl7_orm_requested` → M29's real T08 worker → a STUB
  *   `MllpTransport` AA → F-177's applier → `transmission_status='transmitted'`.
  *
@@ -50,7 +50,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -255,7 +255,7 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
         [USER_B, ORG_B],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     await admin.query(
@@ -550,7 +550,7 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
   };
   const READER = { ...RECOVERER, permissions: new Set(["orders.read", "orders.amend"]) };
 
-  it("the detail read (as wardenx_app) carries the failure reason + resend_transmission for a recover holder only", async () => {
+  it("the detail read (as chartwarden_app) carries the failure reason + resend_transmission for a recover holder only", async () => {
     const { id, patientId } = await refusedOrder();
 
     const asRecoverer = await svc.getOrder(ORG_A, id, RECOVERER);

@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0082 slice S1 - message_afterhours_triage_link (migration 1132), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role, plus the
+ * M36 ADR-0082 slice S1 - message_afterhours_triage_link (migration 1132), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role, plus the
  * caller-supplied outbox event id through the REAL catalog-validating publisher and the real `outbox_event` insert.
  *   1. TENANCY    a row is invisible to another tenant and a context with no tenant; a cross-tenant insert is refused by WITH CHECK;
  *                 RLS is ENABLEd and FORCEd.

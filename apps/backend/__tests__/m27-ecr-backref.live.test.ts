@@ -12,7 +12,7 @@
  * Nothing is stubbed here but the object bytes: `runEcrGeneration` (the real §4.8 processor) → the REAL
  * catalog-validating transactional publisher → the REAL `createOutboxDispatcher` → M22's REAL render
  * consumer + `DocumentRenderer` + Drizzle seam store → M27's REAL back-ref consumer, all as the NOBYPASSRLS
- * `wardenx_app` role. Org B must see none of it.
+ * `chartwarden_app` role. Org B must see none of it.
  *
  * NOTE — the supporting-doc REQUEST has no producer: `runEcrGeneration` emits `ecr` and `pi` only, and no
  * other code path emits `m27.artifact.render_requested` at all. The append branch is reachable from the
@@ -71,7 +71,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -201,7 +201,7 @@ describe.skipIf(!DB_URL)("F-108 — M27 ECR/PI back-reference handshake, LIVE Po
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // M22's ONE render consumer binds every `*.document_requested` name it subscribes to, and the

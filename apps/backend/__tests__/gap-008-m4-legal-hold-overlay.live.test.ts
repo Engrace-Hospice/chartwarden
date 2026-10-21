@@ -1,12 +1,12 @@
 /**
  * GAP-008 - legal-hold supremacy as an OVERLAY, LIVE Postgres (ADR-0051).
  *
- * A hold cannot flip `audit_event.retention_class`: the column is in the integrity hash (db-chain-reader.ts) and `wardenx_app`
+ * A hold cannot flip `audit_event.retention_class`: the column is in the integrity hash (db-chain-reader.ts) and `chartwarden_app`
  * has no UPDATE on the table. So a hold is recorded in the append-only `legal_hold_audit_event` overlay, materialised by a
  * sweep, enforced at the only DELETE path and by a BEFORE DELETE trigger, and shown through `audit_event_effective`.
  *
- * Roles: the tenant work (materialise, read, sweep inputs) runs as the real NOBYPASSRLS `wardenx_app`; the destruction
- * credential is a SEPARATE client started as `wardenx_destruction` (`options=-c role=...`), the role migration 0157 grants
+ * Roles: the tenant work (materialise, read, sweep inputs) runs as the real NOBYPASSRLS `chartwarden_app`; the destruction
+ * credential is a SEPARATE client started as `chartwarden_destruction` (`options=-c role=...`), the role migration 0157 grants
  * SELECT, DELETE on `audit_event`, so the privilege and trigger assertions are about the production role, not a superuser.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap008:legal-hold-overlay:live
@@ -36,13 +36,13 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_destruction",
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_destruction",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "77777777-7777-4777-8777-77777777a008";
@@ -168,10 +168,10 @@ describe.skipIf(!DB_URL)("GAP-008 legal-hold overlay - LIVE Postgres", () => {
     app = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    // The destruction credential: a login that is actually `wardenx_destruction` (SELECT, DELETE on audit_event, RLS pinned to
+    // The destruction credential: a login that is actually `chartwarden_destruction` (SELECT, DELETE on audit_event, RLS pinned to
     // app.org_id), not a superuser stand-in.
     const destructionUrl = new URL(DB_URL as string);
-    destructionUrl.searchParams.set("options", "-c role=wardenx_destruction");
+    destructionUrl.searchParams.set("options", "-c role=chartwarden_destruction");
     destruction = createDbClient({ connectionString: destructionUrl.toString() });
     destructionRaw = new Client({ connectionString: destructionUrl.toString() });
     await destructionRaw.connect();
@@ -367,7 +367,7 @@ describe.skipIf(!DB_URL)("GAP-008 legal-hold overlay - LIVE Postgres", () => {
       expect(await exists(held.id)).toBe(true);
     });
 
-    it("an out-of-band DELETE as the destruction credential is refused by the trigger (23001), as wardenx_app by privilege (42501)", async () => {
+    it("an out-of-band DELETE as the destruction credential is refused by the trigger (23001), as chartwarden_app by privilege (42501)", async () => {
       const held = await seedEvent(ORG_A, "oob_kind", "2026-03-12T00:00:00Z");
       const holdId = await newHold(ORG_A, { resourceKinds: ["oob_kind"] });
       await materialiseAll(ORG_A, holdId);
@@ -465,7 +465,7 @@ describe.skipIf(!DB_URL)("GAP-008 legal-hold overlay - LIVE Postgres", () => {
     });
   });
 
-  describe("tenant isolation (as wardenx_app)", () => {
+  describe("tenant isolation (as chartwarden_app)", () => {
     it("org B cannot read org A's overlay rows, cannot write into them, and its own hold does not protect org A's rows", async () => {
       const aRow = await seedEvent(ORG_A, "iso_kind", "2026-03-17T00:00:00Z");
       const aHold = await newHold(ORG_A, { resourceKinds: ["iso_kind"] });

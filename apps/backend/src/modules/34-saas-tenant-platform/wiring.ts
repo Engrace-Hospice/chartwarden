@@ -132,7 +132,7 @@ export function wireM34Tenancy(): void {
  * THE D5 KEY PROVIDER NEEDS TWO THINGS, and #105 found both missing at once:
  *   • `kekUnwrap` — the KEK adapter. Bound in production to `bootstrap/tenant-kek.ts` (ADR-0045).
  *   • `keyRingDb` — a credential that may SELECT `tenant_key_ring`. Migration 0052 §5 REVOKES that from
- *     `wardenx_app` (the request path reads only the ciphertext-free metadata view), so the org-pooled
+ *     `chartwarden_app` (the request path reads only the ciphertext-free metadata view), so the org-pooled
  *     client `deps.db` carries CANNOT read a wrapped DEK no matter what the KEK port is bound to; it
  *     fails with `42501 permission denied for table tenant_key_ring` one step BEFORE the unwrap. The
  *     platform login has the grant (`PLATFORM_READ_TABLES` in `scripts/db/provision-runtime-roles.ts`).
@@ -165,7 +165,7 @@ export function registerLiveM34Seams(deps: {
       if (!keyRingDb) {
         throw new M34InfraPortUnbound(
           "tenantKeyRingRead",
-          "no platform database credential is configured (DATABASE_PLATFORM_URL) — wardenx_app's SELECT on tenant_key_ring is revoked by migration 0052 §5, so no DEK can be resolved",
+          "no platform database credential is configured (DATABASE_PLATFORM_URL) — chartwarden_app's SELECT on tenant_key_ring is revoked by migration 0052 §5, so no DEK can be resolved",
         );
       }
       return withOrgContext(keyRingDb, { organizationId: orgId, userId: M34_PLATFORM_JOB_ID }, fn);

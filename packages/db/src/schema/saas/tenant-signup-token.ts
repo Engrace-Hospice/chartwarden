@@ -2,7 +2,7 @@
 // `tenant_signup_intent` (email-verification or first-admin-setup). Like its parent intent, it is
 // DELIBERATELY org-less (M34-F02 / ADR-0010, §3.10): genuinely PRE-ORGANIZATION, the one legitimate
 // org-less exemption — NOT tenant-scoped, so the canonical `app.org_id` RLS predicate does not
-// apply. RLS denies `wardenx_app` SELECT entirely; only `tenant_platform_writer` reads it. The
+// apply. RLS denies `chartwarden_app` SELECT entirely; only `tenant_platform_writer` reads it. The
 // parent `tenant_signup_intent_id` is an intra-M34 ref but is kept a plain uuid (app-validated, no
 // SQL FK) to stay consistent with the org-less platform-private boundary. `token_hash` is the
 // SHA256 of the issued token (the raw token is never stored) and is value-capture-denylisted in the

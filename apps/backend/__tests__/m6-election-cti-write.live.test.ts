@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 /**
  * M6L-T03 — the Drizzle election-statement + CTI write lifecycle, proven against real Postgres.
  *
- * Drives the production writes as the NOBYPASSRLS `wardenx_app` role: election statement draft → sign →
+ * Drives the production writes as the NOBYPASSRLS `chartwarden_app` role: election statement draft → sign →
  * void; CTI draft → hospice-MD sign (signed on the MD alone; a recert also activates its period — the
  * attending signature gates billing, not the CTI); void; mark-late. Then
  * the FULL activation prerequisites are satisfied through the real write path (no superuser-seeded ES/CTI)
@@ -30,7 +30,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -105,7 +105,7 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
                 ($5,$2,'A Hospice Two','341236','3333333333','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A, PROVIDER_ENTITY_ORG_B, ORG_B, PROVIDER_ENTITY_2],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

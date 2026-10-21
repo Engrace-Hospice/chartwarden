@@ -9,7 +9,7 @@
  * This test drives the REAL bound pieces:
  *   1. `TenantPlatformRouteService.approveOversizedExport` (service-drizzle.ts, platform side), running
  *      inside a genuine `withPlatformContext` transaction (the platform-pooled, RLS-bypass credential —
- *      here a BYPASSRLS-attributed `wardenx_admin` login, mirroring what a real `DATABASE_PLATFORM_URL`
+ *      here a BYPASSRLS-attributed `chartwarden_admin` login, mirroring what a real `DATABASE_PLATFORM_URL`
  *      role carries in production, per apps/backend/src/index.ts's own comment on that credential).
  *   2. The held-state check against the REAL `tenant_export_job_event` ledger (the newest event must be
  *      GAP-094's `oversized_hold` row) — not a separate status/column.
@@ -37,10 +37,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = `${__dirname}/../../../packages/db/migrations`;
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "77777777-7777-7777-7777-777777777777";
@@ -111,26 +111,26 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     });
 
     // The platform-ops route surface runs its cross-tenant reads/writes over a SEPARATELY POOLED
-    // platform credential (never `wardenx_app`, never a `SET ROLE`) — apps/backend/src/index.ts's own
+    // platform credential (never `chartwarden_app`, never a `SET ROLE`) — apps/backend/src/index.ts's own
     // comment on `DATABASE_PLATFORM_URL` names it "a least-privilege platform login role (… + BYPASSRLS)".
-    // `wardenx_admin` already carries the right table-level GRANTs (0052's `GRANT ALL … TO wardenx_admin`
+    // `chartwarden_admin` already carries the right table-level GRANTs (0052's `GRANT ALL … TO chartwarden_admin`
     // on tenant_export_job/_event); this test attaches LOGIN + BYPASSRLS to it — the same DEV-ONLY
-    // mechanism `scripts/db/migrate.ts` uses for `wardenx_app` under CHARTWARDEN_DEV_BYPASSRLS — to stand in
+    // mechanism `scripts/db/migrate.ts` uses for `chartwarden_app` under CHARTWARDEN_DEV_BYPASSRLS — to stand in
     // for that dedicated role without provisioning a new one just for this test cluster.
     await admin.query(
-      "ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'wardenx_admin_live_test'",
+      "ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'wardenx_admin_live_test'",
     );
     // `m34PlatformBypassAuditor` (the mandatory F09 bypass audit) calls the SECURITY DEFINER
-    // `audit_writer_insert_platform_event` (migration 0187), EXECUTE-granted only to `wardenx_app` —
+    // `audit_writer_insert_platform_event` (migration 0187), EXECUTE-granted only to `chartwarden_app` —
     // a real `DATABASE_PLATFORM_URL` role needs its own grant (index.ts's comment on that credential
     // names "audit_event INSERT" as one of its required privileges); extend it here too since this test
-    // stands `wardenx_admin` in for that role.
+    // stands `chartwarden_admin` in for that role.
     await admin.query(
-      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_admin",
+      "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO chartwarden_admin",
     );
     // Same GAP-086 rule as `handle`: parse, never string-replace (which silently keeps superuser).
     const platformUrl = new URL(DB_URL as string);
-    platformUrl.username = "wardenx_admin";
+    platformUrl.username = "chartwarden_admin";
     platformUrl.password = "wardenx_admin_live_test";
     platformHandle = createDbClient({ connectionString: platformUrl.toString() });
 

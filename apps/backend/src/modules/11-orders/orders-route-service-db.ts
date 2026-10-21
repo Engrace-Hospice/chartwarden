@@ -4,7 +4,7 @@
 // The screen-driving READS (order worklists by patient/admission/kind/status, the pending-signature /
 // verbal-expiring / cosign-pending / results-review queues, standing-order lists + detail, and the per-org
 // verbal-order policy) run as real Drizzle queries over the M11-owned tables inside `withOrgContext`, so RLS
-// scopes every row by `app.org_id` as the unprivileged `wardenx_app` role. `order_record` is PARTITION BY
+// scopes every row by `app.org_id` as the unprivileged `chartwarden_app` role. `order_record` is PARTITION BY
 // RANGE(created_at) with a DEFAULT partition — reads query the parent, inserts always land.
 //
 // The WRITE lifecycle is now real and heavily TRIGGER-DRIVEN — the §3.4 migration (0037) triggers do the

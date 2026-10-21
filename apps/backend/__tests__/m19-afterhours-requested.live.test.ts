@@ -1,6 +1,6 @@
 /**
  * ADR-0082 slice S2 - M19's `m36.afterhours_triage.requested` consumer, LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role, on the REAL catalog-validating publisher.
+ * `chartwarden_app` role, on the REAL catalog-validating publisher.
  *
  * What a double cannot prove: `triage_call_source_dedupe_uq` is a partial unique index (the redelivery
  * guard), the coalesce grain is a predicate over `state` and `source_outbox_event_id`, the two new enum
@@ -34,7 +34,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111a4710a19";
 const ORG_B = "22222222-2222-4222-8222-2222a4710b19";
@@ -43,7 +43,7 @@ const SECRET = "SECRET-CLINICAL-TEXT-must-never-be-copied";
 
 type Seed = { pe: string; member: string; patient: string; patient2: string };
 
-describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as wardenx_app", () => {
+describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as chartwarden_app", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let consumer: ReturnType<typeof buildAfterHoursRequestedConsumer>;

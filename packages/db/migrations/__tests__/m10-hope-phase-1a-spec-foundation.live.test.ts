@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "33333333-3333-3333-3333-333333333333";
@@ -246,10 +246,10 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 1A spec foundation — LIVE Postgres", 
     expect(rows[0].count).toBe("0");
   });
 
-  it("allows wardenx_app to delete HOPE assessment answers", async () => {
+  it("allows chartwarden_app to delete HOPE assessment answers", async () => {
     const { rows } = await db.query<{ allowed: boolean }>(
       `SELECT has_table_privilege(
-      'wardenx_app',
+      'chartwarden_app',
       'public.hope_assessment_answer',
       'DELETE'
     ) AS allowed`,

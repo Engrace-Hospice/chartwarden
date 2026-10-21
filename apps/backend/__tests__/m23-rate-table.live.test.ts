@@ -5,7 +5,7 @@
  * rate data existed anywhere. Rates are now TENANT-ENTERED into the M23-owned `hospice_rate_table` (migration
  * 0279) through `buildDrizzleRateTableService`, and `buildM23ReferenceDataAdapter` reads the version covering the
  * claim's service date. This proves, against real rows under REAL RLS (every service call runs on the migrated
- * NOBYPASSRLS `wardenx_app` role via `_live-app-role.ts`; the superuser client only seeds and inspects):
+ * NOBYPASSRLS `chartwarden_app` role via `_live-app-role.ts`; the superuser client only seeds and inspects):
  *   - create / supersede / list / get / effective-on, and the audit trail the M4 trigger writes;
  *   - validation (dollars-as-cents, tier order, CHC hourly x24, fiscal-year window) as a typed 422;
  *   - non-overlap: the service pre-check (409 with the clashing id) AND the database EXCLUDE backstop;
@@ -33,7 +33,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -430,7 +430,7 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
     });
   });
 
-  describe("cross-tenant isolation (real RLS on wardenx_app)", () => {
+  describe("cross-tenant isolation (real RLS on chartwarden_app)", () => {
     it("org B never sees, fetches or resolves org A's rates", async () => {
       await reset();
       const a = await svc().createRateTable(actorA, rates());

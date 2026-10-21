@@ -11,7 +11,7 @@
  * M11 order while leaving the DME rental or comfort-kit request standing.
  *
  * Nothing is stubbed: the REAL M6 write service discharges / the REAL M11 write service discontinues as the
- * NOBYPASSRLS `wardenx_app` role → the REAL catalog-validating publisher writes the outbox rows → the REAL
+ * NOBYPASSRLS `chartwarden_app` role → the REAL catalog-validating publisher writes the outbox rows → the REAL
  * `createOutboxDispatcher` claims and delivers them → M11's discharge-cascade consumer AND M21's two new
  * consumers read their own tables under RLS and write the transitions.
  *
@@ -65,7 +65,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
@@ -274,7 +274,7 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
         [USER, ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
 

@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.3 - SBAR structured messages, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.3 - SBAR structured messages, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing).
  *
@@ -11,9 +11,9 @@
  *                    (no message row); the stored body is encrypted (the SBAR text is not in the row).
  *   5. EDIT          the same checks on the server edit path.
  *   6. FLAG          off => an sbar body is 422 SBAR_NOT_AVAILABLE and the policy GET is 404.
- *   7. TENANCY       as wardenx_app org B sees none of org A's policy; an org A insert is rejected.
+ *   7. TENANCY       as chartwarden_app org B sees none of org A's policy; an org A insert is rejected.
  *   8. AUDIT         the write-audit trigger fires on insert/update/delete and never copies a hint.
- *   9. DESTRUCTION   wardenx_destruction can read and remove the org's own row only.
+ *   9. DESTRUCTION   chartwarden_destruction can read and remove the org's own row only.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:sbar:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
@@ -48,11 +48,11 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_destruction",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_destruction",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
 ];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000d0001";
@@ -243,12 +243,12 @@ describe.skipIf(!DB_URL)("M36 WP 3.3 SBAR - LIVE Postgres", () => {
     mgr = await seedUser("mgr", ORG_A);
     u2 = await seedUser("u2", ORG_A);
     orgBUser = await seedUser("b", ORG_B);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     appConn = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await appConn.connect();
     const destructionUrl = new URL(DB_URL as string);
-    destructionUrl.searchParams.set("options", "-c role=wardenx_destruction");
+    destructionUrl.searchParams.set("options", "-c role=chartwarden_destruction");
     destruction = new Client({ connectionString: destructionUrl.toString() });
     await destruction.connect();
 
@@ -320,8 +320,8 @@ describe.skipIf(!DB_URL)("M36 WP 3.3 SBAR - LIVE Postgres", () => {
             [grantee],
           )
         ).map((g) => g.privilege_type);
-      expect(await grants("wardenx_app")).toEqual(["DELETE", "INSERT", "SELECT", "UPDATE"]);
-      expect(await grants("wardenx_destruction")).toEqual(["DELETE", "SELECT"]);
+      expect(await grants("chartwarden_app")).toEqual(["DELETE", "INSERT", "SELECT", "UPDATE"]);
+      expect(await grants("chartwarden_destruction")).toEqual(["DELETE", "SELECT"]);
     });
 
     it("pins the floor, ceiling and hint bounds in the database itself", async () => {
@@ -546,7 +546,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.3 SBAR - LIVE Postgres", () => {
       expect(dump).toContain("situation_min_chars");
     });
 
-    it("wardenx_destruction reads and removes only the org's own row", async () => {
+    it("chartwarden_destruction reads and removes only the org's own row", async () => {
       await putPolicy(mgr, { minChars: { situation: 12 } });
       await putPolicy(orgBUser, { minChars: { situation: 14 } }, ORG_B);
       await destruction.query("BEGIN");

@@ -1,7 +1,7 @@
 /**
  * M12L — the Drizzle DoseSpot write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Unlike M11, M12 has NO state-transition triggers,
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role. Unlike M11, M12 has NO state-transition triggers,
  * so the service does every status transition itself (composing the pure `@chartwarden/dosespot` machines):
  * createDraft/edit · requestSignature (prescriber-eligibility gate) · sign → `signed` · recordVerbal →
  * `verbal_pending` then named-prescriber sign · discontinue/complete (on a seeded `active` order) · correct ·
@@ -31,7 +31,7 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -209,7 +209,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -786,7 +786,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(slaOk.slaWarnHours).toBe(24);
   });
 
-  it("RLS: org B cannot read or sign org A's order (404 under the wardenx_app policy)", async () => {
+  it("RLS: org B cannot read or sign org A's order (404 under the chartwarden_app policy)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);

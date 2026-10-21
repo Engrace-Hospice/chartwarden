@@ -6,7 +6,7 @@
  * outbox, feature flags). Its scoping is deliberately MIXED — some tables belong to a tenant, some
  * are global by design — so a blanket "everything is org-scoped" sweep would be wrong. This suite
  * applies the real migrations to a real Postgres and drives ONLY the genuinely org-scoped tables as
- * the unprivileged `wardenx_app` role (no BYPASSRLS), proving cross-tenant reads/writes are refused.
+ * the unprivileged `chartwarden_app` role (no BYPASSRLS), proving cross-tenant reads/writes are refused.
  *
  * The one invariant that makes this worth more than a checkbox is M01-F06a: a tenant connection may
  * READ a platform-global (org-NULL) feature flag but may never WRITE one. A hole here would let one
@@ -37,7 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** `membership.user_id` carries a real FK to `user`; one seeded user memberships into both orgs
@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
   let b: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
    * `app.user_id` is therefore live on every request, not only on the pre-org path it was written for.
    */
   async function withOrgAndUser<T>(org: string, user: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
     try {
@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
 
   /** The PRE-ORG envelope: signed in, no org chosen yet. `app.org_id` is unset, `app.user_id` is not. */
   async function withUserOnly<T>(user: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', '', false)");
     await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
     try {
@@ -254,9 +254,9 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
   // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
   // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
@@ -353,14 +353,14 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
   });
 
   // ── WX-PR-024: withPlatformContext's mandatory platform.bypass_invoked write (migration 0187) ────
-  // `audit_event_org_append` (0119) deliberately excludes NULL-org rows, and `wardenx_app` holds no
-  // membership in `wardenx_audit_writer` (the only role with a null-org INSERT policy) — so, until
+  // `audit_event_org_append` (0119) deliberately excludes NULL-org rows, and `chartwarden_app` holds no
+  // membership in `chartwarden_audit_writer` (the only role with a null-org INSERT policy) — so, until
   // migration 0187, EVERY `withPlatformContext` entry codebase-wide threw on its own mandatory audit
   // write under real (NOBYPASSRLS) RLS. These prove the raw path is STILL correctly rejected (no new
-  // write hole opened for `wardenx_app`) and the SECURITY DEFINER `audit_writer_insert_platform_event`
+  // write hole opened for `chartwarden_app`) and the SECURITY DEFINER `audit_writer_insert_platform_event`
   // function (the path `auditPlatformEvent` / `m34PlatformBypassAuditor` now use) succeeds through it.
   describe("WX-PR-024 — audit_event platform-wide (organization_id IS NULL) write path", () => {
-    it("a raw wardenx_app INSERT of a NULL-org audit_event row is still rejected", async () => {
+    it("a raw chartwarden_app INSERT of a NULL-org audit_event row is still rejected", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query(
@@ -371,9 +371,9 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       ).rejects.toThrow(/row-level security/i);
     });
 
-    it("audit_writer_insert_platform_event succeeds as wardenx_app and lands organization_id NULL / actor_kind system", async () => {
+    it("audit_writer_insert_platform_event succeeds as chartwarden_app and lands organization_id NULL / actor_kind system", async () => {
       // RETURNS void (no RETURNING inside the function — see migration 0187's own comment: the
-      // append-only `wardenx_audit_writer` role holds INSERT only on `audit_event`, so a RETURNING
+      // append-only `chartwarden_audit_writer` role holds INSERT only on `audit_event`, so a RETURNING
       // would need a SELECT policy that role deliberately doesn't have). Success is "did not throw";
       // the actual row is verified via the superuser read below.
       await withOrg(ORG_A, () =>
@@ -403,7 +403,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
 
   // ── F-001 (#15): the pre-org membership picker policies widen every org-scoped session ──────────
   //
-  // Migrations 0213/0214 added two PERMISSIVE policies for `wardenx_app` keyed on `app.user_id`:
+  // Migrations 0213/0214 added two PERMISSIVE policies for `chartwarden_app` keyed on `app.user_id`:
   // `membership_self_pre_org_read` on membership, and `organization_member_pre_org_read` on
   // organization. They exist so that immediately after sign-in — when no org is active — a user can
   // read their own memberships to populate the org picker. 0213's header asserts the request "never
@@ -419,7 +419,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
   // never sets `app.user_id`. These cases use the real envelope instead.
   //
   // Migration 0215 is the fix: both policies are DROPPED and the picker moves behind
-  // `membership_pre_org_picker`, a SECURITY DEFINER function owned by wardenx_admin whose scope is its
+  // `membership_pre_org_picker`, a SECURITY DEFINER function owned by chartwarden_admin whose scope is its
   // argument rather than a session GUC (the ADR-0010 D2/D3 pattern of migrations 0193/0194). These
   // cases were RED at main@c526c79b and are the regression net for that fix.
   describe("F-001 (#15) — pre-org picker policies must not widen an org-scoped session", () => {
@@ -473,7 +473,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
         expect(r.organization_name).toBeTruthy();
     });
 
-    // The picker is EXECUTE-granted to wardenx_app and to nobody else.
+    // The picker is EXECUTE-granted to chartwarden_app and to nobody else.
     it("the picker is not executable by PUBLIC", async () => {
       const { rows } = await db.query<{ ok: boolean }>(
         "SELECT has_function_privilege('public', 'membership_pre_org_picker(uuid)', 'EXECUTE') AS ok",
@@ -496,7 +496,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       expect(orgs.rows[0].n).toBe(0);
     });
 
-    it("no PERMISSIVE policy for wardenx_app on a tenant table omits app.org_id", async () => {
+    it("no PERMISSIVE policy for chartwarden_app on a tenant table omits app.org_id", async () => {
       // Asserted against pg_policies, not against migration TEXT. The file-scanning assertion above
       // reads only RLS_FILES, which does not include 0213/0214 — so the policies that cause this
       // finding are invisible to it. That gap is why a static check reported green while the
@@ -507,7 +507,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
           WHERE schemaname = 'public'
             AND permissive = 'PERMISSIVE'
             AND cmd IN ('ALL', 'SELECT')
-            AND roles::text LIKE '%wardenx_app%'
+            AND roles::text LIKE '%chartwarden_app%'
             AND tablename IN ('membership', 'organization')
           ORDER BY tablename, policyname`,
       );

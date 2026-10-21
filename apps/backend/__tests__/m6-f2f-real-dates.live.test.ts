@@ -1,7 +1,7 @@
 /**
  * F-226 — LIVE Postgres proof that the F2F prior-to window is computed from the REAL encounter date against
  * the period's REAL expected start, through M6's production write service (`scheduleF2f` → `completeF2f` →
- * `attestF2f` → `signCtiHospiceMd`), as the real NOBYPASSRLS `wardenx_app` role, with the REAL
+ * `attestF2f` → `signCtiHospiceMd`), as the real NOBYPASSRLS `chartwarden_app` role, with the REAL
  * catalog-validating outbox publisher.
  *
  * Before F-226 `completeF2f` dropped the validated `encounterDate`, stamped today, and computed the window
@@ -50,7 +50,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-11111111226a";
 const ORG_B = "22222222-2222-2222-2222-22222222226b";
 const USER = "33333333-3333-3333-3333-33333333226a";
@@ -69,7 +69,7 @@ const OVERRIDE_REASON = "Documented hospitalisation delayed the visit past the w
 const dayOffset = (offset: number): string =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
-describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_app role)", () => {
+describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (chartwarden_app role)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
@@ -233,7 +233,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
       [PROVIDER_ENTITY, ORG_A],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
     svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {
@@ -501,7 +501,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
     });
   });
 
-  describe("cross-tenant isolation (real wardenx_app role, RLS)", () => {
+  describe("cross-tenant isolation (real chartwarden_app role, RLS)", () => {
     it("another org cannot complete or override this org's F2F; nothing changes", async () => {
       const p = await pending3();
       await setStart(p.periodId, dayOffset(10));

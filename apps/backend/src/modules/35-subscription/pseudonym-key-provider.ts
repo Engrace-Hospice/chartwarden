@@ -1,6 +1,6 @@
 // apps/backend/src/modules/35-subscription/pseudonym-key-provider.ts — the first real implementation of
 // `PseudonymKeyProvider.activeKey()` (F-172, #248). `patient_pseudonym_key` is PLATFORM-ONLY (0143: RLS
-// enabled + FORCEd, GRANT ALL to `wardenx_admin` alone, no `wardenx_app` grant at all) — this file is
+// enabled + FORCEd, GRANT ALL to `chartwarden_admin` alone, no `chartwarden_app` grant at all) — this file is
 // therefore always driven over the PLATFORM pool (`DATABASE_PLATFORM_URL`), the exact `platformDb` shape
 // M34's `keyRingDb` already uses for its own platform-only `tenant_key_ring` (`bootstrap/tenant-kek.ts`),
 // never the tenant-scoped `db` every other M35 route runs `withOrgContext` over.
@@ -45,7 +45,7 @@ function freshEpochId(now: Date): string {
 
 /**
  * Build the real `PseudonymKeyProvider`. `platformDb` MUST be a connection carrying the platform
- * credential's grants (never the tenant `wardenx_app` pool, which 0143 refuses SELECT/INSERT on this
+ * credential's grants (never the tenant `chartwarden_app` pool, which 0143 refuses SELECT/INSERT on this
  * table outright — the M34 `tenant_key_ring` precedent, §3.10/M34-F02, applied to this table too).
  */
 export function createDrizzlePseudonymKeyProvider(

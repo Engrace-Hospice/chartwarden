@@ -6,7 +6,7 @@
 -- policy must NOT be reported.
 DROP POLICY IF EXISTS fixture_superseded_self ON fixture_super;--> statement-breakpoint
 CREATE POLICY fixture_superseded_self ON fixture_super
-  FOR ALL TO wardenx_app
+  FOR ALL TO chartwarden_app
   USING (
     organization_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid

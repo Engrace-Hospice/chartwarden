@@ -1,5 +1,5 @@
 /**
- * LIVE Postgres proof of the M6 UPLOADED admission evidence routes, as the real NOBYPASSRLS `wardenx_app` role,
+ * LIVE Postgres proof of the M6 UPLOADED admission evidence routes, as the real NOBYPASSRLS `chartwarden_app` role,
  * with the REAL M22 `DocumentReader` behind the shared `createDocumentReaderEvidenceValidator`:
  *
  *   · NOR            POST /admissions/:id/nor/uploaded-evidence
@@ -31,7 +31,7 @@ import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111ee01a";
 const ORG_B = "22222222-2222-2222-2222-2222222ee01b";
 const USER = "33333333-3333-3333-3333-3333333ee01a";
@@ -44,7 +44,7 @@ type Svc = ReturnType<typeof createDbAdmissionRouteService>;
 type Doc = { documentId: string; documentVersionId: string; versionIds: string[] };
 
 describe.skipIf(!DB_URL)(
-  "M6 uploaded admission evidence (NOR / election / CTI) — LIVE Postgres (wardenx_app role)",
+  "M6 uploaded admission evidence (NOR / election / CTI) — LIVE Postgres (chartwarden_app role)",
   () => {
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
@@ -221,7 +221,7 @@ describe.skipIf(!DB_URL)(
            VALUES ($1,$2,'Example Hospice','341235','1111111112','\\x00','12-31')`,
         [PROVIDER_ENTITY, ORG_A],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       registerM5IntakeSeams(handle.db);
       // The REAL M22 DocumentReader (RLS-scoped through the ambient request context) — the seam the shared

@@ -9,12 +9,12 @@
 // RLS shape (M40-T03, §3.6, migration 0019):
 //   • CANONICAL (external_physician / facility / payer) + entity_relationship are org-less platform
 //     master data — read-all via the `USING (true)` policy, so reads run directly on the pooled
-//     `wardenx_app` handle (no org context). They are writable ONLY via the `mdm_canonical_writer`
-//     SECURITY DEFINER functions (§7.4); `wardenx_app` can never mutate them.
+//     `chartwarden_app` handle (no org context). They are writable ONLY via the `mdm_canonical_writer`
+//     SECURITY DEFINER functions (§7.4); `chartwarden_app` can never mutate them.
 //   • ORG-SCOPED (external_physician_tenant_overlay / mdm_provisional / mdm_baa_record /
 //     mdm_baa_required) carry app.org_id RLS, so their reads/writes run inside `withOrgContext`.
-//   • PLATFORM-OPS (merge_request / nppes_sync_log) are wardenx_admin break-glass surfaces with NO
-//     wardenx_app grant. The §7.6 governance surface — merge approve/reject, provisional promotion,
+//   • PLATFORM-OPS (merge_request / nppes_sync_log) are chartwarden_admin break-glass surfaces with NO
+//     chartwarden_app grant. The §7.6 governance surface — merge approve/reject, provisional promotion,
 //     AND the dedup-queue read — therefore routes through migration 0205's `mdm_canonical_writer_*`
 //     SECURITY DEFINER functions. GAP-060: all three writes used to throw a blanket 501 behind live,
 //     fully-enriched admin routes, and `listMergeRequests` read `merge_request` directly on the app
@@ -468,11 +468,11 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     },
 
     async listMergeRequests(): Promise<readonly MergeRequestRow[]> {
-      // Platform-ops read (wardenx_admin break-glass surface; no wardenx_app grant). The open dedup
+      // Platform-ops read (chartwarden_admin break-glass surface; no chartwarden_app grant). The open dedup
       // queue, newest first.
       // GAP-060 — through the migration-0205 SECURITY DEFINER reader. This USED to be a direct
       // `db.select().from(MERGE)`, which is a hard `permission denied` on the app pool: migration 0019
-      // gave `merge_request` GRANT ALL to `wardenx_admin` and NO `wardenx_app` grant at all (the comment
+      // gave `merge_request` GRANT ALL to `chartwarden_admin` and NO `chartwarden_app` grant at all (the comment
       // two lines up said so while the query below ignored it). So the dedup queue 500'd next to the
       // three 501s — an admin could not see the merges they could not approve.
       const result = await db.execute(
@@ -546,7 +546,7 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     async nppesSyncLog(): Promise<readonly NppesSyncRun[]> {
       // GAP-174 — through the migration-0470 SECURITY DEFINER reader. This USED to be a direct
       // `db.select().from(SYNC)`, a hard `permission denied` (500) on the app pool: migration 0019 §6 gave
-      // `nppes_sync_log` GRANT ALL to `wardenx_admin` and NO `wardenx_app` grant. Same defect GAP-060 fixed
+      // `nppes_sync_log` GRANT ALL to `chartwarden_admin` and NO `chartwarden_app` grant. Same defect GAP-060 fixed
       // for `merge_request`, same remedy.
       const result = await db.execute(
         sql`SELECT * FROM mdm_canonical_writer_list_nppes_sync_log(${NPPES_SYNC_LOG_LIMIT})`,

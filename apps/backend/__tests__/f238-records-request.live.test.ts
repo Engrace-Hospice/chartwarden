@@ -1,5 +1,5 @@
 /**
- * F-238 step 4 — LIVE Postgres proof of the records-request workflow, as the NOBYPASSRLS `wardenx_app` role,
+ * F-238 step 4 — LIVE Postgres proof of the records-request workflow, as the NOBYPASSRLS `chartwarden_app` role,
  * with the REAL M6 ReferralReader and M5 PatientReader behind the identity ports.
  *
  * 1. Outbound: a request for a referral gets a valid, per-org-unique code; its audit row scrubs the
@@ -58,7 +58,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const OTHER_ORG = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -283,7 +283,7 @@ describe.skipIf(!DB_URL)("F-238 — records request: outbound code, inbound matc
     otherReferral = await mkReferral(ORG, "VANCE, ADA", "1950-11-19");
     otherOrgReferral = await mkReferral(OTHER_ORG, "SOMEONE, ELSE", "1950-01-01");
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     rr = createDbRecordsRequestService(handle.db);
     docs = createDbDocumentBackend(handle.db, { cipher }).service;

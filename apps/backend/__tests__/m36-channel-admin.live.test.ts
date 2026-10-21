@@ -1,6 +1,6 @@
 /**
  * M36 admin screens PR 1a — GET /channels/:id/members + POST /channels/:id/archive, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role. Proves: the full ACTIVE member list (suspended / revoked excluded), the read
+ * NOBYPASSRLS `chartwarden_app` role. Proves: the full ACTIVE member list (suspended / revoked excluded), the read
  * event lands with its resource id, org-admin-only archive that is idempotent (one write, one audit row), the
  * kind policy (dm 403, care_team / announcement 409), no existence oracle across tenants, and RLS at the DB.
  *
@@ -37,7 +37,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = Buffer.alloc(32, 7);
 
 interface Who {
@@ -480,7 +480,7 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
     });
   });
 
-  describe("RLS as wardenx_app with app.org_id = B", () => {
+  describe("RLS as chartwarden_app with app.org_id = B", () => {
     const asOrgB = async <T>(fn: (c: Client) => Promise<T>): Promise<T> => {
       const c = new Client({ connectionString: appUrl });
       await c.connect();

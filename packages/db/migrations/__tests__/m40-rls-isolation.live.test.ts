@@ -4,7 +4,7 @@
  * M40 is a DELIBERATE MIX of platform master data and org-scoped tenant records, and that mix is the
  * whole point of this suite. Of the eleven manifest-owned tables only FOUR are org-scoped and carry a
  * tenant `app.org_id` RLS policy — the other seven are canonical/global directory data (public read,
- * `USING (true)`) or platform-ops surfaces (wardenx_admin only, no tenant policy at all). A suite that
+ * `USING (true)`) or platform-ops surfaces (chartwarden_admin only, no tenant policy at all). A suite that
  * swept all eleven would assert cross-tenant *denial* against tables that are supposed to be *shared*,
  * and pass for the wrong reason. So COVERED is exactly the four org-scoped tables; every excluded table
  * is listed below with the reason it is NOT tenant-isolated.
@@ -15,9 +15,9 @@
  *   • facility            — CANONICAL. Same posture as external_physician.
  *   • payer               — CANONICAL. Same posture as external_physician.
  *   • entity_relationship — canonical-SHAPE cross-cutting graph (org-less): public read, mdm_canonical_writer writes.
- *   • merge_request       — PLATFORM-OPS surface, wardenx_admin only. No wardenx_app grant at all.
- *   • nppes_sync_log      — PLATFORM-OPERATIONAL log, wardenx_admin only. No wardenx_app grant.
- *   • nppes_sync_coordination — PLATFORM-OPERATIONAL singleton (INTEGER PK), wardenx_admin only. No wardenx_app grant.
+ *   • merge_request       — PLATFORM-OPS surface, chartwarden_admin only. No chartwarden_app grant at all.
+ *   • nppes_sync_log      — PLATFORM-OPERATIONAL log, chartwarden_admin only. No chartwarden_app grant.
+ *   • nppes_sync_coordination — PLATFORM-OPERATIONAL singleton (INTEGER PK), chartwarden_admin only. No chartwarden_app grant.
  * None of the eleven are partitioned, so there is no partition-leaf caveat here.
  *
  * The four COVERED tables are where a tenant's PRIVATE data lives: the overlay carries a tenant's own
@@ -26,7 +26,7 @@
  * a cross-tenant write of a BAA row would let one org forge another's compliance posture.
  *
  * This applies the real migrations to a real Postgres and drives the policies as the unprivileged
- * `wardenx_app` role (no BYPASSRLS). Gated on a live DB so the default `bun run test` (no Postgres) stays green:
+ * `chartwarden_app` role (no BYPASSRLS). Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m40` (SUPERUSER to a THROWAWAY db;
  *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
@@ -38,10 +38,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "mdm_canonical_writer",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -76,7 +76,7 @@ describe.skipIf(!DB_URL)(
     let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -208,9 +208,9 @@ describe.skipIf(!DB_URL)(
     // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
     // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);

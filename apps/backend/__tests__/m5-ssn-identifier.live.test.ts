@@ -1,6 +1,6 @@
 /**
  * GAP-010 — the envelope-encrypted SSN / state-id writer, the blind index and the matcher feed, against REAL Postgres
- * as the NOBYPASSRLS `wardenx_app` role, over a REAL M34 tenant key ring (platform KEK -> wrapped DEK -> provider),
+ * as the NOBYPASSRLS `chartwarden_app` role, over a REAL M34 tenant key ring (platform KEK -> wrapped DEK -> provider),
  * with the REAL catalog-validating outbox publisher. Nothing here is mocked below the HTTP layer; the route gates
  * (permission / step-up / chart scope) are proved in the unit suites (`m5-lifecycle-routes`, `patient-routes`).
  *
@@ -13,7 +13,7 @@
  *   • a reveal that returns the value when its audit row cannot be written;
  *   • the migration's role backfill granting a role it should not (clinical roles), or twice.
  *
- * Run against a PRIVATE container, never the shared cluster (it DROPs ROLE wardenx_app):
+ * Run against a PRIVATE container, never the shared cluster (it DROPs ROLE chartwarden_app):
  *   docker run -d --name gapc-C1-ssn-pg -p 55600:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg18
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55600/postgres \
  *     bun run test:m5:ssn-identifier:live
@@ -58,12 +58,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
-  "wardenx_destruction",
+  "chartwarden_destruction",
   "tenant_platform_writer",
 ];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000c1a01";
@@ -198,11 +198,11 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     appHandle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'c1_platform'");
-    platformHandle = createDbClient({ connectionString: urlAs("wardenx_admin", "c1_platform") });
-    await admin.query("ALTER ROLE wardenx_destruction LOGIN PASSWORD 'c1_destroy'");
+    await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'c1_platform'");
+    platformHandle = createDbClient({ connectionString: urlAs("chartwarden_admin", "c1_platform") });
+    await admin.query("ALTER ROLE chartwarden_destruction LOGIN PASSWORD 'c1_destroy'");
     destructionHandle = createDbClient({
-      connectionString: urlAs("wardenx_destruction", "c1_destroy"),
+      connectionString: urlAs("chartwarden_destruction", "c1_destroy"),
     });
     await provisionKeyRing(ORG_A);
     await provisionKeyRing(ORG_B);
@@ -374,13 +374,13 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
 
   it("a reveal whose audit row cannot be written returns NO value", async () => {
     const [row] = await identifierRow(janeId);
-    await admin.query("REVOKE INSERT ON audit_event FROM wardenx_app");
+    await admin.query("REVOKE INSERT ON audit_event FROM chartwarden_app");
     try {
       await expect(
         lifecycle.revealIdentifier(ORG_A, janeId, row.id, STAFF, "corr-reveal-2"),
       ).rejects.toBeDefined();
     } finally {
-      await admin.query("GRANT INSERT ON audit_event TO wardenx_app");
+      await admin.query("GRANT INSERT ON audit_event TO chartwarden_app");
     }
     const count = await admin.query(
       "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_identifier.reveal' AND resource_id=$1",
@@ -504,7 +504,7 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
     expect((aRow.value_blind_index as Buffer).equals(bRow.value_blind_index as Buffer)).toBe(false);
   });
 
-  it("as wardenx_app a connection scoped to another tenant (or to none) sees zero rows (RLS is forced)", async () => {
+  it("as chartwarden_app a connection scoped to another tenant (or to none) sees zero rows (RLS is forced)", async () => {
     const rowsAs = async (orgId: string): Promise<number> =>
       appHandle.db.transaction(async (tx) => {
         await tx.execute(sql`SELECT set_config('app.org_id', ${orgId}, true)`);
@@ -626,7 +626,7 @@ describe.skipIf(!DB_URL)("GAP-010 M5 SSN envelope + blind index — LIVE Postgre
         STAFF,
       ),
     );
-    // The delete half runs as `wardenx_destruction` (0157); `wardenx_app` holds DELETE on none of these tables.
+    // The delete half runs as `chartwarden_destruction` (0157); `chartwarden_app` holds DELETE on none of these tables.
     const counts = await createDrizzlePatientEraseStore(destructionHandle.db).erasePatientSubtree(
       ORG_B,
       pid,

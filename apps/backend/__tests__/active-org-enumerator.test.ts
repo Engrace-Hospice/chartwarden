@@ -75,7 +75,7 @@ describe("buildActiveOrgEnumerator", () => {
 
   it("queries ONLY the pool it was given as the platform pool (never a tenant pool) and returns its orgs", async () => {
     const platform = fakePlatformDb([{ organizationId: "org-a" }]);
-    const tenant = fakePlatformDb([]); // what wardenx_app sees under `organization` RLS: nothing
+    const tenant = fakePlatformDb([]); // what chartwarden_app sees under `organization` RLS: nothing
     const tenantTransaction = vi.spyOn(tenant.db as { transaction: () => unknown }, "transaction");
     const enumerator = buildActiveOrgEnumerator({
       platformDb: platform.db,

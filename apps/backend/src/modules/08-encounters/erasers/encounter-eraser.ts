@@ -117,9 +117,9 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
  * strictly stronger — the PHI is unreadable under ANY key the moment the shred commits, before any
  * delete runs (shred-before-delete, the M16/M31 ordering). NOT-NULL cipher columns shred to the ""
  * sentinel (the M31 precedent); nullable ones to NULL. Counts come from `returning` lengths (rows
- * ACTUALLY removed). Migration 0031 grants `wardenx_app` no DELETE on any encounter table, so under an
+ * ACTUALLY removed). Migration 0031 grants `chartwarden_app` no DELETE on any encounter table, so under an
  * app-role connection Postgres REFUSES the delete pass and this store THROWS — the destruction path
- * must be handed a privileged (wardenx_admin) `DbClient` at the composition root.
+ * must be handed a privileged (chartwarden_admin) `DbClient` at the composition root.
  */
 export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseStore {
   const ENC = schema.encounters;

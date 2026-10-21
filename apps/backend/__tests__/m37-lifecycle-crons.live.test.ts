@@ -1,6 +1,6 @@
 /**
  * Batch 11 (GAP-105 follow-up) — M37's five lifecycle crons, the IRC resumption carry-over, and the RN-coverage
- * alert payloads, proven against real Postgres as the NOBYPASSRLS `wardenx_app` role: reservation-expiry-
+ * alert payloads, proven against real Postgres as the NOBYPASSRLS `chartwarden_app` role: reservation-expiry-
  * watchdog, equipment-inspection-watchdog, nursing-note-shift-watchdog, transfer-completion-watchdog and
  * postclose-settlement-sweep.
  *
@@ -37,7 +37,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const PE = "66666666-6666-4666-8666-666666666666";
@@ -404,7 +404,7 @@ describe.skipIf(!DB_URL)("M37 lifecycle crons — LIVE Postgres (batch 11)", () 
         [id, slug],
       );
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     await seedOrg(ORG_A, "A");
     await seedOrg(ORG_B, "B");

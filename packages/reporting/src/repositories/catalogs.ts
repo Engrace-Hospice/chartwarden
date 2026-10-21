@@ -166,11 +166,11 @@ export class ReportCatalogRepository {
    * optionally transition the MV's lifecycle status (e.g. → `suspended` after exhausted retries).
    *
    * `materialized_view_metadata` has NO `organization_id` column at all — every row is
-   * platform-global — and `wardenx_app` holds SELECT only (migration 0058), no INSERT/UPDATE grant or
+   * platform-global — and `chartwarden_app` holds SELECT only (migration 0058), no INSERT/UPDATE grant or
    * policy whatsoever. A plain Drizzle UPDATE therefore fails outright under real RLS (WX-PR-024,
    * "found adjacent" to the `report_run`/`audit_event` gap this pass fixed). This always calls the
    * SECURITY DEFINER `report_writer_update_platform_mv_metadata` function instead (migration 0188) —
-   * owned by `report_writer`, EXECUTE granted directly to `wardenx_app`.
+   * owned by `report_writer`, EXECUTE granted directly to `chartwarden_app`.
    */
   async updateMvRefreshTelemetry(
     mvKey: string,

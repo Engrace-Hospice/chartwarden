@@ -1,5 +1,5 @@
 /**
- * M25 ADR intake (hospice ADR/TPE/QIC PRD, milestone 2a) - LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M25 ADR intake (hospice ADR/TPE/QIC PRD, milestone 2a) - LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  * Proves what the pure suites cannot: the due date is derived from the MAC rule in force and recorded on the
  * case, a rule edit never moves an existing case, scope and tenant isolation hold under RLS, a stale version is a
  * 409, a terminal case is frozen by the database, and the audit trigger writes a row.
@@ -19,7 +19,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -229,7 +229,7 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     ).toMatchObject({ code: "INVALID_RULE_DATE" });
     const grants = await admin.query(
       `SELECT privilege_type FROM information_schema.role_table_grants
-        WHERE table_name='adr_case_event' AND grantee='wardenx_app'`,
+        WHERE table_name='adr_case_event' AND grantee='chartwarden_app'`,
     );
     expect(grants.rows.map((r) => r.privilege_type).sort()).toEqual(["INSERT", "SELECT"]);
   });

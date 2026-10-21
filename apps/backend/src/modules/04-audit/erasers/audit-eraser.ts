@@ -13,7 +13,7 @@
 // in-memory default; production injects `createDrizzleAuditEraserStore` (row-group enumeration over
 // the sanctioned @chartwarden/audit query reader) + `createDrizzleAuditEraserPorts` (live legal-hold /
 // patient-lifecycle guards). The `performErasure` leg is CONDITIONAL — see its note: `audit_event`
-// is HELPER_ONLY and `wardenx_app` holds no DELETE grant, so the partitioned-DELETE adapter lives
+// is HELPER_ONLY and `chartwarden_app` holds no DELETE grant, so the partitioned-DELETE adapter lives
 // in packages/audit (`createDbAuditEraseExecutor`) and binds only when the composition root
 // injects a destruction-granted client (`destructionDb`); until deployment provisions that
 // credential the port THROWS, so a right-to-erasure against audit rows fails loudly instead of
@@ -143,7 +143,7 @@ export function createDrizzleAuditEraserStore(db: DbClient): AuditEraserStore {
 export interface DrizzleAuditEraserPortsOptions {
   /**
    * A DESTRUCTION-GRANTED DbClient (separately pooled credential holding DELETE on `audit_event`,
-   * e.g. `wardenx_admin`) — NEVER the tenant pool: `wardenx_app` has no DELETE grant (migration
+   * e.g. `chartwarden_admin`) — NEVER the tenant pool: `chartwarden_app` has no DELETE grant (migration
    * 0001 append-only). When supplied, `performErasure` binds to the packages/audit
    * `createDbAuditEraseExecutor` over it; when absent, the leg stays a typed UNBOUND throw.
    */
@@ -164,7 +164,7 @@ export interface DrizzleAuditEraserPortsOptions {
  *   • `loadPatient` reads the M5 `patient` status + deceased_date under org RLS for the §6
  *     lifetime window (the M39 "fail-closed deceased proof" read). Any non-deceased status maps
  *     to `active` — only a proven death date can open the 6-year window.
- *   • `performErasure` — `audit_event` is HELPER_ONLY and `wardenx_app` holds INSERT/SELECT only
+ *   • `performErasure` — `audit_event` is HELPER_ONLY and `chartwarden_app` holds INSERT/SELECT only
  *     (migration 0001 — the append-only guarantee), so no code in this module may, and no tenant
  *     connection could, delete audit rows. The partitioned-DELETE adapter therefore lives in
  *     packages/audit (`createDbAuditEraseExecutor`) and runs ONLY over the injected
@@ -214,7 +214,7 @@ export function createDrizzleAuditEraserPorts(
     async performErasure(input) {
       if (executor) return executor.performErasure(input);
       throw new Error(
-        `M4_ERASER_PERFORM_ERASURE_UNBOUND: audit_event is HELPER_ONLY and wardenx_app has no DELETE grant (migration 0001 append-only guarantee); the packages/audit createDbAuditEraseExecutor requires a destruction-granted client injected as \`destructionDb\`, which deployment has not provisioned. Refusing to report '${input.resourceKind}/${input.resourceId}' erased while its rows survive.`,
+        `M4_ERASER_PERFORM_ERASURE_UNBOUND: audit_event is HELPER_ONLY and chartwarden_app has no DELETE grant (migration 0001 append-only guarantee); the packages/audit createDbAuditEraseExecutor requires a destruction-granted client injected as \`destructionDb\`, which deployment has not provisioned. Refusing to report '${input.resourceKind}/${input.resourceId}' erased while its rows survive.`,
       );
     },
 

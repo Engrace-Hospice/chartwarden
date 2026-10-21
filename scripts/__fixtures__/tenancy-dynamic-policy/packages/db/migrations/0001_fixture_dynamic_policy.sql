@@ -16,7 +16,7 @@ BEGIN
   VALUES (NULLIF(current_setting('app.user_id', true), '')::uuid);
 
   EXECUTE format(
-    'CREATE POLICY %I ON fixture_dyn FOR ALL TO wardenx_app '
+    'CREATE POLICY %I ON fixture_dyn FOR ALL TO chartwarden_app '
     'USING (user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid)',
     'fixture_dyn_self'
   );

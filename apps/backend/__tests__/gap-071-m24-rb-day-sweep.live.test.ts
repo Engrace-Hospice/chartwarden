@@ -1,7 +1,7 @@
 /**
  * GAP-071 — the M24 `rb-day-daily-sweep` store, LIVE Postgres. No production code inserted rb_day rows, so
  * Medicaid room-and-board could never be billed. This drives the production
- * `buildDrizzleRbDaySweepStore` over the REAL M6 org-explicit LOC reader as the NOBYPASSRLS `wardenx_app`
+ * `buildDrizzleRbDaySweepStore` over the REAL M6 org-explicit LOC reader as the NOBYPASSRLS `chartwarden_app`
  * role: an ACTIVE arrangement + a patient's LOC periods + one sweep produce the rb_day rows; a second sweep
  * is a no-op; a voided day is never regenerated; another tenant's arrangement is untouched. The sweep
  * publishes no outbox event (§2.2: rb_day writes are internal), so no publisher is involved.
@@ -23,7 +23,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -126,7 +126,7 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
       ["routine_home_care", "2026-05-01T08:00:00Z", null],
     ]);
     arrangementB = await seedArrangement(ORG_B, PATIENT_B, "2026-05-01");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 

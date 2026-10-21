@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.5 - clinical handoffs, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.5 - clinical handoffs, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing) over the
  * REAL catalog-validating outbox publisher (not NOOP_OUTBOX), so every payload is checked against the catalog schema.
@@ -11,7 +11,7 @@
  *   5. TASK ITEM     accepting a task item reassigns the task (event row, reason handoff); a refusal changes nothing.
  *   6. BACKSTOPS     the database itself refuses editing a closed handoff / a resolved item / a wrong accountable user.
  *   7. TENANCY       org B reads and mutates nothing of org A (HTTP and raw SQL); a cross-org insert is rejected.
- *   8. GRANTS        wardenx_app has no DELETE and cannot UPDATE identity columns; events are append-only.
+ *   8. GRANTS        chartwarden_app has no DELETE and cannot UPDATE identity columns; events are append-only.
  *   9. AUDIT         trigger rows land; patient_id / ref_id are never copied; the read event lands once PER PATIENT.
  *  10. POLICY        tighten-only 15..240, admin permission, DELETE restores the default.
  *  11. FLAG + WIRING off => 404 / disabled list; the boot builds, binds, schedules and reassigns (bound is computing).
@@ -505,7 +505,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.5 clinical handoffs - LIVE Postgres", () => {
     });
   });
 
-  describe("tenancy (as wardenx_app)", () => {
+  describe("tenancy (as chartwarden_app)", () => {
     it("lets org B read, accept, cancel and list nothing of org A over HTTP", async () => {
       const { id } = await offered([nextPatient()]);
       const itemId = await firstItemId(id);
@@ -550,7 +550,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.5 clinical handoffs - LIVE Postgres", () => {
   });
 
   describe("grants", () => {
-    it("gives wardenx_app no DELETE, no UPDATE of identity columns, and keeps events append-only", async () => {
+    it("gives chartwarden_app no DELETE, no UPDATE of identity columns, and keeps events append-only", async () => {
       const { id } = await offered([nextPatient()]);
       const denied = async (sql: string) => {
         await kit.appConn.query("BEGIN");

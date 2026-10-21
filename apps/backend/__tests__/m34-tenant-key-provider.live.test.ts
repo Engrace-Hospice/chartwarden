@@ -9,7 +9,7 @@
  *
  * TWO things were broken, and only one of them was the KEK. The second is asserted first here, because
  * it fails BEFORE the unwrap and would survive any amount of work on the KEK: migration 0052 §5 REVOKES
- * `wardenx_app`'s SELECT on `tenant_key_ring` (the §3.10 / M34-F02 control — the request path's
+ * `chartwarden_app`'s SELECT on `tenant_key_ring` (the §3.10 / M34-F02 control — the request path's
  * credential must never reach key material), and the key provider was reading the ring through exactly
  * that credential. `42501 permission denied for table tenant_key_ring`, for every org, in every
  * deployment, whatever `kekUnwrap` was bound to.
@@ -54,10 +54,10 @@ import { createConsentInternalNotesCipher } from "../src/modules/39-consent/cons
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 
@@ -184,12 +184,12 @@ describe.skipIf(!DB_URL)("#105 — M34 tenant key provider, LIVE Postgres", () =
     await seedOrg(ORG_A, "f045a");
     await seedOrg(ORG_B, "f045b");
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'f045_app'");
-    appHandle = createDbClient({ connectionString: urlAs("wardenx_app", "f045_app") });
-    // The platform credential (`DATABASE_PLATFORM_URL`). `wardenx_admin` holds 0052's tenant_key_ring
-    // grants, so it stands in for `wardenx_platform_login` here (the GAP-097/098 precedent).
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'f045_platform'");
-    platformHandle = createDbClient({ connectionString: urlAs("wardenx_admin", "f045_platform") });
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'f045_app'");
+    appHandle = createDbClient({ connectionString: urlAs("chartwarden_app", "f045_app") });
+    // The platform credential (`DATABASE_PLATFORM_URL`). `chartwarden_admin` holds 0052's tenant_key_ring
+    // grants, so it stands in for `chartwarden_platform_login` here (the GAP-097/098 precedent).
+    await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'f045_platform'");
+    platformHandle = createDbClient({ connectionString: urlAs("chartwarden_admin", "f045_platform") });
   }, 240_000);
 
   afterAll(async () => {
@@ -201,7 +201,7 @@ describe.skipIf(!DB_URL)("#105 — M34 tenant key provider, LIVE Postgres", () =
 
   // ── the credential break (fails BEFORE the KEK, and is invisible to any amount of KEK work) ────────
   describe("tenant_key_ring is unreadable to the request path's credential (§3.10 / M34-F02)", () => {
-    it("wardenx_app is refused; the platform credential is not", async () => {
+    it("chartwarden_app is refused; the platform credential is not", async () => {
       // Drizzle wraps the driver error, so the Postgres message is on `cause` — asserting the wrapper's
       // text would pass for ANY failed query, which is the opposite of what this case is for.
       const failureOf = async (

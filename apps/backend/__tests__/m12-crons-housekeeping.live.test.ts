@@ -1,7 +1,7 @@
 /**
  * GAP-037 — the M12 refill-SLA / IAL2 / EPCS-expiry / RxBenefit-prewarm crons and the webhook handlers
  * (ack / nack / refill_request / prescriber_status_changed), over real Postgres as the real NOBYPASSRLS
- * `wardenx_app` role with the REAL catalog-validating publisher. Only the DoseSpot vendor and its webhook
+ * `chartwarden_app` role with the REAL catalog-validating publisher. Only the DoseSpot vendor and its webhook
  * delivery are test doubles. Every guarded UPDATE is asserted through its observable effect (marker set once,
  * exactly one event) rather than through the vendor.
  *

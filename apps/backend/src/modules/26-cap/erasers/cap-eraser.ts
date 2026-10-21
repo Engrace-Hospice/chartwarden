@@ -3,7 +3,7 @@
 // (patient_id → sentinel, mbi_normalized → '[ERASED]') while RETAINING the cap-year aggregates so CMS-side
 // reconciliation stays reproducible from the ledger (D14). The full tenant-destruction path (eraseCapTenant)
 // is exported for org offboarding. The real Drizzle store runs under the M4 cert workflow's privileged
-// (wardenx_admin) context — bound by the composition root; the in-memory default lets boot register the real
+// (chartwarden_admin) context — bound by the composition root; the in-memory default lets boot register the real
 // eraser over the Phase-0 deny-stub before that store binds (the M25 `remittance` / M27 precedent).
 import {
   type CapPatientRedactStore,
@@ -58,7 +58,7 @@ export function createInMemoryCapRedactStore(): CapPatientRedactStore {
   };
 }
 
-/** The real Drizzle redaction store — runs under the privileged M4 cert context (wardenx_admin connection). */
+/** The real Drizzle redaction store — runs under the privileged M4 cert context (chartwarden_admin connection). */
 export function createDrizzleCapRedactStore(db: DbClient): CapPatientRedactStore {
   const BA = schema.capBeneficiaryAccrual;
   const BAL = schema.capBeneficiaryAccrualLine;
@@ -124,7 +124,7 @@ export function createDrizzleCapRedactStore(db: DbClient): CapPatientRedactStore
   };
 }
 
-/** The real Drizzle tenant-destruction store (org offboarding; FK-ordered deletes under wardenx_admin). */
+/** The real Drizzle tenant-destruction store (org offboarding; FK-ordered deletes under chartwarden_admin). */
 export function createDrizzleCapTenantStore(db: DbClient): CapTenantEraseStore {
   const del = async (
     t: { organizationId: unknown; id?: unknown },

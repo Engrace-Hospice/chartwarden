@@ -225,9 +225,9 @@ export function createInMemoryHopeEraseStore(seed: InMemoryHopeEraseSeed = {}): 
  * transaction cannot do; the row path is correct at every granularity. `hope_submission` /
  * `hope_submission_item` rows SURVIVE untouched (compliance evidence; the envelope CONTENT is purged
  * by M4's envelope-purge worker). Counts come from `returning` lengths (rows ACTUALLY removed). The
- * M10 grants give `wardenx_app` no DELETE (append-only), so under an app-role connection Postgres
+ * M10 grants give `chartwarden_app` no DELETE (append-only), so under an app-role connection Postgres
  * REFUSES the delete and this store THROWS — the destruction path must be handed a privileged
- * (wardenx_admin) `DbClient` at the composition root.
+ * (chartwarden_admin) `DbClient` at the composition root.
  */
 export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
   const A = schema.hopeAssessments;

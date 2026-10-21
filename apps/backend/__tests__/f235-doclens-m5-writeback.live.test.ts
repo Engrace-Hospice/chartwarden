@@ -4,7 +4,7 @@
  * batch's already-resolved patient — never a headless create).
  *
  * Nothing on the M22/M5 path is stubbed: M22's real `createDbDocumentBackend` (as the NOBYPASSRLS
- * `wardenx_app` role) records the reviewer's decisions and completes the review, which decrypts the stored
+ * `chartwarden_app` role) records the reviewer's decisions and completes the review, which decrypts the stored
  * candidate values server-side with the real tenant-DEK cipher, writes `extraction_provenance`, and
  * publishes `m22.extraction.commit_requested` through the real catalog-validating publisher; the real
  * `createOutboxDispatcher` delivers it to M5's real `m5.extraction-writeback` consumer (chart rows +
@@ -42,7 +42,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -213,7 +213,7 @@ describe.skipIf(!DB_URL)("F-235 — DocLens → M5 demographics writeback — LI
     ).rows[0].id as string;
     actor = { userId: USER, membershipId: membership };
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const catalog = buildBootOutboxCatalog([M5_OUTBOX_EVENTS, M22_OUTBOX_EVENTS]);

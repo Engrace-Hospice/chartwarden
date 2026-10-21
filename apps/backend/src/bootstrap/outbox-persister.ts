@@ -89,10 +89,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * table defaults (`pending`/0/now()).
  *
  * A NULL `organizationId` (a genuinely platform-wide event — no single tenant it belongs to) does NOT go
- * through the plain Drizzle insert: `wardenx_app` has no RLS policy admitting a `organization_id IS NULL`
+ * through the plain Drizzle insert: `chartwarden_app` has no RLS policy admitting a `organization_id IS NULL`
  * write (ADR-0010 D2/D3 forbid one — see migration 0186's own comment for why). It calls the SECURITY
  * DEFINER `report_writer_insert_platform_outbox_event` function instead (migration 0186) — owned by
- * `report_writer`, EXECUTE granted directly to `wardenx_app`, touches `organization_id IS NULL` rows only
+ * `report_writer`, EXECUTE granted directly to `chartwarden_app`, touches `organization_id IS NULL` rows only
  * (hardcoded in the function body, never a caller-supplied parameter).
  */
 export function buildTxOutboxPublisher(

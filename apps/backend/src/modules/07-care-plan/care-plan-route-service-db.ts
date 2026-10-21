@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 //
 // The screen-driving READS (the patient's care plan aggregate, the §7.5 summary card, the version
 // ledger + a single version) run as real Drizzle queries over the M7-owned tables inside
-// `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged `wardenx_app` role.
+// `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged `chartwarden_app` role.
 // The §7.6 SUD confidentiality filter is applied per-caller via the same pure redaction helpers the
 // in-memory slice uses (`filterVisibleProblems` / `filterAnchoredToVisible` / `redactedSudProblemIds`),
 // and it fails closed — no `viewer` ⇒ the internal/system read path (full set), a `viewer` with
@@ -1342,7 +1342,7 @@ export function createDbCarePlanRouteService(
           );
         }
         // D8: clear the collected signatures for re-authoring — INVALIDATE (never delete; care-plan tables
-        // are append-only for wardenx_app), so the audit trail survives and the roles can re-sign.
+        // are append-only for chartwarden_app), so the audit trail survives and the roles can re-sign.
         await t
           .update(SIG)
           .set({ invalidatedAt: new Date() })
@@ -1683,7 +1683,7 @@ export function createDbCarePlanRouteService(
  * The production, RLS-backed {@link CarePlanAbacResolver} — the §6 owner-fact loaders M7's ABAC predicates
  * (`caseload_or_scope` plan-arm, `dpoa_active`, `sud_disclosure_allowed`, `signer_role_match`) resolve a
  * plan/problem/version's org-scoped facts through. Each load runs under `withOrgContext` (RLS scopes every
- * statement by `app.org_id` as the unprivileged `wardenx_app` role) and FAILS CLOSED — a missing or
+ * statement by `app.org_id` as the unprivileged `chartwarden_app` role) and FAILS CLOSED — a missing or
  * cross-tenant id returns `null`, so the predicate denies rather than leaking existence. Mirrors the in-memory
  * `createInMemoryDocumentBackend`-style resolver in `routes/service.ts` (a non-problem `problemId`, e.g. a
  * goal/intervention element id, resolves to `null` — the same fail-closed posture the slice takes).

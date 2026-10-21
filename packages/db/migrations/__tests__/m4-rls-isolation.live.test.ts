@@ -2,18 +2,18 @@
  * M4 Audit & Compliance Log — RLS cross-tenant denial: the LIVE Postgres proof (§3.6 / ADR-0010).
  *
  * The shared `rls-isolation.live.test.ts` already proves M4's MACHINERY live — that `audit_event` is
- * append-only to `wardenx_app`, and that the write-audit trigger fires and scrubs for M36/M38/M40 writes.
+ * append-only to `chartwarden_app`, and that the write-audit trigger fires and scrubs for M36/M38/M40 writes.
  * What it never touched is M4's OWN tables. That is the gap this closes, and it is the one that matters
  * most for M4 specifically: `legal_hold` and `destruction_certificate` are the tables that GATE
  * destruction. A tenant that could read or write another tenant's legal hold could suppress or force a
  * destruction it has no authority over, and no unit test can catch a wrong RLS predicate or a missing
- * WITH CHECK — only a real Postgres running as the unprivileged `wardenx_app` role can.
+ * WITH CHECK — only a real Postgres running as the unprivileged `chartwarden_app` role can.
  *
  * Two shapes are covered, because M4 owns both:
  *   • ORG-SCOPED (4): legal_hold, destruction_certificate, audit_export, audit_seal — canonical
  *     `organization_id = current_setting('app.org_id')` policies.
  *   • PLATFORM-REFERENCE (3): state_retention_override, audit_denylist_catalog, audit_action_catalog —
- *     no organization_id at all, SELECT-only to `wardenx_app`. The risk here is the inverse: these must be
+ *     no organization_id at all, SELECT-only to `chartwarden_app`. The risk here is the inverse: these must be
  *     readable by EVERY tenant (a denylist a tenant cannot read is a denylist that does not scrub) and
  *     writable by NONE.
  *
@@ -28,7 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** The `*_by` columns (applied_by / executed_by / requested_by) carry real FKs to `user`. */
@@ -60,7 +60,7 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
   let a: SeedIds;
 
   async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
+    await db.query("SET ROLE chartwarden_app");
     await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
     try {
       return await fn();
@@ -166,9 +166,9 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
   // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
   // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+  it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);

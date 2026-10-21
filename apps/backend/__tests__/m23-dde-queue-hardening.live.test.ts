@@ -1,6 +1,6 @@
 /**
  * M23 DDE work queue, HARDENING proofs (ADR-0052; security + code review of the first pass), LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role through the real routes, resolver and catalog-validating publisher.
+ * NOBYPASSRLS `chartwarden_app` role through the real routes, resolver and catalog-validating publisher.
  *
  *   - an ACCEPTED outcome needs step-up and refuses a date before the election / termination date or in the future;
  *     NOE and NOTR end to end; a `ready` / `submitted` / `ack_pending` notice takes 3 / 2 / 1 edges; a draft is a 409;

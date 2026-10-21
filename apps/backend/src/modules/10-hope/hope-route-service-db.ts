@@ -6,7 +6,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // The screen-driving READS (timepoint-schedule worklist, HOPE assessment chart + detail, SFV worklist,
 // iQIES submission list/detail, pre-submission validation findings, the compliance dashboard) run as real
 // Drizzle queries over the M10-owned tables inside `withOrgContext`, so RLS scopes every row by
-// `app.org_id` as the unprivileged `wardenx_app` role. `hope_assessment` is PARTITION BY RANGE
+// `app.org_id` as the unprivileged `chartwarden_app` role. `hope_assessment` is PARTITION BY RANGE
 // (target_date) with a DEFAULT partition so inserts always land. The WRITE lifecycle is now real (M10L):
 // record (draft insert, linked to the open schedule) · sign (server-authoritative J2051 verdict → the DB
 // schedule-mark-completed trigger closes the schedule; a fired trigger opens the SFV) · correct (the

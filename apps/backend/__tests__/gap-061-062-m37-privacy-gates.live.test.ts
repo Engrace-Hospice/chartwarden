@@ -3,7 +3,7 @@
  *
  * Both gates lived in `37-ipu/routes/service-drizzle.ts` as constants: `roomOccupancyAllowed: true`
  * on every `assignBed`, and `consentEvaluatorResult: {}` on every visitor check-in. Neither refused
- * anything, ever. This suite drives the production route service as the NOBYPASSRLS `wardenx_app`
+ * anything, ever. This suite drives the production route service as the NOBYPASSRLS `chartwarden_app`
  * role, over the REAL M5 `PatientPrivacyFlagReader` (Drizzle) and the REAL M39 `ConsentEvaluator`
  * (Drizzle store) — no stubs on either side of the seams under test.
  *
@@ -21,7 +21,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "1b1b1b1b-1b1b-1b1b-1b1b-1b1b1b1b1b1b";
@@ -150,7 +150,7 @@ describe.skipIf(!DB_URL)("M37 privacy gates — LIVE Postgres (GAP-061 + GAP-062
           ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'family_caregiver',
           true,false,false,false,false,true,'consent_record','v1')`,
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     svc = buildDrizzleIpuRouteService(handle.db, {
       rooming: buildPatientPrivacyFlagReader(handle.db),

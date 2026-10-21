@@ -1,6 +1,6 @@
 /**
  * GAP-050 — scheduled reports are creatable again, proven over real Postgres as the NOBYPASSRLS
- * `wardenx_app` role.
+ * `chartwarden_app` role.
  *
  * `CronPort.nextRunAfter` was a fail-closed stub (`M33InfraPortUnbound`, a 5xx), and the production
  * write service computes `next_run_at` through it on THREE paths — create, update, resume. So no tenant
@@ -31,7 +31,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111151";
 const ORG_B = "22222222-2222-2222-2222-222222222252";
 const USER = "33333333-3333-3333-3333-333333333353";
@@ -115,7 +115,7 @@ describe.skipIf(!DB_URL)("GAP-050 — M33 schedule cron, LIVE Postgres", () => {
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     seedDb = createDbClient({ connectionString: DB_URL as string });
 

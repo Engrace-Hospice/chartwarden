@@ -1,5 +1,5 @@
 /**
- * M36 WP 2.7b chunk C4 (ADR-0058, Proposed) - the tenant global search switch, LIVE Postgres as the NOBYPASSRLS `wardenx_app`
+ * M36 WP 2.7b chunk C4 (ADR-0058, Proposed) - the tenant global search switch, LIVE Postgres as the NOBYPASSRLS `chartwarden_app`
  * role: the REAL route stack (`mountMessagingRoutes`), the real `requirePermission` / `requireStepUp` chain over a real session
  * seam, the go-live checklist (platform flag, legacy bodies, escrow and leakage attestations, rate limit), OFF-always-accepted, `changed_at`
  * on every flip, the write-audit rows, the FOR SHARE interlock with the index writer, and tenancy. Nothing here enables search
@@ -37,7 +37,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0c04";
 const ORG_B = "22222222-2222-4222-8222-2222000f0c04";
 const URL_PATH = "/api/v1/messaging/global-search/settings";
@@ -209,7 +209,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
         [ORG_A, `${adminA}:peer`],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     resetAuthorizationContract();
@@ -742,7 +742,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       expect((await get(appLimited)).json().enabled).toBe(true);
     });
 
-    it("as wardenx_app a tenant cannot see another tenant's setting row (RLS)", async () => {
+    it("as chartwarden_app a tenant cannot see another tenant's setting row (RLS)", async () => {
       await admin.query(
         `INSERT INTO tenant_messaging_search_setting (organization_id, enabled) VALUES ($1,true),($2,false)`,
         [ORG_A, ORG_B],

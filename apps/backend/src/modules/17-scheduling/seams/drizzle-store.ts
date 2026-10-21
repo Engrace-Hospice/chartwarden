@@ -21,7 +21,7 @@
 // the same deliberate "Scheduled visit" constant the M17L route service ships (never the raw enum — a
 // family portal must not surface `pronouncement`), `scheduler_internal_notes` is never selected, and the
 // only identity that crosses is the assigned clinician's display name (membership → user.name, the M2
-// membership-repository precedent; `user` is granted to wardenx_app and org scope is applied via the
+// membership-repository precedent; `user` is granted to chartwarden_app and org scope is applied via the
 // RLS-scoped membership join).
 //
 // ROUTE EFFICIENCY (D10). Proposed miles come from M17's own `route_segment` (tenths-of-mile integers);

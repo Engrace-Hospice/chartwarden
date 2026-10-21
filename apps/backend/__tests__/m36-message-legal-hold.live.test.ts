@@ -1,9 +1,9 @@
 /**
  * M36 WP 5.6 S2 (ADR-0086, PROPOSED) - the message legal-hold overlay and its backstop trigger (migration 1138), LIVE Postgres.
  *
- *   1. OVERLAY     the NOBYPASSRLS `wardenx_app` role can record a held message but cannot UPDATE or DELETE the overlay.
+ *   1. OVERLAY     the NOBYPASSRLS `chartwarden_app` role can record a held message but cannot UPDATE or DELETE the overlay.
  *   2. TENANCY     another organisation reads nothing and cannot write an overlay row against this organisation's message.
- *   3. BACKSTOP    as `wardenx_destruction`, DELETE and a body_cipher UPDATE of a HELD message fail with 23001; an unheld message in the
+ *   3. BACKSTOP    as `chartwarden_destruction`, DELETE and a body_cipher UPDATE of a HELD message fail with 23001; an unheld message in the
  *                  same organisation is untouched by the guard; both succeed once the M4 hold is released (the one existing UPDATE).
  *                  The tenant app role's own body_cipher rewrite (an edit) of a held message is refused the same way.
  *   4. ERASER      the M36 tenant eraser refuses cleanly (DegradedError, nothing destroyed) while a hold is active, and proceeds after release.
@@ -47,7 +47,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 S2 message legal hold - LIVE Postgres", () 
     const conn = role === "app" ? kit.appConn : kit.admin;
     await conn.query("BEGIN");
     try {
-      if (role === "destruction") await conn.query("SET LOCAL ROLE wardenx_destruction");
+      if (role === "destruction") await conn.query("SET LOCAL ROLE chartwarden_destruction");
       await conn.query("SELECT set_config('app.org_id', $1, true)", [org]);
       await conn.query("SELECT set_config('app.user_id', $1, true)", [author]);
       const res = await conn.query(sql, params);

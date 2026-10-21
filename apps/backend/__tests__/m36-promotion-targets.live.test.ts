@@ -1,6 +1,6 @@
 /**
  * M36 WP 3.7 - the OWNING modules of a chart promotion (M8 addendum, M14 agenda item), LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role. This is the Phase 3 release gate `chart-promotion-attribution` (docs/messaging-hub/03-phases-0-to-3.md).
+ * `chartwarden_app` role. This is the Phase 3 release gate `chart-promotion-attribution` (docs/messaging-hub/03-phases-0-to-3.md).
  *
  * Real M36 promotion binding (real request rows, real message bodies, the seam `ChartPromotionSourceReader`), the real M8
  * encounter service and the real M14 IDG service, each publishing through the REAL catalog-validating outbox publisher

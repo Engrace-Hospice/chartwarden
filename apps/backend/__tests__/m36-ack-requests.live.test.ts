@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.2 - the acknowledgment-request aggregate, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.2 - the acknowledgment-request aggregate, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing, the M1 idempotency
  * store) over the REAL catalog-validating outbox publisher (not NOOP_OUTBOX).
@@ -1251,7 +1251,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       const { id } = await freshRequest();
       await kit.admin.query("BEGIN");
       try {
-        await kit.admin.query("SET LOCAL ROLE wardenx_destruction");
+        await kit.admin.query("SET LOCAL ROLE chartwarden_destruction");
         await kit.admin.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
         const res = await kit.admin.query(
           "DELETE FROM message_acknowledgment_event WHERE request_id=$1",
@@ -1263,13 +1263,13 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       }
     });
 
-    it("erasing a request or its message as a wardenx_destruction login cascades through the append-only history", async () => {
+    it("erasing a request or its message as a chartwarden_destruction login cascades through the append-only history", async () => {
       await kit.admin.query(
         `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp42_destroyer') THEN
            CREATE ROLE wp42_destroyer LOGIN PASSWORD 'wp42_destroyer_pw'; END IF; END $$;`,
       );
-      // Membership is re-granted every run: the live kit drops and recreates wardenx_destruction, which silently ends it.
-      await kit.admin.query("GRANT wardenx_destruction TO wp42_destroyer");
+      // Membership is re-granted every run: the live kit drops and recreates chartwarden_destruction, which silently ends it.
+      await kit.admin.query("GRANT chartwarden_destruction TO wp42_destroyer");
       const url = new URL(DB_URL as string);
       url.username = "wp42_destroyer";
       url.password = "wp42_destroyer_pw";
@@ -1317,11 +1317,11 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       expect((await events(id)).length).toBeGreaterThan(0);
     });
 
-    it("wardenx_app has no DELETE on either table and no UPDATE on the history", async () => {
+    it("chartwarden_app has no DELETE on either table and no UPDATE on the history", async () => {
       const priv = async (table: string, p: string) =>
         (
           await kit.one<{ ok: boolean }>(
-            "SELECT has_table_privilege('wardenx_app', $1, $2) AS ok",
+            "SELECT has_table_privilege('chartwarden_app', $1, $2) AS ok",
             [table, p],
           )
         )[0]!.ok;

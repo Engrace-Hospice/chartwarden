@@ -12,7 +12,7 @@
  *   `m15.idg_decision.applied` through the real publisher → the dispatcher → M14's consumer records the
  *   acknowledgement (`idg_decision_application_ack`), read back through M14's real list read.
  *
- * All as the NOBYPASSRLS `wardenx_app` role. The M7 parent-problem check is M7's REAL org-explicit
+ * All as the NOBYPASSRLS `chartwarden_app` role. The M7 parent-problem check is M7's REAL org-explicit
  * `activeProblemIdsForOrg` over real `care_plan` / `problem` rows.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m15:idg-decision:live
@@ -41,7 +41,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -224,7 +224,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
         )
       ).rows[0].id as string;
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const catalog = buildBootOutboxCatalog([M14_OUTBOX_EVENTS, M15_OUTBOX_EVENTS]);

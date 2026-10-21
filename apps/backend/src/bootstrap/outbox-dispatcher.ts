@@ -5,7 +5,7 @@
 // read: the table grew unboundedly and every cross-module event contract was write-only theater.
 // This is the polling relay that makes the outbox real.
 //
-// TENANCY: `outbox_event` is org-scoped under RLS (`outbox_event_org`, FOR ALL wardenx_app), so the
+// TENANCY: `outbox_event` is org-scoped under RLS (`outbox_event_org`, FOR ALL chartwarden_app), so the
 // relay never bypasses RLS. Each tick enumerates active orgs through the AUDITED platform-context
 // enumerator (the M30/M33 cron precedent) and polls each org under its own `withOrgContext` —
 // claim, deliver, finalize, all RLS-scoped to that org.
@@ -588,9 +588,9 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
 
   // ── the platform-wide (organization_id IS NULL) pass — mirrors pollOrg's shape exactly, but every
   // claim/finalize/reclaim/purge step routes through the SECURITY DEFINER `report_writer_*` functions
-  // (migration 0186) instead of a direct table statement: `wardenx_app` has no RLS policy admitting a
+  // (migration 0186) instead of a direct table statement: `chartwarden_app` has no RLS policy admitting a
   // `organization_id IS NULL` row (ADR-0010 D2/D3 forbid one), so a plain `tx.update(OUTBOX)...` would be
-  // silently denied by RLS for these rows. EXECUTE on each function is granted directly to `wardenx_app`
+  // silently denied by RLS for these rows. EXECUTE on each function is granted directly to `chartwarden_app`
   // — no `withOrgContext`/`withPlatformContext` envelope is needed here (the function body, not the
   // caller's session, carries the elevated privilege).
   //
@@ -771,7 +771,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       total += row?.count ?? 0;
     }
     // GAP-099 — platform-wide (organization_id IS NULL) pending rows are now included, through the
-    // migration-0201 SECURITY DEFINER counter. `wardenx_app` still has no RLS policy admitting those rows
+    // migration-0201 SECURITY DEFINER counter. `chartwarden_app` still has no RLS policy admitting those rows
     // (by design, ADR-0010 D2/D3), so a plain SELECT here would silently UNDERCOUNT rather than error —
     // which is why this needed its own function. Before platform delivery existed, a platform backlog was
     // the expected steady state and leaving it out was defensible; now it is the exact symptom the depth

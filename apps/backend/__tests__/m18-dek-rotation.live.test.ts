@@ -1,6 +1,6 @@
 /**
  * §4.8 `m18.dek-rotation` — the EVV coordinate re-seal, proven against real Postgres as the NOBYPASSRLS
- * `wardenx_app` role.
+ * `chartwarden_app` role.
  *
  * Covers: rows sealed under DEK v1 become readable under v2 after a rotation (event AND its geofence snapshot,
  * same envelope, same coordinate), legacy 'legacy-unencrypted' rows and another tenant's rows are untouched, a
@@ -38,10 +38,10 @@ import { createRotatableTestCoordsKeyRing } from "./_m18-coords-test-cipher";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "evv_coords_rekeyer",
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -232,10 +232,10 @@ describe.skipIf(!DB_URL)("M18 §4.8 m18.dek-rotation — LIVE Postgres", () => {
       dekVersion: LEGACY_COORDS_DEK_VERSION,
     });
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const who = await handle.db.execute(sql`SELECT current_user AS u`);
-    expect((who as unknown as { rows: { u: string }[] }).rows[0]?.u).toBe("wardenx_app");
+    expect((who as unknown as { rows: { u: string }[] }).rows[0]?.u).toBe("chartwarden_app");
 
     await rotateTo("v2");
   }, 240_000);

@@ -12,7 +12,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
  *                                [--pause-ms 250] [--deadline-sec 600]
  *
  * Needs DATABASE_URL (the tenant role), DATABASE_PLATFORM_URL (reads tenant_key_ring), DATABASE_BODY_BACKFILL_URL (real runs: the
- * wardenx_body_backfill_login that alone may re-seal a revision), M34_TENANT_KEK (+ _RETIRED) and
+ * chartwarden_body_backfill_login that alone may re-seal a revision), M34_TENANT_KEK (+ _RETIRED) and
  * MESSAGING_ENCRYPTION_KEY (the legacy key that still opens the old rows). It is safe to stop and re-run: it resumes.
  * Prints the JSON completion report (counts per table, rows remaining on the legacy envelope). Exit 1 if any row failed
  * or mismatched its plaintext hash; the run is `complete` only when zero legacy rows remain.
@@ -59,7 +59,7 @@ async function main(): Promise<number> {
   }
   if (!dryRun && !DATABASE_BODY_BACKFILL_URL) {
     console.error(
-      "DATABASE_BODY_BACKFILL_URL (login wardenx_body_backfill_login, member of wardenx_m36_reseal) is required for a real run: revisions are append-only for every other role",
+      "DATABASE_BODY_BACKFILL_URL (login chartwarden_body_backfill_login, member of chartwarden_m36_reseal) is required for a real run: revisions are append-only for every other role",
     );
     return 1;
   }

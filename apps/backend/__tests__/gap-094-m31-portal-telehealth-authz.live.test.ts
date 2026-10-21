@@ -9,7 +9,7 @@
  *
  * This suite mounts the REAL `registerTelehealthRoutes` on a real Fastify server (real RBAC + ABAC engine),
  * over the real Drizzle `PortalStore`, the real `portal_access_grant` resolver and the real M39
- * `ConsentEvaluator` over seeded `consent_record` rows — all as the NOBYPASSRLS `wardenx_app` role; fixtures
+ * `ConsentEvaluator` over seeded `consent_record` rows — all as the NOBYPASSRLS `chartwarden_app` role; fixtures
  * are seeded as the superuser. Only the video-vendor adapter (an external system) is a fixture. The
  * telehealth join/leave handlers emit no outbox event (they persist the lifecycle row only), so there is no
  * publisher to bind here; M31's consumer-side live suites cover the catalog-validated outbox path.
@@ -55,7 +55,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111194";
 const ORG_B = "22222222-2222-2222-2222-222222222294";
 
@@ -329,7 +329,7 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
     orgBVisit = await seedPortalPatient("org-b", { org: ORG_B });
     leaver = await seedPortalPatient("leaver");
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const store = buildDrizzlePortalStore(handle.db);
     const consent = createDbConsentEvaluator(handle.db);
@@ -364,7 +364,7 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
     );
 
     // REAL predicates over the REAL resolver; the consent port evaluates the real M39 evaluator over the
-    // seeded consent_record rows (as wardenx_app, under RLS). Only the unrelated bereavement / caregiver /
+    // seeded consent_record rows (as chartwarden_app, under RLS). Only the unrelated bereavement / caregiver /
     // address ports are inert — no route under test reaches them.
     const ports: PortalAbacPorts = {
       async consentActive({ organizationId, patientId, consentType, sessionClass }) {

@@ -24,7 +24,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER_1 = "22222222-2222-2222-2222-222222222221";
 const USER_2 = "22222222-2222-2222-2222-222222222222";
@@ -132,7 +132,7 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
     await seedVisit(PATIENT, "in_progress"); // active → must be aborted
     await seedVisit(PATIENT, "ended_clean"); // already ended → ref still shredded
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });

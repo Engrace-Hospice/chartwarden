@@ -8,7 +8,7 @@
  * infrastructure." This suite proves the built provider is the SAME already-ratified app-layer
  * AES-256-GCM envelope pattern (ADR-0038) applied to a platform-singleton secret, not a fabricated one:
  *
- *   • `patient_pseudonym_key` really is unreadable on the tenant `wardenx_app` credential (the
+ *   • `patient_pseudonym_key` really is unreadable on the tenant `chartwarden_app` credential (the
  *     `tenant_key_ring`/M34-F02 shape) and readable on the platform credential.
  *   • mint-on-first-use is race-safe: two concurrent callers on a cold table mint exactly ONE epoch.
  *   • the ciphertext at rest is never the plaintext key material.
@@ -38,7 +38,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-111111110171";
 const ORG_B = "22222222-2222-4222-8222-222222220171";
@@ -88,14 +88,14 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
       [ORG_A, ORG_B],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     appHandle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
-    // The platform credential (`DATABASE_PLATFORM_URL`) — `wardenx_admin` holds the 0143 platform-only
-    // grants (`GRANT ALL ... TO wardenx_admin`), the M34/GAP-097/098 precedent for standing in for
-    // `wardenx_platform_login` in a live suite.
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'f171_platform'");
+    // The platform credential (`DATABASE_PLATFORM_URL`) — `chartwarden_admin` holds the 0143 platform-only
+    // grants (`GRANT ALL ... TO chartwarden_admin`), the M34/GAP-097/098 precedent for standing in for
+    // `chartwarden_platform_login` in a live suite.
+    await admin.query("ALTER ROLE chartwarden_admin LOGIN BYPASSRLS PASSWORD 'f171_platform'");
     const u = new URL(DB_URL as string);
-    u.username = "wardenx_admin";
+    u.username = "chartwarden_admin";
     u.password = "f171_platform";
     platformHandle = createDbClient({ connectionString: u.toString() });
   }, 240_000);
@@ -106,7 +106,7 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
     await admin?.end();
   });
 
-  it("patient_pseudonym_key is unreadable on the tenant wardenx_app credential, readable on the platform one", async () => {
+  it("patient_pseudonym_key is unreadable on the tenant chartwarden_app credential, readable on the platform one", async () => {
     const failureOf = async (handle: ReturnType<typeof createDbClient>): Promise<string | null> => {
       try {
         await handle.db.execute(sql`SELECT count(*)::int AS n FROM patient_pseudonym_key`);

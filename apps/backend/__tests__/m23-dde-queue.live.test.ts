@@ -1,5 +1,5 @@
 /**
- * M23 DDE work queue (ADR-0052) END TO END over real Postgres, as the NOBYPASSRLS `wardenx_app` role.
+ * M23 DDE work queue (ADR-0052) END TO END over real Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The queue is human work tracking for Medicare Direct Data Entry: WardenX never calls DDE. What this proves
  * against real rows under REAL RLS, through the real Fastify routes, the real `provider_entity_billing_scope`

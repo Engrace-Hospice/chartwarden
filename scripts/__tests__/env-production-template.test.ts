@@ -57,8 +57,8 @@ describe("deploy/production/.env.production.example", () => {
     const env = {
       NODE_ENV: "production",
       // compose.yml injects these three from the credentials above, not from the template.
-      DATABASE_URL: "postgresql://wardenx_app:x@postgres:5432/wardenx",
-      DATABASE_PLATFORM_URL: "postgresql://wardenx_platform_login:x@postgres:5432/wardenx",
+      DATABASE_URL: "postgresql://chartwarden_app:x@postgres:5432/wardenx",
+      DATABASE_PLATFORM_URL: "postgresql://chartwarden_platform_login:x@postgres:5432/wardenx",
       REDIS_URL: "redis://valkey:6379",
       ...render(text),
     };
@@ -85,8 +85,8 @@ describe("deploy/production/.env.production.example", () => {
     expect(assigned.every((l) => l.endsWith("="))).toBe(true);
     const env = {
       NODE_ENV: "production",
-      DATABASE_URL: "postgresql://wardenx_app:x@postgres:5432/wardenx",
-      DATABASE_PLATFORM_URL: "postgresql://wardenx_platform_login:x@postgres:5432/wardenx",
+      DATABASE_URL: "postgresql://chartwarden_app:x@postgres:5432/wardenx",
+      DATABASE_PLATFORM_URL: "postgresql://chartwarden_platform_login:x@postgres:5432/wardenx",
       REDIS_URL: "redis://valkey:6379",
       ...rendered,
       POSTMARK_SERVER_TOKEN: "pm-token-0123456789abcdef",

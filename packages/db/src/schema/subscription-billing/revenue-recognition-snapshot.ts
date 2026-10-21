@@ -1,5 +1,5 @@
 // @chartwarden/db — `revenue_recognition_snapshot` (M35 §3.3). Cross-tenant monthly MRR/ARR aggregate.
-// PLATFORM-ONLY (no organization_id) — never exposed to tenant queries; read+write via wardenx_admin
+// PLATFORM-ONLY (no organization_id) — never exposed to tenant queries; read+write via chartwarden_admin
 // only (0143). Listed in check-tenancy's NON_ORG_SCOPED set.
 import { bigint, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 

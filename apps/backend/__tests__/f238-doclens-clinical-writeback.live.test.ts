@@ -1,7 +1,7 @@
 /**
  * F-238 — LIVE Postgres proof of the DocLens → M12 medication-history and → M5 allergy writeback, end to end.
  *
- * Nothing on the path is stubbed: M22's real `createDbDocumentBackend` (as the NOBYPASSRLS `wardenx_app`
+ * Nothing on the path is stubbed: M22's real `createDbDocumentBackend` (as the NOBYPASSRLS `chartwarden_app`
  * role) records the reviewer's decisions and completes the review — decrypting stored candidate values with
  * the real tenant-DEK cipher, writing `extraction_provenance`, and publishing
  * `m22.extraction.medication_history_requested` / `m22.extraction.allergies_requested` through the REAL
@@ -66,7 +66,7 @@ import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -249,7 +249,7 @@ describe.skipIf(!DB_URL)(
       ).rows[0].id as string;
       actor = { userId: USER, membershipId: membership };
 
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       const catalog = buildBootOutboxCatalog([

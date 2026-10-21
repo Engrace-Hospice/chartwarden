@@ -99,9 +99,9 @@ export function createInMemoryAssessmentEraseStore(seed: Partial<AssessmentErase
  * clinical facts and are deleted OUTRIGHT — active AND superseded, no status filter — after their
  * `assessment_cosignature` / `significant_change_event` children (§8.4 #2). The org-level
  * `scale_license` / `scale_policy` tables are tenant configuration and are NEVER touched (§8.4 #3).
- * Counts come from `returning` lengths (rows ACTUALLY removed). The M9 grants give `wardenx_app` no
+ * Counts come from `returning` lengths (rows ACTUALLY removed). The M9 grants give `chartwarden_app` no
  * DELETE (append-only), so under an app-role connection Postgres REFUSES the delete and this store
- * THROWS — the destruction path must be handed a privileged (wardenx_admin) `DbClient` at the
+ * THROWS — the destruction path must be handed a privileged (chartwarden_admin) `DbClient` at the
  * composition root.
  */
 export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentEraseStore {

@@ -13,7 +13,7 @@
  * `plan_id` — were therefore unreachable in every deployment that has ever run, and the §7.1/§7.2/§7.3
  * clocks that count from `initial_assessment_clock_started_at` never started because nothing set it.
  *
- * Nothing is stubbed: the REAL M6 write service activates an admission as the NOBYPASSRLS `wardenx_app`
+ * Nothing is stubbed: the REAL M6 write service activates an admission as the NOBYPASSRLS `chartwarden_app`
  * role → the REAL catalog-validating publisher writes the outbox row → the REAL dispatcher delivers it →
  * M15's real consumer resolves the siting through M6's real org-explicit reader and inserts under RLS.
  *
@@ -67,7 +67,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -196,7 +196,7 @@ describe.skipIf(!DB_URL)("F-103 — M15 bootstraps the three CoP plans, LIVE Pos
         [USER, org],
       );
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
 

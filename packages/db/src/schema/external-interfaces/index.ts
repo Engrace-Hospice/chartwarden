@@ -7,7 +7,7 @@
 //   lab_observation_inbound_link
 //
 // PLATFORM-SHARED (two) — nppes_provider · nppes_sync_run, no organization_id: the public CMS directory is
-// the same for every tenant, so read-all `USING (true)` to wardenx_app, writes only via wardenx_admin.
+// the same for every tenant, so read-all `USING (true)` to chartwarden_app, writes only via chartwarden_admin.
 //
 // FIVE ARE PARTITIONED MONTHLY (§3.2 Phase B) and carry composite primary keys declared in SQL:
 //   hl7_message_inbound (received_at) · lab_observation (received_at) · lab_observation_value (received_at)

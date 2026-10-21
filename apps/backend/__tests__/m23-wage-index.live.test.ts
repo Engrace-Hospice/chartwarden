@@ -5,7 +5,7 @@
  * and only five non-authoritative placeholder CCNs. The wage index is now TENANT-ENTERED into the org-scoped, append-only
  * `tenant_wage_index` (migration 0280) through `buildDrizzleWageIndexService`, and `buildM23ReferenceDataAdapter.wageIndexForCcn`
  * prefers that row, then a platform AUTHORITATIVE row, and never a placeholder. Proven against real rows under REAL RLS (every
- * service call runs on the migrated NOBYPASSRLS `wardenx_app` role via `_live-app-role.ts`; the superuser client only seeds
+ * service call runs on the migrated NOBYPASSRLS `chartwarden_app` role via `_live-app-role.ts`; the superuser client only seeds
  * and inspects):
  *   - create / supersede / list / get / live lookup, and the audit trail the M4 trigger writes;
  *   - validation (plausible band, CCN shape, fiscal-year window, source citation) as a typed 422;
@@ -35,7 +35,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -412,7 +412,7 @@ describe.skipIf(!DB_URL)("M23 tenant-entered wage index — LIVE Postgres (F-211
     });
   });
 
-  describe("cross-tenant isolation (real RLS on wardenx_app)", () => {
+  describe("cross-tenant isolation (real RLS on chartwarden_app)", () => {
     it("org B never sees, fetches or resolves org A's wage index", async () => {
       await reset();
       const a = await svc().createWageIndex(actorA, entry());

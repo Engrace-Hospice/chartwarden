@@ -1,6 +1,6 @@
 /**
  * F-097 — M3's `createDbProposedRoleAttacher`: the M2 §D3 handshake, against REAL Postgres as the
- * NOBYPASSRLS `wardenx_app` role.
+ * NOBYPASSRLS `chartwarden_app` role.
  *
  * LIVE by necessity for three reasons the in-memory route test cannot reach:
  *   1. `membership_role_idx` is UNIQUE on (membership_id, role_id) — the idempotency of a replayed
@@ -27,10 +27,10 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG_A = "aaaaaaaa-1111-4000-8000-00000000000a";
@@ -171,7 +171,7 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    // The REAL effective-permission engine over the wardenx_app connection (the same resolver the
+    // The REAL effective-permission engine over the chartwarden_app connection (the same resolver the
     // composition root hands the attacher), not a stub: the ceiling is computed from real grants.
     const rbac = registerDbEffectivePermissionResolver(handle.db);
     attacher = createDbProposedRoleAttacher(handle.db, ({ organizationId, userId }) =>

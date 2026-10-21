@@ -1,6 +1,6 @@
 /**
  * M2 funeral-home / external-collaborator LINK REDEMPTION, end to end over HTTP, LIVE Postgres, as the RLS-enforced
- * `wardenx_app` role (GAP-115 follow-up; migration 0521 `collaborator_link`).
+ * `chartwarden_app` role (GAP-115 follow-up; migration 0521 `collaborator_link`).
  *
  * The production composition, not a shim: REAL Better Auth mints the session cookie through the server-only link-session
  * plugin; the REAL durable store claims the use in one conditional UPDATE; the REAL authenticate hook / resolver /
@@ -20,7 +20,7 @@
  *   - fail closed on delivery: no delivery port / a failing send => no live link (503), a living patient => 409, no
  *     recipient => 422;
  *   - a funeral session holds exactly `funeral.case_read`: it cannot mint links, and the synthetic principal cannot sign in;
- *   - RLS is intact: a bare wardenx_app read of collaborator_link with no tenant returns nothing.
+ *   - RLS is intact: a bare chartwarden_app read of collaborator_link with no tenant returns nothing.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
  */
@@ -79,12 +79,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "11111111-1111-4111-8111-111111121001";
@@ -413,7 +413,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     await admin?.end();
   });
 
-  it("harness bites: a bare wardenx_app read of collaborator_link with no tenant returns nothing", async () => {
+  it("harness bites: a bare chartwarden_app read of collaborator_link with no tenant returns nothing", async () => {
     await issue(deceasedA.id);
     const asApp = await handle.pool.query("SELECT count(*)::int AS n FROM collaborator_link");
     const asSuper = await admin.query("SELECT count(*)::int AS n FROM collaborator_link");

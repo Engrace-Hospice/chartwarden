@@ -23,10 +23,10 @@ import {
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "wardenx_report_writer",
 ];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -64,9 +64,9 @@ describe.skipIf(!DB_URL)("GAP-004 death cascade — LIVE Postgres", () => {
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-gap004','GAP-004 Org','GAP-004 Org')",
       [ORG],
     );
-    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'wardenx-gap004-test'");
+    await admin.query("ALTER ROLE chartwarden_app LOGIN PASSWORD 'wardenx-gap004-test'");
     const appUrl = new URL(DB_URL as string);
-    appUrl.username = "wardenx_app";
+    appUrl.username = "chartwarden_app";
     appUrl.password = "wardenx-gap004-test";
     handle = createDbClient({ connectionString: appUrl.toString() });
   }, 120_000);

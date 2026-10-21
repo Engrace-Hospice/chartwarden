@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_PLATFORM_URL?.trim();
   if (!databaseUrl) {
     throw new Error(
-      "DATABASE_PLATFORM_URL is required; use the wardenx_platform_login credential, not a tenant or superuser connection",
+      "DATABASE_PLATFORM_URL is required; use the chartwarden_platform_login credential, not a tenant or superuser connection",
     );
   }
   const s3Config = s3ObjectStoreConfigFromEnv(process.env);

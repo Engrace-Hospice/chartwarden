@@ -2,7 +2,7 @@
  * M4 legal-hold supremacy at the destruction point, LIVE Postgres (GAP-008).
  *
  * The production composition: the REAL destruction sweep (`runDestructionSweepForOrg`) reads the audit rows through
- * the tenant `wardenx_app` handle, vets each row-group against the org's ACTIVE `legal_hold` rows through the REAL
+ * the tenant `chartwarden_app` handle, vets each row-group against the org's ACTIVE `legal_hold` rows through the REAL
  * Drizzle eraser ports, and deletes through a separate destruction-granted client. Before this fix a hold whose only
  * selector was a `dateRange` or `resourceKinds` named no id, matched nothing, and the rows were erased.
  *
@@ -30,12 +30,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG_A = "77777777-7777-4777-8777-777777771001";
@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)("M4 legal-hold supremacy at destruction, LIVE Postgres"
     app = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    // Stands in for the separately pooled destruction credential (wardenx_admin in production).
+    // Stands in for the separately pooled destruction credential (chartwarden_admin in production).
     destruction = createDbClient({ connectionString: DB_URL as string });
   }, 300_000);
 

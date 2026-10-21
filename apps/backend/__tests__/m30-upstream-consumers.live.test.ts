@@ -30,7 +30,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -104,7 +104,7 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
         [ORG_A, providerEntityA, PATIENT_A],
       )
     ).rows[0].id as string;
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 
@@ -269,9 +269,9 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
 });
 
 // GAP-088 — the second co-signer of a PIP / SRA close must be a real ACTIVE member of the CALLER'S org with
-// live roles. Proven as the real NOBYPASSRLS `wardenx_app` role (a superuser read would prove nothing about
+// live roles. Proven as the real NOBYPASSRLS `chartwarden_app` role (a superuser read would prove nothing about
 // the cross-tenant case). Seeds its own users/memberships/roles on top of the suite's two orgs.
-describe.skipIf(!DB_URL)("GAP-088 selectActiveMemberRoleKeys (live, wardenx_app)", () => {
+describe.skipIf(!DB_URL)("GAP-088 selectActiveMemberRoleKeys (live, chartwarden_app)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   const ids: Record<"active" | "suspended" | "expired" | "otherOrg" | "disabledRole", string> = {
@@ -325,7 +325,7 @@ describe.skipIf(!DB_URL)("GAP-088 selectActiveMemberRoleKeys (live, wardenx_app)
     await grant(ORG_A, ids.disabledRole, disabledRole, "NULL");
     await grant(ORG_A, ids.expired, mdA, "now() - interval '1 day'");
     await grant(ORG_B, ids.otherOrg, mdB, "NULL");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
 

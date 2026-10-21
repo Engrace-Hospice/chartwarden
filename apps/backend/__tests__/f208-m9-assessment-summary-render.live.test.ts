@@ -17,7 +17,7 @@
  * Both drive the REAL `createDbAssessmentRouteService` → the REAL catalog-validating transactional
  * publisher → the REAL `createOutboxDispatcher` → M22's real render consumer resolves the
  * `assessment_summary` template and renders through the real `DocumentRenderer` into the real Drizzle
- * seam store, under RLS as the NOBYPASSRLS `wardenx_app` role. F-168's per-source-event-id append
+ * seam store, under RLS as the NOBYPASSRLS `chartwarden_app` role. F-168's per-source-event-id append
  * mechanism is proven directly: two fresh chart-opens render TWO document versions of the SAME
  * `(aggregate_type, aggregate_id)`, never an `idempotent_skip`.
  *
@@ -70,7 +70,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -159,7 +159,7 @@ describe.skipIf(!DB_URL)("F-208 — M9 assessment-summary render, LIVE Postgres"
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f208@x.test')`, [USER]);
     recorder = await membership(ORG_A, USER);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The M22 render consumer's `eventTypes` is the WHOLE `M22_DOCUMENT_REQUEST_EVENTS` array (every

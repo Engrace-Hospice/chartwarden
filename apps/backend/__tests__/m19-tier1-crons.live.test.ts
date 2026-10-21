@@ -8,7 +8,7 @@
  *
  * WHY LIVE. The due predicates, the `(status, version)`-guarded UPDATE, the policy-snapshot pin, the outbox
  * row committed in the same org transaction and the cross-tenant isolation are all statements about Postgres
- * and RLS — proven here on the real NOBYPASSRLS `wardenx_app` role with the REAL catalog-validating
+ * and RLS — proven here on the real NOBYPASSRLS `chartwarden_app` role with the REAL catalog-validating
  * publisher (never NOOP_OUTBOX).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m19:tier1-crons:live
@@ -37,7 +37,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111057a19b0";
 const ORG_B = "22222222-2222-4222-8222-2222057b19b0";
@@ -160,7 +160,7 @@ describe.skipIf(!DB_URL)("GAP-057 M19 §4.8 Tier-1 crons — LIVE Postgres", () 
       );
       seeded[org] = { pe, member };
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 180_000);
 

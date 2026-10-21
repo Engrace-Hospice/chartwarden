@@ -2,13 +2,13 @@
  * WardenX — runtime LOGIN-role provisioning (task-15; the deployment precondition the
  * production-readiness audit left open).
  *
- * The migrations define NOLOGIN carrier roles (`wardenx_app`, `wardenx_admin`,
- * `wardenx_destruction` — migration 0157, `tenant_platform_writer`, …) but deliberately never a
+ * The migrations define NOLOGIN carrier roles (`chartwarden_app`, `chartwarden_admin`,
+ * `chartwarden_destruction` — migration 0157, `tenant_platform_writer`, …) but deliberately never a
  * LOGIN credential (passwords do not belong in migrations). This script, run by an operator with a
  * superuser/owner connection, creates the two runtime login roles the composition root's optional
  * pools connect as:
  *
- *   · `wardenx_platform_login` → DATABASE_PLATFORM_URL. Inherits the `wardenx_platform` carrier
+ *   · `chartwarden_platform_login` → DATABASE_PLATFORM_URL. Inherits the `chartwarden_platform` carrier
  *     (created here, grants enumerated below) and carries the BYPASSRLS ATTRIBUTE — an attribute is
  *     NOT inherited through role membership, so it must sit on the login role itself. Powers: the
  *     M35 §5.2 admin console's cross-tenant reads/writes, the platform-context enumerators (active
@@ -17,19 +17,19 @@
  *     withPlatformContext entry writes.
  *
  *     WX-PR-025 (M33 §2.4 nightly MV refresh — genuinely cross-tenant): `report_mv.*` materialized
- *     views are also OWNED by `wardenx_platform` here, and — UNLIKE every other use above —
- *     `wardenx_platform` (the CARRIER, not just the login role) is ALSO given BYPASSRLS directly.
+ *     views are also OWNED by `chartwarden_platform` here, and — UNLIKE every other use above —
+ *     `chartwarden_platform` (the CARRIER, not just the login role) is ALSO given BYPASSRLS directly.
  *     Confirmed empirically: `REFRESH MATERIALIZED VIEW CONCURRENTLY` re-executes the MV's defining
  *     query under privileges resolved through the MV's OWNER (view-owner-style semantics), not the
- *     session role that issues the REFRESH command — so `wardenx_platform_login`'s own BYPASSRLS
+ *     session role that issues the REFRESH command — so `chartwarden_platform_login`'s own BYPASSRLS
  *     attribute (sufficient for every ordinary query above, issued directly as that role) does NOT
  *     make a refresh see other tenants' rows; only the OWNER's own BYPASSRLS does. This is narrowly
- *     scoped to REFRESH's internal owner-context execution — `wardenx_platform` stays NOLOGIN, so
+ *     scoped to REFRESH's internal owner-context execution — `chartwarden_platform` stays NOLOGIN, so
  *     nothing can connect directly as it, and nothing in this codebase does `SET ROLE
- *     wardenx_platform` (ordinary queries against `wardenx_platform`'s grants already work correctly
- *     via automatic privilege INHERITANCE through `wardenx_platform_login`, which needs no `SET
+ *     chartwarden_platform` (ordinary queries against `chartwarden_platform`'s grants already work correctly
+ *     via automatic privilege INHERITANCE through `chartwarden_platform_login`, which needs no `SET
  *     ROLE`) — it does not widen what any session can read through the normal connection path.
- *   · `wardenx_destruction_login` → DATABASE_DESTRUCTION_URL. Plain `IN ROLE wardenx_destruction`
+ *   · `chartwarden_destruction_login` → DATABASE_DESTRUCTION_URL. Plain `IN ROLE chartwarden_destruction`
  *     (0157 already enumerates its DELETE/UPDATE grants + org-pinned RLS policies). NO BYPASSRLS —
  *     destruction is org-scoped by design.
  *
@@ -41,8 +41,8 @@
  * Idempotent: roles are created only when absent; passwords/attributes are re-ALTERed on every run
  * (so a rotation is just a re-run with a new password); grants are additive re-grants.
  *
- * LEAST-PRIVILEGE POSTURE (documented, deliberate): the `wardenx_platform` carrier's grant list is
- * ENUMERATED below — it is not `wardenx_admin`. If a platform code path hits a missing grant it
+ * LEAST-PRIVILEGE POSTURE (documented, deliberate): the `chartwarden_platform` carrier's grant list is
+ * ENUMERATED below — it is not `chartwarden_admin`. If a platform code path hits a missing grant it
  * fails loudly with 42501 and the fix is one line HERE, reviewed — never a blanket ALL.
  */
 import { Client } from "pg";
@@ -131,7 +131,7 @@ const PLATFORM_READ_TABLES = [
 ] as const;
 
 /**
- * WX-PR-025 — the `report_mv.*` materialized views `wardenx_platform` must OWN so the nightly
+ * WX-PR-025 — the `report_mv.*` materialized views `chartwarden_platform` must OWN so the nightly
  * `report.mv_refresh` job (M33 §2.4) can genuinely `REFRESH MATERIALIZED VIEW CONCURRENTLY` a
  * cross-tenant rollup. Enumerated like everything else in this script (not a catalog-driven loop) —
  * a new MV added to `materialized_view_metadata` needs its schema-qualified name added here too, or
@@ -145,7 +145,7 @@ const MV_REFRESH_MATERIALIZED_VIEWS = [
 
 /**
  * WX-PR-025 — the SECURITY DEFINER platform-writer functions (migrations 0186/0187/0188) that M33's
- * `mvRefresh`/`lagProbe` workers reach when `platformDb` is `wardenx_platform_login`: the mandatory
+ * `mvRefresh`/`lagProbe` workers reach when `platformDb` is `chartwarden_platform_login`: the mandatory
  * `platform.bypass_invoked` audit write every `withPlatformContext` entry makes, the nullable-org
  * outbox emit (mvRefresh's 3 lifecycle events + lagProbe's threshold-transition events), and the
  * report_run/materialized_view_metadata platform writes WX-PR-024 added. Each is already narrowly
@@ -159,7 +159,7 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "report_writer_update_platform_report_run(uuid, timestamptz, jsonb)",
   "report_writer_update_platform_mv_metadata(text, jsonb)",
   // F-033/#93 — the `platform.partition_rotate` cron's two entry points (migration 0224). Creating a
-  // partition needs OWNERSHIP of the parent table, which `wardenx_platform` deliberately does not have
+  // partition needs OWNERSHIP of the parent table, which `chartwarden_platform` deliberately does not have
   // and should not be given: making it a DDL role to solve a monthly maintenance task would hand every
   // platform job the ability to reshape the schema. `rotate_time_partitions` is SECURITY DEFINER and
   // takes an integer — every identifier it executes comes from `pg_catalog`, none from the caller — so
@@ -174,7 +174,7 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "audit_archive_detach(text, bigint, boolean)",
 ] as const;
 
-/** The M35 platform-only tables (migration 0143 — RLS with no wardenx_app grant): full write. */
+/** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
 const PLATFORM_WRITE_TABLES = [
   "revenue_recognition_snapshot",
   "stripe_webhook_event",
@@ -245,150 +245,150 @@ async function main(): Promise<void> {
 
   try {
     if (platformPassword) {
-      // ── the wardenx_platform carrier + its enumerated grants ─────────────────────────────────
+      // ── the chartwarden_platform carrier + its enumerated grants ─────────────────────────────────
       await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_platform') THEN
-          CREATE ROLE wardenx_platform NOLOGIN;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
+          CREATE ROLE chartwarden_platform NOLOGIN;
         END IF;
       END $$;`);
-      await run("GRANT USAGE ON SCHEMA public TO wardenx_platform;");
+      await run("GRANT USAGE ON SCHEMA public TO chartwarden_platform;");
       for (const t of PLATFORM_READ_TABLES) {
-        await run(`GRANT SELECT ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT SELECT ON "${t}" TO chartwarden_platform;`);
       }
       // M36 WP 2.13 (migration 1089) — the boot check counts message rows still on the legacy body envelope across
       // tenants. COLUMN grants on the scheme marker (generated from body_cipher's first byte) only: the platform login
       // can count the scheme, never read a byte of ciphertext or any message content.
       for (const t of ["message", "message_revision"]) {
         await run(
-          `GRANT SELECT ("organization_id", "body_envelope_version") ON "${t}" TO wardenx_platform;`,
+          `GRANT SELECT ("organization_id", "body_envelope_version") ON "${t}" TO chartwarden_platform;`,
         );
       }
       // Migration 1094: the poll option label carries the same marker under its own column name.
       await run(
-        'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO wardenx_platform;',
+        'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO chartwarden_platform;',
       );
       // F-236 — the M32 backend health sweep (worker) is the only writer of these two columns. A COLUMN
       // grant, not table UPDATE: the platform role may record a probe result, never re-pin a model, flip
-      // `zdr_status`, or reactivate a backend (those stay `wardenx_admin`, db:sync:ai-backends).
-      await run('GRANT SELECT ON "ai_model_backend" TO wardenx_platform;');
+      // `zdr_status`, or reactivate a backend (those stay `chartwarden_admin`, db:sync:ai-backends).
+      await run('GRANT SELECT ON "ai_model_backend" TO chartwarden_platform;');
       await run(
-        'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO wardenx_platform;',
+        'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO chartwarden_platform;',
       );
       for (const t of PLATFORM_WRITE_TABLES) {
-        await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO chartwarden_platform;`);
       }
       for (const t of PLATFORM_MUTATE_TABLES) {
-        await run(`GRANT INSERT, UPDATE ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT INSERT, UPDATE ON "${t}" TO chartwarden_platform;`);
       }
       for (const t of PLATFORM_PROVISION_INSERT_TABLES) {
-        await run(`GRANT INSERT ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT INSERT ON "${t}" TO chartwarden_platform;`);
       }
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
-        await run(`GRANT UPDATE ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
       await run(
-        "GRANT EXECUTE ON FUNCTION m34_provision_tenant_key_ring(uuid) TO wardenx_platform;",
+        "GRANT EXECUTE ON FUNCTION m34_provision_tenant_key_ring(uuid) TO chartwarden_platform;",
       );
       await run(
-        "GRANT EXECUTE ON FUNCTION m34_destroy_tenant_key_ring(uuid, uuid) TO wardenx_platform;",
+        "GRANT EXECUTE ON FUNCTION m34_destroy_tenant_key_ring(uuid, uuid) TO chartwarden_platform;",
       );
       for (const t of PLATFORM_ERASE_TABLES) {
-        await run(`GRANT DELETE ON "${t}" TO wardenx_platform;`);
+        await run(`GRANT DELETE ON "${t}" TO chartwarden_platform;`);
       }
       // Every withPlatformContext entry writes its `platform.bypass_invoked` audit row.
-      await run(`GRANT INSERT ON "audit_event" TO wardenx_platform;`);
+      await run(`GRANT INSERT ON "audit_event" TO chartwarden_platform;`);
 
       // ── WX-PR-025: report_mv.* ownership + BYPASSRLS on the CARRIER (not just the login role) ──
-      // `wardenx_platform` must OWN each MV for `REFRESH MATERIALIZED VIEW CONCURRENTLY` to be a
+      // `chartwarden_platform` must OWN each MV for `REFRESH MATERIALIZED VIEW CONCURRENTLY` to be a
       // permitted command at all — and, because REFRESH re-executes the defining query under
       // privileges resolved through the OWNER (not the issuing session role), the OWNER itself needs
       // BYPASSRLS for that re-executed query to see every tenant's rows. Without this second
       // BYPASSRLS grant, refresh either fails outright (no SELECT on the source table) or silently
       // "succeeds" with an EMPTY/wrong result (SELECT granted but RLS still filters every row) — see
       // this file's header comment for the full reasoning.
-      await run("GRANT USAGE ON SCHEMA report_mv TO wardenx_platform;");
+      await run("GRANT USAGE ON SCHEMA report_mv TO chartwarden_platform;");
       for (const mv of MV_REFRESH_MATERIALIZED_VIEWS) {
-        await run(`ALTER MATERIALIZED VIEW ${mv} OWNER TO wardenx_platform;`);
+        await run(`ALTER MATERIALIZED VIEW ${mv} OWNER TO chartwarden_platform;`);
       }
-      await run("ALTER ROLE wardenx_platform WITH BYPASSRLS;");
-      // wardenx_platform reads materialized_view_metadata directly (not through wardenx_app's
+      await run("ALTER ROLE chartwarden_platform WITH BYPASSRLS;");
+      // chartwarden_platform reads materialized_view_metadata directly (not through chartwarden_app's
       // materialized_view_metadata_read_all policy — BYPASSRLS skips RLS entirely, but the base
       // table GRANT is still required regardless of BYPASSRLS).
-      await run(`GRANT SELECT ON "materialized_view_metadata" TO wardenx_platform;`);
+      await run(`GRANT SELECT ON "materialized_view_metadata" TO chartwarden_platform;`);
 
       // ── the SECURITY DEFINER platform-writer functions M33's mvRefresh/lagProbe workers call when
-      //    `platformDb` = wardenx_platform_login (apps/backend/src/index.ts, WX-PR-025) — migrations
-      //    0186/0187/0188 grant EXECUTE to `wardenx_app` only (every OTHER module's withPlatformContext
-      //    caller still runs on the tenant pool), so `wardenx_platform` needs its own EXECUTE grant on
-      //    each one it can reach. `wardenx_platform` doesn't exist at migration time, so — like every
+      //    `platformDb` = chartwarden_platform_login (apps/backend/src/index.ts, WX-PR-025) — migrations
+      //    0186/0187/0188 grant EXECUTE to `chartwarden_app` only (every OTHER module's withPlatformContext
+      //    caller still runs on the tenant pool), so `chartwarden_platform` needs its own EXECUTE grant on
+      //    each one it can reach. `chartwarden_platform` doesn't exist at migration time, so — like every
       //    other grant in this script — this can't live in a migration file either.
       for (const fn of PLATFORM_WRITER_FUNCTIONS) {
-        await run(`GRANT EXECUTE ON FUNCTION ${fn} TO wardenx_platform;`);
+        await run(`GRANT EXECUTE ON FUNCTION ${fn} TO chartwarden_platform;`);
       }
 
       // ── the login role (BYPASSRLS is an attribute — it lives HERE, not on the carrier) ───────
       await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_platform_login') THEN
-          CREATE ROLE wardenx_platform_login LOGIN IN ROLE wardenx_platform;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_platform_login') THEN
+          CREATE ROLE chartwarden_platform_login LOGIN IN ROLE chartwarden_platform;
         END IF;
       END $$;`);
       await run(
-        `ALTER ROLE wardenx_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
+        `ALTER ROLE chartwarden_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
       );
-      await run("GRANT wardenx_platform TO wardenx_platform_login;");
-      console.log("✓ wardenx_platform_login provisioned (carrier wardenx_platform + BYPASSRLS)");
+      await run("GRANT chartwarden_platform TO chartwarden_platform_login;");
+      console.log("✓ chartwarden_platform_login provisioned (carrier chartwarden_platform + BYPASSRLS)");
       console.log(
-        "  → set DATABASE_PLATFORM_URL=postgres://wardenx_platform_login:<pw>@<host>/<db>",
+        "  → set DATABASE_PLATFORM_URL=postgres://chartwarden_platform_login:<pw>@<host>/<db>",
       );
     }
 
     if (destructionPassword) {
       const carrier = await db.query(
-        `SELECT 1 FROM pg_roles WHERE rolname = 'wardenx_destruction'`,
+        `SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_destruction'`,
       );
       if (carrier.rowCount === 0) {
         throw new Error(
-          "the wardenx_destruction carrier does not exist — run migrations through 0157 first",
+          "the chartwarden_destruction carrier does not exist — run migrations through 0157 first",
         );
       }
       await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_destruction_login') THEN
-          CREATE ROLE wardenx_destruction_login LOGIN IN ROLE wardenx_destruction;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_destruction_login') THEN
+          CREATE ROLE chartwarden_destruction_login LOGIN IN ROLE chartwarden_destruction;
         END IF;
       END $$;`);
       // Deliberately NO BYPASSRLS: 0157's policies pin destruction to the org context it runs under.
       await run(
-        `ALTER ROLE wardenx_destruction_login LOGIN NOBYPASSRLS PASSWORD ${quoteLiteral(destructionPassword)};`,
+        `ALTER ROLE chartwarden_destruction_login LOGIN NOBYPASSRLS PASSWORD ${quoteLiteral(destructionPassword)};`,
       );
-      await run("GRANT wardenx_destruction TO wardenx_destruction_login;");
+      await run("GRANT chartwarden_destruction TO chartwarden_destruction_login;");
       console.log(
-        "✓ wardenx_destruction_login provisioned (carrier wardenx_destruction, NOBYPASSRLS)",
+        "✓ chartwarden_destruction_login provisioned (carrier chartwarden_destruction, NOBYPASSRLS)",
       );
       console.log(
-        "  → set DATABASE_DESTRUCTION_URL=postgres://wardenx_destruction_login:<pw>@<host>/<db>",
+        "  → set DATABASE_DESTRUCTION_URL=postgres://chartwarden_destruction_login:<pw>@<host>/<db>",
       );
     }
     if (bodyBackfillPassword) {
-      const carrier = await db.query(`SELECT 1 FROM pg_roles WHERE rolname = 'wardenx_m36_reseal'`);
+      const carrier = await db.query(`SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_m36_reseal'`);
       if (carrier.rowCount === 0) {
         throw new Error(
-          "the wardenx_m36_reseal carrier does not exist — run migrations through 1090 first",
+          "the chartwarden_m36_reseal carrier does not exist — run migrations through 1090 first",
         );
       }
       await run(`DO $$ BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_body_backfill_login') THEN
-          CREATE ROLE wardenx_body_backfill_login LOGIN IN ROLE wardenx_m36_reseal;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'chartwarden_body_backfill_login') THEN
+          CREATE ROLE chartwarden_body_backfill_login LOGIN IN ROLE chartwarden_m36_reseal;
         END IF;
       END $$;`);
       await run(
-        `ALTER ROLE wardenx_body_backfill_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD ${quoteLiteral(bodyBackfillPassword)};`,
+        `ALTER ROLE chartwarden_body_backfill_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD ${quoteLiteral(bodyBackfillPassword)};`,
       );
-      await run("GRANT wardenx_m36_reseal TO wardenx_body_backfill_login;");
+      await run("GRANT chartwarden_m36_reseal TO chartwarden_body_backfill_login;");
       console.log(
-        "✓ wardenx_body_backfill_login provisioned (carrier wardenx_m36_reseal, NOBYPASSRLS)",
+        "✓ chartwarden_body_backfill_login provisioned (carrier chartwarden_m36_reseal, NOBYPASSRLS)",
       );
       console.log(
-        "  → set DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:<pw>@<host>/<db> for scripts/m36-body-backfill.ts only",
+        "  → set DATABASE_BODY_BACKFILL_URL=postgres://chartwarden_body_backfill_login:<pw>@<host>/<db> for scripts/m36-body-backfill.ts only",
       );
     }
   } finally {

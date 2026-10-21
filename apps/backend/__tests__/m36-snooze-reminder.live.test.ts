@@ -1,5 +1,5 @@
 /**
- * M36 WP 4.10 - snooze and reminders (ADR-0077), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 4.10 - snooze and reminders (ADR-0077), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * The real route stack, the real Drizzle stores, the real snooze lookup, the real Drizzle AlertEmitter and the real reminder sweep, on
  * migration 1125. Proves:
@@ -93,7 +93,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       now: () => new Date(),
     });
 
-  /** Run raw SQL as `wardenx_app` with a tenant (and optionally a user) bound, always rolled back. */
+  /** Run raw SQL as `chartwarden_app` with a tenant (and optionally a user) bound, always rolled back. */
   async function asApp<T>(
     org: string,
     user: string | null,
@@ -382,7 +382,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
         "message_reminder_due(uuid,integer,integer)",
       ]) {
         const priv = await kit.admin.query(
-          `SELECT has_function_privilege('public', '${fn}', 'EXECUTE') AS pub, has_function_privilege('wardenx_app', '${fn}', 'EXECUTE') AS app`,
+          `SELECT has_function_privilege('public', '${fn}', 'EXECUTE') AS pub, has_function_privilege('chartwarden_app', '${fn}', 'EXECUTE') AS app`,
         );
         expect(priv.rows[0]).toEqual({ pub: false, app: true });
       }

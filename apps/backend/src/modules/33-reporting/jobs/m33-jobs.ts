@@ -1109,7 +1109,7 @@ export function buildM33WorkerDeps(deps: {
 //     producer (`buildM33MvRefreshEnqueue`).
 //   • (follow-up pass, same day) the M1 nullable-organizationId outbox persist path: `outbox_event.
 //     organization_id` is now nullable, gated by a NEW SECURITY DEFINER writer surface (migration 0186,
-//     `report_writer_*` functions — the `wardenx_audit_writer`/`audit_writer_insert` precedent, NOT a
+//     `report_writer_*` functions — the `chartwarden_audit_writer`/`audit_writer_insert` precedent, NOT a
 //     second RLS-policy GUC — ADR-0010 D2 bans any session variable beyond `app.org_id`, so a policy keyed
 //     on a new GUC was reverted and replaced with this role+function pattern instead). The dispatcher
 //     (apps/backend/src/bootstrap/outbox-dispatcher.ts) gained an additive `pollPlatform()` pass over the
@@ -1139,17 +1139,17 @@ export function buildM33WorkerDeps(deps: {
 //     consumer logic for these two event families is separate work.
 //
 // TWO GENUINE, SEVERE, PRE-EXISTING BUGS DISCOVERED WHILE VERIFYING THIS FIX UNDER REAL RLS (found via
-// direct `psql`, `SET ROLE wardenx_app`, NOBYPASSRLS — this codebase's own `rls-isolation.live.test.ts`
+// direct `psql`, `SET ROLE chartwarden_app`, NOBYPASSRLS — this codebase's own `rls-isolation.live.test.ts`
 // precedent; a superuser test connection, this pass's OWN first draft included, bypasses RLS entirely and
 // proves nothing about it). NEITHER is fixed by this pass — both are pre-existing, orthogonal to the
 // outbox emits this task was asked to close, and each is its own, comparably-sized fix:
 //   1. `report_run` (this file's `runs.open`/`runs.settle`, called by every mvRefresh job) and
-//     `materialized_view_metadata` (`metadataWrite.stamp`) have the IDENTICAL "no wardenx_app RLS policy
+//     `materialized_view_metadata` (`metadataWrite.stamp`) have the IDENTICAL "no chartwarden_app RLS policy
 //     admits a platform-wide (organizationId IS NULL / no-org) write" gap this pass fixed for
 //     `outbox_event` (migration 0186) — `report_run.organization_id` has been documented nullable since
 //     M33 shipped ("cross-tenant platform-wide refreshes"), but no SECURITY DEFINER writer path was ever
 //     built for it, so this INSERT has never once succeeded under real (non-BYPASSRLS) RLS. Confirmed:
-//     `SET ROLE wardenx_app; INSERT INTO report_run (..., organization_id, ...) VALUES (..., NULL, ...)`
+//     `SET ROLE chartwarden_app; INSERT INTO report_run (..., organization_id, ...) VALUES (..., NULL, ...)`
 //     → `ERROR: new row violates row-level security policy for table "report_run"`. In today's
 //     production posture this means `handleMvRefresh` throws on its OWN run-ledger open, before ever
 //     reaching this pass's outbox fix — this test's `platformDb: seedDb.db` (superuser) works around it
@@ -1157,11 +1157,11 @@ export function buildM33WorkerDeps(deps: {
 //   2. `withPlatformContext` (packages/tenancy/src/context.ts) calls its injected `auditBypass` (the
 //     shared `m34PlatformBypassAuditor`, apps/backend/src/index.ts) UNCONDITIONALLY on every entry, and
 //     THAT writes a `platform.bypass_invoked` audit_event row with `organizationId: null` — but
-//     `audit_event`'s ONLY null-org write path is `audit_writer_insert FOR INSERT TO wardenx_audit_writer`
-//     (a role `wardenx_app` does not hold), and migration 0119's own org-scoped fix
+//     `audit_event`'s ONLY null-org write path is `audit_writer_insert FOR INSERT TO chartwarden_audit_writer`
+//     (a role `chartwarden_app` does not hold), and migration 0119's own org-scoped fix
 //     (`audit_event_org_append`) explicitly excludes null-org rows by design ("Platform-scoped rows...
 //     must continue to go through the M34 bypass auditor under withPlatformContext" — but nothing ever
-//     built that role/policy path for the auditor itself). Confirmed: `SET ROLE wardenx_app; INSERT INTO
+//     built that role/policy path for the auditor itself). Confirmed: `SET ROLE chartwarden_app; INSERT INTO
 //     audit_event (organization_id, ...) VALUES (NULL, ...)` → the identical RLS violation. Since EVERY
 //     `withPlatformContext` call in the ENTIRE codebase (not just M33 — M7/M9/M10/M25/M27/M30/M33/M34 and
 //     beyond) executes this same audit write as its first unconditional step, this means EVERY

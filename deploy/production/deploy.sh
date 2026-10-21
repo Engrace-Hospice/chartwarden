@@ -99,11 +99,19 @@ awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" 
 #                this release was expand-phase. Nothing in the toolchain enforces that, so the rollback
 #                names the migrations and says plainly that a human has to make the call.
 migrations_applied=0
+# Containers are only recreated after the migrate step succeeds, so a failure before that leaves the previous,
+# healthy ones running. Recreating them then would start them from the NEW compose.yml (which names the
+# chartwarden_* database roles, migration 1139) against a schema that may not have been renamed yet.
+migrate_ok=0
 
 restore_previous_release() {
   echo "deploy failed; restoring the previous image references" >&2
   cp "$backup_file" .env.production
-  docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web || true
+  if [ "$migrate_ok" -eq 1 ]; then
+    docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web || true
+  else
+    echo "migrations did not complete; leaving the running containers untouched" >&2
+  fi
   if [ "$migrations_applied" -ne 0 ]; then
     echo "" >&2
     echo "!! SCHEMA/CODE MISMATCH — READ THIS BEFORE WALKING AWAY" >&2
@@ -250,6 +258,7 @@ migrate_log=$(mktemp)
 if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
   bun run scripts/db/migrate.ts --strict --schema-only >"$migrate_log" 2>&1; then
   cat "$migrate_log"
+  migrate_ok=1
   # `migrate.ts` ends with "Applied N new migration(s)." — the one authoritative statement of what this
   # deploy changed about the schema. A parse failure defaults to 0, which errs toward the LOUD rollback
   # message only when it can prove migrations ran; claiming "rollback is clean" on a failed parse would

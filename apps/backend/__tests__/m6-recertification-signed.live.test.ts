@@ -1,7 +1,7 @@
 /**
  * F-223 — LIVE Postgres proof that M6's `m11.order.recertification_signed` binding
  * (`buildM6RecertificationSignedConsumer`) opens the next PENDING election period, as the real
- * NOBYPASSRLS `wardenx_app` role, with the REAL catalog-validating outbox publisher and real M6 rows built
+ * NOBYPASSRLS `chartwarden_app` role, with the REAL catalog-validating outbox publisher and real M6 rows built
  * through the production write service (referral → election → CTI → activation; period 2/3 activation
  * through `signCtiHospiceMd`, the path the F-217 adequacy gate guards).
  *
@@ -45,7 +45,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-11111111223a";
 const ORG_B = "22222222-2222-2222-2222-22222222223b";
 const USER = "33333333-3333-3333-3333-33333333223a";
@@ -60,7 +60,7 @@ const DRAFT = {
 const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 
 describe.skipIf(!DB_URL)(
-  "F-223 — m11.order.recertification_signed opens the next pending period — LIVE Postgres (wardenx_app role)",
+  "F-223 — m11.order.recertification_signed opens the next pending period — LIVE Postgres (chartwarden_app role)",
   () => {
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
@@ -231,7 +231,7 @@ describe.skipIf(!DB_URL)(
            VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31')`,
         [PROVIDER_ENTITY, ORG_A],
       );
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
       registerM5IntakeSeams(handle.db);
       svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, {

@@ -1,6 +1,6 @@
 /**
  * M36 WP 2.7b chunk C3 (ADR-0058, Proposed) - the Phase 2 SEARCH-ACL ACCEPTANCE SUITE for GLOBAL search, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role through the REAL route stack (authentication hook -> messaging.read -> injected limiter ->
+ * NOBYPASSRLS `chartwarden_app` role through the REAL route stack (authentication hook -> messaging.read -> injected limiter ->
  * platform kill switch -> tenant flag -> serve gate -> role gate -> service), the REAL index writer, and the REAL read-audit
  * hook. Fakes only where the ADR names a seam: Part2ChannelGate, CareTeamProvider, the rate limiter.
  *
@@ -99,7 +99,7 @@ process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0279";
 const ORG_B = "22222222-2222-4222-8222-2222000f0279";
@@ -480,11 +480,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
        VALUES ($1,$5,$6),($2,$5,$6),($3,$5,$6),($4,$5,14)`,
       [ORG_A, ORG_B, ORG_C, ORG_P, VERSION, TAG_BITS],
     );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     await admin.query(
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='c3_destroyer') THEN
-         CREATE ROLE c3_destroyer LOGIN PASSWORD 'c3_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+         CREATE ROLE c3_destroyer LOGIN PASSWORD 'c3_destroyer_pw' IN ROLE chartwarden_destruction; END IF; END $$;`,
     );
     const destroyerUrl = new URL(DB_URL as string);
     destroyerUrl.username = "c3_destroyer";

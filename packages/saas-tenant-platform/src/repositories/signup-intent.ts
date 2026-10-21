@@ -4,7 +4,7 @@
 // The Phase-3 self-serve / platform-ops-manual PRE-PROVISION funnel. Both tables are DELIBERATELY
 // org-less (M34-F02 / ADR-0010, §3.10): they are genuinely pre-organization — the org/tenant_account
 // does not exist until the intent is provisioned, the one legitimate org-less exemption. RLS denies
-// `wardenx_app` SELECT entirely; only `tenant_platform_writer` reads/writes them. Because they are
+// `chartwarden_app` SELECT entirely; only `tenant_platform_writer` reads/writes them. Because they are
 // org-less, the signup-intent service wraps every call here in `withPlatformContext` (the M1 RLS-bypass
 // helper, allowlisted per M01-F05), NOT `withOrgContext` — there is no org to scope to yet. On
 // provisioning the resulting `tenant_account.organization_id` is bridged via `tenant_account_id`.

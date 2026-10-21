@@ -4,7 +4,7 @@
 // The screen-driving READS (document library + detail, version ledger, intake batch/classification/
 // extraction-job/candidate/review surfaces, the platform form-template catalog + tenant overlays + form
 // fills) run as real Drizzle queries over the M22-owned `documents/*` tables inside `withOrgContext`, so
-// RLS scopes every row by `app.org_id` as the unprivileged `wardenx_app` role (`form_template` /
+// RLS scopes every row by `app.org_id` as the unprivileged `chartwarden_app` role (`form_template` /
 // `form_template_version` are NON_ORG_SCOPED platform reference — the dual-grant read-all RLS lets any
 // tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
 // intake batch upload + classify-confirm + the extraction review machine
@@ -17,7 +17,7 @@
 // writeback-commit-db.ts), so this backend takes an OPTIONAL publisher + candidate-value cipher; without them a
 // review whose approved fields would write back refuses (503) instead of completing with nothing written.
 //
-// Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
+// Documented compromises: `form_template*` is platform reference (SELECT only for chartwarden_app), so
 // `publishTemplateVersion` is a platform-admin op this tenant-scoped service cannot perform — it answers an
 // honest 501 (GAP-140) instead of a fabricated version id; `exportPhiBundle` fails closed (503, GAP-065) until the
 // async export pipeline exists. The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the
@@ -1189,7 +1189,7 @@ export function createDbDocumentRouteService(
 
     // ── Template / overlay / render writes ───────────────────────────────────────────────────────────
     async publishTemplateVersion() {
-      // `form_template_version` is PLATFORM reference (wardenx_app has SELECT only): a version publish is a
+      // `form_template_version` is PLATFORM reference (chartwarden_app has SELECT only): a version publish is a
       // platform-admin operation this tenant-scoped service cannot perform. It used to return the current
       // active version (or a random uuid) as if a version had been published — a fake 201 (GAP-140).
       throw new ChartWardenError(

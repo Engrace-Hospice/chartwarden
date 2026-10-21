@@ -1,5 +1,5 @@
 /**
- * GAP-037 — M12 transmission crons over real Postgres as the real NOBYPASSRLS `wardenx_app` role, with the REAL
+ * GAP-037 — M12 transmission crons over real Postgres as the real NOBYPASSRLS `chartwarden_app` role, with the REAL
  * catalog-validating publisher. Covers: the sign-time enqueue, `transmit_newrx` (success / retryable / exhausted /
  * permanent / breaker-open / unsynced patient / incomplete order / concurrent claim), the queued-on-recovery
  * reclaim, the status-poll + timeout sweep, and the breaker-edge events. Only the DoseSpot vendor is a test double

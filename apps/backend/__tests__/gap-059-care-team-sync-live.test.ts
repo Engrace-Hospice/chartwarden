@@ -36,7 +36,7 @@ import { appRoleConnectionString, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 describe.skipIf(!DB_URL)(
   "GAP-059 — M5 CareTeamProvider + M36 syncCareTeamChannel — LIVE Postgres",
@@ -128,7 +128,7 @@ describe.skipIf(!DB_URL)(
       await assign(rn, "primary_rn");
       await assign(msw, "case_manager_msw");
 
-      // GAP-086 — this used to be `.replace("://postgres@", "://wardenx_app@")`, which only matches a
+      // GAP-086 — this used to be `.replace("://postgres@", "://chartwarden_app@")`, which only matches a
       // PASSWORDLESS url. Against any url carrying a password the pattern misses, `String.replace` returns
       // the input unchanged, and the whole suite silently ran as the SUPERUSER — which bypasses RLS
       // unconditionally, so the reconciler's org scoping was never actually exercised.
@@ -149,13 +149,13 @@ describe.skipIf(!DB_URL)(
     // GAP-086 guard: the failure this suite used to have was SILENT — a missed string replace left it on the
     // superuser, where RLS does not apply and every scoping assertion below is vacuous. Assert the identity
     // explicitly so a regression is a failing test rather than a quietly weaker one.
-    it("drives the production path as the NOBYPASSRLS wardenx_app role, not the superuser", async () => {
+    it("drives the production path as the NOBYPASSRLS chartwarden_app role, not the superuser", async () => {
       // node-postgres drizzle's `execute` resolves to a pg QueryResult (`{ rows }`), not an array.
       const result = await handle.db.execute<{ current_user: string; bypassrls: boolean }>(
         sql`SELECT current_user, (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls`,
       );
       const row = result.rows[0];
-      expect(row?.current_user).toBe("wardenx_app");
+      expect(row?.current_user).toBe("chartwarden_app");
       expect(row?.bypassrls).toBe(false);
     });
 

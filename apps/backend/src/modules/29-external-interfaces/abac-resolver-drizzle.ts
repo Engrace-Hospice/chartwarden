@@ -80,7 +80,7 @@ export function buildDrizzleM29AbacResolver(deps: M29AbacDrizzleDeps): M29AbacRe
   return {
     async feedOrgId(feedId, contextOrgId) {
       try {
-        // Under the CALLER'S org context. `external_feed` is FORCE RLS, so a bare-pool read as `wardenx_app` sees no
+        // Under the CALLER'S org context. `external_feed` is FORCE RLS, so a bare-pool read as `chartwarden_app` sees no
         // rows at all and this used to answer `null` for every feed — every per-feed admin route 404'd (F-189). Under
         // the caller's org the feed is visible iff it is theirs, which is exactly the answer the predicate needs.
         return await withOrgContext(db, ctx(contextOrgId), async (tx) => {

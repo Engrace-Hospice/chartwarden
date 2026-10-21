@@ -1,7 +1,7 @@
 /**
  * GAP-096 (M32) — a tenant admin who mints `ai_safety_owner` cannot stop an AI capability platform-wide.
  *
- * Proven over real Postgres, connected AS the RLS-enforced `wardenx_app` role (never the superuser):
+ * Proven over real Postgres, connected AS the RLS-enforced `chartwarden_app` role (never the superuser):
  *   1. the mint itself is refused — migration 0321's CHECK rejects a tenant-owned role row keyed
  *      `ai_safety_owner` / `platform_ops` on INSERT (the DB backstop beside M3's route refusal);
  *   2. a tenant-scope caller asking for the platform (NULL-org) kill switch is refused by the SERVICE and
@@ -29,7 +29,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ORG_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MEMBERSHIP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -131,7 +131,7 @@ describe.skipIf(!DB_URL)("GAP-096 M32 — tenant-minted role key vs the platform
     activationMessage: "GAP-096 live check",
   });
 
-  it("refuses to mint a tenant role keyed ai_safety_owner or platform_ops (wardenx_app)", async () => {
+  it("refuses to mint a tenant role keyed ai_safety_owner or platform_ops (chartwarden_app)", async () => {
     for (const key of ["ai_safety_owner", "platform_ops"]) {
       await expect(
         withOrgContext(handle.db, { organizationId: ORG_A, userId: MEMBERSHIP }, (tx) =>

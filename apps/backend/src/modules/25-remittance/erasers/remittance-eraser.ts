@@ -58,8 +58,8 @@ export function createInMemoryRemittanceEraseStore(): RemittanceEraseStore {
  * evidence that rolls off via the M4 partition manager at the retention boundary, NOT per-patient, so this
  * store deliberately implements nothing beyond what the port asks.
  *
- * Runs on the PRIVILEGED M4 destruction-cert connection the composition root binds (wardenx_admin —
- * migration 0083 grants `wardenx_app` no DELETE on the PR ledger, so the app-role `withOrgContext` path
+ * Runs on the PRIVILEGED M4 destruction-cert connection the composition root binds (chartwarden_admin —
+ * migration 0083 grants `chartwarden_app` no DELETE on the PR ledger, so the app-role `withOrgContext` path
  * cannot destroy; the M24/M26 sibling posture). The explicit `organization_id` predicate keeps a
  * certificate from ever reaching across tenants; the count is the rows ACTUALLY deleted (`.returning()`).
  */

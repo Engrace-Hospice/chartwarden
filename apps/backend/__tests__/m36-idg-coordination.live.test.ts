@@ -1,5 +1,5 @@
 /**
- * M36 WP 3.6 - IDG coordination, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * M36 WP 3.6 - IDG coordination, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Workflow C, end to end on the real route stack (Authorization Contract, `channel_visibility`, the DB route service,
  * the real catalog-validating outbox publisher, the read-audit plugin). Only the M14 meeting SUMMARY seam is an

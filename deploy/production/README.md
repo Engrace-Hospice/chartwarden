@@ -104,7 +104,7 @@ are not rolled back.
   org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).
 - `DATABASE_DESTRUCTION_URL` (already set on api/worker) is required by attachments: the tenant eraser and the orphan
-  reaper delete `message_attachment` rows, which `wardenx_app` cannot. Without it the reaper is disabled (logged at boot)
+  reaper delete `message_attachment` rows, which `chartwarden_app` cannot. Without it the reaper is disabled (logged at boot)
   and a messaging erase refuses loudly. Its password, `CHARTWARDEN_DESTRUCTION_PASSWORD`, is required by `compose.yml`
   (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
   overwrites a value an operator set.
@@ -256,3 +256,19 @@ ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
 
   git rev-parse main (to get de SHA)
 ```
+
+### Database role rename (migration 1139)
+
+Migration `1139_chartwarden_role_rename.sql` renames the database roles `wardenx_*` -> `chartwarden_*`
+(`app`, `admin`, `readonly`, `audit_writer`, `platform` + `_login`, `destruction` + `_login`, `m36_reseal`,
+`body_backfill_login`). Grants, RLS policies and SCRAM passwords move with the rename. A privilege-free
+`NOLOGIN` role `wardenx_destruction` remains: ten already-applied function bodies still test
+`pg_has_role(current_user, 'wardenx_destruction', 'MEMBER')`. The database name `wardenx` is unchanged.
+
+- `compose.yml` now connects as `chartwarden_app` / `chartwarden_platform_login` / `chartwarden_destruction_login`.
+  `deploy.sh` runs the migration before recreating containers, so the running containers briefly cannot open
+  *new* connections until the new image is up; deploy at a quiet time and confirm `/health`.
+- Before the first production run: `pg_dump` the database, and confirm `SHOW password_encryption;` is
+  `scram-sha-256` and the login roles' verifiers are SCRAM (an MD5 verifier is cleared by a rename).
+- Rollback to an older image after this migration keeps working (once it has committed; `deploy.sh` leaves the running containers alone if migrations did not complete) because the new `compose.yml` supplies the new
+  role names; there is no down-migration.

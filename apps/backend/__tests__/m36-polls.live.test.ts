@@ -1,5 +1,5 @@
 /**
- * WP 2.10 - polls (non-clinical, single choice, named votes), LIVE Postgres as the NOBYPASSRLS `wardenx_app` role.
+ * WP 2.10 - polls (non-clinical, single choice, named votes), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  * Acceptance (spec): poll creation in a `care_team` channel is rejected. Proves: care_team / bereavement refusal writes
  * nothing; a poll is a real message (sealed question, receipt fan-out) with sealed option labels; one vote per user,
@@ -33,7 +33,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const QUESTION = "Which Friday lunch do we order?";
 

@@ -5,9 +5,9 @@
  * overdue ladder, the D5 cancel gate, the §4.5 composed resolver and the §4.1 authz composition, but they
  * never touch a database — so they cannot catch a wrong RLS predicate, a missing WITH CHECK, an UPDATE
  * grant on an append-only ledger, or a stream guard that lets a sampler keep running. This test applies
- * the real migrations to a real Postgres and exercises the policies as the unprivileged `wardenx_app` role.
+ * the real migrations to a real Postgres and exercises the policies as the unprivileged `chartwarden_app` role.
  *
- * `wardenx_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
+ * `chartwarden_app` MUST be NOBYPASSRLS for any of this to mean anything: a role with BYPASSRLS satisfies
  * every assertion below vacuously. That is asserted FIRST, before a single isolation case runs (the
  * M15-T07 lesson).
  *
@@ -57,7 +57,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -127,7 +127,7 @@ describe.skipIf(!DB_URL)(
     let a: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-      await db.query("SET ROLE wardenx_app");
+      await db.query("SET ROLE chartwarden_app");
       await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
       try {
         return await fn();
@@ -372,9 +372,9 @@ describe.skipIf(!DB_URL)(
       if (db) await db.end();
     });
 
-    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    it("chartwarden_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
-        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
@@ -453,11 +453,11 @@ describe.skipIf(!DB_URL)(
     );
 
     it.each(APPEND_ONLY)(
-      "%s is APPEND-ONLY: wardenx_app holds SELECT + INSERT and no UPDATE",
+      "%s is APPEND-ONLY: chartwarden_app holds SELECT + INSERT and no UPDATE",
       async (table) => {
         const { rows } = await db.query<{ privilege_type: string }>(
           `SELECT privilege_type FROM information_schema.role_table_grants
-         WHERE grantee='wardenx_app' AND table_name=$1`,
+         WHERE grantee='chartwarden_app' AND table_name=$1`,
           [table],
         );
         expect([...new Set(rows.map((r) => r.privilege_type))].sort()).toEqual([
@@ -484,12 +484,12 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0].mid_visit_cadence_minutes).toBe(60);
     });
 
-    it("wardenx_app may DELETE only a check-in schedule — every other M20 table goes through the M4 eraser", async () => {
+    it("chartwarden_app may DELETE only a check-in schedule — every other M20 table goes through the M4 eraser", async () => {
       // Migration 0238: retiring a `proposed` check-in obligation is a DELETE (schedule-plan.ts), audited by
       // 0111's write-audit trigger. That one grant is the exception; no TRUNCATE anywhere, no DELETE elsewhere.
       const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
         `SELECT table_name, privilege_type FROM information_schema.role_table_grants
-       WHERE grantee='wardenx_app' AND table_name = ANY($1) AND privilege_type IN ('DELETE','TRUNCATE')`,
+       WHERE grantee='chartwarden_app' AND table_name = ANY($1) AND privilege_type IN ('DELETE','TRUNCATE')`,
         [ALL_TABLES],
       );
       expect(rows).toEqual([{ table_name: "safety_check_in_schedule", privilege_type: "DELETE" }]);

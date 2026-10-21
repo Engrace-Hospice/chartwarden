@@ -1,5 +1,5 @@
 /**
- * GAP-043 - the worker-role listener-health watcher against a real database, as the NOBYPASSRLS `wardenx_app` role, with
+ * GAP-043 - the worker-role listener-health watcher against a real database, as the NOBYPASSRLS `chartwarden_app` role, with
  * the REAL catalog-validating outbox publisher, the REAL outbox relay (`createOutboxDispatcher`), the REAL M36 consumer and
  * the REAL Drizzle `AlertEmitter` over the real platform-default `alert_rule` seed.
  *
@@ -44,7 +44,7 @@ import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "aaaaaaaa-0043-4000-8000-00000000000a";
 const ORG_B = "bbbbbbbb-0043-4000-8000-00000000000b";
@@ -395,7 +395,7 @@ describe.skipIf(!DB_URL)("GAP-043 listener-health watcher - LIVE Postgres", () =
     });
   });
 
-  describe("the listener's heartbeat fact, written as wardenx_app", () => {
+  describe("the listener's heartbeat fact, written as chartwarden_app", () => {
     it("heartbeat() leaves the facts without touching the watcher-owned state, and record() omitting state keeps it", async () => {
       const feedId = await insertFeed(ORG_A, await freePort());
       await admin.query(

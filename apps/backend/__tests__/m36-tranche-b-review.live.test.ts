@@ -1,5 +1,5 @@
 /**
- * M36 Phase 2 Tranche B review fixes (WP 2.4 / 2.5 / 2.8 / 2.9 together), LIVE Postgres as the NOBYPASSRLS `wardenx_app`
+ * M36 Phase 2 Tranche B review fixes (WP 2.4 / 2.5 / 2.8 / 2.9 together), LIVE Postgres as the NOBYPASSRLS `chartwarden_app`
  * role, through the real route stack (Authorization Contract + `channel_visibility` + Postgres idempotency store):
  *   - a send deletes the sender's own draft for that slot (channel / reply) in the same transaction, replay-safe and
  *     never touching a colleague's draft;
@@ -44,7 +44,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG = "11111111-1111-4111-8111-1111000f0036";
 const DRAFT_CAP = 3;
@@ -198,7 +198,7 @@ describe.skipIf(!DB_URL)("M36 Tranche B review fixes - LIVE Postgres", () => {
     n2 = await seedUser("n2");
     loc = await seedLocationChannel("TB room one", [boss, n1, n2]);
     loc2 = await seedLocationChannel("TB room two", [boss, n1, n2]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     const service = createDbMessagingRouteService(handle.db, { kek: KEK });

@@ -565,15 +565,15 @@ export const M32_TABLE_NAMES = [
 /**
  * §3.3 — which RLS shape each table takes.
  *
- *   `platform_shared` — no `organization_id`. `USING (true)` SELECT to `wardenx_app`, writes only to
- *                       `wardenx_admin` (System Design §4.6). The capability registry is deliberately
+ *   `platform_shared` — no `organization_id`. `USING (true)` SELECT to `chartwarden_app`, writes only to
+ *                       `chartwarden_admin` (System Design §4.6). The capability registry is deliberately
  *                       world-readable within the platform: a tenant must be able to see WHICH
  *                       capabilities exist to opt in to one.
  *   `tenant_scoped`   — `organization_id` NOT NULL, policy keyed ONLY on `app.org_id`.
  *   `mixed`           — `ai_kill_switch_state` alone: `organization_id` is NULLABLE and NULL means a
  *                       PLATFORM-WIDE kill. Read spans both (`IS NULL OR = app.org_id`); INSERT is
- *                       tenant-only, so `wardenx_app` cannot mint a platform-wide kill (W3 goes through
- *                       `wardenx_admin`). This asymmetry IS the control — a single `FOR ALL` policy
+ *                       tenant-only, so `chartwarden_app` cannot mint a platform-wide kill (W3 goes through
+ *                       `chartwarden_admin`). This asymmetry IS the control — a single `FOR ALL` policy
  *                       would let any tenant admin kill the capability for every other tenant.
  */
 export type M32TableTenancy = "platform_shared" | "tenant_scoped" | "mixed";

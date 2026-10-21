@@ -1,7 +1,7 @@
 /**
  * M13L — the Drizzle eMAR write lifecycle, proven against real Postgres.
  *
- * Drives the writes as the NOBYPASSRLS `wardenx_app` role. Like M12, M13 has NO state-transition triggers, so
+ * Drives the writes as the NOBYPASSRLS `chartwarden_app` role. Like M12, M13 has NO state-transition triggers, so
  * the service does every transition itself (composing the pure `@chartwarden/emar` deciders): recordAdministration
  * (single-dose, controlled-substance-with-witness, ad-hoc + scheduled-dose siting) · caregiver-attested capture
  * → acknowledge / dispute · correct (supersede) · void · refuse · intentional-hold · missed-dose acknowledge ·
@@ -31,7 +31,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const VOID_REASON = "Recorded against the wrong patient chart in error; verified with the RN.";
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -211,7 +211,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
          VALUES ($1,$2,$3,'Pat',$4,'1950-01-01','female','active')`,
         [id, ORG_A, `mrn-m13-${last}`, last],
       );
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
@@ -1612,7 +1612,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     });
   });
 
-  it("RLS: org B cannot void or read org A's administration (404 under the wardenx_app policy)", async () => {
+  it("RLS: org B cannot void or read org A's administration (404 under the chartwarden_app policy)", async () => {
     const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
     await expect(svc.getAdministration(ORG_B, rec.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.voidAdministration(ORG_B, memberOf[ORG_B], rec.id, "x")).rejects.toMatchObject(

@@ -3,7 +3,7 @@
  * M19's Direct-model roster sync can create shifts. Before this, the Drizzle store threw unconditionally and
  * every production reconcile resolved `unavailable`.
  *
- * Proven against REAL Postgres as the NOBYPASSRLS `wardenx_app` role, through the production seam
+ * Proven against REAL Postgres as the NOBYPASSRLS `chartwarden_app` role, through the production seam
  * (`createVisitAssignmentReader` over `createDrizzleSchedulingSeamStore`) and the production reconciler
  * (`reconcileOrgOnCallRoster`, default roster reader = the registered M17 seam):
  *   - a tenant with NO rotation rows reads as UNAVAILABLE (never as an empty roster that would cancel its
@@ -32,7 +32,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "a2900000-0000-4000-8000-0000000000a1";
 const ORG_B = "b2900000-0000-4000-8000-0000000000b1";
 const HOUR_MS = 3_600_000;
@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)("GAP-029 M17 on-call roster — LIVE Postgres", () => {
     }
     await seedOrg(ORG_A, "gap029-a");
     await seedOrg(ORG_B, "gap029-b");
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerSeam(
       "VisitAssignmentReader",

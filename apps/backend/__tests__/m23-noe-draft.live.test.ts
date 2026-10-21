@@ -18,7 +18,7 @@
  * `signed_at`. At signing the anchor is NULL and a federal filing cannot be dated from a guess.
  *
  * Nothing is stubbed: the REAL M6 write service runs the §418.24 chain to an ACTIVE admission as the
- * NOBYPASSRLS `wardenx_app` role → the REAL catalog-validating publisher writes the outbox row → the REAL
+ * NOBYPASSRLS `chartwarden_app` role → the REAL catalog-validating publisher writes the outbox row → the REAL
  * dispatcher delivers it → M23's real consumer resolves the period through M6's real org-explicit reader
  * and inserts through the real `NoeRepository` under RLS.
  *
@@ -83,7 +83,7 @@ const CTI_CLINICAL = {
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -108,7 +108,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     [];
   let parsed999: Parsed999[] = [];
   let parsed277: Parsed277ca[] = [];
-  // The M23 write service the NOE routes call (correct / submit), as wardenx_app with the real publisher.
+  // The M23 write service the NOE routes call (correct / submit), as chartwarden_app with the real publisher.
   let m23: ReturnType<typeof buildDrizzleM23WriteService>;
 
   async function resetSchema() {
@@ -227,7 +227,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
         [USER, org],
       );
     }
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
 
@@ -507,7 +507,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
 
   // ── the MAC's answer: the 999 / 277CA crons route a NOE's acknowledgment to the NOE ────────────────────────
 
-  /** A drafted NOE, made READY and transmitted by the REAL `noe.submit` processor (as wardenx_app). */
+  /** A drafted NOE, made READY and transmitted by the REAL `noe.submit` processor (as chartwarden_app). */
   async function submittedNoe(org: string): Promise<{
     admissionId: string;
     noeId: string;
@@ -546,7 +546,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     return rows[0];
   }
 
-  /** The production ValidationContextPort's NOE read + the `noe_timeliness_5d` rule, as wardenx_app. */
+  /** The production ValidationContextPort's NOE read + the `noe_timeliness_5d` rule, as chartwarden_app. */
   async function noeRuleFor(org: string, admissionId: string, opts: { serviceTo?: string } = {}) {
     const { rows } = await admin.query(
       `SELECT n.patient_id, n.provider_entity_id,
@@ -822,7 +822,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   const addDays = (iso: string, n: number) =>
     new Date(Date.parse(`${iso}T00:00:00.000Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-  /** A NOE the 277CA rejected (999 accepted the file first), as wardenx_app through the real crons. */
+  /** A NOE the 277CA rejected (999 accepted the file first), as chartwarden_app through the real crons. */
   async function rejectedNoe(org: string) {
     const sub = await submittedNoe(org);
     parsed999 = [

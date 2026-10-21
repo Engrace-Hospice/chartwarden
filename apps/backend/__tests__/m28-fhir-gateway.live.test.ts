@@ -47,7 +47,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-1111f0350001";
 const ORG_B = "22222222-2222-4222-8222-2222f0350002";
@@ -145,7 +145,7 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
     await seedClient(ORG_A, CLIENT_A, SECRET_A, "Alpha Partner");
     await seedClient(ORG_B, CLIENT_B, SECRET_B, "Beta Partner");
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
     // The gateway reads through the M1 seam registry, so the suite binds the real M5 readers over a
@@ -187,7 +187,7 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
 
   it("the two tenant resolvers answer the owning org, and null for an unknown id", async () => {
     // These are the whole reason the surface can work without a BYPASSRLS credential: one unguessable
-    // uuid in, one org uuid out, nothing else. Read as `wardenx_app`, which is the role that calls them.
+    // uuid in, one org uuid out, nothing else. Read as `chartwarden_app`, which is the role that calls them.
     const asApp = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await asApp.connect();
     const client = await asApp.query("SELECT fhir_resolve_client_org($1) AS org", [CLIENT_A]);
@@ -499,7 +499,7 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
     expect(medRow.subject_patient_id).toBe(patientA);
     expect(patientRow.subject_patient_id).toBeNull();
 
-    // The real Drizzle resolver, as wardenx_app: org A sees the facts, org B's context sees nothing.
+    // The real Drizzle resolver, as chartwarden_app: org A sees the facts, org B's context sees nothing.
     const resolver = buildDrizzleFhirGatewayAbacResolver({ db: handle.db });
     expect(await resolver.inboundSubjectPatient(ORG_A, medRow.id)).toEqual({
       resourceType: "MedicationStatement",

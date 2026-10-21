@@ -18,7 +18,7 @@
  * both pass a read-then-write), and `bge_cosigner_distinct` (migration 0210) is what makes the
  * invariant survive a caller that never runs the store at all. A slice test can prove neither.
  *
- * Everything runs as the NOBYPASSRLS `wardenx_app` role, so a missing GRANT or policy fails it.
+ * Everything runs as the NOBYPASSRLS `chartwarden_app` role, so a missing GRANT or policy fails it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m3:break-glass:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -35,7 +35,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 
 const ORG_A = "11111111-1111-4111-8111-111111ac0101";
 const USER_INVOKER = "22222222-2222-4222-8222-222222ac0101";
@@ -100,7 +100,7 @@ describe.skipIf(!DB_URL)("AC-01 break-glass two-person co-signature — LIVE Pos
       [USER_INVOKER, USER_COSIGNER],
     );
 
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     store = createDbBreakGlassStore(handle.db);
   }, 180_000);

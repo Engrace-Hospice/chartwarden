@@ -1,6 +1,6 @@
 /**
  * M36 WP 3.10 - medication clarification ("Ask a nurse about a medication"), LIVE Postgres as the NOBYPASSRLS
- * `wardenx_app` role. This is the Workflow D acceptance suite (05-clinical-workflows-and-safety.md lines 30-33).
+ * `chartwarden_app` role. This is the Workflow D acceptance suite (05-clinical-workflows-and-safety.md lines 30-33).
  *
  * The real route stack (Authorization Contract, `channel_visibility`, the DB route service, the audit plumbing, the M1
  * idempotency store) over the REAL catalog-validating outbox publisher (not NOOP_OUTBOX).
@@ -16,7 +16,7 @@
  *   6. ATOMIC        an injected task-store failure rolls back the message AND the link row.
  *   7. NO NURSE      without allow_unrouted: 422 and nothing written; with it: message, no task, one unrouted outbox row.
  *   8. OFFBOARDING   the RN leaves => the primary RN / care team takes it, never the aide; nobody => needs_owner + unrouted.
- *   9. DB BACKSTOPS  source_kind is not updatable by wardenx_app; the not-creator and shape CHECKs fire.
+ *   9. DB BACKSTOPS  source_kind is not updatable by chartwarden_app; the not-creator and shape CHECKs fire.
  *  10. TENANCY       org B and an outsider get a random channel's answer and nothing is written.
  *  11. READ AUDIT    the ask and the options read each land an audit row with a resource id.
  *  12. FLAG          off => 404 on the ask, {enabled:false} on options.
@@ -525,7 +525,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.10 medication clarification - LIVE Postgres",
       }
     };
 
-    it("wardenx_app cannot UPDATE source_kind, and a reassignment to the asker violates the CHECK", async () => {
+    it("chartwarden_app cannot UPDATE source_kind, and a reassignment to the asker violates the CHECK", async () => {
       const made = (await ask(app, aide, { text: "Backstop case" })).json();
       await expect(
         asApp("UPDATE communication_task SET source_kind='message' WHERE id=$1", [made.task.id]),

@@ -1,6 +1,6 @@
 /**
  * GAP-158 / GAP-159 - the portal invitation -> caregiver link end to end, LIVE Postgres, as the RLS-enforced
- * `wardenx_app` role with the REAL catalog-validating outbox publisher.
+ * `chartwarden_app` role with the REAL catalog-validating outbox publisher.
  *
  * Proves: issuing an invitation for a roster caregiver emits `m31.portal_account.invited` in the issue transaction;
  * accepting it activates the account, inserts the grant, emits `activated` + `portal_access_grant.granted`, and
@@ -25,12 +25,12 @@ import { appRoleConnectionString } from "./_live-app-role";
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
-  "wardenx_platform_login",
-  "wardenx_platform",
-  "wardenx_app",
-  "wardenx_admin",
-  "wardenx_readonly",
-  "wardenx_audit_writer",
+  "chartwarden_platform_login",
+  "chartwarden_platform",
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
   "tenant_platform_writer",
 ];
 const ORG = "11111111-1111-4111-8111-111111115811";
