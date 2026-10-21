@@ -38,7 +38,9 @@ const ORDER = schema.orderRecords;
 /** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
 const CONSUMER_USER_ID = "";
 
-const BANNER_KEY_PREFIX = "wardenx:m11:orders:suggestion";
+// LEGACY(wardenx->chartwarden): remove after 7 days post release B (the banner TTL).
+const LEGACY_BANNER_KEY_PREFIX = "wardenx:m11:orders:suggestion";
+const NEW_BANNER_KEY_PREFIX = "chartwarden:m11:orders:suggestion";
 const BANNER_TTL_SEC = 7 * 24 * 60 * 60; // 7 days, per suggestion-banner.ts's own documented TTL
 
 export const M11_ASSESSMENT_SUGGESTION_CONSUMER = {
@@ -53,12 +55,16 @@ export interface AssessmentSuggestionDeps {
   readonly outbox: OrderWriteOutboxPort;
 }
 
-function bannerKey(patientId: string): string {
-  return `${BANNER_KEY_PREFIX}:${patientId}`;
+/** Release A: write BOTH keys, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+export function bannerKeys(patientId: string): { legacyKey: string; newKey: string } {
+  return {
+    legacyKey: `${LEGACY_BANNER_KEY_PREFIX}:${patientId}`,
+    newKey: `${NEW_BANNER_KEY_PREFIX}:${patientId}`,
+  };
 }
 
 async function readBanner(redis: Redis, patientId: string): Promise<OrderSuggestionEntry[]> {
-  const raw = await redis.get(bannerKey(patientId));
+  const raw = await redis.get(bannerKeys(patientId).legacyKey);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -133,12 +139,12 @@ export function buildM11AssessmentSuggestionConsumer(deps: AssessmentSuggestionD
       if (action.kind === "skip") return;
 
       const updated = [...banner, action.entry];
-      await deps.redis.set(
-        bannerKey(payload.patientId),
-        JSON.stringify(updated),
-        "EX",
-        BANNER_TTL_SEC,
-      );
+      const { legacyKey, newKey } = bannerKeys(payload.patientId);
+      const serialised = JSON.stringify(updated);
+      // New key first: if the second write throws, legacy is still unwritten, so the redelivery (which
+      // short-circuits on a legacy hit) redoes both instead of leaving the new key permanently behind.
+      await deps.redis.set(newKey, serialised, "EX", BANNER_TTL_SEC);
+      await deps.redis.set(legacyKey, serialised, "EX", BANNER_TTL_SEC);
 
       await withOrgContext(
         deps.db,

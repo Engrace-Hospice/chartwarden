@@ -171,9 +171,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      await redis
-        .keys("wardenx:m11:orders:suggestion:*")
-        .then((keys) => (keys.length ? redis.del(...keys) : undefined));
+      for (const pattern of ["wardenx:m11:orders:suggestion:*", "chartwarden:m11:orders:suggestion:*"]) {
+        await redis.keys(pattern).then((keys) => (keys.length ? redis.del(...keys) : undefined));
+      }
 
       suggestionConsumer = buildM11AssessmentSuggestionConsumer({
         db: handle.db,
@@ -203,6 +203,14 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         });
 
         const raw = await redis.get(`wardenx:m11:orders:suggestion:${patientId}`);
+        // Release A dual-write: the chartwarden: copy is byte-identical and carries the same 7-day TTL.
+        expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBe(raw);
+        for (const key of [
+          `wardenx:m11:orders:suggestion:${patientId}`,
+          `chartwarden:m11:orders:suggestion:${patientId}`,
+        ]) {
+          expect(await redis.ttl(key)).toBeGreaterThan(7 * 86_400 - 60);
+        }
         const banner = JSON.parse(raw as string);
         expect(banner).toHaveLength(1);
         expect(banner[0]).toMatchObject({
@@ -248,6 +256,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           },
         });
         expect(await redis.get(`wardenx:m11:orders:suggestion:${patientId}`)).toBeNull();
+        expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBeNull();
       });
 
       it("skips once the clinician already created a real order for this assessment", async () => {
@@ -267,6 +276,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         });
 
         expect(await redis.get(`wardenx:m11:orders:suggestion:${patientId}`)).toBeNull();
+        expect(await redis.get(`chartwarden:m11:orders:suggestion:${patientId}`)).toBeNull();
       });
 
       it("does not cross tenants — org B's order for the same assessment id doesn't suppress org A's suggestion", async () => {

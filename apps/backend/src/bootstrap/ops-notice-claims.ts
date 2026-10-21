@@ -18,7 +18,9 @@ export interface ClaimRedis {
   del(key: string): Promise<unknown>;
 }
 
-const KEY_PREFIX = "wardenx:ops-notice:";
+// Plain prefix switch (no dual-write): the claim is a short NX window, so during a rolling deploy old and new pods may each win
+// one claim for the same breach - worst case one duplicate ops page, which this module already accepts (fail-open).
+const KEY_PREFIX = "chartwarden:ops-notice:";
 export const CLAIM_TIMEOUT_MS = 200;
 export const BREAKER_MS = 30_000;
 

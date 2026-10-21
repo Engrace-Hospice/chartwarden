@@ -100,7 +100,7 @@ describe("ops notice claims", () => {
     down = false;
     now = 1000;
     await claims.claim("y", 10_000);
-    expect(dels).toEqual(["wardenx:ops-notice:breach-over"]);
+    expect(dels).toEqual(["chartwarden:ops-notice:breach-over"]);
   });
 
   it("falls back to per-process (fail open: notify) when Valkey errors, and honours the ttl", async () => {

@@ -68,7 +68,9 @@ import type {
 } from "@chartwarden/types";
 import type Redis from "ioredis";
 
-const KEY_PREFIX = "wardenx:m14:idg:since-last-idg";
+// LEGACY(wardenx->chartwarden): remove after 30 days post release B (SINCE_LAST_IDG_TTL_SEC).
+const LEGACY_KEY_PREFIX = "wardenx:m14:idg:since-last-idg";
+const NEW_KEY_PREFIX = "chartwarden:m14:idg:since-last-idg";
 export const SINCE_LAST_IDG_TTL_SEC = 30 * 24 * 60 * 60; // 30 days, per the §4.5 table's own note
 
 /** A digest entry tagged with the outbox event id it was written from (the dedup identity). */
@@ -89,12 +91,16 @@ const EMPTY_ENTRY: SinceLastIdgCacheEntry = {
   medicationChanges: [],
 };
 
-function cacheKey(patientId: string): string {
-  return `${KEY_PREFIX}:${patientId}`;
+/** Release A: write BOTH keys, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+export function cacheKeys(patientId: string): { legacyKey: string; newKey: string } {
+  return {
+    legacyKey: `${LEGACY_KEY_PREFIX}:${patientId}`,
+    newKey: `${NEW_KEY_PREFIX}:${patientId}`,
+  };
 }
 
 async function readEntry(redis: Redis, patientId: string): Promise<SinceLastIdgCacheEntry> {
-  const raw = await redis.get(cacheKey(patientId));
+  const raw = await redis.get(cacheKeys(patientId).legacyKey);
   if (!raw) return EMPTY_ENTRY;
   try {
     const parsed = JSON.parse(raw) as Partial<SinceLastIdgCacheEntry>;
@@ -116,7 +122,12 @@ async function writeEntry(
   patientId: string,
   entry: SinceLastIdgCacheEntry,
 ): Promise<void> {
-  await redis.set(cacheKey(patientId), JSON.stringify(entry), "EX", SINCE_LAST_IDG_TTL_SEC);
+  const { legacyKey, newKey } = cacheKeys(patientId);
+  const serialised = JSON.stringify(entry);
+  // New key first: a failure on the second write leaves legacy unwritten, so the redelivery (which
+  // short-circuits on a legacy hit) redoes both instead of leaving the new key permanently behind.
+  await redis.set(newKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
+  await redis.set(legacyKey, serialised, "EX", SINCE_LAST_IDG_TTL_SEC);
 }
 
 /**
