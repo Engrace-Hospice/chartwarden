@@ -2,6 +2,7 @@
 export {
   loadMessagingKek,
   deriveOrgDek,
+  deriveOrgReadDeks,
   sealMessageBody,
   openMessageBody,
   messageBodySha256,

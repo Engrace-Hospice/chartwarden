@@ -22,7 +22,14 @@ const NONCE_LEN = 12;
 const TAG_LEN = 16;
 const KEY_LEN = 32;
 const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with an empty ciphertext
-const DEK_INFO_PREFIX = "wardenx-message-dek:"; // HKDF `info` label, org-bound
+// HKDF `info` label, org-bound. ChartWarden rename (release 1 = READ-SIDE): readers derive a DEK under every label
+// (current first), the writer uses DEK_INFO_PREFIX_WRITE. LEGACY(wardenx->chartwarden): remove the legacy entry after
+// the backfill (release 3).
+const DEK_INFO_PREFIX_CURRENT = "chartwarden-message-dek:";
+const DEK_INFO_PREFIX_LEGACY = "wardenx-message-dek:";
+// Release 2 (write-side flip): set to DEK_INFO_PREFIX_CURRENT, then re-seal every legacy-scheme (v1) body_cipher.
+const DEK_INFO_PREFIX_WRITE = DEK_INFO_PREFIX_LEGACY;
+const DEK_INFO_PREFIXES_READ = [DEK_INFO_PREFIX_CURRENT, DEK_INFO_PREFIX_LEGACY] as const;
 
 /**
  * Typed 503 code for a missing/malformed master key. It is a server misconfiguration, not a caller error, so the
@@ -37,11 +44,7 @@ export function loadMessagingKek(
   raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY,
 ): Buffer {
   if (!raw) {
-    throw new ChartWardenError(
-      MESSAGING_KEY_UNAVAILABLE,
-      MESSAGING_KEY_UNAVAILABLE_MESSAGE,
-      503,
-    );
+    throw new ChartWardenError(MESSAGING_KEY_UNAVAILABLE, MESSAGING_KEY_UNAVAILABLE_MESSAGE, 503);
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
@@ -53,9 +56,17 @@ export function loadMessagingKek(
 
 /** Derive a tenant's 32-byte message DEK from the master KEK + org id (HKDF-SHA256, org-bound). */
 export function deriveOrgDek(kek: Buffer, orgId: string): Buffer {
+  return deriveDekFor(kek, orgId, DEK_INFO_PREFIX_WRITE);
+}
+
+function deriveDekFor(kek: Buffer, orgId: string, prefix: string): Buffer {
   // hkdfSync returns an ArrayBuffer; wrap as a Buffer for the cipher APIs.
-  const derived = hkdfSync("sha256", kek, Buffer.alloc(0), `${DEK_INFO_PREFIX}${orgId}`, KEY_LEN);
-  return Buffer.from(derived);
+  return Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), `${prefix}${orgId}`, KEY_LEN));
+}
+
+/** Every DEK a legacy (v1) body of this tenant may have been sealed under: current label first, then legacy. */
+export function deriveOrgReadDeks(kek: Buffer, orgId: string): readonly Buffer[] {
+  return DEK_INFO_PREFIXES_READ.map((prefix) => deriveDekFor(kek, orgId, prefix));
 }
 
 /** Encrypt a plaintext body → versioned bytea envelope (random nonce per call) under the tenant DEK. */
@@ -68,28 +79,45 @@ export function sealMessageBody(plaintext: string, dek: Buffer): Buffer {
 }
 
 /** Decrypt a bytea envelope. Throws on a wrong DEK, tamper (GCM auth fail), or bad format/version. */
-export function openMessageBody(cipher: Buffer, dek: Buffer): string {
+export function openMessageBody(cipher: Buffer, dek: Buffer | readonly Buffer[]): string {
   if (cipher.length < MIN_LEN) throw new Error("message body-crypto: malformed ciphertext");
   if (cipher[0] !== VERSION)
     throw new Error(`message body-crypto: unsupported version ${cipher[0]}`);
   const nonce = cipher.subarray(1, 1 + NONCE_LEN);
   const tag = cipher.subarray(cipher.length - TAG_LEN);
   const ct = cipher.subarray(1 + NONCE_LEN, cipher.length - TAG_LEN);
-  const decipher = createDecipheriv("aes-256-gcm", dek, nonce);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+  // A list of DEKs (current, legacy label) is tried in order; the error after the last is the first key's GCM error, so
+  // which label (if any) matched is not observable.
+  const deks = Buffer.isBuffer(dek) ? [dek] : (dek as readonly Buffer[]);
+  let firstError: unknown;
+  for (const candidate of deks) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+    } catch (err) {
+      firstError ??= err;
+    }
+  }
+  throw firstError ?? new Error("message body-crypto: no key supplied");
 }
 
 // ── RING ENVELOPE (v2) — M36 WP 2.13 / ADR-0058 P1 ──────────────────────────────────────────────────
 // The tenant DEK is the M34 wrapped-DEK ring key (random 32 bytes, destroyable), NOT an HKDF derivation. The envelope
 // carries the ring version that sealed it, so old and new rows coexist and a rotation keeps old rows readable:
 //   version(1)=2 ‖ verLen(1) ‖ ringVersion(ascii) ‖ nonce(12) ‖ ciphertext ‖ tag(16)   — AES-256-GCM
-// AAD = "wardenx-message-body:v2:<orgId>:<ringVersion>", so a row cannot be opened under another tenant or relabelled.
+// AAD = RING_AAD_PREFIX_WRITE + "<orgId>:<ringVersion>" ("wardenx-message-body:v2:" until the ChartWarden label flip), so a row cannot be opened under another tenant or relabelled.
 // `body_sha256` is unchanged (hash of the plaintext); the scheme is therefore also the per-row marker the backfill and the
 // legacy-row count read (first byte of body_cipher).
 const RING_VERSION_BYTE = 2;
 const RING_LABEL = /^[A-Za-z0-9._-]{1,32}$/;
-const RING_AAD_PREFIX = "wardenx-message-body:v2:";
+// ChartWarden rename of the ring AAD label (release 1 = READ-SIDE): open accepts both (current first), seal keeps the
+// legacy one. LEGACY(wardenx->chartwarden): remove the legacy entry after the backfill (release 3).
+const RING_AAD_PREFIX_CURRENT = "chartwarden-message-body:v2:";
+const RING_AAD_PREFIX_LEGACY = "wardenx-message-body:v2:";
+// Release 2 (write-side flip): set to RING_AAD_PREFIX_CURRENT, then re-seal every v2 body_cipher (and poll labels if any).
+const RING_AAD_PREFIX_WRITE = RING_AAD_PREFIX_LEGACY;
+const RING_AAD_PREFIXES_READ = [RING_AAD_PREFIX_CURRENT, RING_AAD_PREFIX_LEGACY] as const;
 
 /** A ring DEK as the M34 `TenantKeyProvider` hands it out (`TenantDek`). */
 export interface RingBodyDek {
@@ -107,8 +135,8 @@ export function bodyEnvelopeScheme(cipher: Buffer): BodyEnvelopeScheme {
   return "unknown";
 }
 
-function ringAad(orgId: string, version: string): Buffer {
-  return Buffer.from(`${RING_AAD_PREFIX}${orgId}:${version}`, "utf8");
+function ringAad(prefix: string, orgId: string, version: string): Buffer {
+  return Buffer.from(`${prefix}${orgId}:${version}`, "utf8");
 }
 
 /** Seal a plaintext under a tenant ring DEK → v2 envelope that records the ring version. */
@@ -118,7 +146,7 @@ export function sealMessageBodyRing(plaintext: string, dek: RingBodyDek, orgId: 
     throw new Error(`message body-crypto: DEK must be ${KEY_LEN} bytes`);
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", dek.key, nonce);
-  cipher.setAAD(ringAad(orgId, dek.version));
+  cipher.setAAD(ringAad(RING_AAD_PREFIX_WRITE, orgId, dek.version));
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const label = Buffer.from(dek.version, "ascii");
   return Buffer.concat([
@@ -153,10 +181,18 @@ export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string):
   const nonce = cipher.subarray(body, body + NONCE_LEN);
   const tag = cipher.subarray(cipher.length - TAG_LEN);
   const ct = cipher.subarray(body + NONCE_LEN, cipher.length - TAG_LEN);
-  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-  decipher.setAAD(ringAad(orgId, version));
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+  let firstError: unknown;
+  for (const prefix of RING_AAD_PREFIXES_READ) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+      decipher.setAAD(ringAad(prefix, orgId, version));
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+    } catch (err) {
+      firstError ??= err;
+    }
+  }
+  throw firstError;
 }
 
 /** The §164.312(c) integrity digest — hex SHA-256 of the PLAINTEXT, computed pre-encryption. */

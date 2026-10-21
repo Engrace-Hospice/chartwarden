@@ -115,9 +115,17 @@ export function loadPseudonymKekRing(
   return { active, byId };
 }
 
-/** The AAD every seal/open binds: the format version, the wrapping KEK, and the OWNING KEY EPOCH. */
-function aad(kekId: string, keyEpoch: string): Buffer {
-  return Buffer.from(`wardenx-m35-pseudonym-key:v${VERSION}:${kekId}:${keyEpoch}`, "utf8");
+// ChartWarden rename of the AAD label (release 1 = READ-SIDE): open accepts both labels (current first), seal keeps the
+// legacy one. The AAD lives only here. LEGACY(wardenx->chartwarden): remove the legacy entry after the backfill (release 3).
+const AAD_LABEL_CURRENT = "chartwarden-m35-pseudonym-key";
+const AAD_LABEL_LEGACY = "wardenx-m35-pseudonym-key";
+// Release 2 (write-side flip): set to AAD_LABEL_CURRENT, then re-seal every key-material row.
+const AAD_LABEL_WRITE = AAD_LABEL_LEGACY;
+const AAD_LABELS_READ = [AAD_LABEL_CURRENT, AAD_LABEL_LEGACY] as const;
+
+/** The AAD every seal/open binds: the label, the format version, the wrapping KEK, and the OWNING KEY EPOCH. */
+function aad(label: string, kekId: string, keyEpoch: string): Buffer {
+  return Buffer.from(`${label}:v${VERSION}:${kekId}:${keyEpoch}`, "utf8");
 }
 
 /**
@@ -136,7 +144,7 @@ export function sealPseudonymKeyMaterial(
   }
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", ring.active.key, nonce);
-  cipher.setAAD(aad(ring.active.kekId, keyEpoch));
+  cipher.setAAD(aad(AAD_LABEL_WRITE, ring.active.kekId, keyEpoch));
   const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const wrapped = Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
   return { ciphertextB64: wrapped.toString("base64"), kekId: ring.active.kekId };
@@ -171,16 +179,19 @@ export function openPseudonymKeyMaterial(
   const nonce = wrapped.subarray(1, 1 + NONCE_LEN);
   const ct = wrapped.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + KEY_LEN);
   const tag = wrapped.subarray(1 + NONCE_LEN + KEY_LEN);
-  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-  decipher.setAAD(aad(kekId, keyEpoch));
-  decipher.setAuthTag(tag);
-  try {
-    return Buffer.concat([decipher.update(ct), decipher.final()]);
-  } catch {
-    throw new PseudonymKekError(
-      `wrapped pseudonym key for epoch '${keyEpoch}' failed authentication under KEK '${kekId}'`,
-    );
+  for (const label of AAD_LABELS_READ) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+      decipher.setAAD(aad(label, kekId, keyEpoch));
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ct), decipher.final()]);
+    } catch {
+      // authentication failed under this label; try the next
+    }
   }
+  throw new PseudonymKekError(
+    `wrapped pseudonym key for epoch '${keyEpoch}' failed authentication under KEK '${kekId}'`,
+  );
 }
 
 /** Mint 32 random bytes of fresh HMAC key material. CSPRNG — the same `randomBytes(32)` every DEK/KEK

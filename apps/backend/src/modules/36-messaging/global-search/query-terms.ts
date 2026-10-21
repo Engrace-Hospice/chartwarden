@@ -13,6 +13,7 @@
 // Nothing here is logged or stored; the terms live for one request.
 import {
   type ExcludedTokens,
+  SEARCH_LABELS_WRITE,
   type SearchKeyProvider,
   deriveChannelKey,
   prefixTagLengthFor,
@@ -58,6 +59,16 @@ export interface ChannelQuery {
   readonly channelId: string;
   /** Distinct tag values for this channel (two terms can collide at T bits; the body check still decides). */
   readonly tags: readonly number[];
+  /**
+   * The same query's tags under the OTHER accepted label sets (ChartWarden label rename). Each set is an independent
+   * conjunction: a message matches when ALL tags of ANY one set are on it (never a mix of two sets). Absent/empty = one set.
+   */
+  readonly alternateTagSets?: readonly (readonly number[])[];
+}
+
+/** Every independent tag set of a channel query: the primary one first, then the alternates. */
+export function tagSetsOf(channel: ChannelQuery): readonly (readonly number[])[] {
+  return [channel.tags, ...(channel.alternateTagSets ?? [])];
 }
 
 export interface VersionQuery {
@@ -96,19 +107,33 @@ export async function buildVersionQueries(
   let headSkipped = 0;
   const queries = await Promise.all(
     versions.map(async ({ keyVersion, tagBits, headBuckets }) => {
-      const searchKey = await keys.tagKey(organizationId, keyVersion);
+      // Every accepted label set (current + legacy): rows indexed under either stay searchable across the ChartWarden label
+      // flip. A provider without `tagKeysForRead` probes only the writer's set.
+      const searchKeys = keys.tagKeysForRead
+        ? await keys.tagKeysForRead(organizationId, keyVersion)
+        : [{ labels: SEARCH_LABELS_WRITE, key: await keys.tagKey(organizationId, keyVersion) }];
       const channels: ChannelQuery[] = [];
       for (const channelId of channelIds) {
-        const termTags = tagsForTerms(
-          deriveChannelKey(searchKey, keyVersion, tagBits, channelId),
-          terms,
-          tagBits,
-        );
-        if (isHeadBucketQuery(channelId, termTags, headBuckets)) {
+        // The writer's label set first (it is what the index holds today), then the others.
+        const perLabel = [...searchKeys]
+          .sort(
+            (a, b) =>
+              Number(b.labels === SEARCH_LABELS_WRITE) - Number(a.labels === SEARCH_LABELS_WRITE),
+          )
+          .map(({ labels, key }) =>
+            tagsForTerms(
+              deriveChannelKey(key, keyVersion, tagBits, channelId, labels),
+              terms,
+              tagBits,
+            ),
+          );
+        // Head-bucket skipping reads the stats of the stored tags: skip when any label set's tags are all head buckets.
+        if (perLabel.some((termTags) => isHeadBucketQuery(channelId, termTags, headBuckets))) {
           headSkipped += 1;
           continue;
         }
-        channels.push({ channelId, tags: [...new Set(termTags)] });
+        const [primary = [], ...others] = perLabel.map((tags) => [...new Set(tags)]);
+        channels.push({ channelId, tags: primary, alternateTagSets: others });
       }
       return { keyVersion, channels };
     }),

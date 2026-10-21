@@ -129,9 +129,19 @@ export function loadPlatformKekRing(env: NodeJS.ProcessEnv = process.env): Platf
   return { active, byId };
 }
 
-/** The AAD every wrap/unwrap binds: the format version, the wrapping KEK, and the OWNING TENANT. */
-function aad(kekId: string, organizationId: string): Buffer {
-  return Buffer.from(`wardenx-m34-tenant-dek:v${VERSION}:${kekId}:${organizationId}`, "utf8");
+// ChartWarden rename of the wrap AAD label (release 1 = READ-SIDE). HIGHEST-RISK label in the repo: every tenant data key
+// is wrapped under it, and a wrong label makes every tenant's PHI unreadable. `unwrap` therefore accepts BOTH labels (current
+// first); `mintAndWrapDek` keeps emitting WRAP_AAD_LABEL_WRITE. The AAD lives only here (no SQL / migration embeds it).
+// LEGACY(wardenx->chartwarden): remove the legacy entry after every tenant_key_ring row has been re-wrapped (release 3).
+const WRAP_AAD_LABEL_CURRENT = "chartwarden-m34-tenant-dek";
+const WRAP_AAD_LABEL_LEGACY = "wardenx-m34-tenant-dek";
+// Release 2 (write-side flip): set to WRAP_AAD_LABEL_CURRENT, then re-wrap every wrapped DEK (current + prior versions).
+const WRAP_AAD_LABEL_WRITE = WRAP_AAD_LABEL_LEGACY;
+const WRAP_AAD_LABELS_READ = [WRAP_AAD_LABEL_CURRENT, WRAP_AAD_LABEL_LEGACY] as const;
+
+/** The AAD every wrap/unwrap binds: the label, the format version, the wrapping KEK, and the OWNING TENANT. */
+function aad(label: string, kekId: string, organizationId: string): Buffer {
+  return Buffer.from(`${label}:v${VERSION}:${kekId}:${organizationId}`, "utf8");
 }
 
 /**
@@ -162,7 +172,7 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
       try {
         const nonce = randomBytes(NONCE_LEN);
         const cipher = createCipheriv("aes-256-gcm", ring.active.key, nonce);
-        cipher.setAAD(aad(ring.active.kekId, organizationId));
+        cipher.setAAD(aad(WRAP_AAD_LABEL_WRITE, ring.active.kekId, organizationId));
         const ct = Buffer.concat([cipher.update(dek), cipher.final()]);
         const wrapped = Buffer.concat([Buffer.from([VERSION]), nonce, ct, cipher.getAuthTag()]);
         return { wrappedCiphertextB64: wrapped.toString("base64"), kekId: ring.active.kekId };
@@ -192,18 +202,22 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
       const nonce = kekWrappedCiphertext.subarray(1, 1 + NONCE_LEN);
       const ct = kekWrappedCiphertext.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + DEK_LEN);
       const tag = kekWrappedCiphertext.subarray(1 + NONCE_LEN + DEK_LEN);
-      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-      decipher.setAAD(aad(kekId, organizationId));
-      decipher.setAuthTag(tag);
-      try {
-        return Buffer.concat([decipher.update(ct), decipher.final()]);
-      } catch {
-        // GCM authentication failed: a tampered ciphertext, the wrong KEK, or — the case the AAD exists
-        // for — a wrapped DEK lifted from ANOTHER tenant's key ring. All three are the same refusal.
-        throw new PlatformKekError(
-          `wrapped DEK for org ${organizationId} failed authentication under KEK '${kekId}'`,
-        );
+      // Both labels, current first. The refusal after the last is one message that names no label, so the retry is no oracle.
+      for (const label of WRAP_AAD_LABELS_READ) {
+        try {
+          const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+          decipher.setAAD(aad(label, kekId, organizationId));
+          decipher.setAuthTag(tag);
+          return Buffer.concat([decipher.update(ct), decipher.final()]);
+        } catch {
+          // authentication failed under this label; try the next
+        }
       }
+      // GCM authentication failed under every label: a tampered ciphertext, the wrong KEK, or - the case the AAD exists
+      // for - a wrapped DEK lifted from ANOTHER tenant's key ring. All three are the same refusal.
+      throw new PlatformKekError(
+        `wrapped DEK for org ${organizationId} failed authentication under KEK '${kekId}'`,
+      );
     },
   };
 }

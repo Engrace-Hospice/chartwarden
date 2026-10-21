@@ -43,10 +43,13 @@ import {
   DECRYPT_BUDGET,
   MAX_PAGES_PER_QUERY,
   MAX_QUERY_CHANNELS,
+  SEARCH_LABELS_CURRENT,
+  SEARCH_LABELS_LEGACY,
   buildMessageTags,
   decodeSearchCursor,
   deriveChannelKey,
   deriveOrgDek,
+  deriveOrgReadDeks,
   deriveSearchKey,
   eraseTenantMessaging,
   indexTagStrings,
@@ -99,7 +102,12 @@ process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0279";
 const ORG_B = "22222222-2222-4222-8222-2222000f0279";
@@ -1156,12 +1164,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
 
     it("a destroyed ring / unknown key version / key derivation failure fails closed with 503, never a fallback", async () => {
       const { u } = await memberWithMessage("Destroyedringword");
-      const failing = {
-        ...keys,
-        tagKey: async () => {
-          throw new Error("ring destroyed");
-        },
+      const destroyed = async (): Promise<never> => {
+        throw new Error("ring destroyed");
       };
+      // `tagKeysForRead` is the query path's key source (ChartWarden label rename); a destroyed ring fails both.
+      const failing = { ...keys, tagKey: destroyed, tagKeysForRead: destroyed };
       const s = buildServer({
         db: handle.db,
         authenticate: headerAuth,
@@ -2017,6 +2024,52 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await q(`DELETE FROM message_search_token WHERE key_version='v2'`);
       await q(`DELETE FROM message_search_index_state WHERE key_version='v2'`);
     }, 180_000);
+
+    it("ChartWarden label rename (release 1): a message indexed under the NEW search labels is found; a mix of two label sets is not a match", async () => {
+      // LEGACY(wardenx->chartwarden): `send` indexes under the legacy writer labels; these rows are planted by hand under
+      // the labels the future writer flip will use, exactly as the MED-3 case plants a second key version.
+      const [newDek, legacyDek] = deriveOrgReadDeks(KEK, ORG_A);
+      const channelKeyFor = (set: 0 | 1, channelId: string) => {
+        const labels = set === 0 ? SEARCH_LABELS_CURRENT : SEARCH_LABELS_LEGACY;
+        const dek = set === 0 ? (newDek as Buffer) : (legacyDek as Buffer);
+        return deriveChannelKey(
+          deriveSearchKey(dek, ORG_A, VERSION, labels),
+          VERSION,
+          TAG_BITS,
+          channelId,
+          labels,
+        );
+      };
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const insertMessage = async (text: string): Promise<string> => {
+        const sealed = await cipher.seal(ORG_A, text);
+        return (
+          await one(
+            `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256)
+             VALUES ($1,$2,$3,'user',$4,$5) RETURNING id::text AS id`,
+            [ch.id, ORG_A, u, sealed.cipher, sealed.sha256],
+          )
+        ).id as string;
+      };
+      const plant = (messageId: string, tag: number) =>
+        q(
+          `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id) VALUES ($1,$2,$3,$4,$5)`,
+          [ORG_A, VERSION, ch.id, tag, messageId],
+        );
+      const single = await insertMessage("labelflipword is only indexed under the new labels");
+      await plant(single, tagForPrefix(channelKeyFor(0, ch.id), "labelflipwor", TAG_BITS));
+      expect(idsOf(await search(u, "labelflipword"))).toEqual([single]);
+
+      const bothNew = await insertMessage("mixedaaaa mixedbbbb");
+      await plant(bothNew, tagForWord(channelKeyFor(0, ch.id), "mixedaaaa", TAG_BITS));
+      await plant(bothNew, tagForPrefix(channelKeyFor(0, ch.id), "mixedbbb", TAG_BITS));
+      const mixed = await insertMessage("mixedaaaa mixedbbbb mixedcccc");
+      await plant(mixed, tagForWord(channelKeyFor(1, ch.id), "mixedaaaa", TAG_BITS));
+      await plant(mixed, tagForPrefix(channelKeyFor(0, ch.id), "mixedbbb", TAG_BITS));
+      // the body of `mixed` matches the query too, so only the SQL conjunction (ALL tags of ONE set) keeps it out
+      expect(idsOf(await search(u, "mixedaaaa mixedbbbb"))).toEqual([bothNew]);
+    });
 
     it("MED-5 removal race: a member removed between the prefilter and the re-select gets zero results", async () => {
       const u = await newUser(ORG_A);

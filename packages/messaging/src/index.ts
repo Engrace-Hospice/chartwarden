@@ -15,6 +15,7 @@ export { CHANNEL_KINDS, CHANNEL_KIND_DESCRIPTORS } from "./interfaces/kinds";
 export {
   loadMessagingKek,
   deriveOrgDek,
+  deriveOrgReadDeks,
   sealMessageBody,
   openMessageBody,
   messageBodySha256,

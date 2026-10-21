@@ -8,9 +8,9 @@
 //   KEK    the SAME `M24_CREDENTIAL_ENCRYPTION_KEY` (32 bytes base64) the Medicaid credential cipher uses. It is already
 //          required and shape-checked by `bootstrap/env.ts` in production, so no new deploy secret is introduced. M23 may
 //          not import M24 (module boundary), hence this small independent implementation.
-//   DEK    HKDF-SHA256(KEK, info = "wardenx-m23-mac-credential-dek:" + orgId). The label is M23-specific, so an M23
+//   DEK    HKDF-SHA256(KEK, info = WRITE_LABELS.dekInfoPrefix + orgId; "wardenx-m23-..." until the ChartWarden label flip). The label is M23-specific, so an M23
 //          envelope can never be opened with an M24 or M36 key even though the KEK is shared (domain separation).
-//   AAD    "wardenx-m23-mac-credential:" + version + orgId + providerEntityId + macJurisdiction. It binds the envelope to the
+//   AAD    WRITE_LABELS.aadPrefix + version + orgId + providerEntityId + macJurisdiction. It binds the envelope to the
 //          ROW it was sealed for: a ciphertext copied to another tenant, another provider entity or another MAC jurisdiction
 //          of the same org fails authentication, and the version byte is itself authenticated (it cannot be flipped).
 //   FORMAT base64( version(1) ‖ nonce(12) ‖ ciphertext ‖ tag(16) ) in the `text` cipher column. The version byte is the
@@ -28,8 +28,24 @@ const NONCE_LEN = 12;
 const TAG_LEN = 16;
 const KEY_LEN = 32;
 const MIN_ENVELOPE_LEN = 1 + NONCE_LEN + TAG_LEN;
-const DEK_INFO_PREFIX = "wardenx-m23-mac-credential-dek:";
-const AAD_PREFIX = "wardenx-m23-mac-credential:v";
+// ChartWarden rename of the cryptographic labels (release 1 = READ-SIDE). A label SET is the HKDF info + the AAD prefix
+// that were used together. Readers try every set (current first); the writer emits WRITE_LABELS.
+// LEGACY(wardenx->chartwarden): remove LEGACY_LABELS after the backfill (release 3).
+interface Labels {
+  readonly dekInfoPrefix: string;
+  readonly aadPrefix: string;
+}
+const CURRENT_LABELS: Labels = {
+  dekInfoPrefix: "chartwarden-m23-mac-credential-dek:",
+  aadPrefix: "chartwarden-m23-mac-credential:v",
+};
+const LEGACY_LABELS: Labels = {
+  dekInfoPrefix: "wardenx-m23-mac-credential-dek:",
+  aadPrefix: "wardenx-m23-mac-credential:v",
+};
+// Release 2 (write-side flip): set this to CURRENT_LABELS, then re-seal every stored secret.
+const WRITE_LABELS: Labels = LEGACY_LABELS;
+const READ_LABELS: readonly Labels[] = [CURRENT_LABELS, LEGACY_LABELS];
 /** The env var carrying the master KEK (shared with M24; required in production by `bootstrap/env.ts`). */
 export const MAC_SECRET_KEK_ENV = "M24_CREDENTIAL_ENCRYPTION_KEY";
 
@@ -56,21 +72,26 @@ export function loadMacSecretKek(raw: string | undefined): Buffer {
   return key;
 }
 
-const deriveDek = (kek: Buffer, organizationId: string): Buffer =>
+const deriveDek = (kek: Buffer, organizationId: string, labels: Labels): Buffer =>
   Buffer.from(
     hkdfSync(
       "sha256",
       kek,
       Buffer.alloc(0),
-      `${DEK_INFO_PREFIX}${organizationId.toLowerCase()}`,
+      `${labels.dekInfoPrefix}${organizationId.toLowerCase()}`,
       KEY_LEN,
     ),
   );
 
-const aadFor = (version: number, organizationId: string, context: MacSecretContext): Buffer =>
+const aadFor = (
+  labels: Labels,
+  version: number,
+  organizationId: string,
+  context: MacSecretContext,
+): Buffer =>
   Buffer.from(
     [
-      `${AAD_PREFIX}${version}`,
+      `${labels.aadPrefix}${version}`,
       organizationId.toLowerCase(),
       context.providerEntityId.toLowerCase(),
       context.macJurisdiction,
@@ -85,8 +106,12 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
   return {
     async encrypt(organizationId, plaintext, context) {
       const nonce = randomBytes(NONCE_LEN);
-      const cipher = createCipheriv("aes-256-gcm", deriveDek(root, organizationId), nonce);
-      cipher.setAAD(aadFor(MAC_SECRET_CIPHER_VERSION, organizationId, context));
+      const cipher = createCipheriv(
+        "aes-256-gcm",
+        deriveDek(root, organizationId, WRITE_LABELS),
+        nonce,
+      );
+      cipher.setAAD(aadFor(WRITE_LABELS, MAC_SECRET_CIPHER_VERSION, organizationId, context));
       const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       const envelope = Buffer.concat([
         Buffer.from([MAC_SECRET_CIPHER_VERSION]),
@@ -102,22 +127,26 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
       if (raw[0] !== MAC_SECRET_CIPHER_VERSION) {
         throw new Error(`MAC secret cipher: unsupported version ${raw[0]}`);
       }
-      const decipher = createDecipheriv(
-        "aes-256-gcm",
-        deriveDek(root, organizationId),
-        raw.subarray(1, 1 + NONCE_LEN),
-      );
-      decipher.setAAD(aadFor(MAC_SECRET_CIPHER_VERSION, organizationId, context));
-      decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
-      try {
-        return Buffer.concat([
-          decipher.update(raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN)),
-          decipher.final(),
-        ]).toString("utf8");
-      } catch {
-        // The node error text is not interesting and must not become an oracle; say only that it did not open.
-        throw new Error("MAC secret cipher: ciphertext failed authentication");
+      // Try each label set (current, then legacy). Every failure is the same generic error: no label is named.
+      for (const labels of READ_LABELS) {
+        try {
+          const decipher = createDecipheriv(
+            "aes-256-gcm",
+            deriveDek(root, organizationId, labels),
+            raw.subarray(1, 1 + NONCE_LEN),
+          );
+          decipher.setAAD(aadFor(labels, MAC_SECRET_CIPHER_VERSION, organizationId, context));
+          decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
+          return Buffer.concat([
+            decipher.update(raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN)),
+            decipher.final(),
+          ]).toString("utf8");
+        } catch {
+          // authentication failed under this label set; try the next
+        }
       }
+      // The node error text is not interesting and must not become an oracle; say only that it did not open.
+      throw new Error("MAC secret cipher: ciphertext failed authentication");
     },
   };
 }

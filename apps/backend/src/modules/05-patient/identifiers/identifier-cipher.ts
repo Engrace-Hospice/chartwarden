@@ -17,7 +17,7 @@
 // an unknown version, or an envelope that fails GCM authentication all THROW — never return a guess.
 //
 // BLIND INDEX. token = HMAC-SHA256(indexKey, "ssn:" + nineDigits), indexKey = HKDF-SHA256(ikm = tenant DEK at
-// version v, info = "wardenx:m5:ssn-blind-index:v1:" + orgId). It is keyed by a secret that is not in the database,
+// version v, info = INDEX_LABEL_WRITE + orgId; see the label constants below). It is keyed by a secret that is not in the database,
 // so a DB-only compromise or a restored backup yields tokens that cannot be brute-forced over the 10^9 SSN space,
 // and it derives from the DEK, so the M34 cryptographic shred destroys the index together with the ciphertext (a
 // platform-wide index key would survive a shred). Per tenant: equal SSNs in two tenants give different tokens.
@@ -69,12 +69,15 @@ export interface PatientIdentifierCipher {
     ssnDigits: string,
     dekVersion?: string,
   ): Promise<BlindIndexToken>;
-  /** The token for each listed DEK version (the multi-version matcher probe). */
+  /**
+   * Every token a stored row could carry, for each listed DEK version (the multi-version matcher probe): one token per
+   * accepted blind-index label (current + legacy), so a duplicate-patient probe finds a row stored under either.
+   */
   blindIndexesForVersions(
     organizationId: string,
     ssnDigits: string,
     versions: readonly string[],
-  ): Promise<Map<string, Buffer>>;
+  ): Promise<Map<string, readonly Buffer[]>>;
 }
 
 /** No usable per-tenant DEK: unbound platform KEK, absent or destroyed key ring. The route maps it to 503. */
@@ -109,15 +112,25 @@ const TAG_BYTES = 16;
 const MAX_VERSION_BYTES = 255;
 const INDEX_KEY_BYTES = 32;
 
+// ChartWarden rename of the cryptographic context labels (release 1 = READ-SIDE). Readers accept both labels, writers
+// emit WRITE_LABEL. LEGACY(wardenx->chartwarden): remove the legacy entries after the backfill (release 3).
+const AAD_LABEL_CURRENT = "chartwarden:m5:patient_identifier:value_encrypted:v1:";
+const AAD_LABEL_LEGACY = "wardenx:m5:patient_identifier:value_encrypted:v1:";
+const INDEX_LABEL_CURRENT = "chartwarden:m5:ssn-blind-index:v1:";
+const INDEX_LABEL_LEGACY = "wardenx:m5:ssn-blind-index:v1:";
+// Release 2 (write-side flip): point these two at the CURRENT labels, then backfill (re-seal + re-index every row).
+const AAD_LABEL_WRITE = AAD_LABEL_LEGACY;
+const INDEX_LABEL_WRITE = INDEX_LABEL_LEGACY;
+/** Read order: current first, legacy second. */
+const AAD_LABELS_READ = [AAD_LABEL_CURRENT, AAD_LABEL_LEGACY] as const;
+const INDEX_LABELS_READ = [INDEX_LABEL_CURRENT, INDEX_LABEL_LEGACY] as const;
+
 const aadFor = (
+  label: string,
   organizationId: string,
   identifierId: string,
   kind: SensitiveIdentifierKind,
-): Buffer =>
-  Buffer.from(
-    `wardenx:m5:patient_identifier:value_encrypted:v1:${organizationId}:${identifierId}:${kind}`,
-    "utf8",
-  );
+): Buffer => Buffer.from(`${label}${organizationId}:${identifierId}:${kind}`, "utf8");
 
 async function currentDek(
   keys: IdentifierKeyProvider,
@@ -148,14 +161,14 @@ function assertDek(key: Buffer): void {
   if (key.byteLength !== DEK_BYTES) throw new Error("tenant DEK must be 32 bytes");
 }
 
-function tokenFor(key: Buffer, organizationId: string, ssnDigits: string): Buffer {
+function tokenFor(key: Buffer, organizationId: string, ssnDigits: string, label: string): Buffer {
   assertDek(key);
   const indexKey = Buffer.from(
     hkdfSync(
       "sha256",
       key,
       Buffer.alloc(0),
-      Buffer.from(`wardenx:m5:ssn-blind-index:v1:${organizationId}`, "utf8"),
+      Buffer.from(`${label}${organizationId}`, "utf8"),
       INDEX_KEY_BYTES,
     ),
   );
@@ -212,7 +225,7 @@ export function createPatientIdentifierCipher(
       assertDek(key);
       const nonce = randomBytes(NONCE_BYTES);
       const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_BYTES });
-      cipher.setAAD(aadFor(organizationId, identifierId, kind));
+      cipher.setAAD(aadFor(AAD_LABEL_WRITE, organizationId, identifierId, kind));
       const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       return {
         ciphertext: packEnvelope(version, nonce, cipher.getAuthTag(), ct),
@@ -224,16 +237,21 @@ export function createPatientIdentifierCipher(
       const parsed = parseEnvelope(ciphertext);
       const { key } = await dekAtVersion(keys, organizationId, parsed.version, "open");
       assertDek(key);
-      try {
-        const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
-          authTagLength: TAG_BYTES,
-        });
-        decipher.setAAD(aadFor(organizationId, identifierId, kind));
-        decipher.setAuthTag(parsed.tag);
-        return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
-      } catch {
-        throw new IdentifierCipherIntegrityError();
+      // Try the current label, then the legacy one. A failure under both is the same generic integrity error: it does not
+      // say which label (if any) was close, so the retry adds no oracle.
+      for (const label of AAD_LABELS_READ) {
+        try {
+          const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
+            authTagLength: TAG_BYTES,
+          });
+          decipher.setAAD(aadFor(label, organizationId, identifierId, kind));
+          decipher.setAuthTag(parsed.tag);
+          return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
+        } catch {
+          // authentication failed under this label; try the next
+        }
       }
+      throw new IdentifierCipherIntegrityError();
     },
 
     async blindIndex(organizationId, ssnDigits, dekVersion) {
@@ -241,14 +259,20 @@ export function createPatientIdentifierCipher(
         dekVersion === undefined
           ? await currentDek(keys, organizationId, "index")
           : await dekAtVersion(keys, organizationId, dekVersion, "index");
-      return { token: tokenFor(key, organizationId, ssnDigits), dekVersion: version };
+      return {
+        token: tokenFor(key, organizationId, ssnDigits, INDEX_LABEL_WRITE),
+        dekVersion: version,
+      };
     },
 
     async blindIndexesForVersions(organizationId, ssnDigits, versions) {
-      const tokens = new Map<string, Buffer>();
+      const tokens = new Map<string, readonly Buffer[]>();
       for (const version of new Set(versions)) {
         const { key } = await dekAtVersion(keys, organizationId, version, "index");
-        tokens.set(version, tokenFor(key, organizationId, ssnDigits));
+        tokens.set(
+          version,
+          INDEX_LABELS_READ.map((label) => tokenFor(key, organizationId, ssnDigits, label)),
+        );
       }
       return tokens;
     },

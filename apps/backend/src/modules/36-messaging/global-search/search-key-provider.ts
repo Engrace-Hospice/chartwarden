@@ -9,7 +9,13 @@
 //   * `createUnavailableSearchKeyProvider` always throws (nothing can be indexed or searched); kept for tests/unwired boots.
 //   * `createLegacyTestSearchKeyProvider` derives K_search from the legacy HKDF DEK (label "legacy"). TEST ONLY: under the
 //     legacy scheme there is no tenant key to destroy, which is exactly why the ADR gates production on P1.
-import { type SearchKeyProvider, deriveOrgDek, deriveSearchKey } from "@chartwarden/messaging";
+import {
+  SEARCH_LABELS_READ,
+  type SearchKeyProvider,
+  deriveOrgDek,
+  deriveOrgReadDeks,
+  deriveSearchKey,
+} from "@chartwarden/messaging";
 import type { RingDekCache } from "../body-key-ring";
 
 export const LEGACY_TEST_KEY_VERSION = "legacy";
@@ -37,6 +43,15 @@ export function createLegacyTestSearchKeyProvider(kek: Buffer): SearchKeyProvide
     activeVersion: async () => LEGACY_TEST_KEY_VERSION,
     liveVersions: async () => [LEGACY_TEST_KEY_VERSION],
     tagKey: async (orgId, version) => deriveSearchKey(deriveOrgDek(kek, orgId), orgId, version),
+    // LEGACY(wardenx->chartwarden): both label generations, paired index-wise (current DEK + current search labels, then
+    // legacy + legacy) - the two lists have the same order and length.
+    tagKeysForRead: async (orgId, version) => {
+      const deks = deriveOrgReadDeks(kek, orgId);
+      return SEARCH_LABELS_READ.map((labels, i) => ({
+        labels,
+        key: deriveSearchKey(deks[i] as Buffer, orgId, version, labels),
+      }));
+    },
   };
 }
 
@@ -70,6 +85,15 @@ export function createRingSearchKeyProvider(
         const dek = await cache().byVersion(orgId, version);
         if (dek.version !== version) throw new Error("ring returned a different key version");
         return deriveSearchKey(dek.key, orgId, version);
+      }),
+    tagKeysForRead: (orgId, version) =>
+      guarded(async () => {
+        const dek = await cache().byVersion(orgId, version);
+        if (dek.version !== version) throw new Error("ring returned a different key version");
+        return SEARCH_LABELS_READ.map((labels) => ({
+          labels,
+          key: deriveSearchKey(dek.key, orgId, version, labels),
+        }));
       }),
   };
 }

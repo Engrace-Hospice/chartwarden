@@ -179,8 +179,9 @@ describe("SSN blind index", () => {
     const v2 = await cipher.blindIndex(ORG_A, SSN);
     const map = await cipher.blindIndexesForVersions(ORG_A, SSN, ["1", "2", "2"]);
     expect([...map.keys()].sort()).toEqual(["1", "2"]);
-    expect(map.get("1")?.equals(v1.token)).toBe(true);
-    expect(map.get("2")?.equals(v2.token)).toBe(true);
+    // each version maps to [current-label token, legacy-label token]; the writer (legacy) token is among them
+    expect(map.get("1")?.some((t) => t.equals(v1.token))).toBe(true);
+    expect(map.get("2")?.some((t) => t.equals(v2.token))).toBe(true);
   });
 });
 
