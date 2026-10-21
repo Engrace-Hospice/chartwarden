@@ -122,3 +122,13 @@ export const ALREADY_DONE = "This review was already completed. The list has bee
 export const COMPLETE_FAILED = "The review could not be completed. Try again.";
 export const COMPLETED = "Review completed.";
 export const BACK_LABEL = "Back to the list";
+
+// ── review fixes ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+export const readsTruncatedText = (shown: number, total: number): string =>
+  `Showing the first ${shown} of ${total} reads. The rest are recorded but not listed here.`;
+export const LIMIT_TEXT =
+  "Too many break-glass requests. End access you no longer need, or try again later.";
+export const NOT_NEEDED_TEXT =
+  "You can already open this conversation. Refreshing your conversation list.";
+export const NOT_PERMITTED = "You are not permitted to complete this review.";
+export const PATIENT_LABEL = "Patient";

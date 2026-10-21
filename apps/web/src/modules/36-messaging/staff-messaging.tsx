@@ -529,7 +529,11 @@ function OrganizationStaffMessaging({
                 !channels.some((c) => c.channelId === requestedChannelId) ? (
                 // WP 5.8 (ADR-0087): a requested conversation that is not in the list is "not available", unless the person holds a live
                 // break-glass grant (a read-only view) or may request one. The channel list stays membership-only.
-                <BreakGlassPane key={requestedChannelId} channelId={requestedChannelId} />
+                <BreakGlassPane
+                  key={requestedChannelId}
+                  channelId={requestedChannelId}
+                  onRefreshChannels={() => void loadChannels(true)}
+                />
               ) : (
                 <EmptyState
                   title="Select a conversation"

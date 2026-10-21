@@ -12,8 +12,10 @@ import {
   StatusPill,
   TextAreaField,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
+import { Link } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import * as W from "./break-glass-wording";
 import { useOnlineStatus } from "./offline-banner";
 import {
@@ -84,6 +86,15 @@ function Facts({ review }: { readonly review: BreakGlassReviewDto }): JSX.Elemen
       <span className="wx-break-glass-title">
         {W.holderText(review.granteeName)} · {channelText(review)}
       </span>
+      {review.patientId ? (
+        <span className="wx-break-glass-detail">
+          {W.PATIENT_LABEL}{" "}
+          {/* An id only (never a name or a title); the chart route enforces the reviewer's own patient access. */}
+          <Link className="wx-break-glass-mono" to={`/patients/${review.patientId}`}>
+            {review.patientId}
+          </Link>
+        </span>
+      ) : null}
       <span className="wx-break-glass-detail">
         {W.REASON_LABELS[review.reasonCode]} · {W.readsText(review.readCount)}
       </span>
@@ -157,13 +168,17 @@ function DetailBody({
 }): JSX.Element {
   const actions = useBreakGlassActions();
   const online = useOnlineStatus();
+  const me = useSession()?.userId;
+  // The server stays the authority; this only pre-empts the refusal it would give for the person's own grant.
+  const own = me !== undefined && me === detail.granteeUserId;
+  const statusRef = useRef<HTMLOutputElement>(null);
   const [outcome, setOutcome] = useState<"reviewed" | "concern">("reviewed");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const complete = async (): Promise<void> => {
-    if (busy || !online) return;
+    if (busy || !online || own) return;
     const trimmed = note.trim();
     if (outcome === "concern" && trimmed === "") return setMessage(W.NOTE_REQUIRED);
     if (trimmed.length > BREAK_GLASS_NOTE_MAX) return setMessage(W.NOTE_TOO_LONG);
@@ -176,6 +191,7 @@ function DetailBody({
     setBusy(false);
     if (result.kind === "ok") {
       setMessage(W.COMPLETED);
+      statusRef.current?.focus(); // the form is replaced by the result: keep focus on it
       reload();
     } else if (result.kind === "conflict" && result.code === "BREAK_GLASS_REVIEW_DONE") {
       setMessage(W.ALREADY_DONE);
@@ -183,8 +199,8 @@ function DetailBody({
     } else if (result.kind === "conflict" && result.code === "BREAK_GLASS_STILL_ACTIVE") {
       setMessage(W.STILL_ACTIVE_TEXT);
       reload();
-    } else if (result.kind === "denied" && result.code === 403) {
-      setMessage(W.OWN_GRANT);
+    } else if (result.kind === "denied") {
+      setMessage(result.code === 401 ? W.SIGN_IN : W.NOT_PERMITTED);
     } else if (result.kind === "invalid") {
       setMessage(outcome === "concern" ? W.NOTE_REQUIRED : W.COMPLETE_FAILED);
     } else {
@@ -196,7 +212,8 @@ function DetailBody({
     setBusy(true);
     const result = await actions.end(detail.grantId);
     setBusy(false);
-    if (result.kind === "ok") {
+    // Ended, already ended (409) or gone (404): the access is over either way, so re-read rather than report a failure.
+    if (result.kind === "ok" || result.kind === "not_available" || result.kind === "conflict") {
       setMessage(null);
       reload();
     } else setMessage(W.END_FAILED);
@@ -216,6 +233,11 @@ function DetailBody({
       <h2>{W.JUSTIFICATION_HEADING}</h2>
       <p className="wx-break-glass-text">{detail.justification}</p>
       <h2>{W.READS_HEADING}</h2>
+      {detail.readsTruncated ? (
+        <p className="wx-break-glass-detail" role="note">
+          {W.readsTruncatedText(detail.reads.length, detail.readCount)}
+        </p>
+      ) : null}
       {detail.reads.length === 0 ? (
         <p className="wx-break-glass-detail">{W.READS_NONE}</p>
       ) : (
@@ -236,11 +258,17 @@ function DetailBody({
       ) : (
         <form
           className="wx-break-glass-form"
+          aria-describedby={own ? "wx-break-glass-own" : undefined}
           onSubmit={(e) => {
             e.preventDefault();
             void complete();
           }}
         >
+          {own ? (
+            <p id="wx-break-glass-own" className="wx-break-glass-detail">
+              {W.OWN_GRANT}
+            </p>
+          ) : null}
           {detail.stillActive ? (
             <div className="wx-break-glass-status">
               <p>{W.STILL_ACTIVE_TEXT}</p>
@@ -288,12 +316,12 @@ function DetailBody({
               {W.OFFLINE_TEXT}
             </p>
           ) : null}
-          <Button type="submit" tone="primary" disabled={busy || !online}>
+          <Button type="submit" tone="primary" disabled={busy || !online || own}>
             {W.COMPLETE_LABEL}
           </Button>
         </form>
       )}
-      <output className="wx-break-glass-status" aria-live="polite">
+      <output ref={statusRef} tabIndex={-1} className="wx-break-glass-status" aria-live="polite">
         {message}
       </output>
     </section>
@@ -310,6 +338,17 @@ export function BreakGlassReview(): JSX.Element {
   const [tab, setTab] = useState<ReviewStatusFilter>("pending");
   const [selected, setSelected] = useState<string | null>(null);
   const { view, reload } = useReviews(tab);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const swapped = useRef(false);
+  // Swapping the list for a detail (and back) unmounts what had focus: land on the new pane instead of <body>.
+  useEffect(() => {
+    if (!swapped.current) {
+      swapped.current = true;
+      return;
+    }
+    (selected ? detailRef : panelRef).current?.focus();
+  }, [selected]);
   const overdue = view.status === "ready" ? view.data.filter((r) => r.overdue).length : 0;
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
     const here = TABS.findIndex((t) => t.id === tab);
@@ -340,7 +379,9 @@ export function BreakGlassReview(): JSX.Element {
       </PageHeader>
       <section className="wx-break-glass" aria-label={W.REVIEW_TITLE}>
         {selected ? (
-          <Detail reviewId={selected} onBack={() => setSelected(null)} onChanged={reload} />
+          <div ref={detailRef} tabIndex={-1} className="wx-break-glass-detail-pane">
+            <Detail reviewId={selected} onBack={() => setSelected(null)} onChanged={reload} />
+          </div>
         ) : (
           <>
             <div className="wx-subtabs" role="tablist" aria-label={W.TABS_LABEL}>
@@ -363,6 +404,7 @@ export function BreakGlassReview(): JSX.Element {
             <div
               role="tabpanel"
               id="wx-break-glass-panel"
+              ref={panelRef}
               aria-labelledby={`wx-break-glass-tab-${tab}`}
               // biome-ignore lint/a11y/noNoninteractiveTabindex: WAI-ARIA tabs pattern - a panel with no focusable content must itself be reachable
               tabIndex={0}

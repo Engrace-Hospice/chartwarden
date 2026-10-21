@@ -41,7 +41,7 @@ const grant = (over: Partial<BreakGlassGrantDto> = {}): BreakGlassGrantDto => ({
 const review = (over: Partial<BreakGlassReviewDto> = {}): BreakGlassReviewDto => ({
   reviewId: REVIEW,
   grantId: GRANT,
-  granteeUserId: ME,
+  granteeUserId: "77777777-7777-4777-8777-777777777777",
   granteeName: "Casey Nurse",
   channelId: CHANNEL,
   channelKind: "discipline",
@@ -163,14 +163,18 @@ const fillRequest = async (justification = WHY) => {
 
 describe("Request entry", () => {
   it("is offered only with the invoke key AND the live flag", () => {
-    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />);
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />);
     expect(screen.getByRole("button", { name: "Request break-glass access" })).toBeTruthy();
     cleanup();
-    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />, {}, { flag: false });
+    mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />,
+      {},
+      { flag: false },
+    );
     expect(screen.queryByRole("button", { name: "Request break-glass access" })).toBeNull();
     cleanup();
     mount(
-      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />,
+      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />,
       {},
       { permissions: ["messaging.read"] },
     );
@@ -179,7 +183,9 @@ describe("Request entry", () => {
 
   it("says plainly what the access is, refuses a short justification without a request, and sends the exact body", async () => {
     const onOpened = vi.fn();
-    const { POST } = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={onOpened} />);
+    const { POST } = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={onOpened} onNotNeeded={() => {}} />,
+    );
     const { user, dialog } = await fillRequest("too short");
     expect(dialog.textContent).toContain("reading only");
     expect(dialog.textContent).toContain("Every read is recorded");
@@ -202,7 +208,9 @@ describe("Request entry", () => {
   });
 
   it("a custom duration outside 15 to 1440 minutes is refused before any request", async () => {
-    const { POST } = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />);
+    const { POST } = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />,
+    );
     const { user, dialog } = await fillRequest();
     await user.selectOptions(within(dialog).getByLabelText("Duration"), "custom");
     await user.type(within(dialog).getByLabelText(/Minutes/), "5");
@@ -211,11 +219,15 @@ describe("Request entry", () => {
     expect(POST).not.toHaveBeenCalled();
   });
 
-  it("a refusal never says why; NOT_NEEDED and ALREADY_ACTIVE just open the conversation", async () => {
+  it("a refusal never says why; only ALREADY_ACTIVE counts as opened, NOT_NEEDED refreshes the list and says so", async () => {
     const onOpened = vi.fn();
-    const first = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={onOpened} />, {
-      create: () => fail(404, { error: { code: "NOT_FOUND" } }),
-    });
+    const onNotNeeded = vi.fn();
+    const first = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={onOpened} onNotNeeded={onNotNeeded} />,
+      {
+        create: () => fail(404, { error: { code: "NOT_FOUND" } }),
+      },
+    );
     const a = await fillRequest();
     await a.user.click(within(a.dialog).getByRole("button", { name: "Open access" }));
     expect(
@@ -223,23 +235,65 @@ describe("Request entry", () => {
     ).toBeTruthy();
     expect(a.dialog.textContent).not.toMatch(/Part 2|substance|role|category|consent/i);
     expect(onOpened).not.toHaveBeenCalled();
+    expect(onNotNeeded).not.toHaveBeenCalled();
     first.unmount();
-    for (const code of ["BREAK_GLASS_NOT_NEEDED", "BREAK_GLASS_ALREADY_ACTIVE"]) {
-      const opened = vi.fn();
-      const m = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={opened} />, {
-        create: () => fail(409, { error: { code } }),
-      });
-      const b = await fillRequest();
-      await b.user.click(within(b.dialog).getByRole("button", { name: "Open access" }));
-      await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
-      m.unmount();
-    }
+    const opened = vi.fn();
+    const notNeeded = vi.fn();
+    const m = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={opened} onNotNeeded={notNeeded} />,
+      {
+        create: () => fail(409, { error: { code: "BREAK_GLASS_ALREADY_ACTIVE" } }),
+      },
+    );
+    const b = await fillRequest();
+    await b.user.click(within(b.dialog).getByRole("button", { name: "Open access" }));
+    await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+    expect(notNeeded).not.toHaveBeenCalled();
+    m.unmount();
+    const o2 = vi.fn();
+    const n2 = vi.fn();
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={o2} onNotNeeded={n2} />, {
+      create: () => fail(409, { error: { code: "BREAK_GLASS_NOT_NEEDED" } }),
+    });
+    const c = await fillRequest();
+    await c.user.click(within(c.dialog).getByRole("button", { name: "Open access" }));
+    await waitFor(() => expect(n2).toHaveBeenCalledTimes(1));
+    expect(o2).not.toHaveBeenCalled();
+  });
+
+  it("an unknown 409 is a failure, never an open", async () => {
+    const onOpened = vi.fn();
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={onOpened} onNotNeeded={() => {}} />, {
+      create: () => fail(409, { error: { code: "SOMETHING_ELSE" } }),
+    });
+    const a = await fillRequest();
+    await a.user.click(within(a.dialog).getByRole("button", { name: "Open access" }));
+    expect(await within(a.dialog).findByText(/could not be opened/)).toBeTruthy();
+    expect(onOpened).not.toHaveBeenCalled();
+  });
+
+  it("429 gets a fixed neutral message that names no cap, and sends no one to step-up", async () => {
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />, {
+      create: () => fail(429, { error: { code: "BREAK_GLASS_LIMIT" } }),
+    });
+    const a = await fillRequest();
+    await a.user.click(within(a.dialog).getByRole("button", { name: "Open access" }));
+    const text = await within(a.dialog).findByText(/Too many break-glass requests/);
+    expect(text.textContent).toBe(
+      "Too many break-glass requests. End access you no longer need, or try again later.",
+    );
+    expect(text.textContent).not.toMatch(/\d/);
+    expect(screen.getByTestId("where").textContent).not.toContain("/step-up");
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it("a stale step-up stashes the draft, goes to the step-up page, and coming back reopens the dialog filled", async () => {
-    const first = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />, {
-      create: () => fail(403, { error: { code: "STEP_UP_REQUIRED" } }),
-    });
+    const first = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />,
+      {
+        create: () => fail(403, { error: { code: "STEP_UP_REQUIRED" } }),
+      },
+    );
     const a = await fillRequest();
     await a.user.click(within(a.dialog).getByRole("button", { name: "Open access" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
@@ -250,14 +304,16 @@ describe("Request entry", () => {
     // Back from the step-up page for this path.
     const { markStepUpReturn } = await import("../../shell/step-up-redirect");
     markStepUpReturn("/messaging");
-    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />);
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />);
     const dialog = await screen.findByRole("dialog");
     expect((within(dialog).getByLabelText(/Justification/) as HTMLTextAreaElement).value).toBe(WHY);
   });
 
   it("offline disables the request and says so; nothing is queued", async () => {
     const online = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
-    const { POST } = mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />);
+    const { POST } = mount(
+      <BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />,
+    );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Request break-glass access" }));
     const dialog = await screen.findByRole("dialog");
@@ -271,7 +327,7 @@ describe("Request entry", () => {
   });
 
   it("the dialog is axe clean", async () => {
-    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} />);
+    mount(<BreakGlassRequest channelId={CHANNEL} onOpened={() => {}} onNotNeeded={() => {}} />);
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Request break-glass access" }));
@@ -349,6 +405,97 @@ describe("Read-only conversation under a grant", () => {
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
     expect(await screen.findByText("This conversation is not available.")).toBeTruthy();
     expect(screen.getByText("Break-glass access to this conversation has ended.")).toBeTruthy();
+  });
+
+  it("a skewed clock cannot leave the view dead: past the end it is treated as ended and re-read every 15 s", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // The server keeps answering "active" with the SAME end instant (our clock ran ahead of its).
+    const fixed = grant({ expiresAt: new Date(Date.now() + 5_000).toISOString() });
+    const { GET } = mount(<BreakGlassPane channelId={CHANNEL} />, {
+      mine: () => ok({ grants: [fixed] }),
+    });
+    expect(await screen.findByRole("button", { name: "End now" })).toBeTruthy();
+    const reads = () => GET.mock.calls.filter(([p]) => String(p).endsWith("/mine")).length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    expect(screen.queryByRole("button", { name: "End now" })).toBeNull();
+    expect(screen.getByText("Break-glass access to this conversation has ended.")).toBeTruthy();
+    const afterFirst = reads();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(reads()).toBeGreaterThanOrEqual(afterFirst + 2);
+  });
+
+  it("End now on 409 or 404 means it already ended: it re-reads and reports no failure", async () => {
+    for (const status of [409, 404]) {
+      let live = true;
+      mount(<BreakGlassPane channelId={CHANNEL} />, {
+        mine: () => ok({ grants: live ? [grant()] : [grant({ status: "revoked" })] }),
+        end: () => {
+          live = false;
+          return fail(status, { error: { code: "X" } });
+        },
+      });
+      await userEvent.setup().click(await screen.findByRole("button", { name: "End now" }));
+      expect(await screen.findByText("This conversation is not available.")).toBeTruthy();
+      expect(screen.queryByText("Access could not be ended. Try again.")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("Load earlier messages is guarded: disabled while loading, one request for a double click, no duplicate rows", async () => {
+    let settle: (r: Reply) => void = () => {};
+    let calls = 0;
+    const older = {
+      messages: [
+        MESSAGES.messages[0],
+        {
+          ...MESSAGES.messages[0],
+          messageId: "m0",
+          body: "older text",
+          createdAt: "2026-10-21T08:00:00.000Z",
+        },
+      ],
+    };
+    mount(<BreakGlassPane channelId={CHANNEL} />, {
+      mine: () => ok({ grants: [grant()] }),
+      messages: () => {
+        calls += 1;
+        if (calls === 1) return ok({ ...MESSAGES, nextCursor: "c1" });
+        return new Promise<Reply>((resolve) => {
+          settle = resolve;
+        }) as unknown as Reply;
+      },
+    });
+    await screen.findByText("<script>alert(1)</script> hello");
+    const more = screen.getByRole("button", { name: "Load earlier messages" });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    await waitFor(() => expect(calls).toBe(2));
+    expect(screen.getByRole("button", { name: "Load earlier messages" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await act(async () => settle(ok(older)));
+    expect(await screen.findByText("older text")).toBeTruthy();
+    expect(calls).toBe(2);
+    expect(screen.getAllByText("<script>alert(1)</script> hello")).toHaveLength(1);
+  });
+
+  it("a member who asks (NOT_NEEDED) sees the visible outcome and the channel list is refreshed", async () => {
+    const refresh = vi.fn();
+    mount(<BreakGlassPane channelId={CHANNEL} onRefreshChannels={refresh} />, {
+      create: () => fail(409, { error: { code: "BREAK_GLASS_NOT_NEEDED" } }),
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Request break-glass access" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Justification/), WHY);
+    await user.click(within(dialog).getByRole("button", { name: "Open access" }));
+    expect(await screen.findByText(/You can already open this conversation/)).toBeTruthy();
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("no grant: the same not-available state a stranger sees, with the request entry only when eligible", async () => {
@@ -483,24 +630,35 @@ describe("Compliance review", () => {
     );
   });
 
-  it("own grant (403) says someone else must review; REVIEW_DONE refreshes", async () => {
+  it("the person's own grant disables the form with the reason, before any request; another 403 is a generic refusal; REVIEW_DONE refreshes", async () => {
+    const own = mount(
+      <BreakGlassReview />,
+      { detail: () => ok(detail({ granteeUserId: ME })) },
+      REVIEWER,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Open review" }));
+    expect(
+      await screen.findByText("You held this access, so someone else must review it."),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Complete review" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(own.POST).not.toHaveBeenCalled();
+    cleanup();
     mount(
       <BreakGlassReview />,
       { complete: () => fail(403, { error: { code: "FORBIDDEN" } }) },
       REVIEWER,
     );
-    const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Open review" }));
     await user.click(await screen.findByRole("button", { name: "Complete review" }));
-    expect(
-      await screen.findByText("You held this access, so someone else must review it."),
-    ).toBeTruthy();
+    expect(await screen.findByText("You are not permitted to complete this review.")).toBeTruthy();
     cleanup();
     const { GET } = mount(
       <BreakGlassReview />,
-      {
-        complete: () => fail(409, { error: { code: "BREAK_GLASS_REVIEW_DONE" } }),
-      },
+      { complete: () => fail(409, { error: { code: "BREAK_GLASS_REVIEW_DONE" } }) },
       REVIEWER,
     );
     await user.click(await screen.findByRole("button", { name: "Open review" }));
@@ -509,6 +667,75 @@ describe("Compliance review", () => {
     expect(
       GET.mock.calls.filter(([p]) => String(p).endsWith("/reviews/{id}")).length,
     ).toBeGreaterThan(1);
+  });
+
+  it("a truncated read list says so with the counts; a care-team row shows the patient id, never a title", async () => {
+    mount(
+      <BreakGlassReview />,
+      {
+        reviews: () =>
+          ok({
+            reviews: [
+              review({
+                channelKind: "care_team",
+                channelTitle: null,
+                patientId: "pat-1234",
+                readCount: 600,
+              }),
+            ],
+          }),
+        detail: () =>
+          ok(
+            detail({
+              channelKind: "care_team",
+              channelTitle: null,
+              patientId: "pat-1234",
+              readCount: 600,
+              readsTruncated: true,
+            }),
+          ),
+      },
+      REVIEWER,
+    );
+    const link = await screen.findByRole("link", { name: "pat-1234" });
+    expect(link.getAttribute("href")).toBe("/patients/pat-1234");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open review" }));
+    expect(
+      await screen.findByText(
+        "Showing the first 2 of 600 reads. The rest are recorded but not listed here.",
+      ),
+    ).toBeTruthy();
+    cleanup();
+    mount(<BreakGlassReview />, {}, REVIEWER);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Open review" }));
+    await screen.findByText("<b>Needed</b> to correct a handoff note");
+    expect(screen.queryByText(/Showing the first/)).toBeNull();
+  });
+
+  it("End access now on 409 or 404 means it already ended: it re-reads and reports no failure", async () => {
+    for (const status of [409, 404]) {
+      const { GET } = mount(
+        <BreakGlassReview />,
+        {
+          complete: () => fail(409, { error: { code: "BREAK_GLASS_STILL_ACTIVE" } }),
+          detail: () => ok(detail({ stillActive: true })),
+          end: () => fail(status, { error: { code: "X" } }),
+        },
+        REVIEWER,
+      );
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Open review" }));
+      await user.click(await screen.findByRole("button", { name: "End access now" }));
+      const before = GET.mock.calls.filter(([p]) => String(p).endsWith("/reviews/{id}")).length;
+      await waitFor(() =>
+        expect(
+          GET.mock.calls.filter(([p]) => String(p).endsWith("/reviews/{id}")).length,
+        ).toBeGreaterThan(1),
+      );
+      expect(before).toBeGreaterThan(0);
+      expect(screen.queryByText("Access could not be ended. Try again.")).toBeNull();
+      cleanup();
+    }
   });
 
   it("offline disables completing; a refusal on the list says so", async () => {

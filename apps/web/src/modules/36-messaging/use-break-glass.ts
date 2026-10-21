@@ -24,6 +24,8 @@ export type BreakGlassResult<T> =
   /** 409 with its code (BREAK_GLASS_NOT_NEEDED, _ALREADY_ACTIVE, _STILL_ACTIVE, _REVIEW_DONE). */
   | { readonly kind: "conflict"; readonly code: string | undefined }
   | { readonly kind: "invalid" }
+  /** 429: a cap was reached. The screen says so neutrally and never names the cap. */
+  | { readonly kind: "limit" }
   | { readonly kind: "denied"; readonly code: 401 | 403 }
   | { readonly kind: "failed" };
 
@@ -34,6 +36,7 @@ function classify<T>(reply: Reply<T>): BreakGlassResult<T> {
   if (reply.error !== undefined && isStepUpRequired(reply.error)) {
     return { kind: "step_up", error: reply.error };
   }
+  if (status === 429) return { kind: "limit" };
   if (status === 404) return { kind: "not_available" };
   if (status === 409) return { kind: "conflict", code: errorCode(reply.error) };
   if (status === 401 || status === 403) return { kind: "denied", code: status };

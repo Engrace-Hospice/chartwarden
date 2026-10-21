@@ -4,6 +4,7 @@
 // Part 2 status or a role category. A stale step-up stashes what was typed (the shared sessionStorage stash, scoped to org + user + action + channel,
 // dropped after 15 minutes) and sends the person through the step-up page; the justification is never put in a URL, localStorage or a log.
 import {
+  BREAK_GLASS_ALREADY_ACTIVE_CODE,
   BREAK_GLASS_DEFAULT_MINUTES,
   BREAK_GLASS_FLAG_KEY,
   BREAK_GLASS_INVOKE_STEP_UP_KEY,
@@ -11,6 +12,7 @@ import {
   BREAK_GLASS_JUSTIFICATION_MIN,
   BREAK_GLASS_MAX_MINUTES,
   BREAK_GLASS_MIN_MINUTES,
+  BREAK_GLASS_NOT_NEEDED_CODE,
   BREAK_GLASS_REASON_CODES,
   type BreakGlassReasonCode,
 } from "@chartwarden/types";
@@ -102,12 +104,14 @@ function RequestDialog({
   actions,
   onClose,
   onOpened,
+  onNotNeeded,
 }: {
   readonly channelId: string;
   readonly initial: RequestDraft | null;
   readonly actions: BreakGlassActions;
   readonly onClose: () => void;
   readonly onOpened: () => void;
+  readonly onNotNeeded: () => void;
 }): JSX.Element {
   const owner = useStepUpOwner();
   const key = draftKey(owner, channelId);
@@ -153,12 +157,19 @@ function RequestDialog({
       durationMinutes: minutes,
     });
     inFlight.current = false;
+    const alreadyActive =
+      result.kind === "conflict" && result.code === BREAK_GLASS_ALREADY_ACTIVE_CODE;
+    const notNeeded = result.kind === "conflict" && result.code === BREAK_GLASS_NOT_NEEDED_CODE;
+    // The request is over either way: drop the stashed draft even if the dialog went away mid-request.
+    if (result.kind === "ok" || alreadyActive || notNeeded) clearStepUpDraft(key);
     if (!alive.current) return;
     setBusy(false);
-    if (result.kind === "ok" || (result.kind === "conflict" && result.code !== undefined)) {
-      // NOT_NEEDED (already a member) and ALREADY_ACTIVE both mean "just open it".
-      clearStepUpDraft(key);
-      onOpened();
+    if (result.kind === "ok" || alreadyActive) {
+      onOpened(); // a live grant exists: open it
+      return;
+    }
+    if (notNeeded) {
+      onNotNeeded(); // the person is a member already: refresh the channel list so the conversation opens
       return;
     }
     if (result.kind === "step_up") {
@@ -169,15 +180,17 @@ function RequestDialog({
       return;
     }
     setError(
-      result.kind === "not_available"
-        ? W.NOT_AVAILABLE
-        : result.kind === "invalid"
-          ? W.JUSTIFICATION_INVALID
-          : result.kind === "denied"
-            ? result.code === 401
-              ? W.SIGN_IN
-              : W.DENIED
-            : W.REQUEST_FAILED,
+      result.kind === "limit"
+        ? W.LIMIT_TEXT
+        : result.kind === "not_available"
+          ? W.NOT_AVAILABLE
+          : result.kind === "invalid"
+            ? W.JUSTIFICATION_INVALID
+            : result.kind === "denied"
+              ? result.code === 401
+                ? W.SIGN_IN
+                : W.DENIED
+              : W.REQUEST_FAILED,
     );
   };
 
@@ -270,9 +283,13 @@ function RequestDialog({
 export function BreakGlassRequest({
   channelId,
   onOpened,
+  onNotNeeded,
 }: {
   readonly channelId: string;
+  /** A live grant exists (just opened, or already active): re-read the caller's grants. */
   readonly onOpened: () => void;
+  /** The person can already read the conversation (a member): refresh the channel list so it opens. */
+  readonly onNotNeeded: () => void;
 }): JSX.Element | null {
   const session = useSession();
   const flagOn = useFlag(BREAK_GLASS_FLAG_KEY);
@@ -305,6 +322,11 @@ export function BreakGlassRequest({
             setInitial(null);
             setOpen(false);
             onOpened();
+          }}
+          onNotNeeded={() => {
+            setInitial(null);
+            setOpen(false);
+            onNotNeeded();
           }}
         />
       ) : null}

@@ -37,36 +37,54 @@ const formatTime = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 };
 
-/** Re-renders once a minute (the countdown text only) and fires `onExpired` shortly after the grant's end. */
-function useGrantClock(expiresAt: string, onExpired: () => void): number {
+const REREAD_RETRY_MS = 15_000;
+
+/**
+ * Re-renders once a minute (the countdown text only). Shortly after the grant's end it fires `onExpired`, and keeps firing every 15 s while
+ * mounted: if the re-read still answers "active" (a skewed clock) or fails, the view must not sit dead. `pastEnd` is true from that first
+ * firing, so the view is treated as ended locally until a re-read says otherwise (it unmounts when the grant is no longer active).
+ */
+function useGrantClock(
+  expiresAt: string,
+  onExpired: () => void,
+): { readonly now: number; readonly pastEnd: boolean } {
   const [now, setNow] = useState(() => Date.now());
+  const [pastEnd, setPastEnd] = useState(false);
   const expired = useRef(onExpired);
   expired.current = onExpired;
   useEffect(() => {
+    setPastEnd(false);
+    let retry: number | undefined;
+    const fire = (): void => {
+      setPastEnd(true);
+      expired.current();
+      retry = window.setTimeout(fire, REREAD_RETRY_MS);
+    };
     const tick = window.setInterval(() => setNow(Date.now()), MINUTE_MS);
-    const end = new Date(expiresAt).getTime();
-    const wait = Math.max(0, end - Date.now()) + EXPIRY_SLACK_MS;
-    const stop = window.setTimeout(() => expired.current(), wait);
+    const wait = Math.max(0, new Date(expiresAt).getTime() - Date.now()) + EXPIRY_SLACK_MS;
+    const stop = window.setTimeout(fire, wait);
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(stop);
+      if (retry !== undefined) window.clearTimeout(retry);
     };
   }, [expiresAt]);
-  return now;
+  return { now, pastEnd };
 }
 
 function Banner({
   grant,
+  now,
   onChanged,
 }: {
   readonly grant: BreakGlassGrantDto;
+  readonly now: number;
   readonly onChanged: () => void;
 }): JSX.Element {
   const actions = useBreakGlassActions();
   const online = useOnlineStatus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const now = useGrantClock(grant.expiresAt, onChanged);
   const left = Math.max(0, Math.ceil((new Date(grant.expiresAt).getTime() - now) / MINUTE_MS));
   const endNow = async (): Promise<void> => {
     if (busy || !online) return;
@@ -74,8 +92,10 @@ function Banner({
     setError(null);
     const result = await actions.end(grant.id);
     setBusy(false);
-    if (result.kind === "ok") onChanged();
-    else setError(W.END_FAILED);
+    // Ended, already ended (409) or gone (404): all mean the access is over, so re-read instead of reporting a failure.
+    if (result.kind === "ok" || result.kind === "not_available" || result.kind === "conflict") {
+      onChanged();
+    } else setError(W.END_FAILED);
   };
   return (
     <div className="wx-break-glass-banner">
@@ -112,6 +132,8 @@ function ReadOnlyMessages({
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [failed, setFailed] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loading = useRef(false);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -121,6 +143,9 @@ function ReadOnlyMessages({
   }, []);
   const load = useCallback(
     async (before?: string): Promise<void> => {
+      if (loading.current) return; // one read at a time: a double click must not fetch (and append) the same page twice
+      loading.current = true;
+      if (before) setLoadingOlder(true);
       try {
         const { data, response } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
           params: {
@@ -142,10 +167,17 @@ function ReadOnlyMessages({
         }
         setFailed(false);
         const page = data.messages as unknown as Message[];
-        setMessages((current) => (before && current ? [...page, ...current] : page));
+        setMessages((current) => {
+          if (!(before && current)) return page;
+          const have = new Set(current.map((m) => m.messageId));
+          return [...page.filter((m) => !have.has(m.messageId)), ...current];
+        });
         setCursor(data.nextCursor ?? undefined);
       } catch {
         if (alive.current) setFailed(true);
+      } finally {
+        loading.current = false;
+        if (alive.current) setLoadingOlder(false);
       }
     },
     [client, channelId, onEnded],
@@ -168,7 +200,13 @@ function ReadOnlyMessages({
   return (
     <>
       {cursor ? (
-        <Button type="button" tone="secondary" size="sm" onClick={() => void load(cursor)}>
+        <Button
+          type="button"
+          tone="secondary"
+          size="sm"
+          disabled={loadingOlder}
+          onClick={() => void load(cursor)}
+        >
           {W.LOAD_OLDER}
         </Button>
       ) : null}
@@ -198,12 +236,15 @@ function ReadOnlyConversation({
   readonly grant: BreakGlassGrantDto;
   readonly onChanged: () => void;
 }): JSX.Element {
+  const { now, pastEnd } = useGrantClock(grant.expiresAt, onChanged);
+  // Past the server's own end instant the view is over, whatever a re-read says until it catches up (fail closed on a skewed clock).
+  if (pastEnd) return <p className="wx-break-glass-detail">{W.EXPIRED_NOTICE}</p>;
   return (
     <section
       className="wx-break-glass-conversation"
       aria-label={channelKindLabel(grant.channelKind as never)}
     >
-      <Banner grant={grant} onChanged={onChanged} />
+      <Banner grant={grant} now={now} onChanged={onChanged} />
       <p className="wx-break-glass-detail">{W.READ_ONLY_NOTICE}</p>
       <ReadOnlyMessages channelId={grant.channelId} onEnded={onChanged} />
     </section>
@@ -211,24 +252,45 @@ function ReadOnlyConversation({
 }
 
 /** Shown in place of the conversation pane for a requested channel that is not in the person's list. */
-export function BreakGlassPane({ channelId }: { readonly channelId: string }): JSX.Element {
+export function BreakGlassPane({
+  channelId,
+  onRefreshChannels,
+}: {
+  readonly channelId: string;
+  /** The person turned out to be a member: re-read the channel list so the conversation opens. */
+  readonly onRefreshChannels?: () => void;
+}): JSX.Element {
   const { view, reload } = useMyGrants();
   const hadGrant = useRef(false);
+  const [member, setMember] = useState(false);
   const active =
     view.status === "ready"
       ? view.data.find((g) => g.channelId === channelId && g.status === "active")
       : undefined;
   if (active) hadGrant.current = true;
-  if (active) return <ReadOnlyConversation key={active.id} grant={active} onChanged={reload} />;
+  const note = member ? W.NOT_NEEDED_TEXT : hadGrant.current && !active ? W.EXPIRED_NOTICE : "";
   return (
     <div className="wx-break-glass-unavailable">
-      <EmptyState
-        title="This conversation is not available."
-        description="Choose another conversation from the inbox."
-      />
-      {/* A grant that was live a moment ago: announce politely that it ended. */}
-      <output className="wx-break-glass-detail">{hadGrant.current ? W.EXPIRED_NOTICE : ""}</output>
-      <BreakGlassRequest channelId={channelId} onOpened={reload} />
+      {/* One persistent live region, mounted before any text lands in it, so the polite announcement is actually spoken. */}
+      <output className="wx-break-glass-detail">{note}</output>
+      {active ? (
+        <ReadOnlyConversation key={active.id} grant={active} onChanged={reload} />
+      ) : (
+        <>
+          <EmptyState
+            title="This conversation is not available."
+            description="Choose another conversation from the inbox."
+          />
+          <BreakGlassRequest
+            channelId={channelId}
+            onOpened={reload}
+            onNotNeeded={() => {
+              setMember(true);
+              onRefreshChannels?.();
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
