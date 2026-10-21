@@ -56,7 +56,9 @@ const SAFETY_TTL_SEC = 24 * 60 * 60; // 24h
 /** Grace window added past a visit's own `scheduledEndedAt`, for a visit that runs long. */
 const GRACE_MS = 2 * 60 * 60 * 1000; // 2h
 
-/** Release A: write/delete BOTH hashes, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+/** Release B: write/delete BOTH hashes (dual-write kept for rollback); READ the UNION of both (new field wins). Entries
+ *  written before release A exist only in `legacyKey`, and the new hash is not a superset of legacy (A copied only the
+ *  visit being written), so a new-only read would drop a still-valid shift assignment (an authorization input). */
 export function cacheKeys(
   organizationId: string,
   userId: string,
@@ -116,7 +118,9 @@ async function readUnexpiredEntries(
 ): Promise<readonly ShiftEntry[]> {
   let raw: Record<string, string>;
   try {
-    raw = await redis.hgetall(cacheKeys(organizationId, userId).legacyKey);
+    const { legacyKey, newKey } = cacheKeys(organizationId, userId);
+    const [legacyRaw, newRaw] = await Promise.all([redis.hgetall(legacyKey), redis.hgetall(newKey)]);
+    raw = { ...legacyRaw, ...newRaw };
   } catch {
     return []; // Redis unavailable — degrade to "no shift contribution" (see file header)
   }

@@ -1,4 +1,4 @@
-// wardenx -> chartwarden Valkey rename, release A: the lockout counter spans both prefixes; challenges use the new prefix only.
+// wardenx -> chartwarden Valkey rename, release B (source unchanged; the counter already reads the max of both): the lockout counter spans both prefixes; challenges use the new prefix only.
 import type Redis from "ioredis";
 import { describe, expect, it } from "vitest";
 import { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
@@ -59,5 +59,25 @@ describe("step-up lockout across prefixes", () => {
     const store = createValkeyStepUpChallengeStore(f.redis);
     await store.put("c1", { a: 1 } as never, 30);
     expect([...f.strings.keys()]).toEqual(["chartwarden:m2:step-up:challenge:c1"]);
+  });
+
+  it("reads a new-only counter, a legacy-only counter, and 0 on a miss", async () => {
+    const f = fakeRedis();
+    const store = createValkeyStepUpChallengeStore(f.redis);
+    expect(await store.recentFailureCount("s3")).toBe(0);
+    await f.redis.set("chartwarden:m2:step-up:failures:s3", "4");
+    expect(await store.recentFailureCount("s3")).toBe(4);
+    await f.redis.set("wardenx:m2:step-up:failures:s4", "5");
+    expect(await store.recentFailureCount("s4")).toBe(5);
+  });
+
+  it("does not double count: both present reads the max, one failure adds exactly 1", async () => {
+    const f = fakeRedis();
+    const store = createValkeyStepUpChallengeStore(f.redis);
+    await f.redis.set("wardenx:m2:step-up:failures:s5", "3");
+    await f.redis.set("chartwarden:m2:step-up:failures:s5", "3");
+    expect(await store.recentFailureCount("s5")).toBe(3);
+    await store.recordFailure("s5");
+    expect(await store.recentFailureCount("s5")).toBe(4);
   });
 });

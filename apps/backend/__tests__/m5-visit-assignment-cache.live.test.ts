@@ -337,6 +337,49 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(await redis.hget(renamed, visitId)).toBeNull();
     });
 
+    it("release B reads the union of both hashes: a legacy-only (pre-A) visit stays visible next to a post-A visit", async () => {
+      const preA = "aaaaaaaa-5000-4000-8000-0000000000e1";
+      const preAPatient = "aaaaaaaa-5000-4000-8000-0000000000e2";
+      const postA = "aaaaaaaa-5000-4000-8000-0000000000e3";
+      const postAPatient = "aaaaaaaa-5000-4000-8000-0000000000e4";
+      const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
+      const renamed = `chartwarden:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
+      const future = new Date(Date.now() + 3_600_000).toISOString();
+      await redis.hset(
+        legacy,
+        preA,
+        JSON.stringify({ patientId: preAPatient, expiresAt: future }),
+      );
+      await writeShiftAssignment(
+        redis,
+        ORG_A,
+        userClinicianA,
+        postA,
+        postAPatient,
+        future,
+      );
+      expect(await redis.hget(renamed, preA)).toBeNull(); // new hash is NOT a superset of legacy
+
+      const ids = await readShiftAssignedPatientIds(
+        redis,
+        ORG_A,
+        userClinicianA,
+      );
+      expect(ids).toContain(preAPatient);
+      expect(ids).toContain(postAPatient);
+
+      // An unassign removes from both, so neither source resurrects it.
+      await removeShiftAssignment(redis, ORG_A, userClinicianA, preA);
+      await removeShiftAssignment(redis, ORG_A, userClinicianA, postA);
+      const after = await readShiftAssignedPatientIds(
+        redis,
+        ORG_A,
+        userClinicianA,
+      );
+      expect(after).not.toContain(preAPatient);
+      expect(after).not.toContain(postAPatient);
+    });
+
     it("a malformed cache entry is skipped rather than thrown on the ABAC hot read path", async () => {
       const key = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
       await redis.hset(key, "not-json-visit", "{this is not json");
