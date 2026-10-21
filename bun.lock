@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "wardenx",
+      "name": "chartwarden",
       "dependencies": {
         "@better-auth/passkey": "^1.6.25",
         "@sinclair/typebox": "^0.34.52",

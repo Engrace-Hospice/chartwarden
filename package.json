@@ -1,5 +1,5 @@
 {
-  "name": "wardenx",
+  "name": "chartwarden",
   "private": true,
   "type": "module",
   "description": "ChartWarden - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",

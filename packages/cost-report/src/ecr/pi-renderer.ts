@@ -97,7 +97,7 @@ export function renderPi(
 
   const text = lines.join("\n");
   if (options?.format === "html") {
-    return `<pre class="wardenx-cost-report-pi">\n${escapeHtml(text)}\n</pre>\n`;
+    return `<pre class="chartwarden-cost-report-pi">\n${escapeHtml(text)}\n</pre>\n`;
   }
   return text;
 }

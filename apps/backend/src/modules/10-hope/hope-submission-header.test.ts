@@ -10,7 +10,7 @@ import {
 const VENDOR_ENV = {
   CHARTWARDEN_SOFTWARE_VENDOR_ID: "12-3456789",
   CHARTWARDEN_SOFTWARE_VENDOR_NAME: "ChartWarden Inc",
-  CHARTWARDEN_SOFTWARE_VENDOR_EMAIL: "hope@wardenx.example",
+  CHARTWARDEN_SOFTWARE_VENDOR_EMAIL: "hope@chartwarden.example",
   APP_VERSION: "2026.9.26",
 };
 
@@ -51,7 +51,7 @@ describe("HOPE software vendor configuration", () => {
     expect(readHopeSoftwareVendor(VENDOR_ENV)).toEqual({
       vendorId: "123456789",
       vendorName: "ChartWarden Inc",
-      vendorEmail: "hope@wardenx.example",
+      vendorEmail: "hope@chartwarden.example",
       productName: "ChartWarden",
       productVersion: "2026.9.26",
     });
@@ -137,7 +137,7 @@ describe("HOPE submission header — control item values", () => {
       STATE_CD: "OR",
       FAC_ID: "123456",
       SFTWR_VNDR_ID: "123456789",
-      SFTWR_VNDR_EMAIL_ADR: "hope@wardenx.example",
+      SFTWR_VNDR_EMAIL_ADR: "hope@chartwarden.example",
       SFTWR_PROD_NAME: "ChartWarden",
       SFTWR_PROD_VRSN_CD: "2026.9.26",
       SFTWR_VNDR_NAME: "ChartWarden Inc",
