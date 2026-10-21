@@ -264,7 +264,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "CoP 418.102 hospice medical director.",
     floor: SYSTEM_LOCKED_FLOORS.medical_director,
     // WP 4.1 (ADR-0068): a physician may raise and receive an urgent clinical message, as migration 1105 grants.
-    grants: ["messaging.urgent.send", "messaging.urgent.receive"],
+    // WP 5.8 (ADR-0087): a physician may open a break-glass read grant, as migration 1140 grants.
+    grants: ["messaging.urgent.send", "messaging.urgent.receive", "messaging.break_glass.invoke"],
   },
   {
     key: "director_of_nursing",
@@ -277,7 +278,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     floor: SYSTEM_LOCKED_FLOORS.director_of_nursing,
     // The lifecycle review queue is a supervisory decision (ADR-0065 D6); no template grants it to the org-wide admins.
     // WP 4.1 (ADR-0068): the supervisory nurse may raise and receive an urgent clinical message, as migration 1105 grants.
-    grants: ["messaging.review", "messaging.urgent.send", "messaging.urgent.receive"],
+    // WP 5.8 (ADR-0087): the supervisory nurse may open a break-glass read grant, as migration 1140 grants.
+    grants: [
+      "messaging.review",
+      "messaging.urgent.send",
+      "messaging.urgent.receive",
+      "messaging.break_glass.invoke",
+    ],
   },
   {
     key: "administrator",
@@ -327,6 +334,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // WP 5.6 (ADR-0086): migration 1138 grants this to EXISTING compliance_officer roles; this entry gives NEW tenants the same
       // (administrator / org_admin get it through the non-platform catalog, the mirror in permissions/contributed.ts).
       "messaging.retention.manage",
+      // WP 5.8 (ADR-0087): the compliance officer completes the post-review of a break-glass grant (migration 1140 covers existing roles).
+      "messaging.break_glass.review",
     ],
   },
   {

@@ -82,8 +82,11 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
 // against a compromised application role: row visibility still keys only on app.org_id. Permitted only in a SQL statement whose
 // HEAD is `CREATE [OR REPLACE] FUNCTION` of one of those two functions (a name in a comment or a body elsewhere does not count),
 // and never inside a policy.
+// WP 5.8 (ADR-0087): the break-glass READ-trail insert guard is the same kind of backstop: a read row is recorded only against a live grant
+// whose grantee is the session's own `app.user_id`, so nobody can log reads against someone else's grant. Same rule: that one function head,
+// never a policy; row visibility still keys only on app.org_id.
 const ACK_ACTOR_GUARD_HEAD =
-  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard)\s*\(/i;
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard|message_break_glass_read_guard)\s*\(/i;
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);

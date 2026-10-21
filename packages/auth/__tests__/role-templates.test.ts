@@ -157,6 +157,24 @@ describe("M3-T02 floor enforcement helpers (§2.4)", () => {
   });
 });
 
+describe("WP 5.8 (ADR-0087) break-glass keys reach NEW tenants' roles (migration 1140 only covers existing ones)", () => {
+  const grantsOf = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)?.grants ?? [];
+
+  it("the compliance officer reviews; the physician and the supervisory nurse invoke", () => {
+    expect(grantsOf("compliance_officer")).toContain("messaging.break_glass.review");
+    expect(grantsOf("medical_director")).toContain("messaging.break_glass.invoke");
+    expect(grantsOf("director_of_nursing")).toContain("messaging.break_glass.invoke");
+  });
+
+  it("no template grants both: the person who invokes is not the one who reviews by default", () => {
+    for (const t of ROLE_TEMPLATES) {
+      const g = t.grants ?? [];
+      const both = g.includes("messaging.break_glass.invoke") && g.includes("messaging.break_glass.review");
+      expect(both, t.key).toBe(false);
+    }
+  });
+});
+
 describe("WP 5.6 (ADR-0086) messaging.retention.manage reaches NEW tenants' compliance officer", () => {
   it("the compliance_officer template grants it by default (migration 1138 only covers existing roles)", () => {
     const template = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer");

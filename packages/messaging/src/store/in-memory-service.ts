@@ -1172,6 +1172,11 @@ export function createInMemoryMessagingService(
       return true;
     },
 
+    // ADR-0087: the in-memory slice has no break-glass grants, so read visibility is exactly membership.
+    async canReadChannel(orgId, userId, channelId) {
+      return this.canViewChannel(orgId, userId, channelId);
+    },
+
     async getPreferences(orgId, userId) {
       const key = `${orgId}:${userId}`;
       let row = preferences.get(key);

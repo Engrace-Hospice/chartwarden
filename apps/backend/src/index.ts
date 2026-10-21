@@ -67,9 +67,9 @@ import {
 } from "@chartwarden/tenancy";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
+  ChartWardenError,
   DegradedError,
   type Npi,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type {
   AdmissionStatusReader,
@@ -1484,6 +1484,7 @@ import {
   buildTaskDeps,
   buildUrgentDeps,
   createAttachmentService,
+  createBreakGlassReviewSweep,
   createBullmqTimerPort,
   createDbAckQueueStatsReader,
   createDbMessagingProvider,
@@ -1504,6 +1505,7 @@ import {
   mountMessagingWebhookRoutes,
   registerM36AckEscalationWorkers,
   registerM36AttachmentScanWorker,
+  registerM36BreakGlassReviewWorker,
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
@@ -1513,6 +1515,7 @@ import {
   registerMessagingSeams,
   scheduleM36AckEscalationJobs,
   scheduleM36AttachmentScanJobs,
+  scheduleM36BreakGlassReviewJobs,
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
@@ -1541,6 +1544,7 @@ import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-co
 import { buildM36AckUnreachableNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-unreachable-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
+import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
@@ -4946,6 +4950,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
+            // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
+            breakGlass: {
+              flags: featureFlagReader,
+              holdsInvoke: async (organizationId, userId) =>
+                (await resolveActorPermissions({ organizationId, userId })).has(
+                  "messaging.break_glass.invoke",
+                ),
+            },
             // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
             // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
             sessionDevices: {
@@ -9137,6 +9149,48 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     }
 
+    // ── M36 WP 5.8 (ADR-0087, PROPOSED) — `messaging.break_glass_review_sweep` (hourly): a break-glass review still open three days after its
+    // grant ended raises one overdue alert to the review-permission holders (idempotent on the review id). Active-org fan-out needs the
+    // platform pool. Runs for flag-off tenants too: accountability for a grant that exists must not stall on a flag.
+    if (platformDbHandle) {
+      const m36BreakGlassReviewSweep = createBreakGlassReviewSweep({
+        db: dbHandle.db,
+        alerts: getSeam("AlertEmitter") as AlertEmitter,
+      });
+      const m36BreakGlassReviewWorkers = registerM36BreakGlassReviewWorker({
+        connection: queueConnection,
+        overdueForOrg: m36BreakGlassReviewSweep.overdueForOrg,
+        activeOrgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+          reason: "M36 WP 5.8 break_glass_review_sweep active-org fan-out",
+        }),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 break-glass review sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36BreakGlassReviewWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36BreakGlassReviewWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36BreakGlassReviewQueues = await scheduleM36BreakGlassReviewJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36BreakGlassReviewQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 break-glass review sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 break-glass review sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; overdue reviews raise no alert",
+      );
+    }
+
     // ── M36 WP 4.10 — `messaging.reminder_sweep` (every minute): raises the alert of each reminder that came due and deletes the row.
     // A tenant with `messaging.notification_policy` off is skipped (its reminders wait). Active-org fan-out needs the platform pool.
     if (platformDbHandle && m36SnoozeReminders) {
@@ -10388,6 +10442,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
           }),
           buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // WP 5.8 (ADR-0087, PROPOSED) - one fixed-text in-app alert for the compliance reviewers when a break-glass grant is opened.
+          buildM36BreakGlassNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
           buildM36MessageMentionConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),

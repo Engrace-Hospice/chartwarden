@@ -1,0 +1,171 @@
+/* M36 WP 5.8 - break-glass: flat rows and a persistent banner on the shared kit's tokens (no card grid, no shadows). State is a word, never colour alone. */
+.wx-break-glass {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-break-glass-panel,
+.wx-break-glass-detail-pane,
+.wx-break-glass-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-break-glass-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-break-glass-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 1rem;
+  align-items: start;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-break-glass-row:last-child {
+  border-bottom: 0;
+}
+
+.wx-break-glass-main,
+.wx-break-glass-meta {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wx-break-glass-meta {
+  justify-items: end;
+}
+
+.wx-break-glass-title {
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-break-glass-detail {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-break-glass-text {
+  margin: 0;
+  color: var(--color-on-surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-break-glass-reads {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-break-glass-outcome {
+  display: grid;
+  gap: 0.25rem;
+  border: 0;
+  padding: 0;
+}
+
+.wx-break-glass-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 0.875rem;
+}
+
+.wx-break-glass-status {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.wx-break-glass-dialog {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-break-glass-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* The persistent banner over a break-glass conversation: not dismissible, so it is part of the page flow, never an overlay. */
+.wx-break-glass-conversation {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem var(--space-4);
+  align-content: start;
+}
+
+.wx-break-glass-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-card-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-break-glass-banner-text {
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.wx-break-glass-countdown {
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-break-glass-messages {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-break-glass-message {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-card-border);
+  overflow-wrap: anywhere;
+}
+
+.wx-break-glass-message p {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}
+
+.wx-break-glass-author {
+  font-weight: 600;
+}
+
+.wx-break-glass-unavailable {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+}
+
+.wx-break-glass-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}

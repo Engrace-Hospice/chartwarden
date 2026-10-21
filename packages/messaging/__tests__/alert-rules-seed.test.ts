@@ -165,6 +165,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "external_feed.listener_recovered",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
+      // WP 5.8 (ADR-0087) — M36's own break-glass grant, to the review-permission holders (locked, tighten-only).
+      "m36.break_glass.granted",
+      "m36.break_glass.review_overdue",
       // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
       "m11.order.verbal_expiring_soon",
       "m11.order.results_overdue",
@@ -330,6 +333,8 @@ describe("M36-T05 §7.4 system_locked floors", () => {
         "m19.oncall.coverage_gap_detected",
         "m20.safety.coverage_gap_detected",
         "m3.breakglass.invoked",
+        "m36.break_glass.granted",
+        "m36.break_glass.review_overdue",
         "m37.shift.rn_uncovered",
         "noe.late_risk",
         "system.backup_failure",
