@@ -114,6 +114,8 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
     async function cacheEntry(patientId: string): Promise<Record<string, unknown[]> | null> {
       const raw = await redis.get(`wardenx:m14:idg:since-last-idg:${patientId}`);
+      // Release A dual-write: the chartwarden: copy must always equal the legacy key (both present or both absent).
+      expect(await redis.get(`chartwarden:m14:idg:since-last-idg:${patientId}`)).toBe(raw);
       return raw ? JSON.parse(raw) : null;
     }
 
@@ -214,9 +216,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      await redis
-        .keys("wardenx:m14:idg:since-last-idg:*")
-        .then((keys) => (keys.length ? redis.del(...keys) : undefined));
+      for (const pattern of ["wardenx:m14:idg:since-last-idg:*", "chartwarden:m14:idg:since-last-idg:*"]) {
+        await redis.keys(pattern).then((keys) => (keys.length ? redis.del(...keys) : undefined));
+      }
 
       recordedConsumer = buildM14AssessmentRecordedConsumer({ redis });
       significantChangeConsumer = buildM14AssessmentSignificantChangeConsumer({ redis });
@@ -347,6 +349,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const ttl = await redis.ttl(`wardenx:m14:idg:since-last-idg:${patientId}`);
         expect(ttl).toBeGreaterThan(SINCE_LAST_IDG_TTL_SEC - 60);
         expect(ttl).toBeLessThanOrEqual(SINCE_LAST_IDG_TTL_SEC);
+        const newTtl = await redis.ttl(`chartwarden:m14:idg:since-last-idg:${patientId}`);
+        expect(newTtl).toBeGreaterThan(SINCE_LAST_IDG_TTL_SEC - 60);
+        expect(newTtl).toBeLessThanOrEqual(SINCE_LAST_IDG_TTL_SEC);
       });
     });
 

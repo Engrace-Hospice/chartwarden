@@ -33,6 +33,8 @@ import {
 import {
   createCaseloadStoreWithShiftCache,
   readShiftAssignedPatientIds,
+  removeShiftAssignment,
+  writeShiftAssignment,
 } from "../src/modules/05-patient/seams/shift-caseload-cache";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -143,8 +145,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      const staleKeys = await redis.keys("wardenx:m5:caseload-cache:*");
-      if (staleKeys.length) await redis.del(...staleKeys);
+      for (const pattern of ["wardenx:m5:caseload-cache:*", "chartwarden:m5:caseload-cache:*"]) {
+        const staleKeys = await redis.keys(pattern);
+        if (staleKeys.length) await redis.del(...staleKeys);
+      }
 
       const membershipUserId = (organizationId: string, membershipId: string) =>
         membershipUserIdForOrg(handle.db, organizationId, membershipId);
@@ -308,6 +312,29 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(await readShiftAssignedPatientIds(redis, ORG_B, userClinicianA)).not.toContain(
         patientId,
       );
+    });
+
+    it("release A dual-writes both caseload hashes (same TTL) and removes the visit from both", async () => {
+      const visitId = "aaaaaaaa-5000-4000-8000-0000000000d1";
+      const patientId = "aaaaaaaa-5000-4000-8000-0000000000d2";
+      const legacy = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
+      const renamed = `chartwarden:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
+      await writeShiftAssignment(
+        redis,
+        ORG_A,
+        userClinicianA,
+        visitId,
+        patientId,
+        new Date(Date.now() + 3_600_000).toISOString(),
+      );
+      expect(await redis.hget(renamed, visitId)).toBe(await redis.hget(legacy, visitId));
+      expect(await redis.hget(legacy, visitId)).not.toBeNull();
+      for (const key of [legacy, renamed]) {
+        expect(await redis.ttl(key)).toBeGreaterThan(86_400 - 60);
+      }
+      await removeShiftAssignment(redis, ORG_A, userClinicianA, visitId);
+      expect(await redis.hget(legacy, visitId)).toBeNull();
+      expect(await redis.hget(renamed, visitId)).toBeNull();
     });
 
     it("a malformed cache entry is skipped rather than thrown on the ABAC hot read path", async () => {

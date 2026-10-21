@@ -1,12 +1,19 @@
 import type Redis from "ioredis";
 import type { StepUpChallenge, StepUpChallengeStore } from "./step-up-ports";
 
-const PREFIX = "wardenx:m2:step-up";
+const PREFIX = "chartwarden:m2:step-up";
+// LEGACY(wardenx->chartwarden): remove after 60 s (LOCKOUT_WINDOW_SEC) post release B. Challenges switch outright (an in-flight
+// one simply expires); the lockout counter is incremented in BOTH prefixes and read as the max of the two, so an old pod's
+// failures and a new pod's failures are both seen by either (never an extra attempt window across the deploy).
+const LEGACY_PREFIX = "wardenx:m2:step-up";
 const LOCKOUT_WINDOW_SEC = 60;
 
 export function createValkeyStepUpChallengeStore(redis: Redis): StepUpChallengeStore {
   const challengeKey = (id: string) => `${PREFIX}:challenge:${id}`;
-  const failureKey = (sessionId: string) => `${PREFIX}:failures:${sessionId}`;
+  const failureKeys = (sessionId: string) => ({
+    legacyKey: `${LEGACY_PREFIX}:failures:${sessionId}`,
+    newKey: `${PREFIX}:failures:${sessionId}`,
+  });
 
   return {
     async put(challengeId, challenge, ttlSec) {
@@ -30,21 +37,21 @@ export function createValkeyStepUpChallengeStore(redis: Redis): StepUpChallengeS
     },
 
     async recordFailure(sessionId) {
-      const key = failureKey(sessionId);
-      const count = await redis.incr(key);
-
-      if (count === 1) {
-        await redis.expire(key, LOCKOUT_WINDOW_SEC);
+      const { legacyKey, newKey } = failureKeys(sessionId);
+      for (const key of [legacyKey, newKey]) {
+        if ((await redis.incr(key)) === 1) await redis.expire(key, LOCKOUT_WINDOW_SEC);
       }
     },
 
     async recentFailureCount(sessionId) {
-      const value = await redis.get(failureKey(sessionId));
-      return value ? Number(value) : 0;
+      const { legacyKey, newKey } = failureKeys(sessionId);
+      const [legacy, current] = await Promise.all([redis.get(legacyKey), redis.get(newKey)]);
+      return Math.max(Number(legacy ?? 0), Number(current ?? 0));
     },
 
     async clearFailures(sessionId) {
-      await redis.del(failureKey(sessionId));
+      const { legacyKey, newKey } = failureKeys(sessionId);
+      await redis.del(legacyKey, newKey);
     },
   };
 }

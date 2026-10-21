@@ -47,15 +47,24 @@
 import type Redis from "ioredis";
 import type { CaseloadStore } from "./caseload-provider";
 
-const KEY_PREFIX = "wardenx:m5:caseload-cache";
+// LEGACY(wardenx->chartwarden): remove after 1 day (SAFETY_TTL_SEC, 24 h) post release B.
+const LEGACY_KEY_PREFIX = "wardenx:m5:caseload-cache";
+const NEW_KEY_PREFIX = "chartwarden:m5:caseload-cache";
 /** Whole-key safety-net TTL, refreshed on every write — bounds memory even if an `.unassigned` delivery
  *  is lost. Per-entry expiry (below) is what actually governs correctness. */
 const SAFETY_TTL_SEC = 24 * 60 * 60; // 24h
 /** Grace window added past a visit's own `scheduledEndedAt`, for a visit that runs long. */
 const GRACE_MS = 2 * 60 * 60 * 1000; // 2h
 
-function cacheKey(organizationId: string, userId: string): string {
-  return `${KEY_PREFIX}:${organizationId}:${userId}`;
+/** Release A: write/delete BOTH hashes, read `legacyKey`. Release B flips the read to `newKey` (with legacy fallback). */
+export function cacheKeys(
+  organizationId: string,
+  userId: string,
+): { legacyKey: string; newKey: string } {
+  return {
+    legacyKey: `${LEGACY_KEY_PREFIX}:${organizationId}:${userId}`,
+    newKey: `${NEW_KEY_PREFIX}:${organizationId}:${userId}`,
+  };
 }
 
 interface ShiftEntry {
@@ -79,9 +88,12 @@ export async function writeShiftAssignment(
     (Number.isFinite(parsedEndMs) ? parsedEndMs : Date.now()) + GRACE_MS,
   ).toISOString();
   const entry: ShiftEntry = { patientId, expiresAt };
-  const key = cacheKey(organizationId, userId);
-  await redis.hset(key, visitId, JSON.stringify(entry));
-  await redis.expire(key, SAFETY_TTL_SEC);
+  const { legacyKey, newKey } = cacheKeys(organizationId, userId);
+  const serialised = JSON.stringify(entry);
+  for (const key of [legacyKey, newKey]) {
+    await redis.hset(key, visitId, serialised);
+    await redis.expire(key, SAFETY_TTL_SEC);
+  }
 }
 
 /** Remove one visit's shift-assignment entry (`m17.visit.unassigned`). A visit id absent from the hash —
@@ -92,7 +104,9 @@ export async function removeShiftAssignment(
   userId: string,
   visitId: string,
 ): Promise<void> {
-  await redis.hdel(cacheKey(organizationId, userId), visitId);
+  const { legacyKey, newKey } = cacheKeys(organizationId, userId);
+  await redis.hdel(legacyKey, visitId);
+  await redis.hdel(newKey, visitId);
 }
 
 async function readUnexpiredEntries(
@@ -102,7 +116,7 @@ async function readUnexpiredEntries(
 ): Promise<readonly ShiftEntry[]> {
   let raw: Record<string, string>;
   try {
-    raw = await redis.hgetall(cacheKey(organizationId, userId));
+    raw = await redis.hgetall(cacheKeys(organizationId, userId).legacyKey);
   } catch {
     return []; // Redis unavailable — degrade to "no shift contribution" (see file header)
   }
