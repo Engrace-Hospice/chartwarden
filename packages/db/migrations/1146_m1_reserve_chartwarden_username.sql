@@ -11,6 +11,12 @@
 -- is the unblocking write; afterwards run `ALTER TABLE "user" VALIDATE CONSTRAINT user_username_not_reserved`
 -- (or re-run this file, which is idempotent in effect). The DROP + ADD run in one transaction, so there is no
 -- window without the guard.
+--
+-- Locking: the runner wraps the whole file in one transaction, so the DROP's ACCESS EXCLUSIVE lock on "user" is held
+-- through the VALIDATE scan (NOT VALID only spares the ADD, not the validation). That is one scan of a small table;
+-- the risk is waiting behind a long-lived session, so the file fails fast instead of queueing every login behind the DROP.
+
+SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 
 ALTER TABLE "user" DROP CONSTRAINT "user_username_not_reserved";--> statement-breakpoint
 ALTER TABLE "user" ADD CONSTRAINT "user_username_not_reserved"
