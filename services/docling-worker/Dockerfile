@@ -18,7 +18,7 @@ COPY pyproject.toml ./
 # tools present in the runtime image above Trivy's fixed versions.
 # pillow 13 is forced with --no-deps: docling-core / docling-ibm-models / docling-parse still declare pillow<13, but
 # every pillow 12.x carries fixable HIGH/CRITICAL image-parsing CVEs (fixed only in 13.0.0) in a path that parses
-# patient documents. Drop the override once those packages lift the cap. `scripts/verify-pillow-override.sh` guards it.
+# patient documents. Drop the override once those packages lift the cap.
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
  && pip install ".[docling]" easyocr \
  && pip install --upgrade "jaraco.context>=6.1.0" "setuptools>=78.1.1" "wheel>=0.46.2" \
