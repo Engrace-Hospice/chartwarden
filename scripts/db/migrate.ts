@@ -111,6 +111,8 @@ async function createCompatView(db: Client): Promise<void> {
 export async function ensureLedger(db: Client): Promise<void> {
   await db.query("BEGIN");
   try {
+    // Fail the deploy fast instead of hanging if a session sits idle-in-transaction on the ledger while RENAME waits for ACCESS EXCLUSIVE.
+    await db.query("SET LOCAL lock_timeout = '30s'");
     await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [LEDGER_LOCK_KEY]);
     const next = await relkindOf(db, TRACK_TABLE);
     const legacy = await relkindOf(db, LEGACY_TRACK_TABLE);

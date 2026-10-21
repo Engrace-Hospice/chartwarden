@@ -21,7 +21,7 @@ import { join } from "node:path";
  */
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { MIGRATIONS_DIR, applyMigrations } from "../db/migrate";
+import { MIGRATIONS_DIR, applyMigrations, ensureLedger } from "../db/migrate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
@@ -253,5 +253,46 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback com
     await db.query(`CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
     await expect(applyMigrations(db, { migrationsDir: dir })).rejects.toThrow(/both .* are tables/);
     expect(await kindOf(OLD)).toBe("r");
+  });
+  it("copies a non-owner role's full grants onto the compat view without aborting", async () => {
+    const role = "ledger_grant_probe";
+    await db.query(`DROP ROLE IF EXISTS ${role}`);
+    await db.query(`CREATE ROLE ${role}`);
+    try {
+      await legacyLedger([]);
+      await db.query(`GRANT ALL ON ${OLD} TO ${role}`);
+      await ensureLedger(db);
+      const privs = async (rel: string) =>
+        (
+          await db.query<{ p: string }>(
+            `SELECT DISTINCT a.privilege_type AS p FROM pg_class c, aclexplode(c.relacl) a
+              WHERE c.oid = $1::regclass AND a.grantee = $2::regrole ORDER BY 1`,
+            [rel, role],
+          )
+        ).rows.map((r) => r.p);
+      expect(await kindOf(OLD)).toBe("v");
+      const onTable = await privs(NEW);
+      expect(onTable.length).toBeGreaterThan(0);
+      expect(await privs(OLD)).toEqual(onTable);
+    } finally {
+      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await db.query("CREATE SCHEMA public");
+      await db.query(`DROP ROLE IF EXISTS ${role}`);
+    }
+  });
+
+  it("is a no-op when the new table exists and the legacy name is absent", async () => {
+    await db.query(
+      `CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    await ensureLedger(db);
+    expect(await kindOf(NEW)).toBe("r");
+    expect(await kindOf(OLD)).toBeNull();
+  });
+
+  it("throws when the legacy name is a view and the new table does not exist", async () => {
+    await db.query(`CREATE VIEW ${OLD} AS SELECT 1 AS filename`);
+    await expect(ensureLedger(db)).rejects.toThrow(/non-table relation/);
+    expect(await kindOf(NEW)).toBeNull();
   });
 });
