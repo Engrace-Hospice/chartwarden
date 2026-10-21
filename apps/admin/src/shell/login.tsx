@@ -46,7 +46,7 @@ export function Login(): JSX.Element {
           label="Email"
           type="email"
           autoComplete="username"
-          placeholder="you@wardenx.app"
+          placeholder="you@chartwarden.com"
           required
           value={email}
           onChange={(ev) => setEmail(ev.target.value)}

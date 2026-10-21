@@ -38,7 +38,7 @@ export type FetchLike = (
 
 /** Construction deps for {@link OsrmRoutingProvider} (clock + transport are injected so the adapter is testable). */
 export interface OsrmRoutingProviderDeps {
-  /** OSRM table/route base, e.g. `http://osrm.internal.wardenx:5000` — NEVER any PHI in the URL (D9). */
+  /** OSRM table/route base, e.g. `http://osrm.internal.chartwarden:5000` — NEVER any PHI in the URL (D9). */
   readonly endpoint: string;
   readonly cache: RoutingCache;
   /** Wall-clock as an ISO instant — injected so the breaker transitions are deterministic in tests. */

@@ -1,5 +1,5 @@
 [project]
-name = "wardenx-docling-worker"
+name = "chartwarden-docling-worker"
 version = "0.1.0"
 description = "ChartWarden DocLens stage 2: Docling layout + OCR parse with page coordinates"
 requires-python = ">=3.12,<3.14"
