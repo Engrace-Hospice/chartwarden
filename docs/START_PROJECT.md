@@ -41,8 +41,8 @@ Add these settings to `.env` (the database URLs intentionally use different role
 DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/wardenx
 
 # Runtime connection: created by `bun run db:migrate` below.
-DATABASE_URL=postgres://chartwarden_app:chartwarden_app@localhost:5432/wardenx
-CHARTWARDEN_APP_PASSWORD=chartwarden_app
+DATABASE_URL=postgres://chartwarden_app:wardenx_app@localhost:5432/wardenx
+CHARTWARDEN_APP_PASSWORD=wardenx_app
 
 # Lets the single-org demo complete pre-organization reads. Never enable in production.
 CHARTWARDEN_DEV_BYPASSRLS=1

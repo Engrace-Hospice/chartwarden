@@ -189,7 +189,7 @@ ownedTables (4): two_factor, passkey, organization_invitation, tenant_step_up_po
 
 ### M2-T10 — DR tier + INT inventory + eraser
 - deps: M2-T02 · files: module + bootstrap · spec §8, roadmap DoD
-- do: declare DR tier (per WARDENX_DR_BCP) + INT inventory (per CHARTWARDEN_INTEGRATIONS) for auth
+- do: declare DR tier (per CHARTWARDEN_DR_BCP) + INT inventory (per CHARTWARDEN_INTEGRATIONS) for auth
   touchpoints; register M2 eraser.
 - accept: `validateErasers()` passes; docs present; gates green.
 

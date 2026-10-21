@@ -243,7 +243,7 @@ export DEPLOY_PORT="22"
 SHA="94b4ca9dfb56e3c1d0551d08e18b78532e26728f"
 # Image names: releases built before the infra rename were published as `wardenx` / `wardenx-web` (and
 # `wardenx-docling-worker`); newer ones as `chartwarden*`. Use the name the target SHA was published under.
-BACKEND_IMAGE="ghcr.io/engrace-hospice/chartwarden:sha-${SHA}"
+BACKEND_IMAGE="ghcr.io/engrace-hospice/wardenx:sha-${SHA}"
 WEB_IMAGE="ghcr.io/engrace-hospice/wardenx-web:sha-${SHA}"
 
 scp -P "$DEPLOY_PORT" \
@@ -264,8 +264,8 @@ ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
 Migration `1139_chartwarden_role_rename.sql` renames the database roles `wardenx_*` -> `chartwarden_*`
 (`app`, `admin`, `readonly`, `audit_writer`, `platform` + `_login`, `destruction` + `_login`, `m36_reseal`,
 `body_backfill_login`). Grants, RLS policies and SCRAM passwords move with the rename. A privilege-free
-`NOLOGIN` role `chartwarden_destruction` remained after 1139 because nine already-applied function bodies tested
-`pg_has_role(current_user, 'chartwarden_destruction', 'MEMBER')`; migration 1142 rewrites those bodies and drops the
+`NOLOGIN` role `wardenx_destruction` remained after 1139 because nine already-applied function bodies tested
+`pg_has_role(current_user, 'wardenx_destruction', 'MEMBER')`; migration 1142 rewrites those bodies and drops the
 alias (migrate every database of a cluster back to back: the role is cluster-global). The database name `wardenx` is unchanged.
 
 - `compose.yml` now connects as `chartwarden_app` / `chartwarden_platform_login` / `chartwarden_destruction_login`.

@@ -27,7 +27,7 @@ Test keys used below:
 - **G64** = `gap064-messaging-read-audit.test.ts` (non-live)
 - **G65** = `gap065-m36-part2-channel-gate.test.ts` (non-live, unit over ports)
 - **MA** = `messaging-member-admin.test.ts` (non-live, DB service with injected deps)
-- **L-MEM** = `m36-channel-membership-lifecycle.live.test.ts` (live, service methods directly, `chartwarden_app`)
+- **L-MEM** = `m36-channel-membership-lifecycle.live.test.ts` (live, service methods directly, `wardenx_app`)
 - **L-ALR** = `m36-alert-outcome.live.test.ts` (live)
 - **L-LOCK** = `m36-locked-alert-rule.live.test.ts` (live)
 - **L-DEL** = `gap-101-m36-out-of-band-delivery.live.test.ts` (live)
@@ -181,7 +181,7 @@ The audit says M36 does not consume `m2.membership.revoked/suspended` or `m2.use
 - No HTTP-level live test for any route; the route tests (R) never touch SQL, so UUID handling, the `withOrgContext` path and the Part 2 gate in the real service are not exercised through HTTP. Owner: **WP 1.7**.
 - Live service tests cover: `listChannels`, `canViewChannel`, `listMessages`, `sendMessage`, `markRead`, `openDm`, `openCareTeamChannel`, `putPreferences`, `alertInbox`, `markAlertRead`, `patchAlertRule`, `registerEndpoint`, `verifyEndpoint`. Not covered live: `getChannel`, `editMessage`, `deleteMessage`, `searchMentionCandidates`, `searchDmEligibleStaff`, `announce`, `getPreferences`, `removeEndpoint`, `listAlertRules`; `addMember`/`removeMember` only non-live (`MA`).
 - No test sends `parentMessageId`, `quotedMessageId` or `attachments`; none asserts "revoked or suspended author cannot edit/delete".
-- `test:rls:live:m36` (L-RLS) proves table RLS as `chartwarden_app`, not route-level IDOR.
+- `test:rls:live:m36` (L-RLS) proves table RLS as `wardenx_app`, not route-level IDOR.
 
 ## 4. Answers to the specific audit items
 
