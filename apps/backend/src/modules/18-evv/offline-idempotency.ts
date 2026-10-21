@@ -54,5 +54,5 @@ export function offlineFingerprintKey(env: NodeJS.ProcessEnv = process.env): str
     throw new Error(`${EVV_OFFLINE_FINGERPRINT_KEY_ENV} is required in production`);
   }
   // Test/development only. Production validation and the branch above prevent deployment with this value.
-  return "wardenx-development-only-evv-offline-fingerprint-key";
+  return "chartwarden-development-only-evv-offline-fingerprint-key";
 }

@@ -382,6 +382,7 @@
     "test:roles-rename:live": "vitest run packages/db/migrations/__tests__/chartwarden-role-rename.live.test.ts",
     "test:alias-drop:live": "vitest run packages/db/migrations/__tests__/chartwarden-alias-drop.live.test.ts",
     "test:function-rename:live": "vitest run packages/db/migrations/__tests__/chartwarden-function-rename.live.test.ts",
+    "test:reserved-username:live": "vitest run packages/db/migrations/__tests__/m1-reserve-chartwarden-username.live.test.ts",
     "test:rls:live:m24": "vitest run packages/db/migrations/__tests__/m24-rls-isolation.live.test.ts",
     "test:rls:live:m25": "vitest run packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts",
     "test:rls:live:m26": "vitest run packages/db/migrations/__tests__/m26-rls-isolation.live.test.ts",

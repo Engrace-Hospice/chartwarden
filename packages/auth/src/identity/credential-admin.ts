@@ -57,7 +57,7 @@ export const credentialAdminPlugin = () =>
     id: "wardenx-credential-admin",
     endpoints: {
       provisionIdentityCredential: createAuthEndpoint(
-        "/_wardenx-internal/provision-identity-credential",
+        "/_chartwarden-internal/provision-identity-credential",
         { method: "POST", metadata: { SERVER_ONLY: true } },
         async (ctx) => {
           const body = (ctx.body ?? {}) as ProvisionBody;
@@ -97,7 +97,7 @@ export const credentialAdminPlugin = () =>
         },
       ),
       replaceIdentityPassword: createAuthEndpoint(
-        "/_wardenx-internal/replace-identity-password",
+        "/_chartwarden-internal/replace-identity-password",
         { method: "POST", metadata: { SERVER_ONLY: true } },
         async (ctx) => {
           const body = (ctx.body ?? {}) as PasswordBody;
@@ -113,7 +113,7 @@ export const credentialAdminPlugin = () =>
         },
       ),
       deleteProvisionedIdentity: createAuthEndpoint(
-        "/_wardenx-internal/delete-provisioned-identity",
+        "/_chartwarden-internal/delete-provisioned-identity",
         { method: "POST", metadata: { SERVER_ONLY: true } },
         async (ctx) => {
           const body = (ctx.body ?? {}) as { userId?: unknown };

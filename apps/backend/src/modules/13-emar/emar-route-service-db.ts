@@ -143,7 +143,7 @@ function resolveWitnessSigningKey(): string {
   if (process.env.NODE_ENV === "production") {
     throw new Error("M13_WITNESS_SIGNING_KEY is required in production (TASK-008)");
   }
-  return "wardenx-m13-witness-secret-dev-only-do-not-use-in-prod";
+  return "chartwarden-m13-witness-secret-dev-only-do-not-use-in-prod";
 }
 const WITNESS_SECRET = resolveWitnessSigningKey();
 

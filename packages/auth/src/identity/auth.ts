@@ -426,8 +426,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           "/phone-number/reset-password",
           "/admin/create-user",
           "/admin/set-user-password",
-          "/_wardenx-internal/provision-identity-credential",
-          "/_wardenx-internal/replace-identity-password",
+          "/_chartwarden-internal/provision-identity-credential",
+          "/_chartwarden-internal/replace-identity-password",
         ],
       }), // HIBP k-anonymity breach check (M2 §3.1)
       // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator

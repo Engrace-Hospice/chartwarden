@@ -138,6 +138,7 @@ jobs:
           - { name: "Role rename (1139)", script: "test:roles-rename:live" }
           - { name: "Alias drop (1142)", script: "test:alias-drop:live" }
           - { name: "Function rename (1143)", script: "test:function-rename:live" }
+          - { name: "Reserved username (1146)", script: "test:reserved-username:live" }
           - { name: "M24 Billing-Medicaid", script: "test:rls:live:m24" }
           - { name: "M25 Remittance", script: "test:rls:live:m25" }
           - { name: "M26 Cap Management", script: "test:rls:live:m26" }
