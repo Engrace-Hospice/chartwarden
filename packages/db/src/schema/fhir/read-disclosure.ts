@@ -15,7 +15,7 @@
 // `client_id` is a LOGICAL uuid, no FK: a disclosure record must outlive the client that made it (a
 // revoked and later erased partner does not erase the accounting owed to the patients it read). The
 // §3.6 denylist is empty — the ledger holds no narrative, payload or cipher — so it audits through M1's
-// baseline `wardenx_audit_trigger()`.
+// baseline `chartwarden_audit_trigger()`.
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const fhirReadDisclosure = pgTable(

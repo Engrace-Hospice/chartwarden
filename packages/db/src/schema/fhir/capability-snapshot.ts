@@ -6,7 +6,7 @@
 // every tenant): read-all `USING (true)` to chartwarden_app, writes only via chartwarden_admin (§3.5; the M32
 // `ai_capability` / M38 `code_system` precedent — architecture wins over the spec's `app.role` policy,
 // which the canonical-RLS-variable rule bans). No PHI, so the §3.6 denylist is empty; it audits through
-// M1's baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The
+// M1's baseline `chartwarden_audit_trigger()`, which resolves the (absent) org from the session. The
 // `signature` is an HMAC, not a DEK cipher, so it is NOT in `M28_CIPHER_COLUMNS`.
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { fhirVersionEnum } from "../../enums";

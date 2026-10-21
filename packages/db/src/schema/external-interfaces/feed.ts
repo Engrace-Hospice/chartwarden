@@ -3,7 +3,7 @@
 //
 // TENANT-SCOPED, UNPARTITIONED: `organization_id` NOT NULL with a REAL FK to `organization` (the M1 spine),
 // canonical app.org_id RLS (§3.5). `external_feed` is operational metadata only (empty §3.6 denylist) so it
-// audits through M1's baseline `wardenx_audit_trigger()`. `external_feed_credential.secret_cipher` is the
+// audits through M1's baseline `chartwarden_audit_trigger()`. `external_feed_credential.secret_cipher` is the
 // per-tenant DEK-encrypted channel secret — §3.6-DENYLISTED from the audit value_capture (a channel secret
 // in the clear in an immutable audit log is still a leak), so it audits through a GENERATED scrubbing
 // trigger and the §3.7 eraser destroys it while keeping the `fingerprint` for ops display.

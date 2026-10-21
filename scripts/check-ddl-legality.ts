@@ -10,6 +10,8 @@
  *   2. NO SUBQUERY IN CHECK — PostgreSQL forbids `SELECT` inside a CHECK constraint.
  *   3. NO DUPLICATE ENUM TYPE — `CREATE TYPE x AS ENUM`/`pgEnum('x', …)` may be
  *      defined only once; a second definition of the same name fails the migration.
+ *   4. NO LEGACY DB-OBJECT NAME — a migration numbered after 1143 (the wardenx_* ->
+ *      chartwarden_* function/event-trigger rename) must not name the old objects.
  *
  * Heuristic, import-level static check (same posture as check-table-ownership.ts /
  * check-tenancy.ts) — it catches the common, dangerous cases and routes the rest to
@@ -46,6 +48,15 @@ function listFiles(dir: string, acc: string[] = []): string[] {
 }
 
 const violations: Violation[] = [];
+// Rule 4 (ratchet): migration 1143 renamed these database objects. Earlier migrations keep the old text
+// (they replay before 1143 and are checksummed); a later one that still says it would fail at replay.
+const FUNCTION_RENAME_ORDINAL = 1143;
+// Highest migration already on main when 1143 was written. The runner applies ANY unapplied file regardless of
+// ordinal, so a late-merging 1141/1142 that still names the old objects would run after 1143 in prod and fail
+// the deploy while its fresh-replay CI stays green: the ratchet therefore covers everything above this line.
+const LAST_PRE_RENAME_ORDINAL = 1140;
+const LEGACY_DB_OBJECT_RE =
+  /\bwardenx_(?:audit_trigger|secure_new_partition(?:_trg)?|tenant_step_up_tighten_only)\b/;
 // Track SQL `CREATE TYPE` and Drizzle `pgEnum` definitions SEPARATELY: the normal Drizzle pattern is
 // one pgEnum (schema) + one generated CREATE TYPE (migration) for the same name — that is NOT a
 // duplicate. A genuine duplicate is two CREATE TYPE, or two pgEnum, for the same name.
@@ -104,6 +115,21 @@ for (const base of SCAN_DIRS) {
     // migration note that the partition conversion is DEFERRED to a later file) is not mistaken for
     // a real partition declaration.
     const srcNoComments = src.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const ordinal = /(?:^|\/)migrations\/(\d+)_[^/]*\.sql$/.exec(file)?.[1];
+    if (
+      ordinal &&
+      Number(ordinal) > LAST_PRE_RENAME_ORDINAL &&
+      Number(ordinal) !== FUNCTION_RENAME_ORDINAL
+    ) {
+      const legacy = LEGACY_DB_OBJECT_RE.exec(srcNoComments)?.[0];
+      if (legacy) {
+        violations.push({
+          file,
+          rule: "legacy-db-object-name",
+          detail: `references '${legacy}', renamed to '${legacy.replace("wardenx_", "chartwarden_")}' by migration ${FUNCTION_RENAME_ORDINAL}; use the new name`,
+        });
+      }
+    }
     const partCol =
       /partitionedBy\w*\(\s*['"](\w+)['"]/i.exec(srcNoComments)?.[1] ??
       /PARTITION\s+BY\s+\w+\s*\(\s*(\w+)/i.exec(srcNoComments)?.[1];

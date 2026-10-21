@@ -367,7 +367,7 @@ describe.skipIf(!DB_URL)(
         `SELECT c.relname AS t, c.relrowsecurity AS rls, c.relforcerowsecurity AS frc,
                 EXISTS (SELECT 1 FROM pg_trigger g JOIN pg_proc p ON p.oid = g.tgfoid
                          WHERE g.tgrelid = c.oid AND NOT g.tgisinternal AND g.tgenabled <> 'D'
-                           AND (p.proname = 'wardenx_audit_trigger' OR p.proname LIKE 'audit_phi_write_%')) AS audited
+                           AND (p.proname IN ('wardenx_audit_trigger', 'chartwarden_audit_trigger') OR p.proname LIKE 'audit_phi_write_%')) AS audited
            FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY($1::text[])`,
         [owned],
       );

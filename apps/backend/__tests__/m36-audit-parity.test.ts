@@ -17,7 +17,7 @@ const ROUTES = join(REPO, "apps/backend/src/modules/36-messaging/routes");
 const AUDIT_TRIGGER_EXCEPTIONS: Readonly<Record<string, string>> = {};
 
 const m36Tables = (MODULES.find((m) => m.id === 36)?.ownedTables ?? []) as readonly string[];
-const AUDIT_FUNCTION = /^(?:wardenx_audit_trigger|audit_phi_write_\w+)$/;
+const AUDIT_FUNCTION = /^(?:(?:wardenx|chartwarden)_audit_trigger|audit_phi_write_\w+)$/;
 const CREATE_TRIGGER =
   /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+"?(\w+)"?[^;]*?\bON\s+(?:public\.)?"?(\w+)"?[^;]*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:public\.)?(\w+)\(/gis;
 const DROP_TRIGGER =

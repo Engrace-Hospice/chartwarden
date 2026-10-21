@@ -5,7 +5,7 @@
 // app.org_id RLS (§3.5). Composite primary key `(feed_id, hour_bucket)` — one row per feed per hour — so it
 // has NO synthetic `id` column; the M1 baseline audit trigger records a NULL resource_id for it, which is
 // the honest answer (the (feed_id, hour_bucket) pair is the identity). Operational metric counts only (no
-// PHI, empty §3.6 denylist) so it audits through the baseline `wardenx_audit_trigger()`; the ROW ages at 90
+// PHI, empty §3.6 denylist) so it audits through the baseline `chartwarden_audit_trigger()`; the ROW ages at 90
 // days (§3.7) while its audit trail files `compliance` — retention of the row vs. its audit event are
 // distinct. `feed_id` carries a REAL intra-M29 FK to `external_feed`.
 import { bigint, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";

@@ -2,7 +2,7 @@
 // bulk-export job — the per-resource-type MinIO object key, byte size, row count and checksum.
 //
 // TENANT-SCOPED: `organization_id` NOT NULL on canonical app.org_id RLS (§3.5). Checksums and counts only
-// (the empty §3.6 denylist) so it audits through M1's baseline `wardenx_audit_trigger()`. `job_id` carries
+// (the empty §3.6 denylist) so it audits through M1's baseline `chartwarden_audit_trigger()`. `job_id` carries
 // a REAL FK to `fhir_bulk_export_job` (ON DELETE cascade). The eraser (§3.7) purges `minio_object_key`
 // from MinIO while the row metadata persists for audit reconstruction.
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
