@@ -18,6 +18,8 @@ import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "chartwarden-demo";
+// A demo DB seeded before the ChartWarden rename (production) still carries the legacy slug.
+const LEGACY_ORG_SLUG = "wardenx-demo";
 
 // `messaging.role_send` needs `messaging.ack_requests` on too (a role send without a response record is a 503).
 export const MESSAGING_FLAGS = [
@@ -28,6 +30,7 @@ export const MESSAGING_FLAGS = [
   "messaging.sbar",
   "messaging.idg",
   "messaging.urgent_clinical",
+  "messaging.break_glass",
 ] as const;
 
 const ADMIN_ROLE_KEY = "administrator";
@@ -38,9 +41,10 @@ async function main(): Promise<void> {
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
   try {
-    const org = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
-      ORG_SLUG,
-    ]);
+    const org = await db.query<{ id: string }>(
+      "SELECT id FROM organization WHERE slug = ANY($1) ORDER BY slug = $2 DESC LIMIT 1",
+      [[ORG_SLUG, LEGACY_ORG_SLUG], ORG_SLUG],
+    );
     const orgId = org.rows[0]?.id;
     if (!orgId) throw new Error(`organization ${ORG_SLUG} not found - run db:seed first`);
     for (const flag of MESSAGING_FLAGS) {
