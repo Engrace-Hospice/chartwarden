@@ -29,8 +29,8 @@ import type { OrmEndpoint } from "./orm-o01";
 
 const FEED = schema.externalFeed;
 
-/** WardenX's own fixed MSH-3 sending-application identity — never varies per feed or per tenant. */
-export const OUTBOUND_SENDING_APPLICATION = "WARDENX";
+/** ChartWarden's own fixed MSH-3 sending-application identity — never varies per feed or per tenant. */
+export const OUTBOUND_SENDING_APPLICATION = "CHARTWARDEN";
 
 /** The transport-facing part of a resolved feed (everything a send/retry needs; no MSH identity). */
 export interface ResolvedFeedTransport {

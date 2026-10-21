@@ -244,7 +244,7 @@ describe("M2-T06 identity route inventory", () => {
       const setCookies = Array.isArray(authenticated.headers["set-cookie"])
         ? authenticated.headers["set-cookie"]
         : [authenticated.headers["set-cookie"]];
-      expect(setCookies.some((cookie) => String(cookie).startsWith(`wardenx_csrf=${token};`))).toBe(
+      expect(setCookies.some((cookie) => String(cookie).startsWith(`chartwarden_csrf=${token};`))).toBe(
         true,
       );
 

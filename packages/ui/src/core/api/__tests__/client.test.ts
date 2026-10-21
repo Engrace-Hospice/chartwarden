@@ -55,8 +55,8 @@ describe("createApiClient — CSRF token middleware (WX-PR-017)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("attaches X-CSRF-Token from the wardenx_csrf cookie on a mutating request", async () => {
-    vi.stubGlobal("document", { cookie: "other=1; wardenx_csrf=abc123; more=2" });
+  it("attaches X-CSRF-Token from the chartwarden_csrf cookie on a mutating request", async () => {
+    vi.stubGlobal("document", { cookie: "other=1; chartwarden_csrf=abc123; more=2" });
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });
     await client.POST(
@@ -66,8 +66,19 @@ describe("createApiClient — CSRF token middleware (WX-PR-017)", () => {
     expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("abc123");
   });
 
+  it("falls back to the legacy wardenx_csrf cookie until the server swaps it", async () => {
+    vi.stubGlobal("document", { cookie: "wardenx_csrf=old123" });
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST(
+      "/api/v1/billing/claims/{id}/submit" as never,
+      { params: { path: { id: "claim-1" } } } as never,
+    );
+    expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("old123");
+  });
+
   it("does not attach X-CSRF-Token to a GET", async () => {
-    vi.stubGlobal("document", { cookie: "wardenx_csrf=abc123" });
+    vi.stubGlobal("document", { cookie: "chartwarden_csrf=abc123" });
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });
     await client.GET("/api/v1/billing/claims" as never, {} as never);
@@ -82,7 +93,7 @@ describe("createApiClient — CSRF token middleware (WX-PR-017)", () => {
   });
 
   it("never overwrites a caller-supplied X-CSRF-Token", async () => {
-    vi.stubGlobal("document", { cookie: "wardenx_csrf=abc123" });
+    vi.stubGlobal("document", { cookie: "chartwarden_csrf=abc123" });
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });
     await client.POST(

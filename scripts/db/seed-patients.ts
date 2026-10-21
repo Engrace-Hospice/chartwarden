@@ -119,13 +119,13 @@ function absorb(store: Map<string, string>, res: Response): void {
   }
 }
 /**
- * The M1 CSRF plugin (WX-PR-017, apps/backend/src/bootstrap/plugins/csrf.ts) mints a `wardenx_csrf`
+ * The M1 CSRF plugin (WX-PR-017, apps/backend/src/bootstrap/plugins/csrf.ts) mints a `chartwarden_csrf`
  * cookie on every response and requires it echoed back in `X-CSRF-Token` on a mutating request that
  * also carries the Better Auth session cookie — which every POST below does, having just signed in.
  * A raw script client gets no free pass; it has to double-submit the same way a real browser does.
  */
 function csrfHeader(store: Map<string, string>): Record<string, string> {
-  const token = store.get("wardenx_csrf");
+  const token = store.get("chartwarden_csrf");
   return token ? { "x-csrf-token": token } : {};
 }
 

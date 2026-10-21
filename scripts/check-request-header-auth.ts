@@ -89,6 +89,11 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
   "x-wardenx-background": {
     classification: "not-authorization",
     reason:
+      "Pre-rename alias of x-chartwarden-background, honoured during the transition; same semantics.",
+  },
+  "x-chartwarden-background": {
+    classification: "not-authorization",
+    reason:
       "GAP-002: marks a timer poll so it does not refresh the session idle clock. The timeout is still enforced; omitting the header only keeps the caller's OWN session alive, which any real request does anyway.",
   },
   "x-forwarded-for": {
@@ -107,7 +112,7 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
   "x-csrf-token": {
     classification: "verified",
     reason:
-      "Double-submit: compared against the `wardenx_csrf` COOKIE the server minted (bootstrap/plugins/csrf.ts). The header alone proves nothing.",
+      "Double-submit: compared against the `chartwarden_csrf` COOKIE the server minted (bootstrap/plugins/csrf.ts). The header alone proves nothing.",
   },
   "stripe-signature": {
     classification: "verified",

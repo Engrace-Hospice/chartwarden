@@ -237,7 +237,7 @@ export function resolveWebTrustedOrigins(
  * Explicit native callback schemes trusted by Better Auth's Expo integration.
  *
  * The value is intentionally separate from `TRUSTED_ORIGINS`: it may contain only exact custom
- * schemes (`wardenx://`), never HTTP(S), `null`, a wildcard, host, path or query. Universal/App Links
+ * schemes (`chartwarden://`), never HTTP(S), `null`, a wildcard, host, path or query. Universal/App Links
  * are HTTPS browser origins and belong in `TRUSTED_ORIGINS`. There is no implicit production or
  * localhost fallback.
  */
@@ -257,7 +257,7 @@ export function resolveMobileAuthOrigins(
       /^exp:/i.test(origin)
     ) {
       throw new Error(
-        "MOBILE_AUTH_TRUSTED_ORIGINS must contain exact custom schemes such as wardenx://",
+        "MOBILE_AUTH_TRUSTED_ORIGINS must contain exact custom schemes such as chartwarden://",
       );
     }
   }

@@ -57,7 +57,7 @@ describe("registerIdentityAuth — Fastify ↔ web handler bridge (AUTH-T02)", (
   it("merges Better Auth cookies with a CSRF cookie already staged by Fastify", async () => {
     const app = Fastify();
     app.addHook("onRequest", async (_request, reply) => {
-      reply.header("set-cookie", ["wardenx_csrf=nonce; Path=/; SameSite=Lax"]);
+      reply.header("set-cookie", ["chartwarden_csrf=nonce; Path=/; SameSite=Lax"]);
     });
     registerIdentityAuth(app, {
       async handler() {
@@ -73,7 +73,7 @@ describe("registerIdentityAuth — Fastify ↔ web handler bridge (AUTH-T02)", (
       ? res.headers["set-cookie"]
       : [res.headers["set-cookie"]];
     expect(cookies).toEqual([
-      "wardenx_csrf=nonce; Path=/; SameSite=Lax",
+      "chartwarden_csrf=nonce; Path=/; SameSite=Lax",
       "better-auth.session_token=session; Path=/; HttpOnly",
       "better-auth.two_factor=challenge; Path=/; HttpOnly",
     ]);

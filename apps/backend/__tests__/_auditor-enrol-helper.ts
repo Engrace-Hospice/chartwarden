@@ -60,7 +60,7 @@ export function enrolmentHttp(server: FastifyInstance, cookie: string): Enrolmen
       method,
       url: `/api/v1/auditors/enrolment${path}`,
       // The session cookie rides with the double-submit CSRF pair the browser client sends.
-      headers: { cookie: `${cookie}; wardenx_csrf=${CSRF}`, "x-csrf-token": CSRF },
+      headers: { cookie: `${cookie}; chartwarden_csrf=${CSRF}`, "x-csrf-token": CSRF },
       ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}),
     });
   return {

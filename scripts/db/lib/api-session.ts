@@ -76,7 +76,7 @@ function cookieHeader(jar: Map<string, string>): string {
   return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 }
 function csrfHeader(jar: Map<string, string>): Record<string, string> {
-  const token = jar.get("wardenx_csrf");
+  const token = jar.get("chartwarden_csrf");
   return token ? { "x-csrf-token": token } : {};
 }
 
@@ -148,7 +148,7 @@ export async function signIn(email: string): Promise<WxSession> {
   });
   client.use({
     onRequest({ request }) {
-      const token = jar.get("wardenx_csrf");
+      const token = jar.get("chartwarden_csrf");
       if (token) request.headers.set("x-csrf-token", token);
       return request;
     },

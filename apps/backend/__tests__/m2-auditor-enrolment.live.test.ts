@@ -274,7 +274,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
     const write = await app.inject({
       method: "POST",
       url: "/api/v1/probe/write",
-      headers: { cookie: `${cookie}; wardenx_csrf=x`, "x-csrf-token": "x" },
+      headers: { cookie: `${cookie}; chartwarden_csrf=x`, "x-csrf-token": "x" },
       payload: {},
     });
     expect(write.statusCode).toBe(403);
@@ -707,7 +707,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
     const extra = await app.inject({
       method: "POST",
       url: "/api/v1/auditors/enrolment/baa",
-      headers: { cookie: `${cookie}; wardenx_csrf=x`, "x-csrf-token": "x" },
+      headers: { cookie: `${cookie}; chartwarden_csrf=x`, "x-csrf-token": "x" },
       payload: {
         termsVersion: "v",
         termsSha256: "0".repeat(64),

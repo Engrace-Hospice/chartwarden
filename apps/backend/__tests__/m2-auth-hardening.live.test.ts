@@ -137,7 +137,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     ).rows[0].id as string;
     await admin.query("UPDATE session SET active_organization_id=$1 WHERE id=$2", [ORG, sessionId]);
     const cookie = res.cookies
-      .filter((c) => c.name !== "wardenx_csrf")
+      .filter((c) => c.name !== "chartwarden_csrf")
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
     return { cookie, sessionId };

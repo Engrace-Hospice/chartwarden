@@ -54,13 +54,13 @@ export async function sampleGeocodeCoverage(
   };
 }
 
-/** `wardenx_patient_ungeocoded_active_total` — active patients with no service-address coordinate (-1 = not measured). */
+/** `chartwarden_patient_ungeocoded_active_total` — active patients with no service-address coordinate (-1 = not measured). */
 export function registerGeocodeCoverageMetrics(
   registry: Registry,
   sampler: GeocodeCoverageSampler,
 ): void {
   new Gauge({
-    name: "wardenx_patient_ungeocoded_active_total",
+    name: "chartwarden_patient_ungeocoded_active_total",
     help: "Active patients whose current primary address has no geocode coordinate; each one's EVV captures record no_geofence_baseline (-1 = not measured)",
     registers: [registry],
     async collect() {

@@ -117,7 +117,7 @@ export const SESSION_ACTIVITY_TOUCH_SEC = 60;
 export interface SessionEnforceOptions {
   readonly now?: Date;
   /**
-   * false for a request the user did not cause (a timer poll marked `x-wardenx-background: 1`): the
+   * false for a request the user did not cause (a timer poll marked `x-chartwarden-background: 1`): the
    * timeout is still checked, but the request does not count as activity. Default true.
    */
   readonly recordActivity?: boolean;

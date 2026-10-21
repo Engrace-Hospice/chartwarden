@@ -187,7 +187,7 @@ async function deliverInvite(
 
 export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRouteDeps): void {
   // Authenticated CSRF bootstrap for native cookie transport. The global CSRF onRequest hook has
-  // already selected an existing nonce or staged a fresh `wardenx_csrf` Set-Cookie. Returning that
+  // already selected an existing nonce or staged a fresh `chartwarden_csrf` Set-Cookie. Returning that
   // exact value lets a non-browser client construct BOTH halves of the existing double-submit proof;
   // it grants no identity/org/role fact, mutates no state and changes no browser behavior.
   app.get("/api/v1/auth/csrf", async (request, reply) => {

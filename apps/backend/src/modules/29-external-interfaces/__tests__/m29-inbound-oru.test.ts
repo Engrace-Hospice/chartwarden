@@ -58,7 +58,7 @@ interface OruSpec {
 }
 function mkOru(spec: OruSpec): string {
   const lines: string[] = [];
-  lines.push("MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120000||ORU^R01|MCID-1|P|2.5.1");
+  lines.push("MSH|^~\\&|LAB|QUEST|CHARTWARDEN|ENGRACE|20260801120000||ORU^R01|MCID-1|P|2.5.1");
   const cx = spec.pid3
     ? `${spec.pid3.value}^^^${spec.pid3.authority}^${spec.pid3.typeCode ?? "MR"}`
     : `MRN-001^^^${AUTH}^MR`;

@@ -21,9 +21,9 @@ import { type MllpTransportSendInput, createNodeMllpTransport } from "../outboun
 // A wire message carrying an obviously-fake-but-distinctive "PHI-shaped" marker, so test 8 (no PHI
 // leakage) has something identifying to search for in every captured error string.
 const PHI_MARKER = "SSN-999-88-7777-DOE-JOHN-DOB19400101";
-const ORM_WIRE = `MSH|^~\\&|WARDENX|ORG1|LABSYS|LAB1|20260929120000||ORM^O01|MC${Date.now()}|P|2.5.1\rPID|1||MRN1^^^H||DOE^JOHN^^^^^L|||${PHI_MARKER}`;
+const ORM_WIRE = `MSH|^~\\&|CHARTWARDEN|ORG1|LABSYS|LAB1|20260929120000||ORM^O01|MC${Date.now()}|P|2.5.1\rPID|1||MRN1^^^H||DOE^JOHN^^^^^L|||${PHI_MARKER}`;
 const ACK_WIRE =
-  "MSH|^~\\&|LABSYS|LAB1|WARDENX|ORG1|20260929120005||ACK|ACKMC1|P|2.5.1\rMSA|AA|MC1";
+  "MSH|^~\\&|LABSYS|LAB1|CHARTWARDEN|ORG1|20260929120005||ACK|ACKMC1|P|2.5.1\rMSA|AA|MC1";
 
 function baseInput(overrides: Partial<MllpTransportSendInput>): MllpTransportSendInput {
   return {

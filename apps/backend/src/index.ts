@@ -3616,7 +3616,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     ? createRealtimeEmitter(realtimeEmitterClient)
     : undefined;
   // TASK-040C (OPS-005/006) — shared by BOTH the readiness probe (below) and the metrics registry's
-  // `wardenx_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
+  // `chartwarden_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
   // defined exactly once instead of duplicated at each call site.
   const outboxPendingDepth = () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
@@ -6156,7 +6156,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
   if (rateLimitRedisClient) app.addHook("onClose", () => rateLimitRedisClient.quit());
   // TASK-040C (OPS-005/006) — Prometheus metrics. HTTP + outbox counters/gauges register for EVERY
-  // role (they're cheap and role-agnostic — an API-only replica's `wardenx_outbox_pending_depth`
+  // role (they're cheap and role-agnostic — an API-only replica's `chartwarden_outbox_pending_depth`
   // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
   // queues are actually constructed, further below, inside the worker-runner block.
   const metricsRegistry = buildMetricsRegistry();
@@ -9914,7 +9914,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "M29 D11 BullMQ NPPES platform-sync worker constructed",
     );
 
-    // TASK-040C (OPS-005/006) — the `wardenx_bullmq_queue_jobs` gauge, over one dedicated read-only
+    // TASK-040C (OPS-005/006) — the `chartwarden_bullmq_queue_jobs` gauge, over one dedicated read-only
     // `Queue` handle per UNIQUE queue name actually constructed above (derived from the Workers'
     // `.name`, not a separately-maintained module-by-module catalog list — self-maintaining as new
     // modules add queues). Read-only: never `.add()`s a job, only `getJobCounts()` on scrape.

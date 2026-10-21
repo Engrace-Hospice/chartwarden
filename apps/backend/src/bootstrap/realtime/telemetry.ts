@@ -57,7 +57,7 @@ export function createRealtimeTelemetry(
   deps: RealtimeTelemetryDeps,
 ): RealtimeLog {
   new Gauge({
-    name: "wardenx_realtime_connections",
+    name: "chartwarden_realtime_connections",
     help: "Open Socket.IO connections on this node",
     registers: [registry],
     collect() {
@@ -65,7 +65,7 @@ export function createRealtimeTelemetry(
     },
   });
   new Gauge({
-    name: "wardenx_realtime_degraded",
+    name: "chartwarden_realtime_degraded",
     help: "1 when the Valkey connections the realtime adapter needs are not ready (cross-node fan-out lost)",
     registers: [registry],
     collect() {
@@ -73,18 +73,18 @@ export function createRealtimeTelemetry(
     },
   });
   const connects = new Counter({
-    name: "wardenx_realtime_connects_total",
+    name: "chartwarden_realtime_connects_total",
     help: "Sockets that completed the handshake and joined their rooms",
     registers: [registry],
   });
   const disconnects = new Counter({
-    name: "wardenx_realtime_disconnects_total",
+    name: "chartwarden_realtime_disconnects_total",
     help: "Joined sockets that ended, by Socket.IO reason",
     labelNames: ["reason"] as const,
     registers: [registry],
   });
   const refused = new Counter({
-    name: "wardenx_realtime_refused_total",
+    name: "chartwarden_realtime_refused_total",
     help: "Handshakes or sockets refused, by reason",
     labelNames: ["reason"] as const,
     registers: [registry],

@@ -13,6 +13,7 @@ export const RESERVED_USERNAMES = new Set([
   "support",
   "system",
   "wardenx",
+  "chartwarden",
 ]);
 
 export const USERNAME_PATTERN = /^[a-z0-9_.-]{3,32}$/;

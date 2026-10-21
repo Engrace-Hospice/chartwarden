@@ -723,7 +723,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })),
       );
       const env = parseMshEnvelope(server.receivedWires[0]!);
-      expect(env.sendingApplication).toBe("WARDENX");
+      expect(env.sendingApplication).toBe("CHARTWARDEN");
       expect(env.sendingFacility).toBe("ENGRACE-HOSPICE");
       expect(env.receivingApplication).toBe("REFLAB-LIS");
       expect(env.receivingFacility).toBe("REFLAB-MAIN");

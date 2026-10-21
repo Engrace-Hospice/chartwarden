@@ -1,13 +1,13 @@
 // apps/backend/src/bootstrap/ack-queue-metrics.ts - WP 4.9 (ADR-0076): the ops view of the unacknowledged queue, as Prometheus gauges
 // and a threshold notice. Pure over its ports (no DB, no Fastify), the same shape as geocode-coverage.ts, so it unit-tests with fakes.
 //
-//   wardenx_m36_ack_overdue_total                     waiting requests past their deadline, all organisations (-1 = not measured)
-//   wardenx_m36_ack_failed_unreachable_total          requests no route could reach, all organisations (-1 = not measured)
-//   wardenx_m36_ack_oldest_overdue_seconds            the longest-overdue waiting request, any organisation (-1 = not measured)
-//   wardenx_m36_ack_escalation_stalled_seconds       how long the oldest request the escalation sweep should have handled is past its deadline
+//   chartwarden_m36_ack_overdue_total                     waiting requests past their deadline, all organisations (-1 = not measured)
+//   chartwarden_m36_ack_failed_unreachable_total          requests no route could reach, all organisations (-1 = not measured)
+//   chartwarden_m36_ack_oldest_overdue_seconds            the longest-overdue waiting request, any organisation (-1 = not measured)
+//   chartwarden_m36_ack_escalation_stalled_seconds       how long the oldest request the escalation sweep should have handled is past its deadline
 //                                                     (0 = none; orgs with messaging.escalation_timers off count 0; -1 = not measured). ADR-0079.
-//   wardenx_m36_ack_latency_seconds{stat="mean|max"}  acknowledgment latency (acknowledged_at - requested_at) over the trailing 24 h
-//   wardenx_m36_ack_latency_samples                   how many acknowledgments those two figures cover
+//   chartwarden_m36_ack_latency_seconds{stat="mean|max"}  acknowledgment latency (acknowledged_at - requested_at) over the trailing 24 h
+//   chartwarden_m36_ack_latency_samples                   how many acknowledgments those two figures cover
 //
 // Labels are a fixed two-value `stat`; there is NO organisation, user, request or patient label (cardinality and privacy). An
 // organisation that could not be counted makes the whole reading UNMEASURED (-1), never zero: a gap that cannot be measured must not
@@ -130,32 +130,32 @@ export function registerAckQueueMetrics(
     });
   };
   gauge(
-    "wardenx_m36_ack_overdue_total",
+    "chartwarden_m36_ack_overdue_total",
     "M36 acknowledgment requests past their deadline and still waiting for a human, all organisations",
     (s) => s.overdue,
   );
   gauge(
-    "wardenx_m36_ack_failed_unreachable_total",
+    "chartwarden_m36_ack_failed_unreachable_total",
     "M36 acknowledgment requests no delivery route could reach, still open, all organisations",
     (s) => s.failedUnreachable,
   );
   gauge(
-    "wardenx_m36_ack_oldest_overdue_seconds",
+    "chartwarden_m36_ack_oldest_overdue_seconds",
     "Seconds the longest-overdue waiting M36 acknowledgment request is past its deadline",
     (s) => s.oldestOverdueSeconds,
   );
   gauge(
-    "wardenx_m36_ack_escalation_stalled_seconds",
+    "chartwarden_m36_ack_escalation_stalled_seconds",
     "Seconds the oldest M36 request the escalation sweep should already have handled is past its deadline (0 = none, or escalation off for the tenant)",
     (s) => s.escalationStalledSeconds,
   );
   gauge(
-    "wardenx_m36_ack_latency_samples",
+    "chartwarden_m36_ack_latency_samples",
     "M36 acknowledgments in the trailing 24 h that the latency gauges cover",
     (s) => s.ackedCount,
   );
   new Gauge({
-    name: "wardenx_m36_ack_latency_seconds",
+    name: "chartwarden_m36_ack_latency_seconds",
     help: "M36 acknowledgment latency (acknowledged_at - requested_at) over the trailing 24 h; stat=mean|max (-1 = not measured, 0 with no samples)",
     labelNames: ["stat"],
     registers: [registry],

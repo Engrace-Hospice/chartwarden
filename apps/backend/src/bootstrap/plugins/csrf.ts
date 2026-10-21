@@ -26,7 +26,9 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { CsrfValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-const CSRF_COOKIE_NAME = "wardenx_csrf";
+const CSRF_COOKIE_NAME = "chartwarden_csrf";
+/** Pre-rename cookie name. Still accepted (and then expired) so a browser holding it is not locked out on deploy. */
+const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -117,9 +119,17 @@ export function applyCsrfProtection(app: FastifyInstance, opts: CsrfOptions = {}
   // cookie for the very next, non-exempt mutation.
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     const cookies = parseCookies(request.headers.cookie);
-    let token = cookies[CSRF_COOKIE_NAME];
-    if (!token) {
-      token = randomBytes(32).toString("hex");
+    const legacyToken = cookies[LEGACY_CSRF_COOKIE_NAME];
+    let token = cookies[CSRF_COOKIE_NAME] ?? legacyToken;
+    if (legacyToken !== undefined) {
+      // Transition: stop the browser sending the legacy cookie; the new one carries the same value.
+      appendSetCookie(
+        reply,
+        `${LEGACY_CSRF_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure ? "; Secure" : ""}`,
+      );
+    }
+    if (!cookies[CSRF_COOKIE_NAME]) {
+      token = token || randomBytes(32).toString("hex");
       const attrs = [
         `${CSRF_COOKIE_NAME}=${token}`,
         "Path=/",

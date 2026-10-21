@@ -590,7 +590,7 @@ describe("useAckRequests - stale channel", () => {
 });
 
 describe("ack hook - background reads, focus, timeouts", () => {
-  const BG = { "x-wardenx-background": "1" };
+  const BG = { "x-chartwarden-background": "1" };
   const hookClient = (get: () => unknown, post?: unknown) => {
     const GET = vi.fn((_p: string, _i: unknown) => Promise.resolve(get()));
     const POST = post ?? vi.fn().mockResolvedValue({ data: {}, response: { status: 200 } });

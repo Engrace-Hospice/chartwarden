@@ -2,7 +2,7 @@
  * COP27 API seed — the authenticated HTTP session.
  *
  * Same handshake `seed-patients.ts` / `lib/api-session.ts` use (Better Auth email sign-in → cookie jar →
- * `wardenx_csrf` double-submit on every mutating call → `/auth/memberships` + `/auth/select-organization`),
+ * `chartwarden_csrf` double-submit on every mutating call → `/auth/memberships` + `/auth/select-organization`),
  * but with the base URL and the credentials taken from the caller rather than from `CREDENTIALS.local.md`:
  * this seed is written to run against a deployed environment, where there is no credentials file and the
  * password must never be read from disk, echoed, or passed on the command line.
@@ -58,7 +58,7 @@ function absorbSetCookie(jar: Jar, res: Response): void {
 const cookieHeader = (jar: Jar): string =>
   [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 const csrfHeader = (jar: Jar): Record<string, string> => {
-  const token = jar.get("wardenx_csrf");
+  const token = jar.get("chartwarden_csrf");
   return token ? { "x-csrf-token": token } : {};
 };
 
@@ -243,7 +243,7 @@ export async function signIn(input: SignInInput): Promise<Session> {
       const request = req instanceof Request ? req : new Request(req, init);
       const headers = new Headers(request.headers);
       headers.set("cookie", cookieHeader(jar));
-      const token = jar.get("wardenx_csrf");
+      const token = jar.get("chartwarden_csrf");
       if (token) headers.set("x-csrf-token", token);
       return fetchWithRateLimitRetry(new Request(request, { headers }), jar);
     }) as typeof fetch,

@@ -28,7 +28,7 @@ export type DisciplinePlanSideEffect =
   | { readonly kind: "recompute_supervisory_due"; readonly nextDueAt: IsoInstant }
   /**
    * Write the §8.1 `m15.gate.override.invoked` audit event at `warn` severity and bump the
-   * `wardenx_m15_gate_override_counter` metric (§8.2). Declared by the §8.6 STRIDE path where a
+   * `chartwarden_m15_gate_override_counter` metric (§8.2). Declared by the §8.6 STRIDE path where a
    * coordinator books a volunteer past an unmet 418.78 gate with a documented reason — the override is
    * legal, but it is never silent.
    */
