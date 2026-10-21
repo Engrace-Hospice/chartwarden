@@ -330,7 +330,7 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("Signed election (statement route): a signed paper copy of the WardenX statement completes the item", async () => {
+    it("Signed election (statement route): a signed paper copy of the ChartWarden statement completes the item", async () => {
       const who = await intake();
       const es = await svc.draftElectionStatement(ORG_A, who.admissionId, who.periodId, {
         electedProviderEntityId: PROVIDER_ENTITY,

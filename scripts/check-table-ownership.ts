@@ -1,5 +1,5 @@
 /**
- * WardenX — Table Ownership Check
+ * ChartWarden — Table Ownership Check
  * ------------------------------------------------------------------
  * The leak RLS does NOT catch: Module 8 reading Module 12's tables WITHIN the
  * same org. RLS enforces the tenant boundary; it says nothing about which module

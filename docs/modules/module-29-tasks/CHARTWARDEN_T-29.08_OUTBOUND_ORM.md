@@ -340,7 +340,7 @@ import type { Logger } from 'pino'
 export interface OrmBuildInput {
   readonly orderPayload: M11LabOrderPayload   // see §4
   readonly messageControlId: string
-  readonly sendingApp: string                  // 'WARDENX'
+  readonly sendingApp: string                  // 'CHARTWARDEN'
   readonly sendingFacility: string             // tenant code
   readonly receivingApp: string                // partner-app
   readonly receivingFacility: string           // partner-facility
@@ -744,7 +744,7 @@ const outbox = mkOutbox(db, logger)
 const envelope = mkKmsEnvelope()
 const mdm = mkMdmClient()
 const sidecar = createSidecarClient({
-  udsPath: process.env.WARDENX_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
+  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
   healthIntervalMs: 30_000,
   parseTimeoutMs: 2_000,
   buildTimeoutMs: 2_000,
@@ -802,8 +802,8 @@ export const ormTransmitWorker = new Worker<TransmitJobData>(
         {
           orderPayload: labOrderPayload,
           messageControlId: row.messageControlId,
-          sendingApp: 'WARDENX',
-          sendingFacility: feed.sendingFacilityCode ?? 'WARDENX',
+          sendingApp: 'CHARTWARDEN',
+          sendingFacility: feed.sendingFacilityCode ?? 'CHARTWARDEN',
           receivingApp: feed.receivingApp ?? 'PARTNER',
           receivingFacility: feed.receivingFacility ?? feed.host,
         },
@@ -1059,7 +1059,7 @@ describe('W-XI-12 — ORM^O01 dispatch with AA ACK', () => {
     })
 
     expect(partnerLab.receivedFrames).toHaveLength(1)
-    expect(partnerLab.receivedFrames[0].toString()).toContain('MSH|^~\\&|WARDENX|')
+    expect(partnerLab.receivedFrames[0].toString()).toContain('MSH|^~\\&|CHARTWARDEN|')
     expect(partnerLab.receivedFrames[0].toString()).toContain('ORM^O01')
   })
 })
@@ -1196,7 +1196,7 @@ describe('transport failures trip circuit breaker after 5 consecutive', () => {
 ```ts
 describe('ACK parser', () => {
   it('valid AA ACK → kind=accepted with MCID', () => {
-    const ack = Buffer.from('MSH|^~\\&|PARTNER|LAB|WARDENX|ENGRACE|...\rMSA|AA|WX-12345|\r', 'utf8')
+    const ack = Buffer.from('MSH|^~\\&|PARTNER|LAB|CHARTWARDEN|ENGRACE|...\rMSA|AA|WX-12345|\r', 'utf8')
     const result = parseAck(ack, mkLogger())
     expect(result).toEqual({ kind: 'accepted', ackCode: 'AA', messageControlId: 'WX-12345' })
   })

@@ -22,7 +22,7 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
-/** Accept only an unmodified absolute-path reference on the current WardenX origin. */
+/** Accept only an unmodified absolute-path reference on the current ChartWarden origin. */
 export function normalizeAlertDeepLink(value: unknown): string | null {
   if (typeof value !== "string" || value !== value.trim()) return null;
   if (value === "/" || !value.startsWith("/") || value.startsWith("//")) return null;

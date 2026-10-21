@@ -28,7 +28,7 @@ export const WRITTEN_CERT_DEADLINE_DAYS = 2 as const;
  *
  * This is deliberately separate from WRITTEN_CERT_DEADLINE_DAYS:
  * - WRITTEN_CERT_DEADLINE_DAYS = regulatory oral→written certification path
- * - CTI_SIGNATURE_WINDOW_DAYS = WardenX operational signature SLA
+ * - CTI_SIGNATURE_WINDOW_DAYS = ChartWarden operational signature SLA
  */
 export const CTI_SIGNATURE_WINDOW_DAYS = 3 as const;
 

@@ -1,6 +1,6 @@
 // @chartwarden/admin-ui-shell — persistent "support session active" banner (M34 §3.10 / §5.1 / D8/D21).
 //
-// A support session is a break-glass *variant*: WardenX-staff PHI access that ALSO carries a
+// A support session is a break-glass *variant*: ChartWarden-staff PHI access that ALSO carries a
 // `support_consent_grant` reference — consent narrows, never replaces, dual control (M34-F01). While
 // a session is open the platform-ops console paints this ambient banner at the very top of the shell,
 // the same way M2 break-glass does, so the operator can never forget they are inside a consented,

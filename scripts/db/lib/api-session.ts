@@ -1,5 +1,5 @@
 /**
- * WardenX — shared authenticated-session helper for scenario seed scripts (local dev only).
+ * ChartWarden — shared authenticated-session helper for scenario seed scripts (local dev only).
  *
  * Every `scripts/db/seed-scenario-*.ts` script drives the REAL backend API (not raw SQL) as a
  * signed-in demo user, so RLS/ABAC/state-machine rules are exercised honestly instead of
@@ -22,7 +22,7 @@ import { fetchAuthWithRateLimitRetry } from "./auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./credentials";
 
 export const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-export const ORG_SLUG = "wardenx-demo";
+export const ORG_SLUG = "chartwarden-demo";
 
 export interface WxSession {
   client: ApiClient;
@@ -34,12 +34,12 @@ export interface WxSession {
 /**
  * Read a seeded user's generated password out of the gitignored CREDENTIALS.local.md. Three things a
  * naive `includes(email)` gets wrong, all confirmed live:
- *   1. Substring collision: `"orgadmin@wardenx.local".includes("admin@wardenx.local")` is TRUE — a plain
- *      substring search for `admin@wardenx.local` also matches `orgadmin@wardenx.local`'s row. Matching
+ *   1. Substring collision: `"orgadmin@chartwarden.local".includes("admin@chartwarden.local")` is TRUE — a plain
+ *      substring search for `admin@chartwarden.local` also matches `orgadmin@chartwarden.local`'s row. Matching
  *      the backtick-delimited exact cell (`` `${email}` ``) avoids this.
- *   2. Ordering: `orgadmin@wardenx.local` is one of `seed.ts`'s base 4 accounts AND is separately
+ *   2. Ordering: `orgadmin@chartwarden.local` is one of `seed.ts`'s base 4 accounts AND is separately
  *      dropped-and-recreated with a different password by `seed-org-admin.ts` (its own header: "drops a
- *      prior orgadmin@wardenx.local first, then re-creates it") — in `db:reset`'s pipeline order the base
+ *      prior orgadmin@chartwarden.local first, then re-creates it") — in `db:reset`'s pipeline order the base
  *      block is written first and is stale (that user no longer exists) by the time any script signs in,
  *      so the LAST matching line is always the authoritative one for any persona recreated by a later step.
  *   3. Not every line containing the needle is a credentials-table row — a prose note elsewhere in the

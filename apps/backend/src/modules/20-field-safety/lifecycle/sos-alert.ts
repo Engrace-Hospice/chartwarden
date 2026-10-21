@@ -327,7 +327,7 @@ export type SafetySosEscalationReason = "sla_breach" | "delivery_failed" | "manu
  * that has already happened) and by a supervisor's explicit escalate (`manual`).
  *
  * The rung into `emergency_terminus` carries the §2.2.2 quartet: dial the consented emergency contact,
- * surface M40's PSAP number to every recipient, page WardenX ops, and (in ./sos-escalator) keep looping.
+ * surface M40's PSAP number to every recipient, page ChartWarden ops, and (in ./sos-escalator) keep looping.
  */
 export function escalateSos(input: {
   readonly alert: SafetySosAlertFacts;
@@ -349,7 +349,7 @@ export function escalateSos(input: {
       withSosHistory(edge.from, edge.to, systemActor, [
         { kind: "dial_emergency_contact", consentPresent: input.emergencyContactConsent === true },
         { kind: "surface_psap_number" },
-        { kind: "page_wardenx_ops" },
+        { kind: "page_chartwarden_ops" },
         { kind: "outbox", event: "m20.safety.sos_terminus_reached" },
         { kind: "alert", alert: "m20.safety.sos_terminus_reached" },
       ]),
@@ -370,7 +370,7 @@ export function escalateSos(input: {
 /**
  * §2.2.2 / M20-F05 / S13 / INT-031 — one turn of the terminus LOOP.
  *
- * The terminus "keeps re-escalating on a loop … until a responder or WardenX ops acknowledges. The chain
+ * The terminus "keeps re-escalating on a loop … until a responder or ChartWarden ops acknowledges. The chain
  * only exits on acknowledgment, never on timeout." So this is NOT a transition — the state stays
  * `emergency_terminus` — and it therefore returns NO `sos_state_history` effect: §3.3's `m20_ssash_no_self`
  * CHECK refuses a row whose from- and to-state are equal, and a machine that emitted one here would have the
@@ -392,7 +392,7 @@ export function repageTerminus(input: {
   return withAudit([
     { kind: "dial_emergency_contact", consentPresent: input.emergencyContactConsent },
     { kind: "surface_psap_number" },
-    { kind: "page_wardenx_ops" },
+    { kind: "page_chartwarden_ops" },
     { kind: "outbox", event: "m20.safety.sos_terminus_reached" },
     { kind: "alert", alert: "m20.safety.sos_terminus_reached" },
   ]);

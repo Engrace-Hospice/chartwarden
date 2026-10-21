@@ -42,7 +42,7 @@ export type ReviewResult<T> =
       readonly message: string;
     };
 
-/** The WardenX error envelope is `{ error: { code, message } }`; anything else yields nulls. */
+/** The ChartWarden error envelope is `{ error: { code, message } }`; anything else yields nulls. */
 function envelope(body: unknown): { code: string | null; message: string | null } {
   const inner =
     body && typeof body === "object" && "error" in body

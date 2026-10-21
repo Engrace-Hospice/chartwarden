@@ -1,6 +1,6 @@
 // @chartwarden/ui — typed REST API client (F0-T02, ADR-0032).
 // Wraps openapi-fetch over the generated `paths` (from docs/api/openapi.json via
-// `bun run client:gen`) and attaches the WardenX auth + correlation-id headers.
+// `bun run client:gen`) and attaches the ChartWarden auth + correlation-id headers.
 // Leaf-safe: depends only on `openapi-fetch` + the generated schema — NO @chartwarden/* import,
 // so `packages/ui` stays a leaf and the frontend never compile-imports the backend.
 import createClient, { type Client, type ClientOptions, type Middleware } from "openapi-fetch";
@@ -102,7 +102,7 @@ const csrfToken: Middleware = {
   },
 };
 
-/** Build a typed API client with WardenX auth + correlation-id + idempotency-key middleware. */
+/** Build a typed API client with ChartWarden auth + correlation-id + idempotency-key middleware. */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const {
     baseUrl = "",

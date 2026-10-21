@@ -1,10 +1,10 @@
 /**
- * WardenX — DocLens chart-writeback scenario seed (local dev only; F-235, #248). NOT for production.
+ * ChartWarden — DocLens chart-writeback scenario seed (local dev only; F-235, #248). NOT for production.
  *
  * Seeds what `POST /api/v1/intake/reviews/:id/complete` needs to be driven over real HTTP on the local
  * stack:
  *
- *   1. A signed-in-able REVIEWER, `doclens.reviewer@wardenx.local`, created through the real Better Auth
+ *   1. A signed-in-able REVIEWER, `doclens.reviewer@chartwarden.local`, created through the real Better Auth
  *      sign-up (password written to the gitignored CREDENTIALS.local.md, so `scripts/db/lib/api-session.ts`
  *      `signIn()` can use it). The membership gets a `doclens_intake_reviewer` role holding the `intake.*` /
  *      `documents.*` keys, and an ACTIVE RN `membership_credential`, which `extraction_reviewer_eligible`
@@ -52,10 +52,10 @@ import { firstRow } from "./lib/query-rows";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL;
 const PLATFORM_URL = process.env.DATABASE_PLATFORM_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
-const REVIEWER_EMAIL = "doclens.reviewer@wardenx.local";
+const REVIEWER_EMAIL = "doclens.reviewer@chartwarden.local";
 const REVIEWER_NAME = "Dee Lens, RN (DocLens reviewer)";
 const ROLE_KEY = "doclens_intake_reviewer";
 const PATIENT_MRN = "DOCLENS-DEMO-0001";

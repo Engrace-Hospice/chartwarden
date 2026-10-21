@@ -1,5 +1,5 @@
 // @chartwarden/billing — M23 `claim` lifecycle reducer (§2.2, D2 / D4 / D14). The spec proposes an XState v5
-// machine; the WardenX repo convention is a PURE hand-rolled transition reducer (the M27
+// machine; the ChartWarden repo convention is a PURE hand-rolled transition reducer (the M27
 // `cost-report/src/domain/lifecycle.ts` + M39 consent precedents), and ARCHITECTURE WINS over the module
 // spec on this conflict. The twelve `claim` states and their server-authoritative transitions are encoded
 // as a flat transition table; `canTransition` / `reduce` are total, deterministic, side-effect-free

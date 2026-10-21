@@ -6,7 +6,7 @@
 // may occur via telecommunications technology "during a PHE ... or through December 31, 2027, whichever is
 // later". From 2026-01-31 (CAA 2026 § 6209(f)(1)(B)) telehealth is barred when (A) the patient is in a
 // hospice enrollment-moratorium area, (B) the hospice is under enhanced oversight, or (C) the performer is
-// neither Medicare-enrolled nor an opt-out practitioner. WardenX has no natural home for those three facts
+// neither Medicare-enrolled nor an opt-out practitioner. ChartWarden has no natural home for those three facts
 // (no moratorium / oversight flag on `provider_entity`, no practitioner enrollment registry), so they are
 // captured as an EXPLICIT ATTESTATION on completion and persisted on the encounter
 // (`face_to_face_encounter.telehealth_eligibility`). The PHE branch is not modelled: the sunset is the named

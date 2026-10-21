@@ -279,7 +279,7 @@ interface RecordedNoticeAck {
   readonly outcome: "accepted" | "rejected";
   readonly payerControlNumber: string | null;
   readonly reasonCodes: readonly string[];
-  /** When WardenX received the ack (`accepted_at` / `rejected_at`). */
+  /** When ChartWarden received the ack (`accepted_at` / `rejected_at`). */
   readonly receivedAt: Date;
   /** Medicare's own date for the answer, with its source (`payer_status_date[_source]`). */
   readonly payerDate: PayerStatusDate;

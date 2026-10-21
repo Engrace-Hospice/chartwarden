@@ -1,5 +1,5 @@
 /**
- * WardenX — Route-reachability check  (F-090; fitness gate)
+ * ChartWarden — Route-reachability check  (F-090; fitness gate)
  * ---------------------------------------------------------
  * Every function that registers an HTTP route must be REACHED from the composition root.
  *

@@ -70,7 +70,7 @@ export const transferNoticeRecord = pgTable(
     certifyingPhysicianId: uuid("certifying_physician_id"),
 
     // The §20.1.3 hold: "The 8XC does not get submitted until after the other provider has finalized their
-    // billing." Nothing in WardenX can observe another hospice's claims, so it is a staff confirmation of the
+    // billing." Nothing in ChartWarden can observe another hospice's claims, so it is a staff confirmation of the
     // transferring hospice's final claim (Through date + patient status 50/51), all four columns or none.
     priorBillingConfirmedAt: timestamp("prior_billing_confirmed_at", { withTimezone: true }),
     priorBillingConfirmedByMembershipId: uuid("prior_billing_confirmed_by_membership_id"),

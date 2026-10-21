@@ -1,5 +1,5 @@
 /**
- * WardenX — one-shot run of the REAL M14 `idg.carry-forward` (`compute-carry-forward`) handler for the demo org
+ * ChartWarden — one-shot run of the REAL M14 `idg.carry-forward` (`compute-carry-forward`) handler for the demo org
  * (local dev). NOT for prod. The same `runCarryForwardCron` the BullMQ worker runs, with the org supplied
  * explicitly, over the real `chartwarden_app` connection and the real catalog-validating outbox publisher. Idempotent:
  * a second run carries nothing and increments nothing.
@@ -17,7 +17,7 @@ import {
   runCarryForwardCron,
 } from "../../apps/backend/src/modules/14-idg/index";
 
-const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf6e2"; // wardenx-demo
+const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf6e2"; // chartwarden-demo
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;

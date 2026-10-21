@@ -523,7 +523,7 @@ describe("M20-T06 §2.4 — the effects runner cannot lose an effect", () => {
       ctx,
     );
     // the terminus re-page: audit only, no history (m20_ssash_no_self would refuse from === to)
-    await runEffects({}, [{ kind: "audit" }, { kind: "page_wardenx_ops" }], ctx);
+    await runEffects({}, [{ kind: "audit" }, { kind: "page_chartwarden_ops" }], ctx);
     expect(rows).toHaveLength(1);
     expect(
       (rows[0] as { transitionedByMembershipId: string | null }).transitionedByMembershipId,

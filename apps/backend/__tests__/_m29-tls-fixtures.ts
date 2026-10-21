@@ -1,5 +1,5 @@
 // apps/backend/__tests__/_m29-tls-fixtures.ts — GAP-086 test helper. Mints a throwaway PKI with the `openssl` binary (the
-// repo ships no certificate fixtures, and Node has no certificate-signing API): a server certificate + key WardenX presents
+// repo ships no certificate fixtures, and Node has no certificate-signing API): a server certificate + key ChartWarden presents
 // on a feed port, a client CA, a client certificate signed by it, and a client certificate from an UNRELATED CA (the mTLS
 // rejection case). Everything is written to a temp dir and removed by `dispose()`.
 import { execFileSync } from "node:child_process";

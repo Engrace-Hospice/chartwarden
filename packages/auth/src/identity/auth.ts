@@ -272,7 +272,7 @@ export function resolveTrustedOrigins(
 }
 
 /**
- * Better Auth's Expo plugin trusts the broad `exp://` scheme automatically in development. WardenX
+ * Better Auth's Expo plugin trusts the broad `exp://` scheme automatically in development. ChartWarden
  * requires every native scheme to be configured explicitly, so retain the official plugin's request
  * and callback handling while removing only that implicit development initializer. This is pinned to
  * @better-auth/expo 1.6.25 and covered by the config-shape test.
@@ -368,7 +368,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         });
       },
     },
-    // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: WardenX owns its org /
+    // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: ChartWarden owns its org /
     // membership / invitation model (M1/M2 tables + RLS + select-organization), which Better Auth's
     // org plugin would duplicate/conflict with; the session's `activeOrganizationId` additionalField
     // carries the binding instead. Magic-link + reset delivery flow through M36's transactional email

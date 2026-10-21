@@ -13,7 +13,7 @@ import {
 } from "@chartwarden/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/design/screens/core/CHARTWARDEN_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
-// Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `mK4co`): a Fraunces title, a pill
+// Matched to the P0 Pencil frame (chartwarden-P0-foundation.pen `mK4co`): a Fraunces title, a pill
 // tab-strip (Notifications / Tasks / Mentions) with an inline stats summary, and a §6.2 No-Line card
 // listing rows (severity glyph + summary + source chip + status pill + relative time). The REAL data
 // is the caller's alert inbox (GET /api/v1/alerts/inbox) → the Notifications tab. The Tasks tab is the

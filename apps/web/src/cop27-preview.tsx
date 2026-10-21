@@ -3,7 +3,7 @@
 //
 //   ?addendum=none|draft|furnished|signed|refused|overdue|legacy|upload|uploaded — Election & Certification
 //       with the election statement addendum section (click a version row to open its drawer). `upload` is a
-//       draft furnished on paper outside WardenX (its drawer opens on "Upload signed paper copy"); `uploaded` is
+//       draft furnished on paper outside ChartWarden (its drawer opens on "Upload signed paper copy"); `uploaded` is
 //       a version signed on a scanned paper copy (drawer: "Signed — scanned paper copy" + Open scan / Open PDF);
 //       `upload-incomplete` is an incomplete draft (the form says the scan stands as the content); `paper` is a
 //       version whose content is on the signed paper copy.

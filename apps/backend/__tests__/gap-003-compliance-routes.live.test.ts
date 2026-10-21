@@ -188,7 +188,7 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
         url: "/api/v1/legal-holds",
         headers: HEADERS,
         payload: {
-          name: "Litigation hold — Smith v. WardenX",
+          name: "Litigation hold — Smith v. ChartWarden",
           reason: "Pending litigation discovery request received 2026-08-08",
           criteria: { patientIds: [PATIENT] },
         },

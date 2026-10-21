@@ -75,8 +75,8 @@ export type {
 // Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, CHARTWARDEN_UI_LAYOUT_PATTERNS.md)
 export * from "./layouts";
 
-// WardenX system primitives (R0.3, DESIGN.md §7–§9) — the Guardrail / Sensitivity / Provenance
-// systems that define WardenX, as reusable components mapped 1:1 to the D1–D3 boards.
+// ChartWarden system primitives (R0.3, DESIGN.md §7–§9) — the Guardrail / Sensitivity / Provenance
+// systems that define ChartWarden, as reusable components mapped 1:1 to the D1–D3 boards.
 export {
   BlockingDialog,
   CeremonyModal,

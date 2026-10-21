@@ -70,7 +70,7 @@ livrables sans réécrire l'audit Lot 0.
 
 ## CSRF et cookies observés
 
-- `apps/backend/src/bootstrap/plugins/csrf.ts` émet `wardenx_csrf` (`SameSite=Lax`, `Secure` en
+- `apps/backend/src/bootstrap/plugins/csrf.ts` émet `chartwarden_csrf` (`SameSite=Lax`, `Secure` en
   production, non HttpOnly) sur la première requête. Une mutation `/api/v1/*` qui porte un cookie de
   session doit renvoyer la même valeur dans `X-CSRF-Token`; absence, valeur différente ou cookie émis
   pendant cette même requête échouent en 403.

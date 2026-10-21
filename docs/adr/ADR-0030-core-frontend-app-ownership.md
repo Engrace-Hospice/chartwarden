@@ -5,7 +5,7 @@
   `apps/web/src/modules/02-identity` → M2 (applied via the manifest + `bun run scaffold`).
 - **Date:** 2026-06-14
 - **Phase:** pre-build governance (blocks M2-T09; affects every module that ships core/app-shell UI)
-- **Resolves:** the plan↔manifest conflict surfaced by the `wardenx-piv` M1+M2 slice run — the M2-T09
+- **Resolves:** the plan↔manifest conflict surfaced by the `chartwarden-piv` M1+M2 slice run — the M2-T09
   "Frontend screens" task (login, MFA, passkey, invite, member-management) has **no legal home** under
   the current manifest.
 - **Depends on:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (codePaths define ownership;

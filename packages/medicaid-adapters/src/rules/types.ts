@@ -1,6 +1,6 @@
 // @chartwarden/medicaid-adapters — M24 §4.6 / §11.A (M23-shared) validation RULE MODEL (D10). KEY DEVIATION
 // FROM THE SPEC PROPOSAL (architecture wins — the M23 `billing/rules/types.ts` precedent): spec §4.6's
-// `MedicaidValidationContext` embeds the live reader seams and `check()` is async. The WardenX pure-domain
+// `MedicaidValidationContext` embeds the live reader seams and `check()` is async. The ChartWarden pure-domain
 // convention is a SYNCHRONOUS PURE `check()` over an INJECTED, already-resolved, plain-data context — the
 // Phase-3 validation SERVICE walks every reader seam once, materializes this aggregate snapshot, then runs
 // the rules. Deterministic, clock-free, unit-testable with a plain object; all I/O at the service boundary.

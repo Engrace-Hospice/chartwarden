@@ -223,7 +223,7 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
     },
   );
 
-  // Records a request filed outside WardenX: RBAC + step-up (D15), proof required, frozen once recorded.
+  // Records a request filed outside ChartWarden: RBAC + step-up (D15), proof required, frozen once recorded.
   app.post(
     "/api/v1/reopenings/:id/submit",
     { preHandler: [SUBMIT, SUBMIT_STEPUP, IDEMPOTENT] },

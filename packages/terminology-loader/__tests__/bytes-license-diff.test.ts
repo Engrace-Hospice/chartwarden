@@ -44,7 +44,7 @@ describe("bytes", () => {
 const attest = (over: Partial<LicenseAttestation> = {}): LicenseAttestation => ({
   id: "att-1",
   system: "snomed",
-  licensee: "WardenX Platform Inc.",
+  licensee: "ChartWarden Platform Inc.",
   licenseReference: "SNOMED-AFFILIATE-1234",
   attestedBy: "op-1",
   effectiveFrom: "2026-01-01",

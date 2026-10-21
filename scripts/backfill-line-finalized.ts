@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX - backfill the inpatient 20% cap's day ledger for claims paid BEFORE the day-ledger fixes (GAP-038).
+ * ChartWarden - backfill the inpatient 20% cap's day ledger for claims paid BEFORE the day-ledger fixes (GAP-038).
  *
  * Re-announces `m23.claim.line_finalized` for every still-paid claim in a cap year the tenant has opened (M26's
  * ledger dedups, and stamps the claim identity on rows that predate it), and takes back the day lines of claims

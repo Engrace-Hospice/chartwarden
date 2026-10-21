@@ -1,9 +1,9 @@
 /**
- * WardenX — additive dev seed: the `org_admin` (SaaS tenant/account administrator) demo user.
+ * ChartWarden — additive dev seed: the `org_admin` (SaaS tenant/account administrator) demo user.
  *
- * Creates ONLY `orgadmin@wardenx.local` against the EXISTING `wardenx-demo` org — it does not touch
+ * Creates ONLY `orgadmin@chartwarden.local` against the EXISTING `chartwarden-demo` org — it does not touch
  * the other demo users or their passwords (unlike the destructive `db:seed`). Idempotent: drops a prior
- * `orgadmin@wardenx.local` first, then re-creates it and re-binds the org-scoped `org_admin` role.
+ * `orgadmin@chartwarden.local` first, then re-creates it and re-binds the org-scoped `org_admin` role.
  *
  * WHY a distinct role: the platform's tenant-admin authorization keys on the `org_admin` role — the
  * `isAdmin` derivation (rbac/drizzle-store.ts), the M2 last-admin lockout guard, and the ~10
@@ -13,7 +13,7 @@
  *
  * `org_admin` is the TOP role and SUPERSEDES `administrator`: it is granted the FULL permission catalog
  * (a strict superset of administrator) PLUS the role-keyed tenant-admin authority above. This script also
- * binds the primary demo admin (`admin@wardenx.local`) to `org_admin`, so the main admin login carries it.
+ * binds the primary demo admin (`admin@chartwarden.local`) to `org_admin`, so the main admin login carries it.
  *
  * Prereqs: backend running (bun run dev:backend) + DB migrated. Run: bun run db:seed:org-admin
  */
@@ -29,9 +29,9 @@ import { firstRow } from "./lib/query-rows";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const USER = {
-  email: "orgadmin@wardenx.local",
+  email: "orgadmin@chartwarden.local",
   name: "Otto OrgAdmin",
   roleKey: "org_admin",
   roleName: "Organization Administrator",
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     `INSERT INTO membership_role (organization_id, membership_id, role_id)
      SELECT m.organization_id, m.id, $2
      FROM membership m JOIN "user" u ON u.id = m.user_id
-     WHERE u.email = 'admin@wardenx.local' AND m.organization_id = $1
+     WHERE u.email = 'admin@chartwarden.local' AND m.organization_id = $1
      ON CONFLICT (membership_id, role_id) DO NOTHING`,
     [orgId, roleId],
   );
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
   console.log(`  email:    ${USER.email}`);
   console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog) + platform_ops`);
   console.log(
-    `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
+    `  admin@chartwarden.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
   );
   console.log("  credentials written to CREDENTIALS.local.md");
 }

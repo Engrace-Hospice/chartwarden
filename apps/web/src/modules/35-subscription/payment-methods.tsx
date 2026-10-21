@@ -15,7 +15,7 @@ import {
 // The stored payment methods over GET /api/v1/payment_methods, with "Set default"/"Detach" affordances
 // and the "Add card" CTA. Card entry itself is the Stripe Payment Element (the only iframe-mounted,
 // WCAG-2.1-AA component per §5.5) mounted against a setup-intent client secret (POST
-// /api/v1/payment_methods/setup_intent) — the raw PAN never touches WardenX (§4.13). This surface lists +
+// /api/v1/payment_methods/setup_intent) — the raw PAN never touches ChartWarden (§4.13). This surface lists +
 // presents the actions the server gates on payment_method.write. Lantern: CSS-var tokens, §6.6 pills.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";

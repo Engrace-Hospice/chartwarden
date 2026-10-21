@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — error-envelope gate (GAP-175)
+ * ChartWarden — error-envelope gate (GAP-175)
  * ---------------------------------------------------------------------------
  * M1 §4.3 defines ONE error envelope `{ error: { code, message, details?, correlationId } }`, rendered
  * by the M1 error handler for every thrown `ChartWardenError`. A route that answers a failure with

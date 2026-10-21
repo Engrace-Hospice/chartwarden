@@ -1,5 +1,5 @@
 /**
- * WardenX — real M6 admission scenarios across the 6 demo patients (local dev). NOT for production.
+ * ChartWarden — real M6 admission scenarios across the 6 demo patients (local dev). NOT for production.
  *
  * REPLACES `seed-census-active.ts`'s raw-SQL `patient.status` fakery — but doesn't fully escape the
  * need for a (much narrower, honestly-labeled) SQL patch of its own; see gap (3) below. Every patient
@@ -64,7 +64,7 @@ import type { WxSession } from "./lib/api-session";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const SCENARIO_LAST_NAMES = ["Whitfield", "Okonkwo", "Delgado", "Nakamura", "Brandt", "Fairbanks"];
 
 async function wipePriorAdmissions(): Promise<void> {
@@ -374,8 +374,8 @@ async function main(): Promise<void> {
   console.log("wiping any prior admission for the 6 scenario patients...");
   await wipePriorAdmissions();
 
-  const session = await signIn("admin@wardenx.local");
-  physicianSession = await signIn("drharris@wardenx.local");
+  const session = await signIn("admin@chartwarden.local");
+  physicianSession = await signIn("drharris@chartwarden.local");
   const log = new ScenarioLog("admission-outcome scenarios");
 
   // ── 1. Whitfield — active, routine home care (flagship patient) ──────────────────────────────

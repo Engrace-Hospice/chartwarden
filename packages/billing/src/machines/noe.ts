@@ -1,5 +1,5 @@
 // @chartwarden/billing — M23 `noe_record` (Notice of Election) fast-path lifecycle reducer (§2.2 lines
-// 224–243, D3). The spec proposes XState; the WardenX repo convention is a PURE hand-rolled transition
+// 224–243, D3). The spec proposes XState; the ChartWarden repo convention is a PURE hand-rolled transition
 // reducer (the `machines/claim.ts` exemplar + the M27 `cost-report/src/domain/lifecycle.ts` / M39 consent
 // precedents) and ARCHITECTURE WINS over the module spec on this conflict. This file is shape-identical to
 // `machines/claim.ts`: a transition-event union, a flat `NOE_TRANSITIONS` table, a pure guard predicate

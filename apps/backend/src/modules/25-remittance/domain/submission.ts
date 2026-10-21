@@ -1,7 +1,7 @@
 // M25 milestone 6a - the submission attempt's vocabulary and status machine (hospice ADR/TPE/QIC PRD, milestone 6).
 // PURE. Closed sets mirror the migration 1124 CHECKs (text + CHECK, no pgEnum).
 //
-// Every "submit" in M25 records a filing made outside WardenX; an attempt is the one place that tracks HOW it was
+// Every "submit" in M25 records a filing made outside ChartWarden; an attempt is the one place that tracks HOW it was
 // filed and the proof that came back. In 6a only the manual (guided) adapter is live, so an attempt is born either
 // `acknowledged` (the case already carried channel + reference + time) or `needs_manual` (an appeal submit carries
 // none). The send edges (queued/sending/sent/failed) are modelled and tested now so 6b is purely additive.

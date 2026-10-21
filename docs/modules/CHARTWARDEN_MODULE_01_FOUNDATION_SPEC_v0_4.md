@@ -2832,16 +2832,16 @@ export async function audit(
 
 | Metric | Type | Labels | Purpose |
 |---|---|---|---|
-| `wardenx_http_requests_total` | counter | method, route, status_code | Request volume |
-| `wardenx_http_request_duration_seconds` | histogram | method, route | Latency distribution |
-| `wardenx_db_query_duration_seconds` | histogram | query_type | DB latency |
-| `wardenx_db_connections_active` | gauge | pool | Pool utilization |
-| `wardenx_bullmq_jobs_total` | counter | queue, status | Job throughput |
-| `wardenx_bullmq_queue_depth` | gauge | queue | Backlog |
-| `wardenx_audit_events_total` | counter | event_type, outcome | Audit volume |
-| `wardenx_partition_rotation_failures_total` | counter | — | Partition ops failure |
-| `wardenx_outbox_dispatch_lag_seconds` | gauge | — | Outbox lag |
-| `wardenx_system_status` | gauge | component | 0=operational, 1=degraded, 2=outage |
+| `chartwarden_http_requests_total` | counter | method, route, status_code | Request volume |
+| `chartwarden_http_request_duration_seconds` | histogram | method, route | Latency distribution |
+| `chartwarden_db_query_duration_seconds` | histogram | query_type | DB latency |
+| `chartwarden_db_connections_active` | gauge | pool | Pool utilization |
+| `chartwarden_bullmq_jobs_total` | counter | queue, status | Job throughput |
+| `chartwarden_bullmq_queue_depth` | gauge | queue | Backlog |
+| `chartwarden_audit_events_total` | counter | event_type, outcome | Audit volume |
+| `chartwarden_partition_rotation_failures_total` | counter | — | Partition ops failure |
+| `chartwarden_outbox_dispatch_lag_seconds` | gauge | — | Outbox lag |
+| `chartwarden_system_status` | gauge | component | 0=operational, 1=degraded, 2=outage |
 
 ### 8.4 OpenTelemetry Spans
 

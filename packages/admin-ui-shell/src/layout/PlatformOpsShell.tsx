@@ -1,6 +1,6 @@
 // @chartwarden/admin-ui-shell — the platform-ops console shell (M34 §3.1 / §5.1).
 //
-// The top-level chrome for the WardenX-staff control plane (`withPlatformContext` routes): a left
+// The top-level chrome for the ChartWarden-staff control plane (`withPlatformContext` routes): a left
 // nav rail over the eight platform-ops surfaces (Tenants / Support / Exports / Onboarding / Feature
 // Flags / BAA / Signups / Key Rings — §5.1 inventory) and a top bar, with the active screen rendered
 // in the content well. When a support session is open the host pins a SupportSessionBanner into the
@@ -50,7 +50,7 @@ export interface PlatformOpsShellProps {
   renderNavLink?: (item: PlatformNavItem, active: boolean) => ReactNode;
   /** Top-bar trailing region — operator identity / session controls / theme toggle. */
   topBarActions?: ReactNode;
-  /** Optional wordmark override; defaults to "WardenX Platform Ops". */
+  /** Optional wordmark override; defaults to "ChartWarden Platform Ops". */
   brand?: ReactNode;
   /** The active screen. */
   children: ReactNode;

@@ -1,4 +1,4 @@
-// WardenX — Frame-Fidelity Registry
+// ChartWarden — Frame-Fidelity Registry
 // ----------------------------------
 // The hand-maintained bridge between a BUILT web screen and the Pencil FRAME it should match,
 // plus how far that match has progressed. This is the source of truth the frame-fidelity report
@@ -38,7 +38,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Feature Flags",
     module: "M34",
     frameNode: "bxUqf",
-    penFile: "wardenx-P4-admin-platform.pen",
+    penFile: "chartwarden-P4-admin-platform.pen",
     status: "partial",
     notes:
       "Added the frame's KPI strip (total / enabled / kill-switches / per-tenant, counted from the loaded " +
@@ -53,7 +53,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "App Shell & Role Home",
     module: "M01",
     frameNode: "AQAhY",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Role-home launcher reconciled to Lantern (Fraunces headline, No-Line tiles on warm paper). " +
@@ -64,7 +64,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "IDG Meeting",
     module: "M14",
     frameNode: "Wqf1e",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's 3-pane meeting view: a meeting header (status + packets-ready + Live surface) " +
@@ -80,7 +80,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "HOPE Assessment",
     module: "M10",
     frameNode: "KQ8kz",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Patient Workspace: banner | HOPE timepoint rail (real patient HOPE timeline) " +
@@ -97,7 +97,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Medications — Prescribing & eMAR",
     module: "M13",
     frameNode: "ANbhv",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's MAR Grid: Patient Workspace (banner + module rail) | the Medication " +
@@ -115,7 +115,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Orders",
     module: "M11",
     frameNode: "pQiC0",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Patient Workspace: banner + module rail | orders table (kind · priority · " +
@@ -129,7 +129,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Encounter / Visit Documentation",
     module: "M08",
     frameNode: "AohyV",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Patient Workspace: banner | visit-note document (note title + status, a " +
@@ -153,7 +153,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Clinical Assessments Suite",
     module: "M09",
     frameNode: "aSIwN",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Patient Workspace: banner | scale list | selected scale's score + capture " +
@@ -168,7 +168,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Care Plan",
     module: "M07",
     frameNode: "UaKVf",
-    penFile: "wardenx-P1-clinical.pen",
+    penFile: "chartwarden-P1-clinical.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Patient Workspace: patient banner + module nav rail | a document-style " +
@@ -184,7 +184,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Patient Chart",
     module: "M05",
     frameNode: "fQjjh",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav " +
@@ -198,10 +198,10 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Authentication & Session — Sign in",
     module: "M02",
     frameNode: "a1dbhD",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "matched",
     notes:
-      "Rebuilt to the frame's 'Card Sign in': gold hearth mark + Fraunces 'WardenX' lockup, Sign in " +
+      "Rebuilt to the frame's 'Card Sign in': gold hearth mark + Fraunces 'ChartWarden' lockup, Sign in " +
       "title + subtitle, filled fields, full-width pill button, and a 'Forgot password? · Use a passkey' " +
       "links row. Fully real — email/password + passkey both go through Better Auth; no placeholders.",
   },
@@ -210,7 +210,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Authentication & Session — Two-factor verification",
     module: "M02",
     frameNode: "a1dbhD",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "matched",
     notes:
       "Rebuilt to the frame's 'Card Two-factor verification' (same a1dbhD frame as Sign in): branded " +
@@ -224,7 +224,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Notifications & Tasks",
     module: "M01 · M36",
     frameNode: "mK4co",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame: Fraunces title, Notifications/Tasks/Mentions pill tabs + an inline stats " +
@@ -237,7 +237,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Staff Messaging",
     module: "M36",
     frameNode: "A016Y",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's Conversation View: a 'Messages' list (avatar + title + scope + unread dot, " +
@@ -251,7 +251,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "System / Utility Pages",
     module: "M01",
     frameNode: "dT1Bt",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "matched",
     notes:
       "All 7 chromeless states (404/403/500/offline/maintenance/session-expired/suspended) render the " +
@@ -264,7 +264,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Global Search Results",
     module: "M01 · M33",
     frameNode: "Cp053",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Rebuilt to the frame's centered results column: per-scope No-Line cards with avatar + name + " +
@@ -277,7 +277,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Patient List / Census",
     module: "M05",
     frameNode: "DNqXm",
-    penFile: "wardenx-P0-foundation.pen",
+    penFile: "chartwarden-P0-foundation.pen",
     status: "partial",
     notes:
       "Header (title + Admit action), KPI strip, work table, and right detail panel match the frame. " +
@@ -289,7 +289,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Discharge / Revocation / Transfer",
     module: "M06",
     frameNode: "m8VaU",
-    penFile: "wardenx-P2-operational.pen",
+    penFile: "chartwarden-P2-operational.pen",
     status: "pending",
     notes:
       "Built as a stepper workflow (Reason -> Details -> Effective date -> Review -> Confirm) in the " +
@@ -305,7 +305,7 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
     screen: "Death & Pronouncement",
     module: "M06",
     frameNode: "f7o1r",
-    penFile: "wardenx-P2-operational.pen",
+    penFile: "chartwarden-P2-operational.pen",
     status: "pending",
     notes:
       "Built as a stepper workflow (Record death -> Review & sign -> Post-death cascade) in the same " +

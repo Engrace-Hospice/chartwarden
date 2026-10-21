@@ -13,7 +13,7 @@ import type { OrmRequestedPayload } from "@chartwarden/types";
 
 /** The two application/facility identity pairs the outbound MSH carries (resolved from `external_feed`). */
 export interface OrmEndpoint {
-  /** MSH-3 — our sending application (WardenX). */
+  /** MSH-3 — our sending application (ChartWarden). */
   readonly sendingApplication: string;
   /** MSH-4 — our sending facility (the feed's configured sending facility). */
   readonly sendingFacility: string;

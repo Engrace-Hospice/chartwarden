@@ -1,7 +1,7 @@
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 /**
- * WardenX — final scenario-data batch: M16 (Bereavement) / M30 (HQRP & Quality) / M37 (IPU Management) /
+ * ChartWarden — final scenario-data batch: M16 (Bereavement) / M30 (HQRP & Quality) / M37 (IPU Management) /
  * M39 (Consent) / M22 (Documents) for the flagship patient(s) + org (local dev). NOT for production.
  *
  * Genuine platform gaps hit and worked around/documented (confirmed by reading the actual route/
@@ -39,10 +39,10 @@ import { Client } from "pg";
  *     `compliance_officer` here via an in-script raw-SQL role insert, but that broke inside the full
  *     `db:reset` pipeline: RBAC's effective-permission set is cached per-`(org,userId)` in-process with
  *     no external invalidation path, and `seed-scenario-field-ops.ts` (which runs earlier in `db:reset`
- *     and also signs in as `supervisor@wardenx.local`, for SOS acknowledge) primes that cache BEFORE this
+ *     and also signs in as `supervisor@chartwarden.local`, for SOS acknowledge) primes that cache BEFORE this
  *     script's grant ever lands — confirmed live: FORBIDDEN persisted even with the correct grant already
  *     committed to `role_permission`. Fixed at the source instead: `seed-staff-personas.ts` now grants
- *     `supervisor@wardenx.local` the `compliance_officer` role key directly (plus `quality` added to
+ *     `supervisor@chartwarden.local` the `compliance_officer` role key directly (plus `quality` added to
  *     every persona's broad permission-category grant), so the role exists before ANY script ever
  *     authenticates as that persona, in any run order.
  *   - M37: this used to say `kind: "arranged"` was the only reachable IPU admission kind, because
@@ -470,14 +470,14 @@ async function wipePrior(
 }
 
 async function main(): Promise<void> {
-  const admin = await signIn("orgadmin@wardenx.local");
-  const rita = await signIn("rita@wardenx.local");
+  const admin = await signIn("orgadmin@chartwarden.local");
+  const rita = await signIn("rita@chartwarden.local");
   // `org_scope_bereavement_oversight` (M16 ABAC) only accepts clinical_supervisor / director_of_nursing /
   // bereavement_program_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
   // qualify (confirmed live: FORBIDDEN), so M16's actor is supervisor@ (clinical_supervisor), not vera@.
-  const supervisor = await signIn("supervisor@wardenx.local");
+  const supervisor = await signIn("supervisor@chartwarden.local");
   // The hospice physician — the only actor CoP 418.108 lets attest a GIP admission criterion (§2.4/D4).
-  const drharris = await signIn("drharris@wardenx.local");
+  const drharris = await signIn("drharris@chartwarden.local");
   const log = new ScenarioLog("remaining (M16/M30/M37/M39/M22)");
 
   // The census is caseload-scoped (F-096): `org_admin` is not an org-wide patient reader, the medical
@@ -524,8 +524,8 @@ async function main(): Promise<void> {
       fairbanksAdmissionId,
       deathDate,
     );
-    const miraId = await membershipIdFor("mira@wardenx.local");
-    const valentinaId = await membershipIdFor("valentina@wardenx.local");
+    const miraId = await membershipIdFor("mira@chartwarden.local");
+    const valentinaId = await membershipIdFor("valentina@chartwarden.local");
 
     const assignCounselor = await supervisor.client.POST(
       "/api/v1/bereavement/plans/{planId}/assign-counselor",
@@ -593,12 +593,12 @@ async function main(): Promise<void> {
 
   // ── M30 — Quality/HQRP (incidents/QAPI/SRA/infection real API; mortality review DB-seeded) ──────────
   try {
-    const ritaId = await membershipIdFor("rita@wardenx.local");
-    const drharrisId = await membershipIdFor("drharris@wardenx.local");
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
+    const drharrisId = await membershipIdFor("drharris@chartwarden.local");
     // supervisor@ carries `compliance_officer` from seed-staff-personas.ts (not granted ad hoc here —
     // see the file header for why an in-script grant issued after this actor's first guarded request
     // elsewhere in the pipeline is unreliable).
-    const supervisorId = await membershipIdFor("supervisor@wardenx.local");
+    const supervisorId = await membershipIdFor("supervisor@chartwarden.local");
 
     // Incident: full lifecycle. A patient-linked report must be about a patient in the REPORTER's caseload
     // (GAP-091, 404 otherwise) and `org_admin` is not on it, so the nurse who caseloads Whitfield (rita)
@@ -844,7 +844,7 @@ async function main(): Promise<void> {
   try {
     const okonkwoId = await findPatientIdByLastName(drharris, "Okonkwo");
     const okonkwoAdmissionId = await activeAdmissionIdFor(okonkwoId);
-    const ritaMembershipId = await membershipIdFor("rita@wardenx.local");
+    const ritaMembershipId = await membershipIdFor("rita@chartwarden.local");
 
     // 1. The unit. `inpatient_unit_org_facility_uq` is UNIQUE(org, facility) — one unit per facility —
     //    and `IPU_FACILITY_ID` is the `kind='ipu'` Facility db:seed:mdm creates. Unit CREATE is the only
@@ -1045,7 +1045,7 @@ async function main(): Promise<void> {
 
   // ── M22 — Documents (DB-direct only — structurally unreachable via API, see file header) ─────────────
   try {
-    const ritaId = await membershipIdFor("rita@wardenx.local");
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
     await seedDocument(admin.organizationId, whitfieldId, whitfieldAdmissionId, ritaId);
     log.ok(
       "Documents (M22): 1 document + version DB-seeded (legacy upload route hard-stubbed, verified-upload needs MinIO which isn't running, M39 auto-render writes to an unreachable in-memory store — see file header)",

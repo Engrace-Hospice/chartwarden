@@ -1,5 +1,5 @@
 /**
- * WardenX - audit denylist sync check (ARCH-020 / TASK-063)
+ * ChartWarden - audit denylist sync check (ARCH-020 / TASK-063)
  * -----------------------------------------------------------
  * Every `M*_AUDIT_DENYLIST` constant in packages/types/src claims to be the source its module's
  * migration-authored `audit_phi_write_<table>()` trigger scrubs FROM — "Captured here as data so

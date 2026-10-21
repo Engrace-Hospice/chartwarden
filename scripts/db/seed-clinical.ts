@@ -1,5 +1,5 @@
 /**
- * WardenX — clinical demo data for the Patient Chart M5 tabs (local dev). NOT for production / real PHI.
+ * ChartWarden — clinical demo data for the Patient Chart M5 tabs (local dev). NOT for production / real PHI.
  *
  * The built, data-fetching chart tabs are M5-owned (Demographics, Identifiers, Addresses, Coverage/
  * Payers, Care Team, Privacy Flags). Most have no POST route, so this seeds their tables directly under
@@ -16,7 +16,7 @@ import { anchorCareTeamSeats } from "./lib/care-team-seats";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 
 // Fixed payer ids so re-runs are stable.
 const PAYER_MEDICARE = "00000000-0000-0000-0000-0000000000a1";
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
 
   const users = await db.query<{ email: string; id: string }>(
     `SELECT email, id FROM "user"
-      WHERE email IN ('admin@wardenx.local','casey@wardenx.local','rita@wardenx.local')`,
+      WHERE email IN ('admin@chartwarden.local','casey@chartwarden.local','rita@chartwarden.local')`,
   );
   // F-014 (#39) — the caseload anchor decides who `caseload_or_scope` lets through, and every
   // scenario seed acts as the RN Case Manager persona. `caseload_or_scope` (M7 §6, and the ~nine
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
   // signs in as another denies every M7/M8/M9/M10 write — and `notFoundOnDeny: true` reports it as
   // NOT_FOUND rather than a denial.
   //
-  // Prefer rita when she exists; fall back to `casey@wardenx.local` (the base demo Clinician) when
+  // Prefer rita when she exists; fall back to `casey@chartwarden.local` (the base demo Clinician) when
   // she does not. In the `db:seed:all` chain `db:seed:staff` runs immediately BEFORE this script
   // (#39 moved it there precisely so rita exists by now), so the persona branch is the one that
   // runs and the caseload is anchored to her in one pass. The fallback is what keeps this script
@@ -170,12 +170,12 @@ async function main(): Promise<void> {
   // `db:seed:staff` also re-anchors on its own (`anchorDemoCaseload`, seed-staff-personas.ts), which
   // it must regardless of order: it drops and re-creates rita's user row on every run, so a caseload
   // anchored to a previous run's rita would point at a user id that no longer exists.
-  const personaRn = users.rows.find((u) => u.email === "rita@wardenx.local")?.id;
-  const baseRn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
+  const personaRn = users.rows.find((u) => u.email === "rita@chartwarden.local")?.id;
+  const baseRn = users.rows.find((u) => u.email === "casey@chartwarden.local")?.id;
   const rn = personaRn ?? baseRn;
-  const md = users.rows.find((u) => u.email === "admin@wardenx.local")?.id; // attending = admin
+  const md = users.rows.find((u) => u.email === "admin@chartwarden.local")?.id; // attending = admin
   if (!rn || !md) throw new Error("demo users not found — run db:seed first");
-  const rnEmail = personaRn ? "rita@wardenx.local" : "casey@wardenx.local";
+  const rnEmail = personaRn ? "rita@chartwarden.local" : "casey@chartwarden.local";
 
   const pats = await db.query<{ id: string }>(
     "SELECT id FROM patient WHERE organization_id = $1 ORDER BY legal_last_name",

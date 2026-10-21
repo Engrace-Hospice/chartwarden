@@ -99,11 +99,11 @@ function concretePath(path: string): string {
 
 /** True once nothing is still loading and no error boundary (ours or react-router's default) fired. */
 function settledWithoutCrash(container: HTMLElement): void {
-  expect(container.querySelector("[data-wardenx-loading-spinner]")).toBeNull(); // no leftover LoadingSpinner
+  expect(container.querySelector("[data-chartwarden-loading-spinner]")).toBeNull(); // no leftover LoadingSpinner
   // Our ErrorBoundary fallback carries a dedicated marker (NOT a bare role="alert" query or a text
   // match — M1's own /error system page legitimately headlines "Something went wrong" too) and
   // react-router's own default error element has a fixed, distinctive string.
-  expect(container.querySelector("[data-wardenx-error-boundary]")).toBeNull();
+  expect(container.querySelector("[data-chartwarden-error-boundary]")).toBeNull();
   expect(container.textContent ?? "").not.toContain("Unexpected Application Error");
 }
 

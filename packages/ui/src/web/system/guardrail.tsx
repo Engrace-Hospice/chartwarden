@@ -1,5 +1,5 @@
-// @chartwarden/ui web — The Guardrail System (R0.3, DESIGN.md §7 — WardenX-defining).
-// "WardenX is the warden." Guards explain, gates checklist, blockers stop, ceremonies attest, and
+// @chartwarden/ui web — The Guardrail System (R0.3, DESIGN.md §7 — ChartWarden-defining).
+// "ChartWarden is the warden." Guards explain, gates checklist, blockers stop, ceremonies attest, and
 // clocks count down — one consistent, legible visual language. Token-driven + No-Line; every
 // colored signal carries a glyph partner (§10.10). These map 1:1 to the D1-ceremonies board.
 import { useId, useState } from "react";

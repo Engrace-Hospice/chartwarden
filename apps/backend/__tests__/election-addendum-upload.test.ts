@@ -32,7 +32,7 @@ describe("planUploadedAcknowledgement (418.24(c)(9)/(c)(10) on paper)", () => {
     ).toEqual({ furnishFirst: false, furnishedAt: null, contentOnPaper: false });
   });
 
-  it("a draft furnished on paper outside WardenX requires the furnish date", () => {
+  it("a draft furnished on paper outside ChartWarden requires the furnish date", () => {
     expect(() =>
       planUploadedAcknowledgement({
         status: "draft",

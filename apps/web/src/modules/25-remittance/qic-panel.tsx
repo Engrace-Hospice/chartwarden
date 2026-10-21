@@ -3,7 +3,7 @@ import { Button, LoadingSpinner, SelectField, TextField, useApiClient } from "@c
 // milestone 4): the cited-evidence list (draft only), the QIC's own decision clock derived from the receipt date the
 // person records, and the escalation to OMHA once the QIC is late. The server owns every rule (completeness, the
 // clock, eligibility, the frozen request) and its message is shown verbatim; this component only collects facts and
-// offers the moves the state allows. WardenX sends nothing: the escalation request records one made outside it.
+// offers the moves the state allows. ChartWarden sends nothing: the escalation request records one made outside it.
 // SME-unconfirmed items (day counting, the escalation procedure, the ALJ threshold) are marked on screen.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";

@@ -68,7 +68,7 @@ export const credentialAdminPlugin = () =>
             badInput("INVALID_EMAIL");
           const password = requirePassword(ctx, body.password);
           // The username plugin normalizes and validates this create; password.hash is the configured
-          // WardenX Argon2id implementation (and remains the single hashing implementation).
+          // ChartWarden Argon2id implementation (and remains the single hashing implementation).
           const passwordHash = await ctx.context.password.hash(password);
           const user = await ctx.context.internalAdapter.createUser({
             name: body.name.trim(),

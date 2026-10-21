@@ -1,6 +1,6 @@
 // @chartwarden/db — `break_glass_event` (M3 Authorization §3.5). Emergency-access record:
 // an actor opens "glass" to reach PHI outside their normal ABAC scope (§7.4). Org-scoped
-// on organization_id; `target_organization_id` marks the rare cross-tenant (WardenX
+// on organization_id; `target_organization_id` marks the rare cross-tenant (ChartWarden
 // platform) invocation, readable only in platform context + the target tenant's Compliance
 // Officer (§3.6). Time-boxed via `expires_at` (default +4h, D1) and accountable via
 // actor/cosign columns. Not a PHI table itself (carries only the target *reference*), so it
@@ -18,7 +18,7 @@ export const breakGlassEvents = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
-    targetOrganizationId: uuid("target_organization_id"), // cross-tenant (WardenX) only
+    targetOrganizationId: uuid("target_organization_id"), // cross-tenant (ChartWarden) only
     actorUserId: uuid("actor_user_id")
       .notNull()
       .references(() => users.id),

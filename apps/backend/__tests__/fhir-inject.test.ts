@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 // by `mountM28Routes`).
 //
 // TWO DISTINCT AUTH MECHANISMS, ONE FILE:
-//   - The FHIR-spec bearer surface (R1-R22, `fhir-r4.routes.ts`) does NOT go through the WardenX
+//   - The FHIR-spec bearer surface (R1-R22, `fhir-r4.routes.ts`) does NOT go through the ChartWarden
 //     `requirePermission`/`requireAbac` chain — it resolves a `fhir_client_session` bearer token itself
 //     and checks `scopesGranted` in the handler. Most of this file seeds bearer sessions directly into
 //     the in-memory store's constructor and drives those routes with an `Authorization: Bearer <token>`

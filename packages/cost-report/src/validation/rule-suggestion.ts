@@ -1,6 +1,6 @@
 // @chartwarden/cost-report — M27 auto-rule-suggestion stub (D20, §2.4 `m27.validation.rule_suggestion_created`,
 // §7.8). When a MAC rejection comes back post-submission whose `mcref_rejection_code` matches NO rule in
-// the library, M27 generates a DRAFT platform-suggestion rule for the WardenX platform-team review queue:
+// the library, M27 generates a DRAFT platform-suggestion rule for the ChartWarden platform-team review queue:
 // `status: 'draft_suggestion'`, `organization_id = NULL` (platform-owned), ANONYMIZED — it carries only
 // the rejection code, the derived rule pattern, and (upstream) aggregate frequency. No tenant identifier,
 // no ProviderEntity-specific value, no PHI (D18). The platform-team review gate (never auto-publish)

@@ -96,7 +96,7 @@ function fakePipeline(outcome: AiInvocationOutcome): AiInvocationPipeline & {
 const FLAG_OFF: AiInvocationOutcome = {
   available: false,
   unavailable: { status: "capability_unavailable", reason: "phase_1_capability_shell" },
-  detail: "the 'ai.full' feature flag is off; WardenX dispatches no AI in Phase 1",
+  detail: "the 'ai.full' feature flag is off; ChartWarden dispatches no AI in Phase 1",
   gate: "ai_full_flag",
   invocationId: null,
   ledgerRecorded: false,

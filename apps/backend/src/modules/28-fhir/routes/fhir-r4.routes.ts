@@ -1,10 +1,10 @@
 import { isSupportedScope } from "@chartwarden/fhir";
 // apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts — §4.1 R1-R22: the FHIR-spec HTTP surface.
 //
-// These routes authenticate with a SMART bearer token (NOT a WardenX session), so they do NOT compose the
+// These routes authenticate with a SMART bearer token (NOT a ChartWarden session), so they do NOT compose the
 // M3 `requirePermission`/`requireAbac` preHandlers — their gate is the bearer resolution + the client's
 // `allowed_scopes`, applied in the handler. Every error is a FHIR `OperationOutcome`
-// (`application/fhir+json`); the admin surface (R23-R39) uses the WardenX envelope instead.
+// (`application/fhir+json`); the admin surface (R23-R39) uses the ChartWarden envelope instead.
 //
 // ── POSTURE (read-only US Core R4, `fhir.write` OFF) ────────────────────────────────────────────────
 //

@@ -1,11 +1,11 @@
 /**
- * WardenX — demo patient seed (local dev). NOT for production / real PHI.
+ * ChartWarden — demo patient seed (local dev). NOT for production / real PHI.
  *
  * Admits a handful of demo patients through the real M5 admit route (POST /api/v1/patients) so the
  * clinical screens (census, chart) show data. Goes through HTTP (not raw SQL) because the patient
  * spine is envelope-encrypted (MBI/SSN) and the matcher/§7.1 logic lives in the service.
  *
- * Prereqs: backend + web running, users seeded (bun run db:seed). Auths as admin@wardenx.local.
+ * Prereqs: backend + web running, users seeded (bun run db:seed). Auths as admin@chartwarden.local.
  * Run:     bun run db:seed:patients
  */
 import { readFileSync } from "node:fs";
@@ -14,8 +14,8 @@ import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 import { stepUpSession } from "./lib/step-up";
 
 const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const ORG_SLUG = "wardenx-demo";
-const ADMIN_EMAIL = "admin@wardenx.local";
+const ORG_SLUG = "chartwarden-demo";
+const ADMIN_EMAIL = "admin@chartwarden.local";
 
 /** GAP-009: skipping the duplicate-match review must say why (20-1000 chars); recorded on the audit. */
 const BYPASS_JUSTIFICATION =

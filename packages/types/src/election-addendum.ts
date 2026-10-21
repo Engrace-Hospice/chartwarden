@@ -28,10 +28,10 @@ export type ElectionAddendumFurnishMethod = "paper" | "electronic_with_paper_cop
 export type ElectionAddendumSignerKind = "beneficiary" | "representative";
 
 /** How the (c)(9) acknowledgement was captured (mirrors `election_addendum_acknowledgement_source`): keyed in
- *  WardenX, or a scanned signed paper copy uploaded to M22. */
+ *  ChartWarden, or a scanned signed paper copy uploaded to M22. */
 export type ElectionAddendumAcknowledgementSource = "structured" | "uploaded";
 
-/** Where a version's 418.24(c) content lives (mirrors `election_addendum_content_source`): in WardenX, or on the
+/** Where a version's 418.24(c) content lives (mirrors `election_addendum_content_source`): in ChartWarden, or on the
  *  signed paper copy that was scanned (an incomplete draft acknowledged on paper). */
 export type ElectionAddendumContentSource = "structured" | "scanned_paper";
 

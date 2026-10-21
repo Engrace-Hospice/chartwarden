@@ -125,7 +125,7 @@ export function buildInAppPayload(alert: HopeAlertPayload): HopeAlertPayload {
 /** The PHI-free out-of-band body delivered to push / SMS (no patient identifiers, only a deep link). */
 export interface HopeOutOfBandPayload {
   readonly kind: HopeAlertPayload["kind"];
-  /** Static, PHI-free notice — "open WardenX" + the deep link. Never carries a patient name/symptom. */
+  /** Static, PHI-free notice — "open ChartWarden" + the deep link. Never carries a patient name/symptom. */
   readonly body: string;
   /** Authenticated deep-link to the relevant surface (the only contextual field carried out-of-band). */
   readonly ctaUrl: string;

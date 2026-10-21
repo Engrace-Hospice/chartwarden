@@ -27,7 +27,7 @@ export interface AddendumDiagnosis {
   description: string;
 }
 
-/** How the (c)(9) acknowledgement was captured: keyed in WardenX, or a scanned signed paper copy. */
+/** How the (c)(9) acknowledgement was captured: keyed in ChartWarden, or a scanned signed paper copy. */
 export type AcknowledgementSource = "structured" | "uploaded";
 
 export interface AddendumVersion {
@@ -89,7 +89,7 @@ export interface AddendumDraftPatch {
 /** A scanned paper copy of the addendum: the file, what the paper shows, and its dates (ISO instants). */
 export type ScannedCopyInput = {
   file: File;
-  /** When the paper was handed over — required when the version was never furnished in WardenX. */
+  /** When the paper was handed over — required when the version was never furnished in ChartWarden. */
   furnishedAt?: string;
   onStage: (stage: UploadStage) => void;
 } & (

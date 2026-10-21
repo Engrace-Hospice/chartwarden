@@ -1,5 +1,5 @@
 /**
- * WardenX — Frame-Fidelity Report
+ * ChartWarden — Frame-Fidelity Report
  * -------------------------------
  * `ui:parity` shows how much of the documented screen surface is BUILT. This report shows how much
  * of the built surface has been VISUALLY MATCHED to its Pencil frame — the layout-fidelity gap the
@@ -103,7 +103,7 @@ interface FrameDisposition {
   readonly detail: string;
 }
 const specByFrame = new Map<string, string>();
-/** Design-library frames (`| D1 | wardenx-D1-….pen | <title> | node:…`): variant/state/ceremony libraries shared
+/** Design-library frames (`| D1 | chartwarden-D1-….pen | <title> | node:…`): variant/state/ceremony libraries shared
  *  by many screens, not the composition of one screen, so there is no single screen to compare them to. */
 const libraryByFrame = new Map<string, string>();
 for (const line of screensMd.split("\n")) {
@@ -112,7 +112,7 @@ for (const line of screensMd.split("\n")) {
     for (const m of line.matchAll(/node:([A-Za-z0-9]+)/g)) specByFrame.set(m[1]!, spec);
     continue;
   }
-  const lib = /^\|\s*D\d\s*\|\s*`(wardenx-D\d[^`]*\.pen)`\s*\|\s*([^|]+)\|/.exec(line);
+  const lib = /^\|\s*D\d\s*\|\s*`(chartwarden-D\d[^`]*\.pen)`\s*\|\s*([^|]+)\|/.exec(line);
   if (lib)
     for (const m of line.matchAll(/node:([A-Za-z0-9]+)/g))
       libraryByFrame.set(m[1]!, `${lib[1]} — ${lib[2]!.trim()}`);
@@ -164,7 +164,7 @@ const STATUS_MARK: Record<FidelityStatus, string> = {
 // ---- render --------------------------------------------------------------------------------
 function renderMarkdown(): string {
   const L: string[] = [];
-  L.push("# WardenX — Frame-Fidelity Report");
+  L.push("# ChartWarden — Frame-Fidelity Report");
   L.push("");
   L.push(
     "> **Generated, advisory report** (`bun run frame:fidelity`). Tracks how much of the built",

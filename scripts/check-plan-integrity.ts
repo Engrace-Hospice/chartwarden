@@ -1,8 +1,8 @@
 /**
- * WardenX — Plan Integrity Check  (ADR-0030; fitness guardrail)
+ * ChartWarden — Plan Integrity Check  (ADR-0030; fitness guardrail)
  * ------------------------------------------------------------------
  * `docs/plans/**` are AUTHORITY INPUTS to the deterministic build harness
- * (`wardenx-piv` / `archon-plan-to-pr`). An automated run consumes a plan; it must
+ * (`chartwarden-piv` / `archon-plan-to-pr`). An automated run consumes a plan; it must
  * never REWRITE one. An agent that edits its own plan to narrow scope or manufacture
  * a "deferred" resolution breaks determinism — the plan stops being a fixed contract
  * and becomes whatever the agent wants it to be. (This happened on the M1+M2 slice:
@@ -60,7 +60,7 @@ function addPaths(out: string | null): void {
   }
 }
 
-// 1) Working-tree changes — the primary signal: during a wardenx-piv per-task `validate`
+// 1) Working-tree changes — the primary signal: during a chartwarden-piv per-task `validate`
 //    gate, the agent's edits are still uncommitted. Use path-only commands (no porcelain
 //    column parsing): tracked modifications vs HEAD + untracked new files.
 addPaths(tryGit(`diff --name-only HEAD -- ${GUARDED_PREFIX}`)); // modified + staged tracked

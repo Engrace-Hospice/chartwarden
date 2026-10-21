@@ -49,7 +49,7 @@ interface CensusMetrics {
   } | null;
 }
 
-// §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count. GAP-119 —
+// §4.2 census KPI strip (frame: chartwarden-P0-foundation.pen `DNqXm`). Census is the real active count. GAP-119 —
 // the other four used to say they were waiting on modules that have long shipped (M6 Admission, billing). The
 // figures are M6's: it publishes an org-explicit summary that the backend injects into the census-metrics
 // response (`admissions`), so M5 reads no M6 table. Each card also opens the owning screen. When M6's read is

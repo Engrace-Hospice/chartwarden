@@ -231,7 +231,7 @@ tasks.test {
 
 tasks.named<JavaExec>("run") {
     // Local-dev: bind to a host-writable socket path
-    environment("WARDENX_HL7_UDS_PATH", "/tmp/wardenx-hl7.sock")
+    environment("CHARTWARDEN_HL7_UDS_PATH", "/tmp/wardenx-hl7.sock")
 }
 
 // Produce a fat JAR for the container image
@@ -443,7 +443,7 @@ public final class App {
     private App() {}
 
     public static void main(String[] args) throws Exception {
-        final String socketPath = envRequired("WARDENX_HL7_UDS_PATH");
+        final String socketPath = envRequired("CHARTWARDEN_HL7_UDS_PATH");
         LOG.info("hl7.sidecar.starting socketPath={}", socketPath);
 
         final UdsServerBootstrap server = new UdsServerBootstrap(socketPath);
@@ -1606,7 +1606,7 @@ COPY --from=build /build/build/libs/*-all.jar /app/sidecar.jar
 RUN addgroup -S wardenx && adduser -S -G wardenx wardenx
 USER wardenx
 
-ENV WARDENX_HL7_UDS_PATH=/var/run/wardenx/hapi.sock
+ENV CHARTWARDEN_HL7_UDS_PATH=/var/run/wardenx/hapi.sock
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["java", "-jar", "/app/sidecar.jar"]
@@ -1625,7 +1625,7 @@ services:
     volumes:
       - hl7-uds:/var/run/wardenx
     environment:
-      WARDENX_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
+      CHARTWARDEN_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "sh", "-c", "test -S /var/run/wardenx/hapi.sock"]
@@ -1643,7 +1643,7 @@ services:
       # Shared UDS mount — same bind volume as the sidecar.
       - hl7-uds:/var/run/wardenx
     environment:
-      WARDENX_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
+      CHARTWARDEN_HL7_UDS_PATH: /var/run/wardenx/hapi.sock
 
 volumes:
   hl7-uds:
@@ -1775,7 +1775,7 @@ beforeAll(async () => {
     ['run', '--no-daemon'],
     {
       cwd: 'packages/hl7-worker/parser-sidecar',
-      env: { ...process.env, WARDENX_HL7_UDS_PATH: udsPath },
+      env: { ...process.env, CHARTWARDEN_HL7_UDS_PATH: udsPath },
       stdio: 'pipe',
     },
   )

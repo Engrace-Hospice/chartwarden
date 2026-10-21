@@ -3,7 +3,7 @@
 // `appeal.read`; the evidence list on `appeal.attach_document`; the QIC clock on `appeal.submit`; the escalation
 // REQUEST on `appeal.submit` + step-up (the operation key is the permission key, guards.ts); confirming that the QIC
 // forwarded the case on `appeal.decide`. Every change is If-Match (409 when stale) and requires an Idempotency-Key.
-// Org, actor and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside WardenX.
+// Org, actor and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside ChartWarden.
 import { Type } from "@sinclair/typebox";
 import { NotFoundError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -198,7 +198,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
     },
   );
 
-  // Records an escalation request made outside WardenX: RBAC + step-up (D15), proof required, frozen once recorded.
+  // Records an escalation request made outside ChartWarden: RBAC + step-up (D15), proof required, frozen once recorded.
   app.post(
     "/api/v1/appeals/:id/request-escalation",
     { preHandler: [SUBMIT, SUBMIT_STEPUP, IDEMPOTENT] },

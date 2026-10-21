@@ -102,7 +102,7 @@ export function aiHallucinationTriageEdge(
  * The disposition → follow-up mapping (see the header for why it is a mapping and not a choice).
  *
  * `prompt_iteration_required` notifies rather than deprecates: a prompt that needs iterating is a
- * defect in WardenX's own artifact, fixable by publishing a new template version through R30 — and
+ * defect in ChartWarden's own artifact, fixable by publishing a new template version through R30 — and
  * deprecating the capability for a fault we control would take a clinically-useful tool away from every
  * tenant to fix a file in our repo.
  */

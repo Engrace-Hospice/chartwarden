@@ -1,5 +1,5 @@
 /**
- * WardenX — bring Rosa Delgado's plan of care to "sent for physician review", written ONLY through the public
+ * ChartWarden — bring Rosa Delgado's plan of care to "sent for physician review", written ONLY through the public
  * HTTP API.
  *
  * Production's Delgado has an empty draft v1 (the admission's bootstrap); the signed plan a local stack shows
@@ -20,7 +20,7 @@
  *   CHARTWARDEN_SEED_BASE_URL=https://host CHARTWARDEN_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-delgado-care-plan-api
  *   … -- --apply                                   # write (default is a dry run)
  *   … -- --apply --i-understand-this-is-production # required too when the host is not localhost
- * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@wardenx.local), CHARTWARDEN_SEED_ORG_ID,
+ * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@chartwarden.local), CHARTWARDEN_SEED_ORG_ID,
  * CHARTWARDEN_SEED_PHYSICIAN_EMAIL + CHARTWARDEN_SEED_PHYSICIAN_PASSWORD (tried when the admin cannot reach the chart).
  */
 import type { SeedContext } from "./cop27/context";
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
   const baseUrlText = requireEnv("CHARTWARDEN_SEED_BASE_URL").replace(/\/+$/, "");
   const baseUrl = new URL(baseUrlText);
   const password = requireEnv("CHARTWARDEN_SEED_ADMIN_PASSWORD");
-  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
+  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@chartwarden.local";
   const orgId = process.env.CHARTWARDEN_SEED_ORG_ID?.trim() || undefined;
   if (opts.apply && !isLocalHost(baseUrl) && !opts.productionAck) {
     throw new Error(

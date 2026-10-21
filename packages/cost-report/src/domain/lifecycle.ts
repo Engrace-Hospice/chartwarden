@@ -1,5 +1,5 @@
 // @chartwarden/cost-report — M27 cost-report lifecycle reducer (§2.2). The spec proposes an XState v5
-// machine (D4); the WardenX repo convention is a PURE hand-rolled transition reducer (see the M39
+// machine (D4); the ChartWarden repo convention is a PURE hand-rolled transition reducer (see the M39
 // consent status-machine precedent), and ARCHITECTURE WINS over the module spec on this conflict. The
 // nine live states + terminal `closed` and their server-authoritative transitions are encoded as a flat
 // transition table; `canTransition`/`applyTransition` are total, deterministic, side-effect-free

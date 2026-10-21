@@ -1,5 +1,5 @@
 /**
- * WardenX - the cap-day backfill runner (GAP-038), the glue between the two modules that own its halves.
+ * ChartWarden - the cap-day backfill runner (GAP-038), the glue between the two modules that own its halves.
  *
  * M23 owns the claim history (`replayLineFinalizedPage`), M26 owns the day ledger and cannot read M23's tables, so
  * neither can call the other: this runner, outside both, pages M23's replay and hands each result to M26.

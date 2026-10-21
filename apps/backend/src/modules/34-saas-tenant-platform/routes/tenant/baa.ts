@@ -2,7 +2,7 @@
 //
 // The TENANT-scoped platform-tenant BAA routes (`withOrgContext` — the tenant's own org). The platform →
 // tenant Business Associate Agreement register (D11) — DISTINCT from M40's tenant → external BAA register
-// ("WardenX has a BAA with this tenant", with executed/effective/expiry dates, addendum versions, breach
+// ("ChartWarden has a BAA with this tenant", with executed/effective/expiry dates, addendum versions, breach
 // contacts, and the compliance-officer attestation). The tenant sees its OWN BAA history (read) and a
 // compliance_officer attests (write). Routes gate on the §4.5 keys + the §4.6 ABAC predicate
 // `tenant_platform_baa_compliance_officer` on ATTEST (actor holds the tenant's compliance_officer role);

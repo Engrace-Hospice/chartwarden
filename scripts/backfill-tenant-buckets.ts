@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — create the per-tenant object-store bucket (`tenant-<orgId>`) for every organization that lacks it.
+ * ChartWarden — create the per-tenant object-store bucket (`tenant-<orgId>`) for every organization that lacks it.
  *
  * M34 provisions the bucket at onboarding, but orgs that predate that (the dev demo org, older tenants) have none, so
  * the first object write 404s. Idempotent (HEAD, then PUT; an "already exists" 409 is success): safe to re-run, and

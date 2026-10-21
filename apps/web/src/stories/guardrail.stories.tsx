@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — The Guardrail System (DESIGN.md §7). Guards, gates, blockers, ceremonies,
-// and regulatory clocks in one legible language. The WardenX-defining surface.
+// and regulatory clocks in one legible language. The ChartWarden-defining surface.
 import {
   BlockingDialog,
   CeremonyModal,

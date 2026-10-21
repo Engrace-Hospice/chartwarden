@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "WardenX API",
+    "title": "ChartWarden API",
     "version": "0.0.0",
     "description": "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema."
   },
@@ -32251,7 +32251,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -35663,7 +35663,7 @@
         "tags": [
           "32-ai-platform"
         ],
-        "summary": "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
+        "summary": "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `chartwarden.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
         "parameters": [
           {
             "name": "capabilityId",
@@ -39572,7 +39572,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
+        "summary": "Record the OMHA escalation request made outside ChartWarden once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -40009,7 +40009,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -42490,7 +42490,7 @@
         "tags": [
           "02-identity"
         ],
-        "summary": "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+        "summary": "Bootstrap the authenticated cookie client's ChartWarden double-submit CSRF nonce",
         "parameters": [],
         "responses": {
           "200": {
@@ -63798,7 +63798,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: WardenX never calls DDE",
+        "summary": "Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: ChartWarden never calls DDE",
         "parameters": [
           {
             "name": "id",
@@ -240764,7 +240764,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+        "summary": "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -312794,7 +312794,7 @@
   "components": {
     "responses": {
       "Error": {
-        "description": "WardenX error envelope",
+        "description": "ChartWarden error envelope",
         "content": {
           "application/json": {
             "schema": {

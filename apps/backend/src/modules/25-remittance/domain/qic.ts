@@ -15,7 +15,7 @@
 //   - the size of each extension is whatever the user enters from the QIC letter (0-14); the QIC may state a smaller
 //     number than the maximum;
 //   - the escalation procedure (written request? a CMS form? how long the QIC then has) is not in the PRD. Recording
-//     an escalation here records a request made OUTSIDE WardenX; nothing is sent from here (milestone 6);
+//     an escalation here records a request made OUTSIDE ChartWarden; nothing is sent from here (milestone 6);
 //   - the ALJ amount-in-controversy threshold for an escalated case is not checked here.
 import { MS_PER_DAY, endOfDayInZone, isoDay, parseNoticeDay } from "./deadline";
 

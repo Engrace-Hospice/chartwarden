@@ -1,5 +1,5 @@
 /**
- * WardenX — Outbox Binding ↔ Event-Catalog Agreement Check  (TASK-006/OPS-001; fitness check #16)
+ * ChartWarden — Outbox Binding ↔ Event-Catalog Agreement Check  (TASK-006/OPS-001; fitness check #16)
  * -----------------------------------------------------------------------------------------------
  * Every LIVE outbox consumer binding must agree with the boot event catalog it is dispatched from.
  *

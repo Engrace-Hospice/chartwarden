@@ -66,9 +66,9 @@ export const ABAC_UNCOMPOSED_ALLOWLIST: Readonly<Record<string, string>> = {
   part2Redisclosure:
     "A row-redaction predicate for promoted quality rows, evaluated by the M30 service; its M5/M39 reach is still a deny-stub (index.ts), so it redacts every promoted row. Not a route guard.",
 
-  // ── M28 FHIR — evaluated in the handler, not through M3 (no WardenX session on those routes) ──────
+  // ── M28 FHIR — evaluated in the handler, not through M3 (no ChartWarden session on those routes) ──────
   fhir_export_scope_satisfied:
-    "FHIR bulk-export routes carry no WardenX session for requireAbac; the handler evaluates this in-process at $export.",
+    "FHIR bulk-export routes carry no ChartWarden session for requireAbac; the handler evaluates this in-process at $export.",
   fhir_client_active:
     "Route-unbound and fail-closed by design (28-fhir/abac-predicates.ts): evaluated in the FHIR handler against the client row, not through M3.",
   fhir_export_recipient_authorized:

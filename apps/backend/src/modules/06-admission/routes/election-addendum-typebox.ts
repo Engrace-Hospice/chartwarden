@@ -89,7 +89,7 @@ const ScannedCopyFields = {
   ifVersion: Version(),
   documentId: Type.String({ format: "uuid" }),
   documentVersionId: Type.String({ format: "uuid" }),
-  /** When the paper was handed over. REQUIRED when the version is still a draft (never furnished in WardenX). */
+  /** When the paper was handed over. REQUIRED when the version is still a draft (never furnished in ChartWarden). */
   furnishedAt: Type.Optional(Type.String({ format: "date-time" })),
 };
 

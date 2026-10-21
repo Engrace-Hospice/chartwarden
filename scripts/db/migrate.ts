@@ -1,5 +1,5 @@
 /**
- * WardenX — the production migration path (TASK-040E, OPS-016; also usable for local dev).
+ * ChartWarden — the production migration path (TASK-040E, OPS-016; also usable for local dev).
  *
  * Applies every `packages/db/migrations/*.sql` in lexical order against a Postgres DB, connecting
  * as a SUPERUSER/OWNER (the files CREATE EXTENSION / CREATE ROLE / own tables — genuinely elevated

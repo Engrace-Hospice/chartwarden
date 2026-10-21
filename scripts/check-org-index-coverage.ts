@@ -1,5 +1,5 @@
 /**
- * WardenX — Org-scoped RLS index coverage  (GAP-089; fitness gate)
+ * ChartWarden — Org-scoped RLS index coverage  (GAP-089; fitness gate)
  * ------------------------------------------------------------------
  * Every org-scoped table in this schema carries an RLS policy of the literal form
  *

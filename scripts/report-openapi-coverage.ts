@@ -1,5 +1,5 @@
 /**
- * WardenX — OpenAPI enrichment-coverage report + ratchet gate
+ * ChartWarden — OpenAPI enrichment-coverage report + ratchet gate
  * ----------------------------------------------------------
  * Closes the hole the M20-T06 post-mortem found: `openapi:check` verifies that
  * openapi.json was REGENERATED and that every enrichment points at a real route.
@@ -199,7 +199,7 @@ const pct = (n: number, d: number) => (d === 0 ? "—" : `${((100 * n) / d).toFi
 
 function renderMarkdown(): string {
   const l: string[] = [];
-  l.push("# WardenX — OpenAPI Enrichment Coverage");
+  l.push("# ChartWarden — OpenAPI Enrichment Coverage");
   l.push("");
   l.push(
     "> **Generated** (`bun run openapi:coverage`). Do not hand-edit — `arch:openapi-coverage`",

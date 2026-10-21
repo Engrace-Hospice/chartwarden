@@ -16,7 +16,7 @@ import {
 import type { GlyphName, paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. Matched to the P4 Pencil frame
-// (wardenx-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)
+// (chartwarden-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)
 // over the flags Work Queue + a right detail panel + the §6/D10 kill-switch ceremony. "Use Work Queue."
 // Lists platform-global + per-tenant feature flags via GET /api/v1/platform/feature-flags, and arms
 // the kill-switch toggle as a confirm-by-typing Guardrail ceremony. The write is step-up-gated server

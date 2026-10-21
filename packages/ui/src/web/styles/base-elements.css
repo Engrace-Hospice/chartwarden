@@ -1,4 +1,4 @@
-/* Shared WardenX browser defaults.
+/* Shared ChartWarden browser defaults.
  *
  * This file is intentionally shell-free: web, admin and portal all import it, while only the
  * staff applications import app-shell.css. Keep application layout rules out of this layer.

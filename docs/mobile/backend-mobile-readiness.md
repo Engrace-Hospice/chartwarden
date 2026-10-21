@@ -61,9 +61,9 @@ les erreurs en « reconnectez-vous ».
 ### CSRF et transport
 
 Le helper Better Auth Expo restitue les cookies Better Auth qu’il gère ; il ne constitue pas une preuve
-qu’il capture le cookie applicatif `wardenx_csrf`. PR B ne repose donc pas sur cette hypothèse. Après
+qu’il capture le cookie applicatif `chartwarden_csrf`. PR B ne repose donc pas sur cette hypothèse. Après
 authentification, le client appelle `GET /api/v1/auth/csrf` avec son cookie Better Auth, conserve le
-nonce retourné en mémoire, puis joint `wardenx_csrf=<nonce>` et `X-CSRF-Token: <nonce>` à toute mutation
+nonce retourné en mémoire, puis joint `chartwarden_csrf=<nonce>` et `X-CSRF-Token: <nonce>` à toute mutation
 `/api/v1/*`. Le contrat complet de rotation et reprise est dans `backend-expo-auth-contract.md`. Un
 `Origin` absent ne vaut jamais autorisation : session, permissions, contexte serveur et RLS restent requis.
 

@@ -14,7 +14,7 @@
 // ── THE ORDER, AND WHY EACH POSITION IS WHERE IT IS ────────────────────────────────────────────────
 //
 //   0. `ai.full`             — the WAVE's gate, ahead of §6's list. The platform-wide posture: with the
-//                              flag off, WardenX runs no AI at all. It precedes everything for the same
+//                              flag off, ChartWarden runs no AI at all. It precedes everything for the same
 //                              non-disclosure reason the kill switch precedes the consent gates — a
 //                              caller must not learn a tenant's opt-in state, or a capability's
 //                              governance state, from a platform that is not running AI in the first

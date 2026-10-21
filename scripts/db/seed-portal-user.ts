@@ -1,5 +1,5 @@
 /**
- * WardenX — additive local-dev seed for one patient portal login. NOT for production / real PHI.
+ * ChartWarden — additive local-dev seed for one patient portal login. NOT for production / real PHI.
  *
  * Creates a Better Auth user, an active patient-self portal account, the governing M39
  * `portal_access` consent, and one active M31 grant to the first seeded demo patient. The contact
@@ -23,8 +23,8 @@ import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const ORG_SLUG = "wardenx-demo";
-const EMAIL = "patient@wardenx.local";
+const ORG_SLUG = "chartwarden-demo";
+const EMAIL = "patient@chartwarden.local";
 const NAME = "Pat Portal";
 const SECTION = "\n## Patient Portal (bun run db:seed:portal)\n";
 
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
        FROM organization o
        JOIN patient p ON p.organization_id = o.id AND p.provider_entity_id IS NOT NULL
        JOIN membership m ON m.organization_id = o.id
-       JOIN "user" staff ON staff.id = m.user_id AND staff.email = 'admin@wardenx.local'
+       JOIN "user" staff ON staff.id = m.user_id AND staff.email = 'admin@chartwarden.local'
        JOIN tenant_account ta ON ta.organization_id = o.id
        JOIN tenant_key_ring tkr ON tkr.tenant_account_id = ta.id AND tkr.destroyed_at IS NULL
       WHERE o.slug = $1
@@ -196,7 +196,7 @@ async function main(): Promise<void> {
 
   const existing = existsSync(SEED_CREDENTIALS_PATH)
     ? readFileSync(SEED_CREDENTIALS_PATH, "utf8")
-    : "# WardenX — Local Dev Credentials\n";
+    : "# ChartWarden — Local Dev Credentials\n";
   const [before = existing, after = ""] = existing.split(SECTION);
   const nextSection = after.indexOf("\n## ");
   const preserved = nextSection >= 0 ? after.slice(nextSection) : "";

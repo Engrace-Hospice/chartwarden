@@ -1,5 +1,5 @@
 /**
- * WardenX — vulnerability-allowlist hygiene gate (F-040 / #100)
+ * ChartWarden — vulnerability-allowlist hygiene gate (F-040 / #100)
  * -------------------------------------------------------------
  * The release job scans both published images with Trivy and fails on HIGH/CRITICAL. `.trivyignore.yaml`
  * is the only way to let a finding through, which makes it the only place the supply-chain gate can be

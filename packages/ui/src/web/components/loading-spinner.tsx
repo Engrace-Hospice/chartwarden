@@ -10,7 +10,7 @@ export interface LoadingSpinnerProps {
 export function LoadingSpinner({ label = "Loading", size = 20 }: LoadingSpinnerProps): JSX.Element {
   return (
     <output
-      data-wardenx-loading-spinner
+      data-chartwarden-loading-spinner
       aria-live="polite"
       aria-label={label}
       style={{ display: "inline-flex" }}
@@ -20,7 +20,7 @@ export function LoadingSpinner({ label = "Loading", size = 20 }: LoadingSpinnerP
         height={size}
         viewBox="0 0 24 24"
         aria-hidden="true"
-        style={{ animation: "wardenx-spin 0.8s linear infinite" }}
+        style={{ animation: "chartwarden-spin 0.8s linear infinite" }}
       >
         <circle
           cx="12"

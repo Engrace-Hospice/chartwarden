@@ -1,4 +1,4 @@
--- FIXTURE — intentional violation. This file has the exact shape of a real WardenX migration:
+-- FIXTURE — intentional violation. This file has the exact shape of a real ChartWarden migration:
 -- a module's RLS policies and its generated write-audit trigger, together, in one file
 -- (`*_rls_audit_triggers.sql` is the repo's own naming convention for it).
 --

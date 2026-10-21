@@ -1,4 +1,4 @@
-# WardenX — E2E / Axe Coverage Report
+# ChartWarden — E2E / Axe Coverage Report
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 

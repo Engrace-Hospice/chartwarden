@@ -1,15 +1,15 @@
-/* apps/web — global stylesheet. WardenX "Lantern" design system (docs/design/DESIGN.md).
+/* apps/web — global stylesheet. ChartWarden "Lantern" design system (docs/design/DESIGN.md).
  *
  * Two jobs:
  *  1. Pull in Tailwind v4 (Preflight reset + the utility engine).
- *  2. Define the Lantern design tokens (@theme) + the WardenX `wx-*` shell classes
+ *  2. Define the Lantern design tokens (@theme) + the ChartWarden `wx-*` shell classes
  *     (apps/web/src/shell/layout.tsx uses these with NO inline fallback).
  *
  * Brand tokens mirror packages/ui/src/core/theme/colors.ts (the source of truth) and
  * docs/design/DESIGN.md §11. Shell-free element/control rules are shared through
  * packages/ui/src/web/styles/base-elements.css; app tokens stay local and their parity is gated.
  *
- * FONTS: the WardenX type trio (Manrope display · Inter text/UI · IBM Plex Mono identifiers) is
+ * FONTS: the ChartWarden type trio (Manrope display · Inter text/UI · IBM Plex Mono identifiers) is
  * SELF-HOSTED via @fontsource* packages imported in main.tsx (no third-party CDN — external font
  * requests leak client IPs on a PHI app). The --font-* vars below name the registered families
  * first ("Manrope Variable" / "Inter Variable" / "IBM Plex Mono") with system fallbacks. See
@@ -24,7 +24,7 @@
 /* The shared element defaults + sidebar/header shell (lifted 2026-10-08 so apps/admin can wear it too). */
 @import "../../../packages/ui/src/web/styles/app-shell.css";
 
-/* WardenX tokens → Tailwind theme vars (light). Dark values under `.dark`.
+/* ChartWarden tokens → Tailwind theme vars (light). Dark values under `.dark`.
    2026-09-25 redesign: the palette moved from Lantern's twilight indigo on warm paper to the clinical
    blue-on-slate palette of the adopted mockups (docs/design/DESIGN.md §2 is the running record).
    Token NAMES are unchanged so every `t.*` consumer follows automatically.
@@ -101,7 +101,7 @@
   --color-brand: var(--color-primary);
   --color-line: var(--color-outline-variant);
 
-  /* Type — WardenX trio. Variable faces register "<Name> Variable" (see main.tsx); name those
+  /* Type — ChartWarden trio. Variable faces register "<Name> Variable" (see main.tsx); name those
      first, then the static family, then system fallbacks. */
   /* The redesign sets headings in Inter too (mockups); Manrope stays registered as a fallback face. */
   --font-display: "Inter Variable", "Inter", "Manrope Variable", ui-sans-serif, system-ui,
@@ -4012,10 +4012,10 @@
 }
 
 /* ---- Motion: keyframes for the @chartwarden/ui system primitives ----
- * `wardenx-spin` drives LoadingSpinner; `wx-ai-pulse` is the AI-suggestion halo (DESIGN.md §9).
+ * `chartwarden-spin` drives LoadingSpinner; `wx-ai-pulse` is the AI-suggestion halo (DESIGN.md §9).
  * Both honor prefers-reduced-motion (no animation, static affordance remains).
  */
-@keyframes wardenx-spin {
+@keyframes chartwarden-spin {
   to {
     transform: rotate(360deg);
   }

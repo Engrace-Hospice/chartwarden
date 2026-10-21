@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "_comment": "WardenX \u2014 typecheck program for the BROWSER test tree (F-098): the `*.dom.test.tsx` suites vitest runs under jsdom, plus every suite in a frontend workspace, which reaches React components either way. `lib: DOM` and `jsx` live HERE and only here, so they cannot reach the node program (scripts/check-test-typecheck-coverage.ts asserts the two are disjoint).",
+  "_comment": "ChartWarden \u2014 typecheck program for the BROWSER test tree (F-098): the `*.dom.test.tsx` suites vitest runs under jsdom, plus every suite in a frontend workspace, which reaches React components either way. `lib: DOM` and `jsx` live HERE and only here, so they cannot reach the node program (scripts/check-test-typecheck-coverage.ts asserts the two are disjoint).",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "composite": false,

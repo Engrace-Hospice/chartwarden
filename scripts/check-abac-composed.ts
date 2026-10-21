@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — ABAC predicate composition gate (GAP-067)
+ * ChartWarden — ABAC predicate composition gate (GAP-067)
  * ---------------------------------------------------------------------------
  * `arch:abac-predicates` proves every `requireAbac(_, "<name>")` NAMES a declared predicate. It cannot
  * see the opposite failure: a predicate that is REGISTERED and never composed by any guard. That one is

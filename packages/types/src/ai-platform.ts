@@ -274,7 +274,7 @@ export type AiZdrStatus = "enabled" | "not_applicable" | "disabled";
 export type AiModelModality = "text" | "embedding" | "classification" | "vision";
 
 /** `ai_model_backend.supported_features` (§3.2.4 jsonb). Snake_case on the wire because the column is
- *  a verbatim vendor-capability record, not a WardenX DTO. */
+ *  a verbatim vendor-capability record, not a ChartWarden DTO. */
 export interface AiModelBackendFeatures {
   readonly structured_output: boolean;
   readonly tool_use: boolean;

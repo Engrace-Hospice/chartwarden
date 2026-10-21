@@ -1,5 +1,5 @@
 /**
- * WardenX — row accessors for the seed scripts (F-012 / #34).
+ * ChartWarden — row accessors for the seed scripts (F-012 / #34).
  *
  * `scripts/` compiles under the repo's own `noUncheckedIndexedAccess`, which types `result.rows[0]`
  * as `T | undefined`. Across the seed tree there are 37 such reads, and essentially all of them

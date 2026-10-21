@@ -1,6 +1,6 @@
 // M25 milestone 3 — the MAC reopening aggregate (a 56900 non-response is reopened with the MAC, not appealed).
 // PURE. A reopening is its own record, not an appeal tier: it has no tiers, no spawn on an unfavorable decision,
-// and a per-MAC form. Filing here RECORDS a request made outside WardenX (electronic submission is milestone 6),
+// and a per-MAC form. Filing here RECORDS a request made outside ChartWarden (electronic submission is milestone 6),
 // so the filing needs the form used, the channel, and the confirmation the MAC gave.
 export type ReopeningState = "draft" | "submitted" | "decided" | "withdrawn" | "closed";
 

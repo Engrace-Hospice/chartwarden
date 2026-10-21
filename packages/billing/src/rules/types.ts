@@ -8,7 +8,7 @@ import type { DischargeClaimCodes } from "../claim-codes";
 //
 // KEY DEVIATION FROM THE SPEC PROPOSAL (architecture wins, per CLAUDE.md authority rule): spec §4.5's
 // `ValidationContext` embeds the live reader SEAM interfaces and `check()` is `async` (it calls
-// `electionPeriods.findActivePeriodForPatient(...)` etc.). The WardenX pure-domain convention (the M27
+// `electionPeriods.findActivePeriodForPatient(...)` etc.). The ChartWarden pure-domain convention (the M27
 // `cost-report/validation/types.ts` precedent) is that a rule's `check()` is a SYNCHRONOUS PURE function
 // over an INJECTED, already-resolved, plain-data `ValidationContext` — the Phase-3 validation SERVICE
 // walks every reader seam ONCE, materializes the aggregate snapshot below, then runs the rules against

@@ -26,8 +26,8 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 > and promoted to `●` (reviewed, on-system) — the original 97 (P0–P11 core + gap-fill) plus the
 > 16 breadth screens (P12–P14). On top of those sit the **depth track** (D1–D7: ceremonies,
 > sensitivity, states, steppers, variants, sub-views, and breadth-depth variant cards) — **22 `.pen`
-> files in all** (`wardenx-P0-foundation.pen` … `wardenx-P14-ops-gateway-mdm.pen` + `wardenx-D1-*`
-> … `wardenx-D7-*`). Every named pattern in the [layout glossary](./CHARTWARDEN_UI_LAYOUT_PATTERNS.md)
+> files in all** (`chartwarden-P0-foundation.pen` … `chartwarden-P14-ops-gateway-mdm.pen` + `chartwarden-D1-*`
+> … `chartwarden-D7-*`). Every named pattern in the [layout glossary](./CHARTWARDEN_UI_LAYOUT_PATTERNS.md)
 > is represented.
 >
 > **This file tracks design/Pencil status only.** Whether a screen is *built* in `apps/web` is in
@@ -50,7 +50,7 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [App Shell & Role Home](./screens/core/CHARTWARDEN_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `● node:AQAhY` (wardenx-P0-foundation.pen) |
+| [App Shell & Role Home](./screens/core/CHARTWARDEN_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `● node:AQAhY` (chartwarden-P0-foundation.pen) |
 | [Authentication & Session](./screens/core/CHARTWARDEN_UI_AUTH.md) | M02 | Auth Flow | `● node:a1dbhD` (P0 .pen) |
 | [Global Search Results](./screens/core/CHARTWARDEN_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `● node:Cp053` (P0 .pen) |
 | [Help & Training](./screens/core/CHARTWARDEN_UI_HELP_TRAINING.md) | M01 | Work Queue | `● node:nNKhB` (P11 .pen) |
@@ -247,13 +247,13 @@ that surface — reusable treatments (ceremonies, masking, states) built once an
 
 | Phase | File | Theme | Status |
 | :-- | :-- | :-- | :-- |
-| D1 | `wardenx-D1-ceremonies.pen` | Guardrail & signing-ceremony library | `● node:GyRUU` — 21 frames (signature ×4 · guard-blocked ×2 · step-up ×3 · EPCS 2FA ×5 · cosign ×3 · witness ×3 · destructive ×1) |
-| D2 | `wardenx-D2-sensitivity.pen` | PHI masking / SUD-Part2 / consent / break-glass | `● node:wMcvc` — 10 frames (PHI mask↔reveal ×3 · sensitive-row badges table · SUD seal→consent→break-glass→reveal ×4 · consent-gated section · min-necessary redaction) |
-| D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `● node:CUzYC` — 12 frames (state panels ×6: loading·empty·zero-filter·error·no-perm·degraded · skeletons ×3: work-queue·dashboard·patient-workspace · in-context ×3: empty·no-perm·degraded-ribbon) |
-| D4 | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps | `● node:ZgXYC` — 33 frames (Admissions ×8 · Recert ×7 · Election ×4 · Death ×4 · Discharge ×4 · Onboarding ×6) |
-| D5 | `wardenx-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `● node:T2caK` — 32 frames: discipline plans ×5 (Aide/MSW/Spiritual/Spiritual-declined/Volunteer **[closes M15]**) · role dashboards ×4 (Bereavement/QA/Compliance/Intake) · chart lifecycle ×5 (active/admitted/discharged/deceased/merged) · MAR states grid · assessment scales ×8 (PPS/PAINAD/ESAS-r/Karnofsky/FAST/RASS/Spiritual-FICA/RDOS) · care-plan master IPOC + states ×5 (IPOC/review-overdue/IDG-revision/aide-supervisory-due/amendment) · entry & MAR sub-flows ×4 (PPS-entry/PAINAD-entry/PRN-reassessment/comfort-kit-drawdown) |
-| D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `● node:E0REv` — 29 sub-views: Patient Chart ×6 (summary/allergies/problems/meds/documents/financial) · Claims & Billing ×4 (AR/workbench/editor/Medicaid-R&B) · Note Lifecycle ×5 (unsigned/versions/compare/amendment/audit) · IDG Meeting ×4 (agenda/live/packet/decisions) · HQRP ×4 (measures/CAHPS/QAPI-kanban/survey-ready) · Scheduling & EVV ×3 (route/EVV-exceptions/caseload) · eMAR ×3 (med-list/prescribe/reconcile) |
-| D7 | `wardenx-D7-breadth-depth.pen` | Depth for the **breadth** screens (P12–P14) — the variant surface their specs declare | `● node:UyQt9` — **121 variant cards** across all 16 breadth screens (~7–8 each: ceremony/guard states, Part-2 seal/break-glass, empty/loading/no-permission, stepper sub-steps, screen-specific states). Brings the 16 breadth screens to the same depth as the original 97. |
+| D1 | `chartwarden-D1-ceremonies.pen` | Guardrail & signing-ceremony library | `● node:GyRUU` — 21 frames (signature ×4 · guard-blocked ×2 · step-up ×3 · EPCS 2FA ×5 · cosign ×3 · witness ×3 · destructive ×1) |
+| D2 | `chartwarden-D2-sensitivity.pen` | PHI masking / SUD-Part2 / consent / break-glass | `● node:wMcvc` — 10 frames (PHI mask↔reveal ×3 · sensitive-row badges table · SUD seal→consent→break-glass→reveal ×4 · consent-gated section · min-necessary redaction) |
+| D3 | `chartwarden-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `● node:CUzYC` — 12 frames (state panels ×6: loading·empty·zero-filter·error·no-perm·degraded · skeletons ×3: work-queue·dashboard·patient-workspace · in-context ×3: empty·no-perm·degraded-ribbon) |
+| D4 | `chartwarden-D4-steppers.pen` | Multi-step workflows — all steps | `● node:ZgXYC` — 33 frames (Admissions ×8 · Recert ×7 · Election ×4 · Death ×4 · Discharge ×4 · Onboarding ×6) |
+| D5 | `chartwarden-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `● node:T2caK` — 32 frames: discipline plans ×5 (Aide/MSW/Spiritual/Spiritual-declined/Volunteer **[closes M15]**) · role dashboards ×4 (Bereavement/QA/Compliance/Intake) · chart lifecycle ×5 (active/admitted/discharged/deceased/merged) · MAR states grid · assessment scales ×8 (PPS/PAINAD/ESAS-r/Karnofsky/FAST/RASS/Spiritual-FICA/RDOS) · care-plan master IPOC + states ×5 (IPOC/review-overdue/IDG-revision/aide-supervisory-due/amendment) · entry & MAR sub-flows ×4 (PPS-entry/PAINAD-entry/PRN-reassessment/comfort-kit-drawdown) |
+| D6 | `chartwarden-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `● node:E0REv` — 29 sub-views: Patient Chart ×6 (summary/allergies/problems/meds/documents/financial) · Claims & Billing ×4 (AR/workbench/editor/Medicaid-R&B) · Note Lifecycle ×5 (unsigned/versions/compare/amendment/audit) · IDG Meeting ×4 (agenda/live/packet/decisions) · HQRP ×4 (measures/CAHPS/QAPI-kanban/survey-ready) · Scheduling & EVV ×3 (route/EVV-exceptions/caseload) · eMAR ×3 (med-list/prescribe/reconcile) |
+| D7 | `chartwarden-D7-breadth-depth.pen` | Depth for the **breadth** screens (P12–P14) — the variant surface their specs declare | `● node:UyQt9` — **121 variant cards** across all 16 breadth screens (~7–8 each: ceremony/guard states, Part-2 seal/break-glass, empty/loading/no-permission, stepper sub-steps, screen-specific states). Brings the 16 breadth screens to the same depth as the original 97. |
 
 ### Coverage diagnosis
 

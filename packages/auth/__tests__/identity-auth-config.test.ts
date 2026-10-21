@@ -31,7 +31,7 @@ describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
     ).toBeUndefined();
   });
 
-  it("does NOT use Better Auth's organization plugin (WardenX owns its org/membership model)", () => {
+  it("does NOT use Better Auth's organization plugin (ChartWarden owns its org/membership model)", () => {
     expect(pluginIds).not.toContain("organization");
   });
 

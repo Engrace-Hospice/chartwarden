@@ -1,6 +1,6 @@
 // @chartwarden/x12-837-client — which ClearinghouseTransport is bound (ADR-0053 D3).
 //
-// WardenX resells ONE clearinghouse, so the binding is platform configuration (the CLEARINGHOUSE_VENDOR env var),
+// ChartWarden resells ONE clearinghouse, so the binding is platform configuration (the CLEARINGHOUSE_VENDOR env var),
 // not a tenant or ProviderEntity setting, and it needs no migration. Binding fails closed:
 //   - unset            -> a transport whose every call answers CH_NOT_WIRED (nothing is sent);
 //   - set, no adapter  -> throws at boot, so a misconfigured deployment refuses to start instead of silently

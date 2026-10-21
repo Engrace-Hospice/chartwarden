@@ -27,7 +27,7 @@ describe("buildLoggerOptions request serializer", () => {
     const req = {
       method: "GET",
       url: "/api/v1/patients?q=Jane%20Doe&mrn=000123",
-      headers: { host: "wardenx.local", authorization: "Bearer secret" },
+      headers: { host: "chartwarden.local", authorization: "Bearer secret" },
       ip: "127.0.0.1",
     } as unknown as FastifyRequest;
     return opts.serializers.req(req);
@@ -43,7 +43,7 @@ describe("buildLoggerOptions request serializer", () => {
   it("keeps non-PHI request metadata", () => {
     const out = serialize();
     expect(out.method).toBe("GET");
-    expect(out.host).toBe("wardenx.local");
+    expect(out.host).toBe("chartwarden.local");
     expect(out.remoteAddress).toBe("127.0.0.1");
   });
 

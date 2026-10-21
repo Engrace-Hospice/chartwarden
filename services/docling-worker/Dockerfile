@@ -1,4 +1,4 @@
-# WardenX docling-worker — DocLens stage 2 (parse). CPU-only.
+# ChartWarden docling-worker — DocLens stage 2 (parse). CPU-only.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \

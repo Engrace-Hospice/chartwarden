@@ -1,7 +1,7 @@
 // apps/backend/src/modules/02-identity/identity-ports.ts — M2-T06 identity route
 // dependency ports + slice in-memory adapters (M2 spec §4.1–4.2, §7.1–7.7).
 //
-// The WardenX-specific `/api/v1/*` identity routes (memberships / select-organization /
+// The ChartWarden-specific `/api/v1/*` identity routes (memberships / select-organization /
 // org-invitations / member lifecycle / user deactivation / external-collaborator links) are
 // wired through injected ports, matching the M2-T05 step-up-ports pattern: every external
 // dependency is injected with a slice-safe in-memory default, so the route contract + the

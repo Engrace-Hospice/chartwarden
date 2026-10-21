@@ -62,7 +62,7 @@ const csrfHeader = (jar: Jar): Record<string, string> => {
   return token ? { "x-csrf-token": token } : {};
 };
 
-/** Pull `code`/`message` out of whatever error envelope the route used (Better Auth or WardenX). */
+/** Pull `code`/`message` out of whatever error envelope the route used (Better Auth or ChartWarden). */
 function describeError(body: unknown): { code: string; message: string } {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
@@ -110,7 +110,7 @@ const NO_ACCESS = new Set([401, 403, 404]);
 
 /**
  * Run `op` as each session in turn and return the first success. A 403/404 (out of the account's caseload,
- * site or permission set — WardenX answers "not found" rather than leak existence) moves on to the next
+ * site or permission set — ChartWarden answers "not found" rather than leak existence) moves on to the next
  * account; any other error is a real failure. When no account can reach the resource the step is a SKIP.
  */
 export async function asAnyone<T>(

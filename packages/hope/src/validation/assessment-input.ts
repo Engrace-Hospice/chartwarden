@@ -109,7 +109,7 @@ const J_ITEM_KEY = /^J\d+$/;
  * (J2050 → J2005), not letters in a symptom name. Feeding it the J2051 symptom codes instead, as this
  * function first did, made the rule structurally incapable of failing: `symptomCode` is closed to the
  * eight `HOPE_J2051_SYMPTOM_CODES` at M10's route boundary, so every value reaching storage is already
- * a member of a WardenX-internal vocabulary, and re-checking it asynchronously against a terminology
+ * a member of a ChartWarden-internal vocabulary, and re-checking it asynchronously against a terminology
  * service was a weaker second copy of a check the boundary already makes absolutely.
  *
  * Duplicates are impossible (object keys), and a payload carrying an item the CMS roster does not

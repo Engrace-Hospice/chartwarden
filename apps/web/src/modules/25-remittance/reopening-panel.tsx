@@ -9,7 +9,7 @@ import {
 // apps/web/src/modules/25-remittance — the MAC REOPENING section of the denial work panel (hospice ADR/TPE/QIC PRD,
 // milestone 3). A denial the routing rules send to a reopening (a 56900 ADR non-response) is worked here, not in the
 // appeal chain: record the deadline if the MAC gave one (none is assumed), record the request filed outside
-// WardenX with its proof under a step-up, record the MAC's decision, withdraw or close. The server owns every rule
+// ChartWarden with its proof under a step-up, record the MAC's decision, withdraw or close. The server owns every rule
 // (legal edges, the proof the filing needs, the frozen filing) and its message is shown verbatim (ADR-0030); this
 // component only collects facts and offers the moves the state allows.
 import { useCallback, useEffect, useRef, useState } from "react";

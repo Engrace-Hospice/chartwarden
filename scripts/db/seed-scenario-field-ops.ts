@@ -1,5 +1,5 @@
 /**
- * WardenX — field-ops scenario data: M15 (volunteer plan) / M17 (scheduling) / M18 (EVV) /
+ * ChartWarden — field-ops scenario data: M15 (volunteer plan) / M17 (scheduling) / M18 (EVV) /
  * M19 (on-call triage) / M20 (field safety) / M21 (supplies) for the flagship patient (local dev).
  * NOT for production.
  *
@@ -204,7 +204,7 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   }
   await db.query(
     `DELETE FROM volunteer_compliance_gate WHERE volunteer_membership_id = (
-       SELECT m.id FROM membership m JOIN "user" u ON u.id = m.user_id WHERE u.email = 'valentina@wardenx.local'
+       SELECT m.id FROM membership m JOIN "user" u ON u.id = m.user_id WHERE u.email = 'valentina@chartwarden.local'
      )`,
   );
 
@@ -220,7 +220,7 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   }
 
   // M18 EVV device (org-scoped by membership, not patient — clear this script's rita device)
-  const ritaId = await membershipIdFor("rita@wardenx.local");
+  const ritaId = await membershipIdFor("rita@chartwarden.local");
   await db.query("DELETE FROM evv_event WHERE posting_membership_id = $1", [ritaId]);
   await db.query("DELETE FROM evv_device WHERE membership_id = $1", [ritaId]);
 
@@ -272,10 +272,10 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
 }
 
 async function main(): Promise<void> {
-  const rn = await signIn("rita@wardenx.local");
-  const vol = await signIn("valentina@wardenx.local");
-  const coord = await signIn("vera@wardenx.local");
-  const supervisor = await signIn("supervisor@wardenx.local");
+  const rn = await signIn("rita@chartwarden.local");
+  const vol = await signIn("valentina@chartwarden.local");
+  const coord = await signIn("vera@chartwarden.local");
+  const supervisor = await signIn("supervisor@chartwarden.local");
   const log = new ScenarioLog("field-ops (Whitfield)");
 
   const patientId = await findPatientIdByLastName(rn, "Whitfield");
@@ -293,7 +293,7 @@ async function main(): Promise<void> {
 
   // ── M15 — volunteer plan (draft plan DB-seeded, everything else real API — see file header) ──
   try {
-    const volunteerId = await membershipIdFor("valentina@wardenx.local");
+    const volunteerId = await membershipIdFor("valentina@chartwarden.local");
     const planId = await seedDraftVolunteerPlan(rn.organizationId, patientId, admissionId);
 
     // BLOCKING_VOLUNTEER_GATE_KINDS (packages/discipline-plans/src/policy.ts) — ALL SIX must clear before
@@ -346,7 +346,7 @@ async function main(): Promise<void> {
   // ── M17 — Scheduling ───────────────────────────────────────────────────────────────────────────
   let visitId: string | null = null;
   try {
-    const ritaId = await membershipIdFor("rita@wardenx.local");
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
     visitId = await seedPublishedVisit(
       rn,
       patientId,
@@ -407,7 +407,7 @@ async function main(): Promise<void> {
   try {
     await seedOncallPolicy(rn.organizationId);
     const providerEntityId = PROVIDER_ENTITY_ID;
-    const ritaId = await membershipIdFor("rita@wardenx.local");
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
     const shift = await rn.client.POST("/api/v1/oncall/shifts", {
       body: {
         providerEntityId,
@@ -417,7 +417,7 @@ async function main(): Promise<void> {
         primaryOnCallMembershipId: ritaId,
         // The SOS `active_sos_responder` predicate's on-call arm needs the acknowledging/resolving
         // membership on this same shift's roster (`onCallForProviderEntity`) — supervisor@ backs it up.
-        backupMembershipId: await membershipIdFor("supervisor@wardenx.local"),
+        backupMembershipId: await membershipIdFor("supervisor@chartwarden.local"),
       },
     });
     const shiftData = shift.data as unknown as { id: string; version: number } | undefined;

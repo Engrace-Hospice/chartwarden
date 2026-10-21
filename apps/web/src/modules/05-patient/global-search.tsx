@@ -16,7 +16,7 @@ import {
 import type { StatusTone } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/CHARTWARDEN_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
-// Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `Cp053`): a centered results column of
+// Matched to the P0 Pencil frame (chartwarden-P0-foundation.pen `Cp053`): a centered results column of
 // per-scope No-Line cards, each a list of rows (avatar + name + meta + status + chevron) that
 // navigate straight to the record. FB-T11 (partial): the live facets are the M5 **patient** facet
 // (GET /api/v1/patients?q=) and the M2 **staff** facet (GET /api/v1/orgs/:id/members?q=). Later

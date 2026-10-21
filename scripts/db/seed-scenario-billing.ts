@@ -1,5 +1,5 @@
 /**
- * WardenX — revenue-cycle scenario data: M23 (Billing-Medicare) / M24 (Billing-Medicaid) / M25
+ * ChartWarden — revenue-cycle scenario data: M23 (Billing-Medicare) / M24 (Billing-Medicaid) / M25
  * (Remittance/Denials) / M26 (Cap Management) / M27 (Cost Report) for the flagship patient + org
  * (local dev). NOT for production.
  *
@@ -52,7 +52,7 @@
  *   - M26: `POST /cap/periods` 409s `CAP_CONSTANT_UNPUBLISHED` unless a platform cap-year constant was
  *     published first (`POST /platform/cap/constants`), which needs the `platform_admin` role (a
  *     DIFFERENT axis from the tenant `org_admin` role `seed-org-admin.ts` grants) — this script grants
- *     it to `orgadmin@wardenx.local` alongside the PE/location scope M24's pure-scope ABAC needs.
+ *     it to `orgadmin@chartwarden.local` alongside the PE/location scope M24's pure-scope ABAC needs.
  *   - M27: the entire approver plane (`approve-for-submit` / `submit` / `submit-past-deadline` /
  *     `reopen` / validation-result `override`) is gated by `cost_report_approver_for_provider`, whose
  *     real Drizzle resolver hard-codes `hasElevatedApproval` to `return false` unconditionally
@@ -87,7 +87,7 @@ const today = new Date();
 const daysAgo = (n: number): Date => new Date(today.getTime() - n * 86_400_000);
 
 /**
- * Grants `orgadmin@wardenx.local` (created by `seed-org-admin.ts`) the PE/location scope M24's pure
+ * Grants `orgadmin@chartwarden.local` (created by `seed-org-admin.ts`) the PE/location scope M24's pure
  * `provider_entity_medicaid_billing_scope` check needs (no `org_admin` bypass exists for M24 — see
  * `abac-predicates.ts`), plus the `platform_admin` ROLE M26's `cap_platform_admin` predicate checks
  * (`context.roles.includes("platform_admin")` — a role-array membership check, same mechanism as every
@@ -274,14 +274,14 @@ function fiscalYearStartingOf(isoDate: string): number {
 }
 
 async function main(): Promise<void> {
-  const admin = await signIn("orgadmin@wardenx.local");
+  const admin = await signIn("orgadmin@chartwarden.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
 
   // The census AND the chart's election/certification read are patient-scoped (F-096; `election.read` is
   // `caseload_or_scope`), and `org_admin` is a tenant administrator, not an org-wide patient reader, so both
   // are done as the admin persona the admissions scenario uses (attending on the demo caseload). The billing
   // writes below stay with `orgadmin`, who holds the billing permissions and the PE/location scope.
-  const chartReader = await signIn("admin@wardenx.local");
+  const chartReader = await signIn("admin@chartwarden.local");
   const patientId = await findPatientIdByLastName(chartReader, "Whitfield");
   const cert = await chartReader.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },

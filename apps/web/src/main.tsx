@@ -1,5 +1,5 @@
 import { createApiClient, initTheme } from "@chartwarden/ui";
-// WardenX type trio — SELF-HOSTED (DESIGN.md §3). No third-party CDN: external font requests would
+// ChartWarden type trio — SELF-HOSTED (DESIGN.md §3). No third-party CDN: external font requests would
 // leak client IPs on a PHI app. Variable faces for the display/UI axes; static weights for the mono
 // identifier face (no variable build exists). Family names: "Manrope Variable" / "Inter Variable" /
 // "IBM Plex Mono" — index.css `--font-*` vars resolve to these first, falling back to system faces.
@@ -7,7 +7,7 @@ import "@fontsource-variable/manrope"; // display — titles, names, KPI labels
 import "@fontsource-variable/inter"; // body text + UI + data
 import "@fontsource/ibm-plex-mono/400.css"; // identifiers (MRN, MBI, claim/control numbers)
 import "@fontsource/ibm-plex-mono/500.css";
-import "./index.css"; // Tailwind v4 + the WardenX `wx-*` design-system layer (global styles)
+import "./index.css"; // Tailwind v4 + the ChartWarden `wx-*` design-system layer (global styles)
 // apps/web/src/main.tsx — the web app COMPOSITION ROOT (outside every module codePath, like
 // apps/backend/src/index.ts). It is the one place allowed to import feature module web-slices and
 // register their screens; the M1 shell stays pure. Every shipped module's screen set is registered below

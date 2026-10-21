@@ -1,11 +1,11 @@
 /**
- * WardenX — clinical-core scenario data for the flagship patient (local dev). NOT for production.
+ * ChartWarden — clinical-core scenario data for the flagship patient (local dev). NOT for production.
  *
  * Builds real M7 (Care Plan) / M8 (Encounters) / M9 (Assessments) / M10 (HOPE) data for Eleanor
  * Whitfield (the active-RHC patient `seed-scenario-admission-outcomes.ts` designates as the
  * "everything works" demo patient), over the real REST API as the discipline-persona staff logins
- * `seed-staff-personas.ts` created — signed in as `rita@wardenx.local` (rn / rn_case_manager) for
- * authoring, and `drharris@wardenx.local` (md / hospice_physician / medical_director) for the
+ * `seed-staff-personas.ts` created — signed in as `rita@chartwarden.local` (rn / rn_case_manager) for
+ * authoring, and `drharris@chartwarden.local` (md / hospice_physician / medical_director) for the
  * physician-eligible actions and the second care-plan signature.
  *
  * Genuine platform gaps hit and worked around/documented, not silently papered over:
@@ -204,9 +204,9 @@ async function wipePriorEncountersAssessmentsHope(patientId: string): Promise<vo
 }
 
 async function main(): Promise<void> {
-  const admin = await signIn("admin@wardenx.local");
-  const rn = await signIn("rita@wardenx.local");
-  const md = await signIn("drharris@wardenx.local");
+  const admin = await signIn("admin@chartwarden.local");
+  const rn = await signIn("rita@chartwarden.local");
+  const md = await signIn("drharris@chartwarden.local");
   const log = new ScenarioLog("clinical-core (Whitfield)");
 
   const patientId = await findPatientIdByLastName(rn, "Whitfield");

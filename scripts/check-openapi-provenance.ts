@@ -1,5 +1,5 @@
 /**
- * WardenX — OpenAPI schema-provenance gate (#31 / #36)
+ * ChartWarden — OpenAPI schema-provenance gate (#31 / #36)
  * ----------------------------------------------------
  * `bun run arch:openapi-provenance`
  *

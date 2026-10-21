@@ -27,7 +27,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "info",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: [], userIdPaths: ["mentionedUserId"] },
-    // Mention notifications are deliberately in-app only: no message/patient context leaves WardenX.
+    // Mention notifications are deliberately in-app only: no message/patient context leaves ChartWarden.
     channelsOverride: ["in_app"],
     systemLocked: false,
     enabled: true,

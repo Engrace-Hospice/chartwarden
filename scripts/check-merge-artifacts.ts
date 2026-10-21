@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — unresolved-merge-artifact gate
+ * ChartWarden — unresolved-merge-artifact gate
  * ---------------------------------------------------------------------------
  * A conflicted file that was `git add`-ed without being resolved commits its CONFLICT MARKERS.
  * `git` does not stop it: `add` marks the path resolved whatever is in it, so the markers land in

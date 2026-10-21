@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/jobs/patient-sync-store.ts — the §2.6 `dosespot_patient_sync` mapping
-// (F-230, #248): WardenX patient -> DoseSpot-side patient id, written ONLY from a real `upsertPatient`
+// (F-230, #248): ChartWarden patient -> DoseSpot-side patient id, written ONLY from a real `upsertPatient`
 // response and read by the MedHx-fetch worker to key the pull. Before migration 0303 no such table existed
 // (`vendor-boundary.ts`'s `M12DosespotPatientIdUnbound`); a patient that has never had a successful upsert
 // resolves to `null` — never a guessed or derived id.

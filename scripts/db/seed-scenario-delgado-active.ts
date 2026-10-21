@@ -1,5 +1,5 @@
 /**
- * WardenX — bring the transfer-in demo patient (Rosa Delgado) to `admission.active` (local dev). NOT for production.
+ * ChartWarden — bring the transfer-in demo patient (Rosa Delgado) to `admission.active` (local dev). NOT for production.
  *
  * Root cause this script works around no longer: activation of a transfer-in admission was a real M6 bug
  * (fixed in `admission-route-service-db.ts`, D9). `gateFacts` looked for `election_period.sequence_number = 1`,
@@ -74,8 +74,8 @@ interface CertView {
 
 async function main(): Promise<void> {
   const log = new ScenarioLog("Delgado transfer-in → active");
-  const session = await signIn("admin@wardenx.local");
-  const physician = await signIn("drharris@wardenx.local");
+  const session = await signIn("admin@chartwarden.local");
+  const physician = await signIn("drharris@chartwarden.local");
   const patientId = await findPatientIdByLastName(session, "Delgado");
 
   const readCert = async (): Promise<CertView> => {

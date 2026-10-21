@@ -41,7 +41,7 @@ function settledWithoutCrash(container: HTMLElement): void {
   // Our ErrorBoundary fallback carries a dedicated marker (NOT a bare role="alert" query or a text
   // match — M1's own /error system page legitimately headlines "Something went wrong" too) and
   // react-router's own default error element has a fixed, distinctive string.
-  expect(container.querySelector("[data-wardenx-error-boundary]")).toBeNull();
+  expect(container.querySelector("[data-chartwarden-error-boundary]")).toBeNull();
   expect(container.textContent ?? "").not.toContain("Unexpected Application Error");
 }
 

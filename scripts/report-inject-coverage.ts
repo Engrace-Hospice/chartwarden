@@ -1,5 +1,5 @@
 /**
- * WardenX — Inject-suite coverage report + ratchet gate (TASK-050A, TEST-001)
+ * ChartWarden — Inject-suite coverage report + ratchet gate (TASK-050A, TEST-001)
  * -----------------------------------------------------------------------------
  * TEST-001: two-thirds of mounted routes have no HTTP-layer test. The "route tests" for
  * M14–M21/M23–M27/M29–M35/M37 assert permission catalogs and ABAC predicates as pure functions —
@@ -176,7 +176,7 @@ const pct = (n: number, d: number) => (d === 0 ? "—" : `${((100 * n) / d).toFi
 
 function renderMarkdown(): string {
   const l: string[] = [];
-  l.push("# WardenX — Inject-Suite (HTTP-layer) Coverage");
+  l.push("# ChartWarden — Inject-Suite (HTTP-layer) Coverage");
   l.push("");
   l.push(
     "> **Generated** (`bun run inject:coverage`). Do not hand-edit — `arch:inject-coverage` (in " +

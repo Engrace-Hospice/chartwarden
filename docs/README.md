@@ -50,7 +50,7 @@ wins until the spec is re-locked.
 | [`PLATFORM_TOOLS_MANUAL.md`](./PLATFORM_TOOLS_MANUAL.md) | Private-cloud platform operating manual — Talos, Kubernetes, Cilium, Envoy Gateway, CloudNativePG, Garage, Valkey, OpenBao, Argo CD, Kyverno and the rest: role, deployment baseline, day-2 operations, HIPAA notes and failure modes per tool. Hosting phases: Hostinger test → OVHcloud production → Hostinger playground (ADR-0050). |
 | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
 | [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | ChartWarden × Archon deterministic-coding setup. |
-| [`wardenx-hospice-ehr.prd.md`](./wardenx-hospice-ehr.prd.md) | Product Requirements Document (retrospective intent) — problem, thesis, hypothesis, pilot MVP, success metrics. |
+| [`chartwarden-hospice-ehr.prd.md`](./chartwarden-hospice-ehr.prd.md) | Product Requirements Document (retrospective intent) — problem, thesis, hypothesis, pilot MVP, success metrics. |
 
 ---
 

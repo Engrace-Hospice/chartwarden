@@ -1,7 +1,7 @@
 // apps/web/src/modules/23-billing-medicare — the DDE work queue (ADR-0052): the Medicare Direct Data Entry (FISS)
 // work a biller must key by hand — NOE/NOTR, claim entry, RTP corrections, adjustments, cancels, ADR responses. A
 // cursor-paginated worklist (patient · work type · deadline · status) and a right rail for the selected item.
-// HUMAN WORK TRACKING ONLY: WardenX never connects to DDE, so "recorded as keyed" is the operator's word, and
+// HUMAN WORK TRACKING ONLY: ChartWarden never connects to DDE, so "recorded as keyed" is the operator's word, and
 // recording it (or an acceptance) needs a fresh step-up. An NOE/NOTR is on time only once the MAC acceptance date
 // is recorded; a keyed item with no acceptance date stays "at risk". No MBI is shown or accepted here; notes are
 // never logged. 2026-09-25 redesign pattern (the admissions census + drawer); kit components and wx-* classes only.

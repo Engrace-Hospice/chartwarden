@@ -1,5 +1,5 @@
 /**
- * WardenX — live-suite CI coverage gate (GAP-086, widened for #41)
+ * ChartWarden — live-suite CI coverage gate (GAP-086, widened for #41)
  * ---------------------------------------------------------------------
  * Every live-database / live-Redis / browser suite in package.json must be RUN by a job in
  * `.github/workflows/ci.yml`, or be an EXPLICIT, reasoned deferral in {@link DEFERRED} below.

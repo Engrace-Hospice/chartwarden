@@ -1,5 +1,5 @@
 /**
- * WardenX — runtime LOGIN-role provisioning (task-15; the deployment precondition the
+ * ChartWarden — runtime LOGIN-role provisioning (task-15; the deployment precondition the
  * production-readiness audit left open).
  *
  * The migrations define NOLOGIN carrier roles (`chartwarden_app`, `chartwarden_admin`,

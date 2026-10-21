@@ -18,7 +18,7 @@ export interface SpokenNames {
 }
 
 export interface TerminusDeps {
-  /** The platform page to WardenX ops. Unbound => `page_ops` rows settle `skipped / pager_unbound`. */
+  /** The platform page to ChartWarden ops. Unbound => `page_ops` rows settle `skipped / pager_unbound`. */
   readonly pager?: SosTerminusPort;
   /** M36's voice call to the consented contact. Unbound => `dial_contact` rows settle `voice_unbound`. */
   readonly caller?: SosContactCaller;

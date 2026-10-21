@@ -1,4 +1,4 @@
-// GAP-032 — the platform page to WardenX ops that lets the SOS ladder enter the emergency terminus.
+// GAP-032 — the platform page to ChartWarden ops that lets the SOS ladder enter the emergency terminus.
 import { describe, expect, it } from "vitest";
 
 import {

@@ -297,7 +297,7 @@ export function compareStepOrder(a: OnboardingStepState, b: OnboardingStepState)
 // TODO(M34-integrator / XActor): if a stateful, persisted XState v5 actor is later required (e.g. to drive
 // the apps/admin onboarding-funnel from a live `Actor` ref rather than re-deriving from the `onboarding_task`
 // rows on each read), add `xstate@^5` to packages/saas-tenant-platform/package.json AND record the new npm
-// edge in the M34 codePaths note — NOT a manifest `dependsOn` edge (xstate is an external lib, not a WardenX
+// edge in the M34 codePaths note — NOT a manifest `dependsOn` edge (xstate is an external lib, not a ChartWarden
 // module). The {@link OnboardingMachineConfig} here is already shaped to feed `setup({}).createMachine({})`
 // 1:1 (states = nodes, `on.ADVANCE` = `onAdvance`, guards = the precondition DSL), so the migration is a wrap,
 // not a rewrite. Until then the pure interpreter above is the source of truth and stays DB-free.

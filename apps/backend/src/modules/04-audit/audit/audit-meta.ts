@@ -12,7 +12,7 @@
 // field denylist runs there) — never a direct `audit_event` insert.
 import { type AuditContext, type AuditExecutor, audit } from "@chartwarden/audit";
 
-/** Role prefix that marks a WardenX platform/cross-tenant actor (vs. a tenant member). */
+/** Role prefix that marks a ChartWarden platform/cross-tenant actor (vs. a tenant member). */
 const PLATFORM_ROLE_PREFIX = "platform";
 
 /** The M4 audit-of-audit meta event types (system `audit.*` namespace, §2.3 / D9). */
@@ -22,7 +22,7 @@ export const AUDIT_META_EVENTS = {
 } as const;
 
 /**
- * True when this audit read is ELEVATED: the actor holds a WardenX platform role, or the read
+ * True when this audit read is ELEVATED: the actor holds a ChartWarden platform role, or the read
  * targets an organization other than the actor's own (cross-tenant). Such reads flow through M3
  * break-glass + tenant consent (§4.5) and are always meta-logged.
  */

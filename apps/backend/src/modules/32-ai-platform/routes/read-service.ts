@@ -8,7 +8,7 @@
 //
 // ── R16/R17 MASK RATHER THAN REFUSE, AND THAT IS THE WHOLE POINT OF THE ROUTE ────────────────────────
 //
-// §4.1's R16 says "PHI fields masked unless `wardenx.phi.full_read` granted". A compliance officer
+// §4.1's R16 says "PHI fields masked unless `chartwarden.phi.full_read` granted". A compliance officer
 // running a §164.528 accounting needs to know THAT a disclosure happened, to whom, when, and about which
 // patient — she does not need the prompt text, and in a ZDR deployment nobody can read it anyway (§3.6:
 // the three `_cipher` columns are DEK-enveloped and this module binds no decipher port). So the
@@ -52,7 +52,7 @@ export interface AiPlatformReadActor {
   readonly userId: string;
   readonly membershipId: string | null;
   readonly roles: readonly string[];
-  /** True iff the session holds M3/M5's `wardenx.phi.full_read` grant (see the header). */
+  /** True iff the session holds M3/M5's `chartwarden.phi.full_read` grant (see the header). */
   readonly phiFullRead: boolean;
 }
 

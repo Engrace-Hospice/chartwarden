@@ -1,5 +1,5 @@
 /**
- * WardenX — fetch the X12 CARC / RARC code list pages and prepare them for the M38 admin load.
+ * ChartWarden — fetch the X12 CARC / RARC code list pages and prepare them for the M38 admin load.
  *
  * WHY A SCRIPT, NOT A MIGRATION. X12 (and its code-list distributor, the Washington Publishing Company) publishes
  * CARC and RARC only as public web pages — no CSV/JSON download exists — and asserts copyright over them
@@ -30,7 +30,7 @@ const SOURCES: readonly Source[] = [
   { system: "carc", url: "https://x12.org/codes/claim-adjustment-reason-codes" },
   { system: "rarc", url: "https://x12.org/codes/remittance-advice-remark-codes" },
 ];
-const USER_AGENT = "WardenX-terminology-importer/1.0 (+operator-initiated; one request per list)";
+const USER_AGENT = "ChartWarden-terminology-importer/1.0 (+operator-initiated; one request per list)";
 const FETCH_TIMEOUT_MS = 60_000;
 const UPDATED_DATE = /code-list-updated-date">\s*([^<\s][^<]*?)\s*</;
 

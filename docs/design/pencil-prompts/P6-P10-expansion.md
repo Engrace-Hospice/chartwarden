@@ -6,9 +6,9 @@
 > `get_screenshot`, record the node id in [`../SCREENS.md`](../SCREENS.md). Field detail lives in
 > each linked spec.
 
-Suggested phase files: `wardenx-P6-compliance.pen` · `wardenx-P7-controls-staffing.pen` ·
-`wardenx-P8-external-portals.pen` · `wardenx-P9-mobile-integration.pen` ·
-`wardenx-P10-cert-billing-ops.pen`.
+Suggested phase files: `chartwarden-P6-compliance.pen` · `chartwarden-P7-controls-staffing.pen` ·
+`chartwarden-P8-external-portals.pen` · `chartwarden-P9-mobile-integration.pen` ·
+`chartwarden-P10-cert-billing-ops.pen`.
 
 ---
 

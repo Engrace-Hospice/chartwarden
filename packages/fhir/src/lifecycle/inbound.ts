@@ -101,11 +101,11 @@ export function fhirInboundOwnerModuleFor(resourceType: string): FhirInboundOwne
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * GAP-198 — the WardenX patient an inbound proposal is ABOUT, read once at staging so the
+ * GAP-198 — the ChartWarden patient an inbound proposal is ABOUT, read once at staging so the
  * `caseload_or_scope` gate never has to open the (denylisted) payload at decision time.
  *
  *   - `MedicationStatement`: `subject.reference` of the form `Patient/<uuid>`.
- *   - `Patient`: the resource's own `id` when it is a WardenX uuid (an update to an existing chart).
+ *   - `Patient`: the resource's own `id` when it is a ChartWarden uuid (an update to an existing chart).
  *     A Patient proposal without one is a NEW person: there is no chart to scope to, so it is `null`.
  *
  * Anything that is not a well-formed uuid is `null`; callers must treat `null` on a patient-scoped

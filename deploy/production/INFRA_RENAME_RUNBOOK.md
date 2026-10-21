@@ -237,4 +237,4 @@ records and certificate were never removed.
   `DATABASE_*_URL`; applied-migration checksums forbid editing SQL).
 - Compose project name `wardenx` and the `wardenx_*` volumes/network (data loss, see Phase 4).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
-- The `wardenx-demo` organization slug (demo seed data; reseed rather than migrate).
+- The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.

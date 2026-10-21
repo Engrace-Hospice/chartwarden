@@ -1,5 +1,5 @@
 /**
- * WardenX — M14 IDG meeting scenario data (local dev). NOT for production.
+ * ChartWarden — M14 IDG meeting scenario data (local dev). NOT for production.
  *
  * Builds real IDG meetings — one UPCOMING (`scheduled`, a few days out), one with packets BUILT
  * (`packets_ready`, tomorrow) and one LIVE (started, quorate) — at each demo location, entirely through the
@@ -101,7 +101,7 @@ const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res
 // ── 0. admin location scope (real M2 API) ──────────────────────────────────────────────────────────────────
 async function ensureAdminLocationScope(admin: WxSession): Promise<void> {
   const members = await membershipIds();
-  for (const email of ["admin@wardenx.local", "orgadmin@wardenx.local"]) {
+  for (const email of ["admin@chartwarden.local", "orgadmin@chartwarden.local"]) {
     const m = members.get(email);
     if (!m) {
       log.fail(`${email}: no membership`);
@@ -288,12 +288,12 @@ interface Persona {
   discipline: string;
 }
 const ATTENDEES: Persona[] = [
-  { email: "admin@wardenx.local", discipline: "administrator" },
-  { email: "orgadmin@wardenx.local", discipline: "administrator" },
-  { email: "rita@wardenx.local", discipline: "rn_case_manager" },
-  { email: "drharris@wardenx.local", discipline: "hospice_physician" },
-  { email: "cole@wardenx.local", discipline: "chaplain" },
-  { email: "mira@wardenx.local", discipline: "msw" },
+  { email: "admin@chartwarden.local", discipline: "administrator" },
+  { email: "orgadmin@chartwarden.local", discipline: "administrator" },
+  { email: "rita@chartwarden.local", discipline: "rn_case_manager" },
+  { email: "drharris@chartwarden.local", discipline: "hospice_physician" },
+  { email: "cole@chartwarden.local", discipline: "chaplain" },
+  { email: "mira@chartwarden.local", discipline: "msw" },
 ];
 
 async function conductLive(
@@ -345,7 +345,7 @@ async function conductLive(
       params: { path: { id: meetingId } },
     }),
   );
-  for (const p of ATTENDEES.filter((a) => a.email !== "mira@wardenx.local"))
+  for (const p of ATTENDEES.filter((a) => a.email !== "mira@chartwarden.local"))
     await record(p, "present");
 
   if (decisions0.length === 0) {
@@ -364,7 +364,7 @@ async function conductLive(
     else log.ok(`non-quorate decision unexpectedly accepted (HTTP ${attempt.response.status})`);
   }
   // MSW joins late -> tardy still counts toward quorum.
-  await record({ email: "mira@wardenx.local", discipline: "msw" }, "tardy");
+  await record({ email: "mira@chartwarden.local", discipline: "msw" }, "tardy");
 
   const decide = async (
     patientId: string | null,
@@ -466,46 +466,46 @@ async function conductLive(
     label: string;
   }> = [
     {
-      who: "rita@wardenx.local",
+      who: "rita@chartwarden.local",
       days: -6,
       patientId: pw?.id ?? null,
       decisionId: dTeam,
       label: "RN follow-up visit (overdue 6d)",
     },
     {
-      who: "mira@wardenx.local",
+      who: "mira@chartwarden.local",
       days: -2,
       patientId: pd?.id ?? null,
       decisionId: dRecert,
       label: "MSW caregiver assessment (overdue 2d)",
     },
     {
-      who: "cole@wardenx.local",
+      who: "cole@chartwarden.local",
       days: -1,
       patientId: pw?.id ?? null,
       label: "Chaplain spiritual-care visit (overdue 1d)",
     },
     {
-      who: "drharris@wardenx.local",
+      who: "drharris@chartwarden.local",
       days: 2,
       patientId: pn?.id ?? null,
       decisionId: dMed,
       label: "MD to sign comfort-med change (due 2d)",
     },
     {
-      who: "admin@wardenx.local",
+      who: "admin@chartwarden.local",
       days: -3,
       patientId: pw?.id ?? null,
       label: "Administrator: confirm Whitfield IDG documentation (overdue 3d)",
     },
     {
-      who: "orgadmin@wardenx.local",
+      who: "orgadmin@chartwarden.local",
       days: 4,
       patientId: null,
       label: "Org admin: review IDG cadence policy (due 4d)",
     },
     {
-      who: "rita@wardenx.local",
+      who: "rita@chartwarden.local",
       days: 6,
       patientId: null,
       label: "Team-level action, no patient (due 6d)",
@@ -536,7 +536,7 @@ async function conductLive(
 
 // ── main ────────────────────────────────────────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
-  const admin = await signIn("admin@wardenx.local");
+  const admin = await signIn("admin@chartwarden.local");
   await ensureAdminLocationScope(admin);
   const mem = await membershipIds();
 

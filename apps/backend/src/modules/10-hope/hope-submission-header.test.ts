@@ -9,7 +9,7 @@ import {
 
 const VENDOR_ENV = {
   CHARTWARDEN_SOFTWARE_VENDOR_ID: "12-3456789",
-  CHARTWARDEN_SOFTWARE_VENDOR_NAME: "WardenX Inc",
+  CHARTWARDEN_SOFTWARE_VENDOR_NAME: "ChartWarden Inc",
   CHARTWARDEN_SOFTWARE_VENDOR_EMAIL: "hope@wardenx.example",
   APP_VERSION: "2026.9.26",
 };
@@ -50,7 +50,7 @@ describe("HOPE software vendor configuration", () => {
   it("reads the SFTWR_* values, stripping the EIN dash and defaulting the product name", () => {
     expect(readHopeSoftwareVendor(VENDOR_ENV)).toEqual({
       vendorId: "123456789",
-      vendorName: "WardenX Inc",
+      vendorName: "ChartWarden Inc",
       vendorEmail: "hope@wardenx.example",
       productName: "ChartWarden",
       productVersion: "2026.9.26",
@@ -140,7 +140,7 @@ describe("HOPE submission header — control item values", () => {
       SFTWR_VNDR_EMAIL_ADR: "hope@wardenx.example",
       SFTWR_PROD_NAME: "ChartWarden",
       SFTWR_PROD_VRSN_CD: "2026.9.26",
-      SFTWR_VNDR_NAME: "WardenX Inc",
+      SFTWR_VNDR_NAME: "ChartWarden Inc",
       CRCTN_NUM: "02",
       ASMT_SYS_CD: "HOPE",
     });

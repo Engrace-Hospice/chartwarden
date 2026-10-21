@@ -1,7 +1,7 @@
 [project]
 name = "wardenx-docling-worker"
 version = "0.1.0"
-description = "WardenX DocLens stage 2: Docling layout + OCR parse with page coordinates"
+description = "ChartWarden DocLens stage 2: Docling layout + OCR parse with page coordinates"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115",

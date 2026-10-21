@@ -1,4 +1,4 @@
-# WardenX staff SPA — production image.
+# ChartWarden staff SPA — production image.
 #
 # The API and worker share the root Dockerfile. This separate, multi-stage image builds the Vite
 # staff app once and serves only its static output with the unprivileged nginx image.

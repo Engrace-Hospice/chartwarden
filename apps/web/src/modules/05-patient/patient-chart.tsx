@@ -70,7 +70,7 @@ interface PatientSummary {
   status: string;
 }
 
-// Module-nav-rail icons. The P0 frame (wardenx-P0-foundation.pen `fQjjh`) pairs every rail row with a
+// Module-nav-rail icons. The P0 frame (chartwarden-P0-foundation.pen `fQjjh`) pairs every rail row with a
 
 // Material-Symbols glyph; the shared @chartwarden/ui Glyph kit is a small curated set without these
 

@@ -1,5 +1,5 @@
 // @chartwarden/medicaid-adapters — M24 `medicaid_claim` lifecycle reducer (§2.2, D13). The spec proposes an
-// XState v5 machine; the WardenX repo convention (the M23 `billing/machines/claim.ts` exemplar) is a PURE
+// XState v5 machine; the ChartWarden repo convention (the M23 `billing/machines/claim.ts` exemplar) is a PURE
 // hand-rolled transition reducer — ARCHITECTURE WINS over the module spec. The 18 states + their
 // server-authoritative edges are a flat transition table; `canTransition` / `reduce` are total,
 // deterministic, side-effect-free functions over (state, event). Guards needing I/O (M2 step-up freshness

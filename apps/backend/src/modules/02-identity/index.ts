@@ -231,7 +231,7 @@ export {
   type LoginMfaCompletedDeps,
   onLoginMfaCompleted,
 } from "./hooks/login-mfa-completed";
-// M2-T06 — the WardenX `/api/v1/*` identity route inventory + its injected ports.
+// M2-T06 — the ChartWarden `/api/v1/*` identity route inventory + its injected ports.
 export {
   type Actor,
   type ActorResolver,

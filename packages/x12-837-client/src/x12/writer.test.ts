@@ -12,7 +12,7 @@ import {
 } from "./writer";
 
 const ENVELOPE = {
-  senderId: "WARDENX01",
+  senderId: "CHARTWARDEN01",
   receiverId: "STEDI",
   applicationReceiverCode: "STEDI",
   interchangeControlNumber: 106,
@@ -37,7 +37,7 @@ describe("prepareEnvelope + wrapTransaction", () => {
     expect(segments[1]).toEqual([
       "GS",
       "HC",
-      "WARDENX01",
+      "CHARTWARDEN01",
       "STEDI",
       "20261009",
       "1500",

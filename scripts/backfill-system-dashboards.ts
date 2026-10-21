@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — backfill the M33 day-one dashboards for orgs provisioned BEFORE the seeder existed
+ * ChartWarden — backfill the M33 day-one dashboards for orgs provisioned BEFORE the seeder existed
  * (#138 / F-060 / F-116).
  *
  * `apps/backend/src/modules/33-reporting/system-dashboard-seeder.ts` now runs on every accepted

@@ -1119,7 +1119,7 @@ import type { AlertRuleSeed } from '@chartwarden/alerting/types'
 export const M15_ALERT_RULES: AlertRuleSeed[] = [
   // ── Aide supervisory overdue ──────────────────────────────────────────
   {
-    metric: 'wardenx_m15_supervisory_overdue_gauge',
+    metric: 'chartwarden_m15_supervisory_overdue_gauge',
     condition: '> 0',
     forDuration: '5m',
     severity: 'warn',
@@ -1130,7 +1130,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
     thresholdRef: 'OPS-043/M15/supervisory_overdue_warn',
   },
   {
-    metric: 'wardenx_m15_supervisory_overdue_gauge',
+    metric: 'chartwarden_m15_supervisory_overdue_gauge',
     condition: '> 0',
     forDuration: '30m',
     severity: 'critical',
@@ -1142,7 +1142,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
   },
   // ── MSW initial overdue ───────────────────────────────────────────────
   {
-    metric: 'wardenx_m15_msw_initial_overdue_gauge',
+    metric: 'chartwarden_m15_msw_initial_overdue_gauge',
     condition: '> 0',
     forDuration: '5m',
     severity: 'warn',
@@ -1153,7 +1153,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
     thresholdRef: 'OPS-043/M15/msw_initial_overdue_warn',
   },
   {
-    metric: 'wardenx_m15_msw_initial_overdue_gauge',
+    metric: 'chartwarden_m15_msw_initial_overdue_gauge',
     condition: '> 0',
     forDuration: '15m',
     severity: 'critical',
@@ -1165,7 +1165,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
   },
   // ── Volunteer gate expiry ─────────────────────────────────────────────
   {
-    metric: 'wardenx_m15_volunteer_gates_expiring_30d_gauge',
+    metric: 'chartwarden_m15_volunteer_gates_expiring_30d_gauge',
     condition: '> 0',
     forDuration: '5m',
     severity: 'info',
@@ -1176,7 +1176,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
     thresholdRef: 'OPS-043/M15/gate_expiring_30d',
   },
   {
-    metric: 'wardenx_m15_volunteer_gates_expiring_30d_gauge',
+    metric: 'chartwarden_m15_volunteer_gates_expiring_30d_gauge',
     condition: '> 0',
     labels: { daysOut: '7' },
     forDuration: '5m',
@@ -1189,7 +1189,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
   },
   // ── Volunteer ratio below floor ───────────────────────────────────────
   {
-    metric: 'wardenx_m15_volunteer_ratio_pct',
+    metric: 'chartwarden_m15_volunteer_ratio_pct',
     condition: '< 5 AND > 3',
     forDuration: '10m',
     severity: 'warn',
@@ -1200,7 +1200,7 @@ export const M15_ALERT_RULES: AlertRuleSeed[] = [
     thresholdRef: 'OPS-043/M15/ratio_yellow',
   },
   {
-    metric: 'wardenx_m15_volunteer_ratio_pct',
+    metric: 'chartwarden_m15_volunteer_ratio_pct',
     condition: '< 3',
     forDuration: '10m',
     severity: 'critical',
@@ -1426,16 +1426,16 @@ All denylisted free-text fields show `<changed>` only; audit trigger generator (
 
 | Metric | Type | Labels | Purpose |
 |---|---|---|---|
-| `wardenx_m15_supervisory_overdue_gauge` | gauge | org, provider_entity | Currently-overdue Aide POCs |
-| `wardenx_m15_supervisory_on_time_rate` | gauge | org, provider_entity, window=30d | Pct supervisory visits within cadence |
-| `wardenx_m15_msw_initial_overdue_gauge` | gauge | org, provider_entity | Admissions with MSW initial overdue |
-| `wardenx_m15_chaplain_initial_overdue_gauge` | gauge | org, provider_entity | Admissions with chaplain initial overdue (excluding declined) |
-| `wardenx_m15_volunteer_gates_expiring_30d_gauge` | gauge | org | Gates expiring within 30d |
-| `wardenx_m15_volunteer_ratio_pct` | gauge | org, provider_entity, fiscal_year | 5% ratio current (null when M27 unavailable) |
-| `wardenx_m15_idg_decision_applied_counter` | counter | org, plan_kind, mutation_kind | IDG-driven mutations applied |
-| `wardenx_m15_gate_override_counter` | counter | org, gate_kind | Documented overrides (surfaces survey-risk patterns) |
-| `wardenx_m15_plan_sign_latency_histogram` | histogram | org, kind, version_kind | finalize → last-signer-sign |
-| `wardenx_m15_concurrency_conflict_counter` | counter | org, kind, route | 412 occurrences |
+| `chartwarden_m15_supervisory_overdue_gauge` | gauge | org, provider_entity | Currently-overdue Aide POCs |
+| `chartwarden_m15_supervisory_on_time_rate` | gauge | org, provider_entity, window=30d | Pct supervisory visits within cadence |
+| `chartwarden_m15_msw_initial_overdue_gauge` | gauge | org, provider_entity | Admissions with MSW initial overdue |
+| `chartwarden_m15_chaplain_initial_overdue_gauge` | gauge | org, provider_entity | Admissions with chaplain initial overdue (excluding declined) |
+| `chartwarden_m15_volunteer_gates_expiring_30d_gauge` | gauge | org | Gates expiring within 30d |
+| `chartwarden_m15_volunteer_ratio_pct` | gauge | org, provider_entity, fiscal_year | 5% ratio current (null when M27 unavailable) |
+| `chartwarden_m15_idg_decision_applied_counter` | counter | org, plan_kind, mutation_kind | IDG-driven mutations applied |
+| `chartwarden_m15_gate_override_counter` | counter | org, gate_kind | Documented overrides (surfaces survey-risk patterns) |
+| `chartwarden_m15_plan_sign_latency_histogram` | histogram | org, kind, version_kind | finalize → last-signer-sign |
+| `chartwarden_m15_concurrency_conflict_counter` | counter | org, kind, route | 412 occurrences |
 
 ### 8.3 OpenTelemetry Spans
 
@@ -1462,7 +1462,7 @@ Registered with M4's destruction-cert workflow per architecture §24 / `boot.ts`
 | Threat | Surface | Mitigation | Test |
 |---|---|---|---|
 | **Spoofing (S)** | A non-supervisor RN creates an `aide_supervisory_visit` row impersonating the named `supervising_rn_membership_id` | Session-bound `captured_by_membership_id` verified against the plan's `supervising_rn_membership_id` at write time via `aide_supervisor_eligible` ABAC predicate; never client-supplied; Clin Supv override requires a documented reason ≥40 chars and is audited | Authz-independence test: RN not named on the plan returns 403 `NOT_AIDE_SUPERVISOR`; override path requires reason ≥40 chars |
-| **Spoofing (S)** | Gate-override abuse — a Volunteer Coordinator or Clin Supv bypasses an expired volunteer gate to book a non-compliant volunteer (§418.78 breach) | `volunteer_compliance_active` ABAC predicate enforced at INSERT on `volunteer_assignment`; override requires `volunteer_compliance.author` + documented `override_reason` ≥40 chars; every override recorded as `m15.gate.override.invoked` audit event at `warn` severity; `wardenx_m15_gate_override_counter` Prometheus metric surfaces survey-risk patterns (§8.2) | Integration test: assignment INSERT with any expired gate returns 422 `VOLUNTEER_GATE_UNMET` without override; override without reason returns 422; override with reason succeeds and emits the audit event |
+| **Spoofing (S)** | Gate-override abuse — a Volunteer Coordinator or Clin Supv bypasses an expired volunteer gate to book a non-compliant volunteer (§418.78 breach) | `volunteer_compliance_active` ABAC predicate enforced at INSERT on `volunteer_assignment`; override requires `volunteer_compliance.author` + documented `override_reason` ≥40 chars; every override recorded as `m15.gate.override.invoked` audit event at `warn` severity; `chartwarden_m15_gate_override_counter` Prometheus metric surfaces survey-risk patterns (§8.2) | Integration test: assignment INSERT with any expired gate returns 422 `VOLUNTEER_GATE_UNMET` without override; override without reason returns 422; override with reason succeeds and emits the audit event |
 | **Tampering (T)** | IDG-payload tampering — a malformed or replayed `m14.idg.decision_recorded` outbox event is crafted to apply unauthorized goal mutations to a discipline plan | Outbox events are keyed on `idgDecisionId` (natural idempotency key); the consumer validates the payload against the TypeBox-typed `idg-decision.ts` schema before applying mutations; mismatched `organization_id` or `planId` references are rejected with an audit event; re-publishing the same `idgDecisionId` is a no-op (idempotent consumer) | Consumer unit test: tampered payload with wrong `organization_id` rejected with `IDEMPOTENCY_ORG_MISMATCH`; duplicate `idgDecisionId` produces no mutation; schema-invalid payload throws validation error before any DB write |
 | **Tampering (T)** | Editing a signed `discipline_care_plan_version.state_snapshot` to alter the historical plan record | Snapshot is sealed at `in_review` transition; the M4 audit trigger refuses any UPDATE targeting `state_snapshot` after the `in_review` transition; the `discipline_care_plan_version.version` optimistic-lock column is also a tamper signal | Integration test: direct UPDATE on `state_snapshot` after `in_review` returns a DB trigger error; PATCH via API is rejected 409 before reaching the DB |
 | **Repudiation (R)** | "I did not approve that IDG revision" — supervisory RN or MSW denies having signed a plan version | Per-version `discipline_care_plan_signature` row captures `signerMembershipId`, `signerRole`, `signedAt`, `sessionClass`, `ipAddress`, `userAgent`, `attestationText`; M4 audit event `m15.discipline_plan.version.signed` carries all fields; signatures are immutable (no UPDATE on the signatures table) | Audit-read test: signature table row survives a deliberate application-layer delete attempt; audit event contains ip/ua/session |

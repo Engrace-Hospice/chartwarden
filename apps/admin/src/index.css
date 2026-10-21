@@ -86,7 +86,7 @@
   --color-brand: var(--color-primary);
   --color-line: var(--color-outline-variant);
 
-  /* Type — WardenX trio. Variable faces register "<Name> Variable" (see main.tsx); name those
+  /* Type — ChartWarden trio. Variable faces register "<Name> Variable" (see main.tsx); name those
      first, then the static family, then system fallbacks. */
   /* The redesign sets headings in Inter too (mockups); Manrope stays registered as a fallback face. */
   --font-display: "Inter Variable", "Inter", "Manrope Variable", ui-sans-serif, system-ui,

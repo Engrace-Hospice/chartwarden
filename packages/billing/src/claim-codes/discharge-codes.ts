@@ -15,7 +15,7 @@
 // NOT DERIVED HERE (stated, not silent):
 //   * A LIVE discharge (revocation, no longer terminally ill, moved out of the service area, for cause)
 //     takes "the NUBC approved discharge status code that best describes the beneficiary's situation"
-//     [CH11]. WardenX records no live-discharge destination, so this module reports `01` (discharged to
+//     [CH11]. ChartWarden records no live-discharge destination, so this module reports `01` (discharged to
 //     home or self-care, the routine discharge [NUBC]). A patient discharged alive to a hospital or SNF
 //     would need a different code (02/03/...) once M6 records the destination.
 //   * `other` is not one of the 42 CFR 418.26 discharge reasons the manual codes, so it is UNRESOLVED and

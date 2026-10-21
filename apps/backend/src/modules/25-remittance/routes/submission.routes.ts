@@ -3,7 +3,7 @@
 // own read key; recording a receipt gates on the subject's submit key + step-up (the operation key is the permission
 // key, guards.ts); cancelling gates on the submit key. No new permission keys. Every change is If-Match (409 when
 // stale) and requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
-// Nothing here sends anything outside WardenX: there is no send route in 6a.
+// Nothing here sends anything outside ChartWarden: there is no send route in 6a.
 import { Type } from "@sinclair/typebox";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";

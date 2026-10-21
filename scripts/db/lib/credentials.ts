@@ -19,7 +19,7 @@ export function writeSeedCredentials(contents: string): void {
 
 /** `admin` is a reserved username (RESERVED_USERNAMES), so the seeded Administrator gets `sysadmin`. */
 const SEED_USERNAME_OVERRIDES: Readonly<Record<string, string>> = {
-  "admin@wardenx.local": "sysadmin",
+  "admin@chartwarden.local": "sysadmin",
 };
 
 /** Seeded accounts sign in by username as well as email; the username is the email local part. */

@@ -1,5 +1,5 @@
 /**
- * WardenX — migration ORDINAL uniqueness gate  (F-026)
+ * ChartWarden — migration ORDINAL uniqueness gate  (F-026)
  * ---------------------------------------------------------------------------
  * `packages/db/migrations/NNNN_name.sql` — the four-digit prefix is the migration's position in a
  * total order, and `scripts/db/migrate.ts` applies files in plain lexicographic `.sort()` order.

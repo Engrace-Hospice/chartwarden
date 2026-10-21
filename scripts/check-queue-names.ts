@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — BullMQ queue-name uniqueness gate
+ * ChartWarden — BullMQ queue-name uniqueness gate
  * ---------------------------------------------------------------------------
  * A BullMQ queue is identified ONLY by its string name. Two modules that declare the same name share one Redis queue,
  * so each module's Worker competes for the other's jobs: whichever worker is free takes the job, runs the wrong

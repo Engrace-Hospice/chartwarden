@@ -885,7 +885,7 @@ export function createDrizzleFhirGatewayStore(
     },
 
     async resolveBearer(token): Promise<FhirBearerContext | null> {
-      // The bearer token IS the session `jti`. The caller carries no WardenX session, so the tenant is
+      // The bearer token IS the session `jti`. The caller carries no ChartWarden session, so the tenant is
       // unknown here and has to be RESOLVED before any row can be read — `fhir_resolve_session_org`
       // (0233) is the narrow SECURITY DEFINER function that does it, taking one unguessable uuid and
       // returning one org uuid. Everything after this line runs inside `withOrgContext`, so the session

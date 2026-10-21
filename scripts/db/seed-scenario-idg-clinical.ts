@@ -1,5 +1,5 @@
 /**
- * WardenX — recent clinical activity for the IDG demo patients (local dev). NOT for production.
+ * ChartWarden — recent clinical activity for the IDG demo patients (local dev). NOT for production.
  *
  * WHY. The M14 packet builder (`14-idg/jobs/packet-build.ts`) fills the "since last IDG" sections of a patient
  * packet from real upstream facts, and a demo stack had none for Whitfield / Nakamura / Delgado, so every one of
@@ -601,9 +601,9 @@ async function seedMeds(
  *  `seed-scenario-idg-packets.ts#ensureCaseload` and `seed-staff-personas.ts` write). Additive: only where missing. */
 async function ensureCaseload(name: string, patientId: string): Promise<void> {
   const roles = [
-    ["case_manager_msw", "mira@wardenx.local"],
-    ["chaplain", "cole@wardenx.local"],
-    ["aide", "amy@wardenx.local"],
+    ["case_manager_msw", "mira@chartwarden.local"],
+    ["chaplain", "cole@chartwarden.local"],
+    ["aide", "amy@chartwarden.local"],
   ] as const;
   for (const [role, email] of roles) {
     const u = await sql<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [email]);
@@ -1032,12 +1032,12 @@ async function activeAdmissionId(patientId: string): Promise<string | undefined>
 
 async function main(): Promise<void> {
   const p: Personas = {
-    admin: await signIn("admin@wardenx.local"),
-    rn: await signIn("rita@wardenx.local"),
-    md: await signIn("drharris@wardenx.local"),
-    msw: await signIn("mira@wardenx.local"),
-    chaplain: await signIn("cole@wardenx.local"),
-    chha: await signIn("amy@wardenx.local"),
+    admin: await signIn("admin@chartwarden.local"),
+    rn: await signIn("rita@chartwarden.local"),
+    md: await signIn("drharris@chartwarden.local"),
+    msw: await signIn("mira@chartwarden.local"),
+    chaplain: await signIn("cole@chartwarden.local"),
+    chha: await signIn("amy@chartwarden.local"),
   };
   const byDiscipline: Record<Discipline, WxSession> = {
     rn: p.rn,

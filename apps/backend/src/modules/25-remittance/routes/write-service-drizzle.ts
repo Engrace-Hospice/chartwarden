@@ -107,7 +107,7 @@ export function buildDrizzleM25WriteService(
   /**
    * The date printed on the notice a new appeal tier's clock runs from (CMS: the window runs from receipt,
    * presumed 5 days after this date). An explicit `noticeDate` wins. A redetermination uses the remittance
-   * advice date of the denied line (the date WardenX ingested the file is NOT the notice date), falling back
+   * advice date of the denied line (the date ChartWarden ingested the file is NOT the notice date), falling back
    * to the denial's open date when no 835 is linked (e.g. a 277CA-seeded denial). A later tier uses the prior
    * tier's decision-letter date, and refuses to guess when no prior tier was decided here.
    */

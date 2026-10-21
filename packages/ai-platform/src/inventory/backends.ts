@@ -149,7 +149,7 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
     isActive: true,
     servesCapabilityKeys: ["doclens_classify"],
     additionalSeedBlockers: [],
-    note: "WardenX-trained document-type classifier; the local default for doclens_classify with Haiku as the cloud fallback.",
+    note: "ChartWarden-trained document-type classifier; the local default for doclens_classify with Haiku as the cloud fallback.",
   },
   {
     backendKey: "local-phi-3.5-mini",

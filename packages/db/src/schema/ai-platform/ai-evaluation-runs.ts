@@ -6,7 +6,7 @@
 // tenant. Listed in check-tenancy.ts's NON_ORG_SCOPED set.
 //
 // `mlflow_run_id` + `dataset_version_ref` are the whole point of the row: the metrics live in MLflow and
-// the dataset in DVC, and WardenX stores the POINTERS plus the decision a human took on them. Copying
+// the dataset in DVC, and ChartWarden stores the POINTERS plus the decision a human took on them. Copying
 // the metric tables in here would create a second source of truth that drifts from the one the ML team
 // actually reads; `summary_metrics` is the headline snapshot the console renders, not the record.
 //

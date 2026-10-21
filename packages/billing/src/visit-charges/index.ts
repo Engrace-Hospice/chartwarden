@@ -2,7 +2,7 @@
 //
 // A hospice claim reports every visit as its own line with "a charge amount" (CMS Pub. 100-04 ch. 11 §30.3), but a
 // visit's charge is informational — the visit is bundled into the level-of-care payment — so the number belongs to
-// the hospice's own charge master, not to CMS. WardenX has none, so a billing administrator keys a charge PER
+// the hospice's own charge master, not to CMS. ChartWarden has none, so a billing administrator keys a charge PER
 // 15-MINUTE UNIT PER DISCIPLINE, per provider entity, effective-dated and append-only like the rate table (F-210).
 // This module owns the rules that keep that hand-keyed input honest and the FAIL-CLOSED resolution: a billed visit
 // whose discipline has no charge on its date is reported as missing, never defaulted to a guess.

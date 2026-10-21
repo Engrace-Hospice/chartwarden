@@ -9,7 +9,7 @@
 // `interchangeDate` and `statusEffectiveDate`; this is the reference reading of them.
 import { tokenizeInterchange, x12DateToIso } from "../eligibility/x12-envelope";
 
-/** ISA09 `YYMMDD` → ISO. X12 interchange dates are in the 2000s for any acknowledgment WardenX can receive. */
+/** ISA09 `YYMMDD` → ISO. X12 interchange dates are in the 2000s for any acknowledgment ChartWarden can receive. */
 function isa09ToIso(value: string | undefined): string | null {
   if (!value || !/^\d{6}$/.test(value)) return null;
   return x12DateToIso(`20${value}`);

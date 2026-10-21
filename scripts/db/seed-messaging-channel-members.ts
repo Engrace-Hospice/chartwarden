@@ -1,5 +1,5 @@
 /**
- * WardenX — additive local-dev seed: M36 care-team channel memberships for the demo personas.
+ * ChartWarden — additive local-dev seed: M36 care-team channel memberships for the demo personas.
  *
  * The seeds write `patient_assignment` by direct SQL, which emits no `m5.patient.assignment_created`, so M36's
  * channel-membership-sync never runs for them and only the portal-traffic path (which reconciles one patient at a
@@ -24,7 +24,7 @@
 import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const CREATE_MISSING = !process.argv.includes("--no-create");
 const EXCLUDED_CATEGORIES = ["patient_family", "external_auditor", "platform_staff"];
 

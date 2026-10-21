@@ -35,7 +35,7 @@ export interface SectionJInput {
    * The CMS HOPE Section-J ITEM identifiers the payload carries (J2030, J2050, J2051 …), validated
    * against M38's `hope_j_codes` value set. These are the instrument's QUESTIONS.
    *
-   * NOT the J2051 symptom severities — those are its answers, drawn from a WardenX-internal vocabulary
+   * NOT the J2051 symptom severities — those are its answers, drawn from a ChartWarden-internal vocabulary
    * (`HOPE_J2051_SYMPTOM_CODES`) that M10's route boundary already closes, so checking them here would
    * be a weaker asynchronous copy of a synchronous absolute check, incapable of failing (F-059). This
    * doc line used to read "J-item / symptom codes", and that slash is where the confusion came from.

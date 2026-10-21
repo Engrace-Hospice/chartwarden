@@ -1,5 +1,5 @@
 /**
- * WardenX — orders / prescribing / eMAR / IDG scenario data for the flagship patient (local dev).
+ * ChartWarden — orders / prescribing / eMAR / IDG scenario data for the flagship patient (local dev).
  * NOT for production.
  *
  * Builds real M11 (Orders) / M12 (DoseSpot) / M13 (eMAR) / M14 (IDG) data for Eleanor Whitfield over
@@ -205,11 +205,11 @@ async function seedIdgPatientPacket(
 }
 
 async function main(): Promise<void> {
-  const rn = await signIn("rita@wardenx.local");
-  const lpn = await signIn("dana@wardenx.local");
-  const md = await signIn("drharris@wardenx.local");
-  const msw = await signIn("mira@wardenx.local");
-  const chaplain = await signIn("cole@wardenx.local");
+  const rn = await signIn("rita@chartwarden.local");
+  const lpn = await signIn("dana@chartwarden.local");
+  const md = await signIn("drharris@chartwarden.local");
+  const msw = await signIn("mira@chartwarden.local");
+  const chaplain = await signIn("cole@chartwarden.local");
   const log = new ScenarioLog("orders/meds/IDG (Whitfield)");
 
   const patientId = await findPatientIdByLastName(rn, "Whitfield");
@@ -426,8 +426,8 @@ async function main(): Promise<void> {
   try {
     const orgId = rn.organizationId;
     // The coordinator is the medical director: idg.coordinate is withheld from RNs (seed-grants).
-    const coordinatorId = await membershipIdFor("drharris@wardenx.local");
-    const ritaMembershipId = await membershipIdFor("rita@wardenx.local");
+    const coordinatorId = await membershipIdFor("drharris@chartwarden.local");
+    const ritaMembershipId = await membershipIdFor("rita@chartwarden.local");
     const meetingId = await seedLiveIdgMeeting(orgId, coordinatorId);
 
     const agenda = await md.client.POST("/api/v1/idg/meetings/{id}/agenda", {
@@ -445,19 +445,19 @@ async function main(): Promise<void> {
     await seedIdgPatientPacket(orgId, meetingId, patientId, admissionId);
 
     const attendees: Array<{ email: string; membershipId: string; discipline: string }> = [
-      { email: "rita@wardenx.local", membershipId: ritaMembershipId, discipline: "rn_case_manager" },
+      { email: "rita@chartwarden.local", membershipId: ritaMembershipId, discipline: "rn_case_manager" },
       {
-        email: "mira@wardenx.local",
-        membershipId: await membershipIdFor("mira@wardenx.local"),
+        email: "mira@chartwarden.local",
+        membershipId: await membershipIdFor("mira@chartwarden.local"),
         discipline: "msw",
       },
       {
-        email: "cole@wardenx.local",
-        membershipId: await membershipIdFor("cole@wardenx.local"),
+        email: "cole@chartwarden.local",
+        membershipId: await membershipIdFor("cole@chartwarden.local"),
         discipline: "chaplain",
       },
       {
-        email: "drharris@wardenx.local",
+        email: "drharris@chartwarden.local",
         membershipId: coordinatorId,
         discipline: "hospice_physician",
       },

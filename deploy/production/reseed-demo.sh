@@ -5,7 +5,7 @@
 #   ./reseed-demo.sh inventory   read-only: organizations, users and their memberships
 #   ./reseed-demo.sh reseed      pg_dump backup, then `db:seed:all` against a throwaway sign-up-open api
 #
-# `reseed` deletes the `wardenx-demo` organization and every identity whose ONLY membership is that
+# `reseed` deletes the `chartwarden-demo` organization (and the legacy `wardenx-demo` one if still present) and every identity whose ONLY membership is that
 # organization (scripts/db/seed.ts aborts before deleting if any of them belongs to another tenant),
 # then rebuilds the full synthetic dataset. Generated passwords are written to
 # $deploy_dir/CREDENTIALS.production.md (0600) on the VPS and are NEVER printed — the seed output is

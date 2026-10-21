@@ -53,7 +53,7 @@ export const onCallShift = pgTable(
     externalActorId: uuid("external_actor_id").references(() => externalTriageVendor.id, {
       onDelete: "restrict",
     }),
-    /** The vendor's own operator label ("TouchPoint night desk"); never a WardenX identity. */
+    /** The vendor's own operator label ("TouchPoint night desk"); never a ChartWarden identity. */
     externalActorLabel: text("external_actor_label"),
 
     /** M17 visit-assignment provenance — LOGICAL uuid; no SQL constraint across a module boundary. */

@@ -3,7 +3,7 @@
 // wx-admission-drawer, flat wx-drawer-card sections, wx-kv label/value rows). A draft is edited and furnished
 // here; a furnished version records its signature, a refusal (reason required, (c)(9)), or why a signature is
 // not required ((d)(4)). A scanned signed (or refused) paper copy can be uploaded instead — also on a draft
-// that was furnished on paper outside WardenX (election-addendum-scan-form.tsx). Furnished versions are
+// that was furnished on paper outside ChartWarden (election-addendum-scan-form.tsx). Furnished versions are
 // read-only — a plan-of-care change makes a new version. The server validates every step; its message is
 // shown verbatim on refusal.
 import {

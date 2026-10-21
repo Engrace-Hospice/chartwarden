@@ -1,4 +1,4 @@
-# WardenX — Inject-Suite (HTTP-layer) Coverage
+# ChartWarden — Inject-Suite (HTTP-layer) Coverage
 
 > **Generated** (`bun run inject:coverage`). Do not hand-edit — `arch:inject-coverage` (in `arch:fitness`) keeps this in sync with source and enforces the ratchet.
 

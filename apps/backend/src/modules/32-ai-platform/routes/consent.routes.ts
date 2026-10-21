@@ -10,7 +10,7 @@
 //
 // R13/R14/R15 take no membership id at all. The acting membership is stamped from the session
 // (writeActorOf), so `POST /clinician-opt-out` cannot be pointed at a colleague. §4.1's own predicate cell
-// for these three is the bare `wardenx.organization.member`, which reads as weak until you notice the
+// for these three is the bare `chartwarden.organization.member`, which reads as weak until you notice the
 // route has no parameter through which a stronger predicate could even be aimed — the target is the
 // session, and the session is not a caller-supplied value.
 //
