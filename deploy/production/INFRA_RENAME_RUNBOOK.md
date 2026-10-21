@@ -118,6 +118,13 @@ Bucket inventory (code/config references):
 | Audit webhook target id | `compose.yml` `MINIO_AUDIT_WEBHOOK_*_wardenx` (suffix is the target name) |
 | Docs | `deploy/production/README.md`, `docs/` (other owner) |
 
+Order of the bucket change (production holds only `tenant-*` buckets today; neither `wardenx-platform-terminology` nor
+`wardenx-readiness` exists on disk, so no data copy is needed unless a terminology release has been uploaded since):
+1. Policy PR (additive, done first): the `wardenx-app` policy in `compose.yml` also allows `chartwarden-*`. After its deploy,
+   confirm with `mc admin policy info local wardenx-app` that both prefixes are present.
+2. Code PR (only after step 1 is live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switch to the new names.
+3. Cleanup (after the rollback window): drop the `wardenx-*` entries and rename the policy/account.
+
 Prerequisite code change (do in a PR BEFORE the data move, not part of this branch): add
 `arn:aws:s3:::chartwarden-*` and `.../chartwarden-*/*` to the `wardenx-app` policy in `compose.yml`
 (keep the `wardenx-*` entries until cleanup), and change `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET`
