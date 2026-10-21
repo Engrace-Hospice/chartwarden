@@ -26,7 +26,16 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
 fi
 
 dc() { docker compose --env-file .env.production -f compose.yml "$@"; }
-psql_admin() { dc exec -T postgres psql -U postgres -d wardenx -v ON_ERROR_STOP=1 "$@"; }
+# Same resolution + validation as deploy.sh (exported variable > .env.production > default).
+db_name=${CHARTWARDEN_DB_NAME:-$(sed -n 's/^CHARTWARDEN_DB_NAME=//p' .env.production | tail -n 1)}
+db_name=${db_name:-wardenx}
+case "$db_name" in
+  '' | [!a-z_]* | *[!a-z0-9_]*)
+    echo "CHARTWARDEN_DB_NAME must match ^[a-z_][a-z0-9_]*\$ (got: $db_name)" >&2
+    exit 64
+    ;;
+esac
+psql_admin() { dc exec -T postgres psql -U postgres -d "$db_name" -v ON_ERROR_STOP=1 "$@"; }
 
 inventory() {
   echo "== organizations (members / patients) =="
@@ -76,7 +85,7 @@ trap cleanup EXIT
 install -d -m 700 backups
 backup="backups/pre-reseed-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
 echo "== backup -> $deploy_dir/$backup =="
-dc exec -T postgres pg_dump -U postgres -d wardenx | gzip > "$backup"
+dc exec -T postgres pg_dump -U postgres -d "$db_name" | gzip > "$backup"
 chmod 600 "$backup"
 test -s "$backup"
 

@@ -64,7 +64,7 @@ import {
 const FAULTS = ["none", "missing-object", "hash-flip", "object-bytes"] as const;
 type Fault = (typeof FAULTS)[number];
 
-const DB = "wardenx"; // the production database name (deploy/production/reseed-demo.sh)
+const DB = process.env.CHARTWARDEN_DB_NAME || "wardenx"; // the production database name (deploy/production/reseed-demo.sh)
 const APP_PW = "drill-app-pw";
 const PLATFORM_PW = "drill-platform-pw";
 const DESTRUCTION_PW = "drill-destruction-pw";
