@@ -63,6 +63,7 @@ export * from "./messaging-retention";
 export * from "./messaging-offboarding";
 export * from "./messaging-oncall";
 export * from "./messaging-thread-grant";
+export * from "./messaging-break-glass";
 export * from "./messaging-escalation";
 export * from "./messaging-handoff";
 export * from "./messaging-review";

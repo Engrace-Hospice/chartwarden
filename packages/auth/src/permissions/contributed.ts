@@ -374,6 +374,21 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 5.8 (ADR-0087, PROPOSED): break-glass. INVOKE opens a self-approved, time-limited, read-only grant on one channel (a fresh step-up and
+  //     a written justification are demanded in the route); REVIEW completes the mandatory post-review and is never the grantee's own. Migration
+  //     1140 grants invoke to administrator, org_admin and the qualified clinical roles, and review to compliance_officer, administrator, org_admin. ---
+  "messaging.break_glass.invoke": {
+    resource: "message_break_glass",
+    action: "invoke",
+    category: "compliance",
+    abac: "none",
+  },
+  "messaging.break_glass.review": {
+    resource: "message_break_glass",
+    action: "review",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
