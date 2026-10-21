@@ -1,4 +1,4 @@
-// @chartwarden/dosespot — the M5 → DoseSpot patient-sync planner (M12-T06, spec §2.6 D4). WardenX is the system
+// @chartwarden/dosespot — the M5 → DoseSpot patient-sync planner (M12-T06, spec §2.6 D4). ChartWarden is the system
 // of record for demographics; DoseSpot needs a synchronized copy for the prescribing workflow. M12 subscribes
 // to the four `m5.patient.*` outbox events (created / updated / address_changed / payer_changed — wired in
 // M12-T08) and runs the `dosespot.patient_sync` worker; THIS module is the PURE core: it builds the

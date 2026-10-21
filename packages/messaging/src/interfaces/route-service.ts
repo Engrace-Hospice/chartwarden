@@ -148,7 +148,7 @@ export interface AlertInboxItem {
   readonly category: AlertCategory;
   readonly severity: AlertSeverity;
   readonly summary: string;
-  /** Safe WardenX-internal destination projected from the private payload, when present. */
+  /** Safe ChartWarden-internal destination projected from the private payload, when present. */
   readonly deepLink: string | null;
   readonly createdAt: string;
   readonly deliveryStatus: "delivered" | "partial" | "failed" | "pending";

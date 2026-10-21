@@ -1,4 +1,4 @@
-// @chartwarden/ui web — Sensitivity & Consent Layer (R0.3, DESIGN.md §8 — WardenX-defining).
+// @chartwarden/ui web — Sensitivity & Consent Layer (R0.3, DESIGN.md §8 — ChartWarden-defining).
 // "You may not see this, or not yet" gets one consistent treatment: masked identifiers reveal only
 // under step-up; SUD/Part-2 content reads as a sealed block, never a blank; an active break-glass
 // session paints a persistent alert banner. Token-driven + No-Line; maps 1:1 to D2-sensitivity.

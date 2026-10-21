@@ -4,7 +4,7 @@
 // (computed on read from the receipt date the person records and the late-evidence extensions), and the escalation
 // to OMHA when the QIC is late (a recorded request, then a confirmation that opens the ALJ case). Every command runs
 // under `withOrgContext` (RLS) inside the actor's provider-entity scope and is If-Match. Nothing is sent from here:
-// the escalation request records a filing made outside WardenX (electronic submission is milestone 6). No outbox
+// the escalation request records a filing made outside ChartWarden (electronic submission is milestone 6). No outbox
 // events (nothing consumes them); the appeal_case audit trigger and appeal_case_event rows are the trail, and
 // the overdue signal is a nightly alert (jobs/qic-overdue.ts).
 import { type DbClient, schema } from "@chartwarden/db";

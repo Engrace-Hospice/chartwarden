@@ -1,5 +1,5 @@
 /**
- * WardenX — Backend route scanner (F0-T01, ADR-0032)
+ * ChartWarden — Backend route scanner (F0-T01, ADR-0032)
  * --------------------------------------------------
  * Discovers every HTTP route the Fastify backend registers by scanning source
  * for `app.<method>("<path>", ...)` calls. This is the COVERAGE source of truth

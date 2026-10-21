@@ -1,7 +1,7 @@
 import { Panel, t } from "@chartwarden/ui";
 // apps/web/src/shell — the plan-of-care goals donut shared by the Care Plans and IDG chart tabs
 // (2026-09-25 redesign, mockup "Goals Overview" / "Goals Progress"). Counts come from the M7 goal
-// statuses only; there is no per-goal progress percentage in WardenX, so none is drawn.
+// statuses only; there is no per-goal progress percentage in ChartWarden, so none is drawn.
 import type { JSX, ReactNode } from "react";
 
 export interface GoalStatusLike {

@@ -1,4 +1,4 @@
-# WardenX — OpenAPI Enrichment Coverage
+# ChartWarden — OpenAPI Enrichment Coverage
 
 > **Generated** (`bun run openapi:coverage`). Do not hand-edit — `arch:openapi-coverage`
 > (in `arch:fitness`) keeps this in sync with source and enforces the ratchet.

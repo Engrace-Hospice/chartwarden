@@ -1,5 +1,5 @@
 /**
- * WardenX — one-shot run of the REAL M14 `idg.packets-cron` handler for the demo org (local dev). NOT for prod.
+ * ChartWarden — one-shot run of the REAL M14 `idg.packets-cron` handler for the demo org (local dev). NOT for prod.
  *
  * WHEN YOU NEED IT. "Build packets" in the UI enqueues the real per-meeting build on the `idg.packets-cron`
  * queue (`POST /idg/meetings/:id/packets/build`), and the worker also sweeps hourly for meetings inside the
@@ -46,7 +46,7 @@ import { idgTriageCarePlanChangesForOrg } from "../../apps/backend/src/modules/1
 import { idgQualityFlaggedEventsForOrg } from "../../apps/backend/src/modules/30-quality/index";
 
 void registerSeam;
-const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf6e2"; // wardenx-demo
+const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf6e2"; // chartwarden-demo
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;

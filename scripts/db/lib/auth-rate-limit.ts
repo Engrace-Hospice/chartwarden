@@ -4,7 +4,7 @@
  *
  *   · Better Auth's own sign-in/sign-up guard — 3 requests / 10 s per IP, advertised on `x-retry-after`.
  *     This helper was written for that one, and handled it correctly.
- *   · WardenX's SD-055 tier — 30 requests / minute for the UNAUTHENTICATED bucket (`ip:<addr>`,
+ *   · ChartWarden's SD-055 tier — 30 requests / minute for the UNAUTHENTICATED bucket (`ip:<addr>`,
  *     bootstrap/plugins/security.ts), advertised on the standard `Retry-After` header. A sign-in is
  *     inherently pre-auth, so every one of them shares that single bucket.
  *
@@ -21,7 +21,7 @@
  * whole boot to paper over a client that was waiting the wrong amount of time.
  *
  * A third, unrelated transient is retried here too: a 5xx from the freshly booted backend. In CI the
- * very first sign-up (`admin@wardenx.local`) once came back `HTTP 500` because `hash-wasm`'s argon2id
+ * very first sign-up (`admin@chartwarden.local`) once came back `HTTP 500` because `hash-wasm`'s argon2id
  * trapped ("access to a null reference") under Bun on the runner, which failed the whole e2e job at
  * the seed step before any spec ran. It did not reproduce in 40 fresh `bun` processes on linux/amd64,
  * so it is an intermittent engine fault, and the hash runs BEFORE the user row is written — a retry
@@ -32,7 +32,7 @@ const MAX_AUTH_ATTEMPTS = 5;
 const MAX_SERVER_ERROR_RETRIES = 2;
 const SERVER_ERROR_BACKOFF_MS = 2_000;
 
-/** Better Auth reports seconds on `x-retry-after`; WardenX's SD-055 tier on the standard header. */
+/** Better Auth reports seconds on `x-retry-after`; ChartWarden's SD-055 tier on the standard header. */
 export function retryDelaySeconds(response: Response): number {
   for (const header of ["retry-after", "x-retry-after"]) {
     const value = Number(response.headers.get(header));

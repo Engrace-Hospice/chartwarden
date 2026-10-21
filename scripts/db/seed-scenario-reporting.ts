@@ -1,5 +1,5 @@
 /**
- * WardenX — M33 (Reporting & Dashboards) scenario data for the demo org (local dev). NOT for production.
+ * ChartWarden — M33 (Reporting & Dashboards) scenario data for the demo org (local dev). NOT for production.
  *
  * Without this, `/reports` is empty on a freshly seeded install and stays empty, which is CORRECT — a
  * dashboard in this data model is a saved view a tenant authored, and a fresh tenant has authored none.
@@ -15,7 +15,7 @@
  * needs no tenant session; running it here means the tile shows the numbers the other seeds just created
  * rather than the empty snapshot taken at migration time.
  *
- * `orgadmin@wardenx.local` is the persona: it holds the FULL permission catalog (`seed-org-admin.ts`) —
+ * `orgadmin@chartwarden.local` is the persona: it holds the FULL permission catalog (`seed-org-admin.ts`) —
  * `report.definition.write` / `report.view.write` / `report.share.org` included — and the `org_admin` role
  * key, which is the one key §4.7.1 reads for ORG-WIDE reporting scope. A clinical persona would author the
  * same view and read it narrowed to their own rows, which is the point of D8.
@@ -37,7 +37,7 @@ const SPEC = {
 
 async function main(): Promise<void> {
   const log = new ScenarioLog("M33 reporting scenario");
-  const session = await signIn("orgadmin@wardenx.local");
+  const session = await signIn("orgadmin@chartwarden.local");
   const { client } = session;
 
   // The MVs are created WITH DATA at migration time — i.e. empty, before any org exists — and are only

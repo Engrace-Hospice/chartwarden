@@ -401,7 +401,7 @@ export interface PatientBannerProps {
   codeStatus?: ReactNode;
   allergies?: ReactNode;
   benefitPeriod?: ReactNode;
-  // R2 — reconciled to the P0 patient-chart frame (wardenx-P0-foundation.pen `fQjjh`): an identity
+  // R2 — reconciled to the P0 patient-chart frame (chartwarden-P0-foundation.pen `fQjjh`): an identity
   // avatar, a secondary meta line under the name, an explicit chips row (status/identifier/alert
   // pills supplied by the caller), and a right-aligned actions slot. All optional — when omitted the
   // banner falls back to the original label/value fields, so existing call sites render unchanged.

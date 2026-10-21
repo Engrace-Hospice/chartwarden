@@ -78,7 +78,7 @@
   Markdown setext heading; a real conflict always brings a `<<<<<<<` with it).
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
-  `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
+  `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!CHARTWARDEN_TEST_DATABASE_URL)`, so
   with no database it reports SKIPPED rather than failed and `bun run test` stays green either
   way; a script in `package.json` looks wired but nothing distinguishes one CI runs from one
   nothing has ever run. That pairing (GAP-086) left the 25 clinical-core **lifecycle** suites —
@@ -104,6 +104,6 @@
   the one that did not — `m6-abac-scope-resolver` (GAP-011), green on `main` and red on the F-017
   stack once that branch's fail-closed provider-entity check landed — is why this is a gate and not
   a note. All 29 now have `test:…:live` scripts and `lifecycle-live` runners, and that job gained a
-  Valkey service because four of them gate on `WARDENX_TEST_REDIS_URL` too and would otherwise have
+  Valkey service because four of them gate on `CHARTWARDEN_TEST_REDIS_URL` too and would otherwise have
   reported SKIPPED. Exclusions on either side are **named** — `DEFERRED` and `NOT_A_SUITE_FILE` —
   never a file or script that quietly fails to be found.

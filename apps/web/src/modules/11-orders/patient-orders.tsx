@@ -19,7 +19,7 @@ import {
 // the right rail carries Patient Summary, Active Diagnoses and Recent Orders. The list route carries
 // only the order header, so each row's name and details are read from its detail route (the kind
 // payload) and the prescriber name from MDM. Order sets, imaging, referrals and allergies are not
-// modeled in WardenX, so they are not drawn. The server owns every status (ADR-0030).
+// modeled in ChartWarden, so they are not drawn. The server owns every status (ADR-0030).
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -921,7 +921,7 @@ function FilterSelect({
   );
 }
 
-/** Stands in for the mockup's "Order Sets" card, which WardenX does not model: the orders waiting on someone. */
+/** Stands in for the mockup's "Order Sets" card, which ChartWarden does not model: the orders waiting on someone. */
 function AttentionCard({
   items,
   details,

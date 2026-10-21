@@ -237,7 +237,7 @@ describe("M19 D8 — planning the M8 draft encounter", () => {
       msw: "msw",
       chaplain: "chaplain",
       medical_director: "md",
-      // §7.5 / ADR-0026 — no WardenX membership, so no id M8 could attribute the signature to.
+      // §7.5 / ADR-0026 — no ChartWarden membership, so no id M8 could attribute the signature to.
       external: null,
     };
     for (const [discipline, m8] of Object.entries(expected)) {

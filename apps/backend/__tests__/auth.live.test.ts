@@ -1808,7 +1808,7 @@ describe.skipIf(!DB_URL)("session_scope_chk (F-030) — live", () => {
     const db = client();
     await db.connect();
     await db.query(
-      `INSERT INTO "user"(id,name,email,email_verified) VALUES ($1,'F030','f030@wardenx.local',true)
+      `INSERT INTO "user"(id,name,email,email_verified) VALUES ($1,'F030','f030@chartwarden.local',true)
        ON CONFLICT (id) DO NOTHING`,
       [USER],
     );

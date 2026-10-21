@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance/routes/reopening-service.ts — M25 milestone 3: the MAC reopening of a
 // denial the routing rules send to a reopening (a 56900 ADR non-response). Open one from a denial, record the
-// MAC's deadline if it gave one, record the filing (a request made outside WardenX; electronic submission is
+// MAC's deadline if it gave one, record the filing (a request made outside ChartWarden; electronic submission is
 // milestone 6), record the decision, withdraw or close. Every command runs under `withOrgContext` (RLS) inside the
 // actor's provider-entity scope; every change is If-Match so two people cannot overwrite each other. Opening a
 // reopening against an ADR in assembly or review moves that ADR to `denied_no_response` in the SAME transaction,

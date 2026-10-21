@@ -1,5 +1,5 @@
 /**
- * WardenX — seed the tenant wage index (`tenant_wage_index`, F-211) for a provider CCN from the CMS hospice
+ * ChartWarden — seed the tenant wage index (`tenant_wage_index`, F-211) for a provider CCN from the CMS hospice
  * geography, instead of keying it by hand. PARAMETERISED: the CCN and the provider's ZIP are inputs — there is no
  * production default. The provider ZIP is placed in its CBSA / rural area by the SAME resolver the claim's value
  * code 61 uses (migration 1058 tables), and the published index for that area is taken from
@@ -104,6 +104,6 @@ if (import.meta.main) {
     process.exit(1);
   }
   const fiscalYears = argOf("fy")?.split(",").map(Number) ?? defaultFiscalYears();
-  const session = await signIn("orgadmin@wardenx.local");
+  const session = await signIn("orgadmin@chartwarden.local");
   for (const line of await seedWageIndex(session, { ccn, zip, fiscalYears })) console.log(line);
 }

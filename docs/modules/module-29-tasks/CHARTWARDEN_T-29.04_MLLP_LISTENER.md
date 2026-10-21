@@ -599,7 +599,7 @@ export class PerFeedListener {
           try {
             const arFrame = Buffer.concat([
               Buffer.from([MLLP_START]),
-              Buffer.from('MSH|^~\\&|WARDENX|ERR|||MSA|AR|UNKNOWN|internal_error', 'utf8'),
+              Buffer.from('MSH|^~\\&|CHARTWARDEN|ERR|||MSA|AR|UNKNOWN|internal_error', 'utf8'),
               Buffer.from([MLLP_END_FS, MLLP_END_CR]),
             ])
             if (!socket.destroyed) socket.write(arFrame)
@@ -885,7 +885,7 @@ function mintAck(code: 'AA' | 'AE' | 'AR', mcid: string, sendingFacility: string
   // ACK^A01 structure: MSH + MSA
   const ts = new Date().toISOString().replace(/[^\d]/g, '').slice(0, 14)
   const ackMcid = ulid().slice(0, 20)
-  const msh = `MSH|^~\\&|WARDENX|${receivingFacility}|${sendingFacility}|${receivingFacility}|${ts}||ACK|${ackMcid}|P|2.5.1`
+  const msh = `MSH|^~\\&|CHARTWARDEN|${receivingFacility}|${sendingFacility}|${receivingFacility}|${ts}||ACK|${ackMcid}|P|2.5.1`
   const msa = `MSA|${code}|${mcid}`
   return Buffer.from(`${msh}\r${msa}\r`, 'utf8')
 }
@@ -1230,7 +1230,7 @@ const logger = pino({ name: 'hl7-inbound-parse.worker' })
 const envelope = mkKmsEnvelope()
 const outbox = mkOutbox(db, logger)
 const sidecar = createSidecarClient({
-  udsPath: process.env.WARDENX_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
+  udsPath: process.env.CHARTWARDEN_HL7_UDS_PATH ?? '/var/run/wardenx/hapi.sock',
   healthIntervalMs: 30_000,
   parseTimeoutMs: 2_000,
   buildTimeoutMs: 2_000,

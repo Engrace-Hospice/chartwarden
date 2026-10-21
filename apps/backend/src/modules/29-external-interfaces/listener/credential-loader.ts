@@ -2,7 +2,7 @@
 // `mllp_client_cert` credential of a feed into the `TlsCredentialMaterial` the §4.11.2 TLS listener binds with.
 //
 // THE BUNDLE. `external_feed_credential.secret_cipher` of kind `mllp_client_cert` seals, under the tenant DEK, a JSON
-// document `{ "serverCertPem", "serverKeyPem", "expectedClientCaPem" }`: the certificate + private key WardenX presents
+// document `{ "serverCertPem", "serverKeyPem", "expectedClientCaPem" }`: the certificate + private key ChartWarden presents
 // on that feed's port and the per-feed pinned CA the partner's client certificate must chain to (D23). The mint route
 // validates the bundle (`parseCredentialBundle`) BEFORE sealing, so a credential that cannot bind never lands.
 //

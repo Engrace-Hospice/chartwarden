@@ -49,7 +49,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   // No `x-test-orgname` here any more. This shim used to stamp
   // `context.attributes.organizationName`, which is the ONLY reason the invitation cases below
-  // asserted a real org name: nothing in production ever wrote that attribute, so every WardenX
+  // asserted a real org name: nothing in production ever wrote that attribute, so every ChartWarden
   // invitation was stored — and previewed to the invitee — as the literal `Organization` (F-030).
   // The suite writing the fact it was testing for is the exact shape `arch:context-attributes`
   // excludes test files to avoid blessing.

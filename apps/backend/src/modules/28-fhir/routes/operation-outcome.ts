@@ -1,8 +1,8 @@
 // apps/backend/src/modules/28-fhir/routes/operation-outcome.ts — the FHIR-spec error envelope (§4.1).
 //
 // Every error on the FHIR-spec surface (routes 1–22) is an `OperationOutcome` (FHIR-spec) — not the
-// WardenX error envelope, which the admin surface (23–39) uses. `issue.details.coding` carries the
-// internal WardenX error code for cross-referencing (§4.1). The content type is `application/fhir+json`.
+// ChartWarden error envelope, which the admin surface (23–39) uses. `issue.details.coding` carries the
+// internal ChartWarden error code for cross-referencing (§4.1). The content type is `application/fhir+json`.
 import type { FastifyReply } from "fastify";
 
 export const FHIR_JSON_CONTENT_TYPE = "application/fhir+json";

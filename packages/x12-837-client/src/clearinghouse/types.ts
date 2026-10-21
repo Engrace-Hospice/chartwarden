@@ -4,7 +4,7 @@
 // NOE/NOTR, claims (incl. replacement/void), the two-stage acknowledgments (clearinghouse, then payer), 835
 // remittances, status inquiry and signed push events. A vendor (Stedi, direct-MAC, a later clearinghouse) is a
 // new implementation of this interface that passes the shared conformance cases (./conformance); a module never
-// names a vendor. WardenX resells one clearinghouse, so WHICH implementation is bound is platform configuration
+// names a vendor. ChartWarden resells one clearinghouse, so WHICH implementation is bound is platform configuration
 // (ADR-0053 D3), not a tenant setting.
 //
 // Conventions (same as ../types):
@@ -54,7 +54,7 @@ export const RETRYABLE_CODES: ReadonlySet<string> = new Set([CH.UNAVAILABLE]);
 // ─── Context ────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Who is acting and for which payer. The clearinghouse credential is platform-level (WardenX resells one), but
+ * Who is acting and for which payer. The clearinghouse credential is platform-level (ChartWarden resells one), but
  * the submission is always attributed to a ProviderEntity (CCN) because the payer sees the provider.
  */
 export interface ClearinghouseContext {
@@ -77,7 +77,7 @@ export interface ClearinghouseContext {
 }
 
 /**
- * The isolation boundary of every piece of clearinghouse state. WardenX holds ONE platform credential, so the
+ * The isolation boundary of every piece of clearinghouse state. ChartWarden holds ONE platform credential, so the
  * transport — not the vendor — is what keeps tenants apart: submissions, idempotency keys, acknowledgments,
  * remittances and status are all scoped to (organizationId, providerEntityId, usage). Another org, another
  * ProviderEntity, or the other usage mode must never see, replay or collide with them (conformance C14, C15).

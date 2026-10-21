@@ -213,7 +213,7 @@ async function handleDispense(
   const dispensedAt = new Date(input.occurredAt);
   if (Number.isNaN(dispensedAt.getTime())) return "malformed_payload";
 
-  // Resolve the WardenX order from the vendor prescription id M12 recorded at transmission time. An unknown
+  // Resolve the ChartWarden order from the vendor prescription id M12 recorded at transmission time. An unknown
   // prescription id is recorded as such — never guessed, never matched loosely.
   const [order] = await tx
     .select({

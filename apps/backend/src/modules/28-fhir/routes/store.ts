@@ -302,8 +302,8 @@ export interface FhirGatewayStore {
 }
 
 /**
- * A store error carrying an HTTP status + a WardenX error code. Extends `ChartWardenError` so the composition
- * root's error handler renders it as the standard WardenX envelope with no per-route mapping (the admin
+ * A store error carrying an HTTP status + a ChartWarden error code. Extends `ChartWardenError` so the composition
+ * root's error handler renders it as the standard ChartWarden envelope with no per-route mapping (the admin
  * surface, §4.1 R23-R39, uses that envelope; the FHIR-spec surface catches it and renders OperationOutcome).
  */
 export class FhirStoreError extends ChartWardenError {

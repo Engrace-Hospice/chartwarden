@@ -1,6 +1,6 @@
 // @chartwarden/xero-client — M27-owned Xero adapter package (D6, architecture §25.14 adapter mandate).
 //
-// This package is the ONLY place in the WardenX repo permitted to import the `xero-node` SDK (the
+// This package is the ONLY place in the ChartWarden repo permitted to import the `xero-node` SDK (the
 // dependency-cruiser adapter-mandate rule enforces). It yields a typed per-tenant `XeroClient` with
 // shared OAuth-refresh handling, published to the M1 SeamRegistry as `XeroClientFactory` by M27's boot;
 // M29 consumes the factory at M29 lock for non-cost-report uses (AR sync) so OAuth refresh is

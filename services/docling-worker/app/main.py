@@ -1,4 +1,4 @@
-"""WardenX docling-worker — DocLens stage 2 (parse). See ../README.md.
+"""ChartWarden docling-worker — DocLens stage 2 (parse). See ../README.md.
 
 POST /parse   {job_id, source_url}                     →  {job_id, docling_version, page_count, pages:[...]}
 POST /render  {job_id, source_url, page, scale?, crop?}   →  image/png (+ X-Page-Width / X-Page-Height)
@@ -137,7 +137,7 @@ def _suffix(data: bytes) -> str:
     raise HTTPException(status_code=415, detail="unsupported source type (PDF, PNG, JPEG or TIFF)")
 
 
-app = FastAPI(title="WardenX docling-worker", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="ChartWarden docling-worker", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.get("/health")

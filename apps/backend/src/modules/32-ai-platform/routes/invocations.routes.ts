@@ -10,7 +10,7 @@
 //
 // ── MASKING IS STRUCTURAL, NOT A BRANCH ────────────────────────────────────────────────────────────
 //
-// §4.1's R16 says "PHI fields masked unless `wardenx.phi.full_read` granted". The projection has NO field
+// §4.1's R16 says "PHI fields masked unless `chartwarden.phi.full_read` granted". The projection has NO field
 // for the prompt, the response or the chart context at all (read-service.ts), so the strongest grant on
 // the platform cannot surface them through this route — they are DEK-enveloped and M32 binds no decipher
 // port. What the grant actually unlocks is the PATIENT IDENTITY and the free-text `errorMessage`; without

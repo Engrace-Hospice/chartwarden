@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Bootstrap the single-VPS production host for WardenX object storage.
+# Bootstrap the single-VPS production host for ChartWarden object storage.
 #
 # Run from the repository root after copying the repo or the deploy/production folder to the VPS:
 #   sudo DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
@@ -100,5 +100,5 @@ until curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/ready
 done
 
 echo "MinIO is ready locally."
-echo "Public S3 endpoint expected by WardenX: https://$STORAGE_DOMAIN"
+echo "Public S3 endpoint expected by ChartWarden: https://$STORAGE_DOMAIN"
 echo "Next: make DNS point $STORAGE_DOMAIN to this VPS, then issue TLS with certbot or your reverse-proxy TLS automation."

@@ -37,7 +37,7 @@ every number from the mockup is present.
 
 ### 1. Locate the frame
 Find the screen's row in [`SCREENS.md`](./SCREENS.md) — it gives the Pencil **node id** and the
-**`.pen` file** (e.g. Patient Chart → `node:fQjjh` in `wardenx-P0-foundation.pen`). Find the built
+**`.pen` file** (e.g. Patient Chart → `node:fQjjh` in `chartwarden-P0-foundation.pen`). Find the built
 screen in `apps/web/src/modules/<module>/` (its `screens.ts` registration names the component).
 
 ### 2. See the frame

@@ -70,7 +70,7 @@ export interface TriageEncounterCallFacts {
  * not the org chart position.
  *
  * `external` maps to NOTHING, and that is the point. §7.5's vendor operator authenticates through ADR-0026's
- * `external_triage_vendor` session class, holds no WardenX membership, and appears in no
+ * `external_triage_vendor` session class, holds no ChartWarden membership, and appears in no
  * `encounter_discipline`. There is no id M8 could set as `authorMembershipId`. Returning a plausible
  * discipline here would have produced an encounter attributed to whichever membership the worker happened
  * to be running as — a false clinical signature in a survey record.

@@ -11,7 +11,7 @@ import * as schema from "./schema/index";
 
 export type Schema = typeof schema;
 
-/** Drizzle handle bound to the WardenX schema. */
+/** Drizzle handle bound to the ChartWarden schema. */
 export type DbClient = NodePgDatabase<Schema>;
 
 export interface DbClientHandle {

@@ -10,7 +10,7 @@
 // model as `TWO_FACTOR_ENCRYPTION_KEY` / `M24_CREDENTIAL_ENCRYPTION_KEY` / `MESSAGING_ENCRYPTION_KEY` /
 // `M34_TENANT_KEK`, all four already required-in-production, fail-closed env-sourced master keys
 // (`apps/backend/src/bootstrap/env.ts`). The module's own spec (§4.11 D15, §14.3) independently commits to
-// exactly this: "Envelope-encrypted via the standard WardenX KMS-wrapped DEK pattern."
+// exactly this: "Envelope-encrypted via the standard ChartWarden KMS-wrapped DEK pattern."
 //
 // WHAT THIS WRAPS. Not a per-tenant DEK — the platform's ONE active HMAC-SHA256 key MATERIAL (32 random
 // bytes, hex-encoded to a string the hasher's `createHmac("sha256", keyMaterial)` accepts directly), used

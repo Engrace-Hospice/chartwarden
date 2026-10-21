@@ -64,7 +64,7 @@ export type TriageDispositionScope = "rn_or_above" | "lpn" | "msw" | "external_v
  *     own citation rather than a blanket judgement:
  *       – `gip_admission_proposed`: D13 / §7.5 / §6 name it explicitly ("gated to in-agency clinicians").
  *       – `verbal_order_recorded`: §6's own "take verbal order during call" row grants Ext Triage Op
- *         nothing, and D9's path requires M2 step-up on a WardenX identity a vendor operator does not hold.
+ *         nothing, and D9's path requires M2 step-up on a ChartWarden identity a vendor operator does not hold.
  *       – `pronouncement_scheduled`: §7.9's pronouncement is an agency RN dispatched under the tenant's
  *         death-pronouncement policy; a vendor operator scheduling one commits an agency clinician.
  *     Everything else the vendor may select, which is what makes §7.5's "the operator worked the call and

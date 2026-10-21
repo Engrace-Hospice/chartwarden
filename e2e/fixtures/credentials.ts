@@ -13,7 +13,7 @@ export interface DemoAccount {
 
 const CREDENTIALS_PATH = join(import.meta.dirname, "..", "..", "CREDENTIALS.local.md");
 
-// | Administrator | `admin@wardenx.local` | `Wx-...` | full catalog |
+// | Administrator | `admin@chartwarden.local` | `Wx-...` | full catalog |
 const ROW_RE = /\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|/g;
 
 let cache: readonly DemoAccount[] | null = null;

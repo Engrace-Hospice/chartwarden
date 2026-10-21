@@ -29,7 +29,7 @@ export type MedicationHistoryRecordId = string;
 export type EpcsSigningAttemptId = string;
 export type DoseSpotPrescriberId = string;
 export type DoseSpotWebhookEventId = string;
-/** A DoseSpot-side prescription identifier (returned by the NewRx API; not a WardenX uuid). */
+/** A DoseSpot-side prescription identifier (returned by the NewRx API; not a ChartWarden uuid). */
 export type DoseSpotPrescriptionId = string;
 
 // ── §3.2 pgEnum value mirrors (kept in lock-step with `packages/db/src/enums.ts`) ─────────────────────

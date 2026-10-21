@@ -1,5 +1,5 @@
 /**
- * WardenX — M14 IDG packets + FINAL minutes scenario data (local dev). NOT for production.
+ * ChartWarden — M14 IDG packets + FINAL minutes scenario data (local dev). NOT for production.
  *
  * Follows `seed-scenario-idg-meetings.ts`, whose meetings all ended up with 0 packets and no adjourned minutes.
  * ADDITIVE and idempotent — never wipes a care plan, encounter, assessment or admission, never deletes a row.
@@ -418,12 +418,12 @@ const packetCount = async (id: string): Promise<number> =>
   );
 
 const ATTENDEES = [
-  { email: "admin@wardenx.local", discipline: "administrator" },
-  { email: "orgadmin@wardenx.local", discipline: "administrator" },
-  { email: "rita@wardenx.local", discipline: "rn_case_manager" },
-  { email: "drharris@wardenx.local", discipline: "hospice_physician" },
-  { email: "cole@wardenx.local", discipline: "chaplain" },
-  { email: "mira@wardenx.local", discipline: "msw" },
+  { email: "admin@chartwarden.local", discipline: "administrator" },
+  { email: "orgadmin@chartwarden.local", discipline: "administrator" },
+  { email: "rita@chartwarden.local", discipline: "rn_case_manager" },
+  { email: "drharris@chartwarden.local", discipline: "hospice_physician" },
+  { email: "cole@chartwarden.local", discipline: "chaplain" },
+  { email: "mira@chartwarden.local", discipline: "msw" },
 ];
 
 /** start (if packets_ready) -> quorate attendance -> decisions -> one action item. Returns the live status. */
@@ -496,7 +496,7 @@ async function conduct(
     "items",
     a.client.GET("/api/v1/idg/action-items", { params: { query: {} } }),
   );
-  const rita = mem.get("rita@wardenx.local");
+  const rita = mem.get("rita@chartwarden.local");
   if (rita && pw && !items.some((x) => x.meetingId === id)) {
     await must(
       "action item",
@@ -522,7 +522,7 @@ async function ensureClinicianIpuScope(admin: WxSession): Promise<void> {
   const rows = await sql<{ email: string; id: string; loc: string[] }>(
     `SELECT u.email, m.id, m.default_location_ids AS loc FROM membership m JOIN "user" u ON u.id = m.user_id
      WHERE u.email = ANY($1)`,
-    [["rita@wardenx.local", "drharris@wardenx.local"]],
+    [["rita@chartwarden.local", "drharris@chartwarden.local"]],
   );
   for (const r of rows) {
     if (r.loc.includes(LOC_IPU)) {
@@ -546,7 +546,7 @@ async function ensureClinicianIpuScope(admin: WxSession): Promise<void> {
  * attending_clinician = the MD); ADDITIVE: only inserted where the patient has no open row for that role. */
 async function ensureCaseload(names: string[]): Promise<void> {
   const users = await sql<{ email: string; id: string }>(
-    `SELECT email, id FROM "user" WHERE email IN ('rita@wardenx.local','drharris@wardenx.local')`,
+    `SELECT email, id FROM "user" WHERE email IN ('rita@chartwarden.local','drharris@chartwarden.local')`,
   );
   const uid = (e: string): string | undefined => users.find((u) => u.email === e)?.id;
   for (const name of names) {
@@ -557,8 +557,8 @@ async function ensureCaseload(names: string[]): Promise<void> {
     const p = pat[0];
     if (!p) continue;
     for (const [role, email] of [
-      ["primary_rn", "rita@wardenx.local"],
-      ["attending_clinician", "drharris@wardenx.local"],
+      ["primary_rn", "rita@chartwarden.local"],
+      ["attending_clinician", "drharris@chartwarden.local"],
     ] as const) {
       const u = uid(email);
       if (!u) continue;
@@ -589,11 +589,11 @@ async function ensureCaseload(names: string[]): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const admin = await signIn("admin@wardenx.local");
+  const admin = await signIn("admin@chartwarden.local");
   await ensureClinicianIpuScope(admin);
   await ensureCaseload(["Whitfield", "Nakamura", "Delgado"]);
-  const rn = await signIn("rita@wardenx.local");
-  const md = await signIn("drharris@wardenx.local");
+  const rn = await signIn("rita@chartwarden.local");
+  const md = await signIn("drharris@chartwarden.local");
   const pts: Array<{ name: string; id: string }> = [];
   for (const name of ["Whitfield", "Nakamura", "Delgado"])
     pts.push({ name, id: await findPatientIdByLastName(admin, name) });

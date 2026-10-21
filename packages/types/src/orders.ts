@@ -330,7 +330,7 @@ export interface OrderHl7PatientDemographics {
 export interface OrderHl7LabOrderPayload {
   readonly orderId: OrderRecordId;
   readonly patientId: PatientId;
-  readonly placerOrderNumber: string; // OBR-2 = WardenX order id without dashes; deterministic
+  readonly placerOrderNumber: string; // OBR-2 = ChartWarden order id without dashes; deterministic
   readonly observationIdentifier: {
     readonly code: string; // LOINC code
     readonly text: string;

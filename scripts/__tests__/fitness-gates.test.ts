@@ -273,7 +273,7 @@ describe("each gate goes RED on its planted violation", () => {
   it("client:check — schema.ts stale relative to openapi.json", async () => {
     const r = await clientCheck(
       join(FIX, "client-check"),
-      "/tmp/wardenx-client-schema-fixture-red.ts",
+      "/tmp/chartwarden-client-schema-fixture-red.ts",
     );
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/FAIL/);
@@ -310,6 +310,6 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)),
   );
   baselineGate("client:check", () =>
-    expectGreen(clientCheck(ROOT, "/tmp/wardenx-client-schema-fixture-green.ts")),
+    expectGreen(clientCheck(ROOT, "/tmp/chartwarden-client-schema-fixture-green.ts")),
   );
 });

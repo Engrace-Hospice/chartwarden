@@ -1,5 +1,5 @@
 /**
- * WardenX — scope-demo scenario seed (local dev only).
+ * ChartWarden — scope-demo scenario seed (local dev only).
  *
  * GAP-053 (M17 visit/proposal reads) and GAP-059 (M19 triage-call list) narrow reads to a clinician's caseload
  * (+ own-assigned visits / handled calls). A freshly seeded stack has ZERO visits and ZERO triage calls, so
@@ -23,8 +23,8 @@ import { Client } from "pg";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_ID = "b991d9e6-c459-4831-9543-cc00fb4cf6e2";
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
-const ADMIN_EMAIL = "admin@wardenx.local";
-const CLINICIAN_EMAIL = "chrome-demo-1791166404690@wardenx.local";
+const ADMIN_EMAIL = "admin@chartwarden.local";
+const CLINICIAN_EMAIL = "chrome-demo-1791166404690@chartwarden.local";
 const TAG = "[scope-demo]";
 
 /** Caseload of the demo clinician (open patient_assignment rows) / a patient outside it. */

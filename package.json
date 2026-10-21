@@ -2,7 +2,7 @@
   "name": "wardenx",
   "private": true,
   "type": "module",
-  "description": "WardenX - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",
+  "description": "ChartWarden - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",
   "engines": {
     "bun": ">=1.3.0"
   },
@@ -447,7 +447,7 @@
     "openapi:check": "bun run scripts/openapi/emit.ts --check",
     "arch:openapi-provenance": "bun run scripts/check-openapi-provenance.ts",
     "client:gen": "openapi-typescript docs/api/openapi.json -o packages/ui/src/core/api/schema.ts",
-    "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)",
+    "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/chartwarden-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/chartwarden-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)",
     "test:m4:compliance-routes:live": "vitest run apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
     "test:m5:death-cascade:live": "vitest run apps/backend/__tests__/gap-004-death-cascade.live.test.ts",
     "test:m5:census-scope:live": "vitest run apps/backend/__tests__/m5-census-caseload-scope.live.test.ts",

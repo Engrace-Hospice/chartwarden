@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — request-context attribute producer gate (F-030)
+ * ChartWarden — request-context attribute producer gate (F-030)
  * ---------------------------------------------------------------------------
  * `request.context.attributes` is the untyped bag the authenticate hook fills with
  * SERVER-ASSEMBLED facts about the caller — membership, principal kind, session id, step-up

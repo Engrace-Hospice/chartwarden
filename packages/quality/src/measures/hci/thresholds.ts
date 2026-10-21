@@ -39,7 +39,7 @@ export interface HciThresholdTable {
 // IMPORTANT — these are fixed-value APPROXIMATIONS, not CMS-exact cuts. CMS actually scores each real
 // HCI indicator by where a hospice's rate falls in the NATIONAL PERCENTILE distribution across all
 // Medicare-certified hospices for the period (e.g. "below the 90th percentile" for early live
-// discharges), computed centrally from 100% Medicare FFS claims. No single-tenant EHR — WardenX
+// discharges), computed centrally from 100% Medicare FFS claims. No single-tenant EHR — ChartWarden
 // included — has that cross-hospice national distribution, so a true CMS-faithful score can never be
 // computed here regardless of how these constants are tuned; this table is the platform's best static
 // stand-in, not a spec-pinned value (verified against CMS/secondary sources 2026-08-07, see

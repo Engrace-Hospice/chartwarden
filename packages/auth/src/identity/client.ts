@@ -87,7 +87,7 @@ export interface ChartWardenAuthClient {
 }
 
 /**
- * Build the WardenX auth client (with the 2FA challenge plugin). `baseURL` is the app origin Better Auth
+ * Build the ChartWarden auth client (with the 2FA challenge plugin). `baseURL` is the app origin Better Auth
  * serves `/api/auth/*` under; omit it in the browser to use the current origin (the Vite dev proxy
  * forwards /api to the backend).
  */

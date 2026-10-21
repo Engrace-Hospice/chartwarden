@@ -8,7 +8,7 @@
 //
 //   • 5 / 6 (Burdensome Transitions type 1 and 2) count a live discharge followed by an INPATIENT HOSPITAL
 //     stay and then either a hospice readmission (type 1) or a death in that hospital (type 2). The
-//     hospital stay is another provider's encounter. WardenX sees a live discharge and, sometimes, a later
+//     hospital stay is another provider's encounter. ChartWarden sees a live discharge and, sometimes, a later
 //     readmission — the middle term is invisible, and a sequence missing its middle term cannot be
 //     classified as burdensome or not. M29 ingests ADT, but as demographic PROPOSALS for review
 //     (`hl7_inbound_proposal`), not a retained longitudinal external-encounter record — and only from
@@ -23,7 +23,7 @@
 // reads it, the value row records it, and the quality hub shows it, so a blank cell on a compliance
 // dashboard reads as "not computable here, because X" rather than as "low N" (which it is not) or as a bug.
 //
-// If a future WardenX ingests a Medicare claims feed (a CMS Data at the Point of Care / Blue Button pull,
+// If a future ChartWarden ingests a Medicare claims feed (a CMS Data at the Point of Care / Blue Button pull,
 // or a state HIE's inpatient feed), DELETE the entry rather than editing it — an entry that outlives its
 // reason is the failure mode this pattern is meant to prevent, and `hci-availability.test.ts` fails the
 // moment an entry names an indicator the worker also binds a resolver for.

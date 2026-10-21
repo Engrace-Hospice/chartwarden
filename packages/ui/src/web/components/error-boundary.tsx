@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return (
       <div
         role="alert"
-        data-wardenx-error-boundary=""
+        data-chartwarden-error-boundary=""
         style={{ padding: "2rem", maxWidth: "32rem", margin: "0 auto" }}
       >
         <h1

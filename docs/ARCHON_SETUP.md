@@ -59,8 +59,8 @@ ChartWarden root:
 
 ```bash
 cd /Users/fabrice/Apps/WardenX
-archon workflow list                       # bundled defaults + our wardenx-piv
-archon validate workflows wardenx-piv      # expect: 1 valid, 0 with errors
+archon workflow list                       # bundled defaults + our chartwarden-piv
+archon validate workflows chartwarden-piv      # expect: 1 valid, 0 with errors
 archon                                      # launches Claude Code in this repo under the harness
 archon workflow status                     # monitor active runs (CLI; no web dashboard in v0.3.2)
 ```
@@ -69,21 +69,21 @@ archon workflow status                     # monitor active runs (CLI; no web da
 >
 > **Verified here:** Archon **v0.3.2** is installed (`/usr/local/bin/archon`) and configured
 > (`~/.archon/config.yaml`: `defaultAssistant: claude`, model `sonnet`). Loop nodes **require**
-> `loop.max_iterations` (our `wardenx-piv` sets 40 for `implement`, 10 for `fix`) — `archon validate
+> `loop.max_iterations` (our `chartwarden-piv` sets 40 for `implement`, 10 for `fix`) — `archon validate
 > workflows` enforces this.
 
-Our custom workflow lives at `.archon/workflows/wardenx-piv.yaml` (the documented override
+Our custom workflow lives at `.archon/workflows/chartwarden-piv.yaml` (the documented override
 location — repo-local workflows take precedence over Archon's bundled defaults).
 
 ## 4. How our pieces map onto Archon
 
 | Archon concept               | ChartWarden artifact                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workflow (YAML DAG)          | `.archon/workflows/wardenx-piv.yaml` (plan → implement-loop → **validate gate** → fix → finalize → auto-PR; no interactive approve — [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md)) |
+| Workflow (YAML DAG)          | `.archon/workflows/chartwarden-piv.yaml` (plan → implement-loop → **validate gate** → fix → finalize → auto-PR; no interactive approve — [ADR-0031](adr/ADR-0031-chartwarden-piv-no-interactive-approve.md)) |
 | AI `prompt:` node input    | `docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md` (the task plan) + the cited `docs/modules/` spec sections                                    |
 | Deterministic `bash:` gate | `bun run build && bun run arch:fitness && bun run test` — a task is **done only when this is green**                                |
 | `until:` loop condition    | "all tasks in the plan complete" / "gate green"                                                                                              |
-| `finalize` + auto-PR       | review happens on the **GitHub PR** (no interactive pause — it hung under #1067; [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md)) |
+| `finalize` + auto-PR       | review happens on the **GitHub PR** (no interactive pause — it hung under #1067; [ADR-0031](adr/ADR-0031-chartwarden-piv-no-interactive-approve.md)) |
 | Knowledge grounding          | the spec corpus in `docs/` + the manifest (`architecture/module-manifest.ts`); the plan tells the agent exactly which §sections to read |
 
 ## 5. Run the first slice
@@ -96,28 +96,28 @@ back to the M1+M2 slice default, so just:
 ```bash
 cd /Users/fabrice/Apps/WardenX
 # isolated worktree (recommended) so the run can't disturb your working tree:
-archon workflow run wardenx-piv --branch feat/m1-m2-slice
+archon workflow run chartwarden-piv --branch feat/m1-m2-slice
 # …or run directly on the current branch:
-archon workflow run wardenx-piv --no-worktree
+archon workflow run chartwarden-piv --no-worktree
 ```
 
 To target **Wave A (M3+M4)** instead, name the plan path in the run message (the `setup` node resolves
 it to `.archon/run-plan.txt` for every node, incl. fresh-context loop iterations):
 
 ```bash
-archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
+archon workflow run chartwarden-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
 ```
 
 The loop implements one plan task at a time in a **fresh context**, runs the fitness gate after each,
 self-fixes on red, then **commits and opens the PR automatically — there is no interactive pause**
 (review happens on the GitHub PR). Watch progress with `archon workflow status`.
 
-> **Why no pause (ADR-0031).** Earlier `wardenx-piv` ended at an `interactive: true` approve node. It
+> **Why no pause (ADR-0031).** Earlier `chartwarden-piv` ended at an `interactive: true` approve node. It
 > **hung** on both the slice and Wave A (Archon [#1067](https://github.com/coleam00/Archon/issues/1067),
 > the nested-Claude class issue), after building everything — forcing manual recovery. **v0.3.0** drops
 > the interactive node: `finalize` composes the commit message + PR body (with an explicit reviewer
 > call-out for any fitness-gate edits) and `pr` commits → pushes → opens the PR. See
-> [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md).
+> [ADR-0031](adr/ADR-0031-chartwarden-piv-no-interactive-approve.md).
 
 > **Note on nesting.** Archon drives the `claude` CLI. Still launch it from a **normal terminal**
 > (verify `echo "$CLAUDECODE"` prints blank), not inside a Claude Code / editor session — to avoid other

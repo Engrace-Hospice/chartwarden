@@ -127,7 +127,7 @@ import type { NppesFetchResult, NppesIndividualProvider } from './types'
 export interface NppesClientConfig {
   readonly baseUrl?: string                  // default 'https://npiregistry.cms.hhs.gov/api/'
   readonly apiVersion?: string               // default '2.1'
-  readonly userAgent?: string                // default 'ChartWarden/Phase1 (+https://wardenx.com/contact)'
+  readonly userAgent?: string                // default 'ChartWarden/Phase1 (+https://quillwardhealth.com/contact)'
   readonly requestsPerSecond?: number        // default 4
   readonly fetchTimeoutMs?: number           // default 10_000
   readonly maxRetries?: number               // default 3 for 429/5xx
@@ -146,7 +146,7 @@ export class NppesClient {
   constructor(config: NppesClientConfig) {
     this.baseUrl = config.baseUrl ?? 'https://npiregistry.cms.hhs.gov/api/'
     this.apiVersion = config.apiVersion ?? '2.1'
-    this.userAgent = config.userAgent ?? 'ChartWarden/Phase1 (+https://wardenx.com/contact)'
+    this.userAgent = config.userAgent ?? 'ChartWarden/Phase1 (+https://quillwardhealth.com/contact)'
     this.timeoutMs = config.fetchTimeoutMs ?? 10_000
     this.maxRetries = config.maxRetries ?? 3
     this.rateLimiter = new RateLimiter({ rps: config.requestsPerSecond ?? 4 })

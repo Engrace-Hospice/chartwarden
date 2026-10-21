@@ -17,7 +17,7 @@
 //
 // THE TERMINUS EFFECTS ARE THREE SEPARATE KINDS, not one. §2.2.2 makes `emergency_terminus` do four things
 // SIMULTANEOUSLY — dial the consented emergency contact, surface M40's PSAP number to every recipient, page
-// WardenX ops, and keep looping. Collapsing them into a single "terminus" effect would let a runner
+// ChartWarden ops, and keep looping. Collapsing them into a single "terminus" effect would let a runner
 // implement one and log a TODO for the others while the effect list still reads as satisfied; as three
 // kinds, an unimplemented one is an unhandled case in the runner's switch.
 import type {
@@ -119,8 +119,8 @@ export type SafetySideEffect =
    *  human can call emergency services. The number itself never enters an outbox or audit payload (§8.8.2);
    *  the responder's client fetches it from M40 against the jurisdiction id. */
   | { readonly kind: "surface_psap_number" }
-  /** §2.2.2 (c) / INT-031 — page WardenX ops through every available channel. */
-  | { readonly kind: "page_wardenx_ops" };
+  /** §2.2.2 (c) / INT-031 — page ChartWarden ops through every available channel. */
+  | { readonly kind: "page_chartwarden_ops" };
 
 /** A transition's full result — the new state + its ordered side-effect list. */
 export interface SafetyTransitionResult<S extends string, C extends string> {

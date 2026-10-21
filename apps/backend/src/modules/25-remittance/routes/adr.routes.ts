@@ -272,7 +272,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
       ),
   );
 
-  // Records a response filed outside WardenX: RBAC + step-up (D15), proof required, frozen manifest, retained PDF.
+  // Records a response filed outside ChartWarden: RBAC + step-up (D15), proof required, frozen manifest, retained PDF.
   app.post(
     "/api/v1/adrs/:id/submit",
     { preHandler: [SUBMIT, SUBMIT_STEPUP, IDEMPOTENT] },

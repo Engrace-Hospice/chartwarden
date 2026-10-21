@@ -2,7 +2,7 @@
 // statement addendum version (FY2027, 42 CFR 418.24(c)(9)). Patients often sign the paper addendum at the bedside;
 // staff scan it and attach it here. The file goes through the verified M22 upload ceremony (prepare → upload →
 // verify), then the server attaches that exact version as the acknowledgement. A draft that was furnished on paper
-// outside WardenX also needs the date it was handed over ((c)(10)) — the server furnishes and signs in one step.
+// outside ChartWarden also needs the date it was handed over ((c)(10)) — the server furnishes and signs in one step.
 // An INCOMPLETE draft is not blocked: the signed paper copy IS the furnished addendum, so the form says plainly
 // that the scan will stand as the addendum's content (the server records `contentSource: scanned_paper`).
 // Kit controls only (the shared scanned-upload kit); the server re-checks every rule, its message shown verbatim.

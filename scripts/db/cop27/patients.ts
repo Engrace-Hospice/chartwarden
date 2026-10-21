@@ -20,7 +20,7 @@ import { asAnyone, must, readAsAnyone } from "./http";
 import { findByMarker, matchesDemoPatient } from "./refind";
 import type { ScenarioRun } from "./run";
 
-export const IDENTIFIER_ISSUER = "WardenX COP27 demo seed (not a real patient)";
+export const IDENTIFIER_ISSUER = "ChartWarden COP27 demo seed (not a real patient)";
 
 export interface DemoPatientSpec {
   /** `DEMO-COP27-NN` — the externalReferralId and hospice_external identifier, not a name. */

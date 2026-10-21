@@ -1,6 +1,6 @@
 // apps/backend/src/modules/23-billing-medicare/routes/dde-queue.routes.ts — the DDE work queue (ADR-0052): human
 // work tracking for Medicare Direct Data Entry items (NOE, NOTR, claim entry, RTP correction, adjustment, cancel,
-// ADR response). WardenX never calls DDE; these routes record what an operator did and what came back.
+// ADR response). ChartWarden never calls DDE; these routes record what an operator did and what came back.
 //
 // Reads gate `billing.dde.read`; create / claim / start / outcome / retry / cancel / close gate `billing.dde.work`;
 // RECORD SUBMISSION and RECORD ACCEPTANCE (the attestations that an item was keyed / accepted) gate `billing.dde.mark_submitted` + the §D14

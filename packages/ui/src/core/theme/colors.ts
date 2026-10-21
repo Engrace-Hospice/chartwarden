@@ -9,7 +9,7 @@ export const statusColors = {
 } as const;
 
 /**
- * Brand palette seed — WardenX design system (docs/design/DESIGN.md §2; 2026-09-25 clinical-blue redesign).
+ * Brand palette seed — ChartWarden design system (docs/design/DESIGN.md §2; 2026-09-25 clinical-blue redesign).
  * `primary` / `surface` / `muted` / `border` are the keys the shared Tailwind config reads;
  * the remaining keys carry the full Lantern token set so this stays the single source of truth.
  * Light values; dark-mode values live in apps/web/src/index.css `.dark`.

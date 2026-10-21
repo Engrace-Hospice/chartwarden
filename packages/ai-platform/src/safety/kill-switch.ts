@@ -55,7 +55,7 @@ export function aiKillSwitchScopeOf(organizationId: string | null): AiKillSwitch
  * The reasons that make a PLATFORM kill a SEV-1 rather than a SEV-2 (§4.9's alert severity).
  *
  * The three are the ones where the model produced or would produce clinical harm: a SEV-1 hallucination
- * report (D16), a prompt injection (the model is being driven by someone other than WardenX), and
+ * report (D16), a prompt injection (the model is being driven by someone other than ChartWarden), and
  * severe bias drift (W7's red breach, which auto-kills). A cost cap or a vendor outage stops the same
  * capability just as completely and is deliberately NOT SEV-1 — paging the on-call clinical lead for a
  * billing threshold is how a SEV-1 page stops meaning anything.

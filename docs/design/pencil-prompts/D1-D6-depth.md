@@ -16,12 +16,12 @@ small symbol set + targeted instances.
 
 | Phase | File | Theme | Frames (≈) |
 | :-- | :-- | :-- | --: |
-| **D1** | `wardenx-D1-ceremonies.pen` | Guardrail & signing-ceremony library + showcase | 40 |
-| **D2** | `wardenx-D2-sensitivity.pen` | PHI masking / SUD-Part2 sealing / consent / break-glass states | 30 |
-| **D3** | `wardenx-D3-states.pen` | Universal empty / loading / error / no-permission / zero-after-filter, per pattern | 40 |
-| **D4** | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps (only step 1 exists today) | 70 |
-| **D5** | `wardenx-D5-variants.pen` | Role dashboards (7), discipline care plans (4), assessment instruments, status variants | 90 |
-| **D6** | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels / workspaces | 130 |
+| **D1** | `chartwarden-D1-ceremonies.pen` | Guardrail & signing-ceremony library + showcase | 40 |
+| **D2** | `chartwarden-D2-sensitivity.pen` | PHI masking / SUD-Part2 sealing / consent / break-glass states | 30 |
+| **D3** | `chartwarden-D3-states.pen` | Universal empty / loading / error / no-permission / zero-after-filter, per pattern | 40 |
+| **D4** | `chartwarden-D4-steppers.pen` | Multi-step workflows — all steps (only step 1 exists today) | 70 |
+| **D5** | `chartwarden-D5-variants.pen` | Role dashboards (7), discipline care plans (4), assessment instruments, status variants | 90 |
+| **D6** | `chartwarden-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels / workspaces | 130 |
 
 ---
 

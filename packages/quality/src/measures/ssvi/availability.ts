@@ -12,7 +12,7 @@
 // Because metric 9 carries up to 8 of the 16 points, the SSVI composite is withheld while it is unavailable
 // (see `computeSsviScore`): a total missing half its range is not a lower score, it is an unknown one.
 //
-// If a future WardenX ingests a beneficiary-level Medicare claims feed, DELETE the entry (do not edit it) —
+// If a future ChartWarden ingests a beneficiary-level Medicare claims feed, DELETE the entry (do not edit it) —
 // `ssvi-measures.test.ts` fails if an entry names a metric the worker also binds a resolver for.
 import type { MeasureUnavailability } from "../result";
 import type { SsviMetricKey } from "./thresholds";

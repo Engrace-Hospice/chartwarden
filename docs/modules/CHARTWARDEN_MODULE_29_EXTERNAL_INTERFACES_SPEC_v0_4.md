@@ -3467,7 +3467,7 @@ export async function boot(deps: BootDeps): Promise<void> {
   // ... existing M30..M40 registrations ...
 
   // After all registrations: start cross-cutting workers
-  if (deps.env.WARDENX_M29_LISTENERS_ENABLED === 'true') {
+  if (deps.env.CHARTWARDEN_M29_LISTENERS_ENABLED === 'true') {
     await startListenerSupervisor({
       mdm: deps.seamRegistry.get('MdmBaaStatusProvider'),
       outbox: deps.outbox,

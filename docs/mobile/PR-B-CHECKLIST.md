@@ -19,7 +19,7 @@ le choix des schemes/app links et les preuves sur appareils restent des conditio
   `Origin: null`/Origin absent.
 - [x] Bootstrap CSRF authentifié, minimal et non cacheable à `GET /api/v1/auth/csrf`.
 - [x] Double-submit navigateur conservé ; client natif soumis au même contrôle sans bypass.
-- [x] Multiple `Set-Cookie` Better Auth + `wardenx_csrf` préservés par le pont Fastify.
+- [x] Multiple `Set-Cookie` Better Auth + `chartwarden_csrf` préservés par le pont Fastify.
 - [x] Organisation one-shot, MFA, changement de mot de passe, classes de session et step-up inchangés.
 - [x] OpenAPI, schéma client généré et rapport de couverture actualisés.
 - [x] Contrat PR C documenté pour Better Auth, Axios, CSRF, erreurs, cycle de session et Socket.IO.

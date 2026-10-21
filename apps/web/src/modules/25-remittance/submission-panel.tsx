@@ -7,8 +7,8 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the SUBMISSION section of an ADR, appeal or reopening panel (hospice ADR/TPE/QIC
-// PRD, milestone 6a). WardenX does not send anything to a MAC, QIC or esMD gateway yet: the filing is made outside
-// WardenX through the channel the MAC or QIC instructs, and this section tracks the attempt and keeps the proof. It
+// PRD, milestone 6a). ChartWarden does not send anything to a MAC, QIC or esMD gateway yet: the filing is made outside
+// ChartWarden through the channel the MAC or QIC instructs, and this section tracks the attempt and keeps the proof. It
 // shows the attempt timeline with its status, a generic guided checklist (ticks are local to this screen), and the
 // receipt form (confirmation reference, receipt time, an optional retained copy of the receipt) under a step-up. A
 // filing with no receipt shows "Proof missing", never a blank. "Approve and send" is disabled with its reason: the

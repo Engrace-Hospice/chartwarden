@@ -5288,7 +5288,7 @@ export function m20ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
  *   5. THE `abac` DEFAULT ON A ROW IS NOT THE ROUTE'S WHOLE GATE. §4.1 spells several cells as
  *      disjunctions (`ai_safety_owner` OR `tenant_admin`); the catalog names ONE default and the route
  *      composes the other arm (../../../apps/backend/src/modules/32-ai-platform/routes/guards.ts). The
- *      `inOrg` rows are §4.1's "`wardenx.organization.member` unless explicitly noted" baseline — M32
+ *      `inOrg` rows are §4.1's "`chartwarden.organization.member` unless explicitly noted" baseline — M32
  *      registers no second name for M3's intrinsic org-scope rule (the M20 precedent).
  */
 export const M32_CONTRIBUTED_PERMISSIONS = {

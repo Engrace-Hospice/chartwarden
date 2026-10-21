@@ -1,4 +1,4 @@
-// apps/admin — Vite build/dev for the WardenX-staff Platform-Ops console SPA (M34 §5.1 shell + the
+// apps/admin — Vite build/dev for the ChartWarden-staff Platform-Ops console SPA (M34 §5.1 shell + the
 // M35 §5.2 subscription-billing slice, ADR-0030). Not part of `tsc -b` (outside the "src" include);
 // type-checking is via the project graph. Mirrors the apps/web + apps/portal config: Tailwind v4 plugin
 // + React, and a dev proxy so same-origin API calls (createApiClient baseUrl "") reach the Fastify

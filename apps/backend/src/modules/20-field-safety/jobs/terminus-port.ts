@@ -1,4 +1,4 @@
-// apps/backend/src/modules/20-field-safety/jobs/terminus-port.ts - GAP-032: the platform page to WardenX ops
+// apps/backend/src/modules/20-field-safety/jobs/terminus-port.ts - GAP-032: the platform page to ChartWarden ops
 // (§2.2.2 (c) / INT-031). An authenticated HTTPS webhook (PagerDuty/Opsgenie/Slack-style receiver) chosen by
 // configuration. It carries IDS ONLY (no PHI, no coordinates, no contact numbers).
 //
@@ -29,7 +29,7 @@ export class OpsPageError extends Error {
   }
 }
 
-/** Pages WardenX ops. Resolves only once the receiver acknowledged; rejects with {@link OpsPageError} otherwise. */
+/** Pages ChartWarden ops. Resolves only once the receiver acknowledged; rejects with {@link OpsPageError} otherwise. */
 export interface SosTerminusPort {
   pageOps(input: SosTerminusPageInput): Promise<void>;
 }

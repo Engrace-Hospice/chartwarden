@@ -115,7 +115,7 @@ export const M19_ERROR_STATUS = {
    *  disposition with no identified patient cannot open the encounter that is the only thing which
    *  advances it to `documented` — route #4 `identify-patient` is the step that was skipped. */
   ENCOUNTER_PATIENT_NOT_IDENTIFIED: 409,
-  /** D8 / §7.5 — an external triage-vendor operator holds no WardenX clinical identity, so there is no
+  /** D8 / §7.5 — an external triage-vendor operator holds no ChartWarden clinical identity, so there is no
    *  `authorMembershipId` M8 could attribute the encounter to and no `encounter_discipline` that names
    *  them. The vendor's segment is documented by the in-agency clinician who took the handoff. */
   ENCOUNTER_ACTOR_CANNOT_AUTHOR: 403,

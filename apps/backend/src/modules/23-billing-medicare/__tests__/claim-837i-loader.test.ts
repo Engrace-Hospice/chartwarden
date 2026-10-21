@@ -13,11 +13,11 @@ import {
 } from "../services/claim-837i-loader";
 
 const GOLDEN_837I_SEGMENTS: readonly string[] = [
-  "ISA*00*          *00*          *ZZ*WARDENX01      *ZZ*STEDI          *261009*1500*^*00501*000000101*1*T*:",
-  "GS*HC*WARDENX01*STEDI*20261009*1500*101*X*005010X223A2",
+  "ISA*00*          *00*          *ZZ*CHARTWARDEN01  *ZZ*STEDI          *261009*1500*^*00501*000000101*1*T*:",
+  "GS*HC*CHARTWARDEN01*STEDI*20261009*1500*101*X*005010X223A2",
   "ST*837*0101*005010X223A2",
   "BHT*0019*00*WXHOSP0001*20261009*1500*CH",
-  "NM1*41*2*EXAMPLE HOSPICE OF OREGON*****46*WARDENX01",
+  "NM1*41*2*EXAMPLE HOSPICE OF OREGON*****46*CHARTWARDEN01",
   "PER*IC*BILLING OFFICE*TE*5035550100",
   "NM1*40*2*STEDI TEST PAYER*****46*STEDI",
   "HL*1**20*1",
@@ -141,7 +141,7 @@ const LINES = [
 const PARTIES = {
   submitter: {
     name: "Example Hospice of Oregon",
-    id: "WARDENX01",
+    id: "CHARTWARDEN01",
     contactName: "Billing Office",
     contactPhone: "5035550100",
   },

@@ -604,7 +604,7 @@ export type M20EventName = (typeof M20_EVENT_NAMES)[number];
  *     +60 SOS-equivalent). Keyed on `scheduleId` alone, a conforming consumer drops rungs two and three —
  *     including the one §7.3 routes to Tier-1 voice.
  *   • `sos_terminus_reached` is emitted on EVERY loop iteration by construction (M20-F05: the terminus
- *     "keeps re-escalating … until a responder or WardenX ops acknowledges"). Keyed on `sosAlertId` alone,
+ *     "keeps re-escalating … until a responder or ChartWarden ops acknowledges"). Keyed on `sosAlertId` alone,
  *     every page after the first is suppressed and the terminus becomes the silent wait it exists to end.
  */
 export const M20_EVENT_IDEMPOTENCY_KEYS = {
@@ -965,7 +965,7 @@ export interface SosAlertEscalatedAlert {
   readonly reasonCode: string;
 }
 
-/** `m20.safety.sos_terminus_reached` — critical, system-locked, to WardenX ops as well as the org
+/** `m20.safety.sos_terminus_reached` — critical, system-locked, to ChartWarden ops as well as the org
  *  (INT-031). The `psapNumberAvailable` flag says a human CAN dial emergency services; the number
  *  itself is fetched by the responder's client from M40, never fanned out over SMS. */
 export interface SosTerminusReachedAlert {

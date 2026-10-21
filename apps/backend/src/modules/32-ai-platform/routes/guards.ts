@@ -90,7 +90,7 @@ export function ABAC_ANY(...guards: readonly PreHandler[]): PreHandler {
 }
 
 /**
- * §4.1's baseline cell — `wardenx.organization.member`, which IS M3's intrinsic `inOrg`.
+ * §4.1's baseline cell — `chartwarden.organization.member`, which IS M3's intrinsic `inOrg`.
  *
  * Bound explicitly rather than left bare so "this route is org-scoped" is a DECLARED fact the §10 test can
  * assert instead of an absence. M32 registers no second name for it (../abac-predicates.ts states the

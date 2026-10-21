@@ -53,7 +53,7 @@ export type FhirInboundResourceId = string;
 export type FhirCapabilitySnapshotId = string;
 
 /** Soft refs M28 stores but does not own: the M34 business-associate contract the approval gate resolves
- *  (§2.3), the WardenX-side aggregate an accepted inbound proposal created/updated in its owner module
+ *  (§2.3), the ChartWarden-side aggregate an accepted inbound proposal created/updated in its owner module
  *  (§2.2 `accepted_aggregate_id`), and the platform release tag that keys the capability snapshot (§2.2). */
 export type M34ContractReference = string;
 export type FhirAcceptedAggregateId = string;

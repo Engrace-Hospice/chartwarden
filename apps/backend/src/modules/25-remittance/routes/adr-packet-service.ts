@@ -6,7 +6,7 @@
 //     signs off what they saw, never something edited under them.
 //   - Attachments obey the appeal enclosure rules (`describeEnclosures`): org-visible, active, the claim's
 //     patient, never 42 CFR Part 2; refusals carry a reason code, never a title.
-//   - Filing records a response made OUTSIDE WardenX (sending electronically is milestone 6). It freezes an exact
+//   - Filing records a response made OUTSIDE ChartWarden (sending electronically is milestone 6). It freezes an exact
 //     manifest (document ids + checklist, no titles) in the same transaction that moves the case to `submitted`
 //     and emits `m25.adr_packet.render_requested`, so M22 files the cover-and-index PDF as the retained copy.
 //     Database triggers keep the manifest, the filing facts and the enclosure list immutable afterwards.

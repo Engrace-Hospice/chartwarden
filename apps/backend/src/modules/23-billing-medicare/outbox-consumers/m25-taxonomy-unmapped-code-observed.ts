@@ -27,7 +27,7 @@
 // shape rather than inventing a second alert-delivery mechanism. `AlertEmitter.emit` is inherently
 // ORG-scoped (`emit(orgId, ...)`), so "the platform-admin queue" is read here as the org's own
 // rule-config-authority surface (the `billing.rule_config.platform_admin` / `.edit` permission holders'
-// alert inbox) rather than a cross-tenant WardenX-ops construct — no such cross-tenant queue exists
+// alert inbox) rather than a cross-tenant ChartWarden-ops construct — no such cross-tenant queue exists
 // anywhere in this codebase, and inventing one would be exactly the kind of new mechanism this pass was
 // told not to guess at. `AlertEmitter.emit` is a documented no-op-with-a-persisted-row when no
 // `alert_rule` matches the `eventType` yet (`createAlertEmitter`'s own doc comment: "no rule → a no-op

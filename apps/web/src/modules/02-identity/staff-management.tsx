@@ -13,7 +13,7 @@ import {
   useToast,
 } from "@chartwarden/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
-// Modernized UI/UX refactor for WardenX Healthcare / Compliance Administration Portal.
+// Modernized UI/UX refactor for ChartWarden Healthcare / Compliance Administration Portal.
 // Preserves all existing business logic, auth checks, server-authoritative API calls, and permission rules.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
@@ -820,7 +820,7 @@ export function StaffManagement(): JSX.Element {
               id="invite-email-input"
               type="email"
               required
-              placeholder="e.g. clinician@wardenx.local"
+              placeholder="e.g. clinician@chartwarden.local"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               style={{ width: "100%", padding: "0.5rem 0.75rem" }}

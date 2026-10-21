@@ -561,7 +561,7 @@ describe.skipIf(!DB_URL)("GAP-108 M38 terminology loader + jobs — LIVE Postgre
       ] as const) {
         const { attestationId } = await ops.recordLicenseAttestation({
           system,
-          licensee: "WardenX Platform",
+          licensee: "ChartWarden Platform",
           licenseReference: `REF-${system}`,
           attestedBy: OPERATOR,
           effectiveFrom: "2026-01-01",

@@ -942,7 +942,7 @@ Capacity planning by tenant: heavy local-AI tenant projected against ml-worker c
 1. User submits credentials (or passkey) to Better Auth
 2. Better Auth issues a session record in PostgreSQL with `(user_id, organization_id, expires_at)`
 3. Better Auth stores the web session in its HttpOnly cookie; the Expo client persists the same Better Auth cookie material through SecureStore
-4. Subsequent native REST requests explicitly carry the Better Auth `Cookie` header; protected mutations also carry ChartWarden's exact `wardenx_csrf` cookie and `X-CSRF-Token` value
+4. Subsequent native REST requests explicitly carry the Better Auth `Cookie` header; protected mutations also carry ChartWarden's exact `chartwarden_csrf` cookie and `X-CSRF-Token` value
 5. Backend middleware resolves session → loads `(user_id, organization_id, membership_roles, location_memberships)` into request context
 
 ### 5.2 Identity Context (per request)
@@ -996,7 +996,7 @@ The separate mobile application uses the same Better Auth instance and `/api/aut
 
 - `@better-auth/expo/client` persists Better Auth cookie material with Expo SecureStore. There is no ChartWarden bearer token or second session store.
 - `MOBILE_AUTH_TRUSTED_ORIGINS` contains reviewed, exact native callback schemes. Browser CORS and WebAuthn expected origins remain exact HTTP(S) origins from `TRUSTED_ORIGINS`.
-- An authenticated `GET /api/v1/auth/csrf` returns a non-cacheable double-submit nonce and emits `wardenx_csrf`; native code sends that exact value in both the `Cookie` and `X-CSRF-Token` headers for every protected mutation.
+- An authenticated `GET /api/v1/auth/csrf` returns a non-cacheable double-submit nonce and emits `chartwarden_csrf`; native code sends that exact value in both the `Cookie` and `X-CSRF-Token` headers for every protected mutation.
 - Organization selection remains one-shot. The client cannot change tenant, role, permissions, or rooms with a local identifier or request header.
 - Server session classes, password-change requirements, MFA enrolment, idle/absolute expiry, revocation, and step-up remain authoritative. A biometric app lock is an additional device control to validate in PR C.
 - Browser WebAuthn/passkeys remain supported. Native passkey enrolment is not considered available until association files and device testing prove it; TOTP and backup codes are the required fallback.

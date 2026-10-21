@@ -1,5 +1,5 @@
 /**
- * WardenX — dependency-vulnerability audit gate (WX-PR-017 / SEC-003)
+ * ChartWarden — dependency-vulnerability audit gate (WX-PR-017 / SEC-003)
  * ---------------------------------------------------------------------
  * `bun audit` had no CI gate at all before this — a new vulnerable dependency could land and no
  * check would ever see it. This is a RATCHET, matching every other gate in this repo

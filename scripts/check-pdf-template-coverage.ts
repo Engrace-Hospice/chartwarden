@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX - PDF template coverage gate (GAP-033), `bun run arch:pdf-templates`.
+ * ChartWarden - PDF template coverage gate (GAP-033), `bun run arch:pdf-templates`.
  * ---------------------------------------------------------------------------
  * The M22 renderer resolves a render request against PLATFORM_TEMPLATE_TABLE, and draws it with a bespoke builder
  * (DEFAULT_PDF_RENDERERS) or, silently, the generic payload dump. Two registries (the forms library and the

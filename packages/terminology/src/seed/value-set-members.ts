@@ -36,7 +36,7 @@ export interface PlatformValueSetMemberSeed {
 export const PLATFORM_VALUE_SET_MEMBERS: readonly PlatformValueSetMemberSeed[] = [
   // hope_j_codes — the CMS HOPE Section-J items M10 spec §2.1 enumerates (F-059). These are the
   // instrument's QUESTIONS (item identifiers), not the per-symptom answers: J2051's answers are the
-  // eight `HOPE_J2051_SYMPTOM_CODES`, a WardenX-internal vocabulary already closed at M10's route
+  // eight `HOPE_J2051_SYMPTOM_CODES`, a ChartWarden-internal vocabulary already closed at M10's route
   // boundary and therefore not a terminology question at all. The set's own description names these
   // three plus "related"; a CMS annual update that adds an item is a curation change here.
   {

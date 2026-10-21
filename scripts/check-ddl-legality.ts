@@ -1,5 +1,5 @@
 /**
- * WardenX — PostgreSQL DDL Legality Check  (ADR-0022; fitness check #12)
+ * ChartWarden — PostgreSQL DDL Legality Check  (ADR-0022; fitness check #12)
  * ------------------------------------------------------------------
  * Catches DDL that "Locked" specs ship which CANNOT be created in PostgreSQL —
  * the build would fail at migration time, not review time (audit X9 / BB#5):

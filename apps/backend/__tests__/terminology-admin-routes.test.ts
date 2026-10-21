@@ -709,7 +709,7 @@ describe("GAP-063 — M38's six unbuilt §4.1 routes", () => {
         url: "/api/v1/admin/terminology/snomed/license-attestation",
         headers: OPERATOR_H,
         payload: {
-          licensee: "WardenX Platform",
+          licensee: "ChartWarden Platform",
           licenseReference: "SNOMED-AFF-1",
           effectiveFrom: "2020-01-01",
           attributionText: "SNOMED CT is used under licence (test).",
@@ -894,7 +894,7 @@ describe("GAP-063 — M38's six unbuilt §4.1 routes", () => {
             {
               id: "a1",
               systemId: "snomed",
-              licensee: "WardenX",
+              licensee: "ChartWarden",
               licenseReference: "R",
               attestedBy: OPERATOR,
               attestedAt: "2026-01-01T00:00:00.000Z",
@@ -932,7 +932,7 @@ describe("GAP-063 — M38's six unbuilt §4.1 routes", () => {
             {
               id: "a2",
               systemId: "loinc",
-              licensee: "WardenX",
+              licensee: "ChartWarden",
               licenseReference: "R",
               attestedBy: OPERATOR,
               attestedAt: "2026-01-01T00:00:00.000Z",
@@ -944,7 +944,7 @@ describe("GAP-063 — M38's six unbuilt §4.1 routes", () => {
             {
               id: "a3",
               systemId: "snomed",
-              licensee: "WardenX",
+              licensee: "ChartWarden",
               licenseReference: "R",
               attestedBy: OPERATOR,
               attestedAt: "2026-01-01T00:00:00.000Z",
@@ -965,7 +965,7 @@ describe("GAP-063 — M38's six unbuilt §4.1 routes", () => {
       expect(res.json().items).toEqual([
         {
           systemId: "loinc",
-          licensee: "WardenX",
+          licensee: "ChartWarden",
           attributionText: "LOINC is copyright Regenstrief Institute.",
         },
       ]);

@@ -1,6 +1,6 @@
 // @chartwarden/gusto-client — M27-owned Gusto adapter package (D6, architecture §25.14 adapter mandate).
 //
-// This package is the ONLY place in the WardenX repo permitted to import the Gusto SDK (dependency-
+// This package is the ONLY place in the ChartWarden repo permitted to import the Gusto SDK (dependency-
 // cruiser enforces). It yields a typed per-tenant `GustoClient` with shared OAuth-refresh handling,
 // published to the M1 SeamRegistry as `GustoClientFactory` by M27's boot; M29 may consume the factory
 // for non-cost-report payroll-event ingest at M29 lock so OAuth refresh stays centralized.

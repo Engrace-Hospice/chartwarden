@@ -21,7 +21,7 @@
 // ── WHY `escalation_tier_3` IS DELIBERATELY REFUSED, NOT ESCALATED ───────────────────────────────────────
 //
 // `escalate` from `escalation_tier_3` reaches `emergency_terminus`, whose entry auto-dials the clinician's
-// consented emergency contact (a spouse), surfaces the PSAP line and pages WardenX ops (GAP-032 made those
+// consented emergency contact (a spouse), surfaces the PSAP line and pages ChartWarden ops (GAP-032 made those
 // effects real, via the durable ledger in `../terminus/`). That is the mandated end of the life-safety chain
 // for an alert that has been UNANSWERED past its tier-3 SLA - it must never be reachable because ONE
 // notification to ONE recipient failed to deliver. A single bounced SMS or expired push would otherwise jump

@@ -1,5 +1,5 @@
 /**
- * WardenX — discipline-persona staff seed (local dev). NOT for production.
+ * ChartWarden — discipline-persona staff seed (local dev). NOT for production.
  *
  * `scripts/db/seed.ts` creates 4 demo logins (administrator, org_admin, clinician, auditor), all
  * with broad permission-CATEGORY grants. What none of them carry is a **discipline role-key token**
@@ -16,7 +16,7 @@
  * M17 (`resolveDisciplinesTx`) and M19 (`TRIAGE_DISCIPLINE_FOR_ROLE_KEY`) had always done.
  *
  * This script adds distinct staff logins, one per discipline persona, each granted the same
- * `clinical` permission-category set `casey@wardenx.local` already gets (so the route's
+ * `clinical` permission-category set `casey@chartwarden.local` already gets (so the route's
  * `requirePermission` check passes) PLUS the specific role-key token(s) the ABAC/discipline checks
  * actually look for. Separate logins (not just extra roles bolted onto the existing 4) so
  * different-person-required scenarios — M11 cosign (drafter ≠ cosigner), M13 witness (different
@@ -26,7 +26,7 @@
  *
  * Idempotent: additive-only — deletes/recreates just these fixed emails' Better Auth + membership
  * rows, never touches the org or the original 4 `db:seed` accounts.
- * Prereqs: bun run db:seed (org + admin@wardenx.local must exist — admin holds role.manage/role.assign
+ * Prereqs: bun run db:seed (org + admin@chartwarden.local must exist — admin holds role.manage/role.assign
  * and every permission, so no anti-escalation block) AND bun run db:seed:org-structure (each
  * persona's membership is scoped to that script's fixed provider_entity/location).
  * Run:     bun run db:seed:staff
@@ -52,7 +52,7 @@ import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
 
@@ -94,50 +94,50 @@ const ISSUING_BODY: Record<string, string> = {
 
 const PERSONAS: Persona[] = [
   {
-    email: "rita@wardenx.local",
+    email: "rita@chartwarden.local",
     name: "Rita Alvarez, RN",
     roleKeys: ["rn", "rn_case_manager"],
     roleName: "RN Case Manager",
   },
-  { email: "dana@wardenx.local", name: "Dana Kim, LPN", roleKeys: ["lpn"], roleName: "LPN" },
+  { email: "dana@chartwarden.local", name: "Dana Kim, LPN", roleKeys: ["lpn"], roleName: "LPN" },
   {
-    email: "drharris@wardenx.local",
+    email: "drharris@chartwarden.local",
     name: "Dr. Sam Harris",
     roleKeys: ["md", "hospice_physician", "medical_director"],
     roleName: "Hospice Medical Director",
   },
   {
-    email: "nora@wardenx.local",
+    email: "nora@chartwarden.local",
     name: "Nora Patel, NP",
     roleKeys: ["np"],
     roleName: "Nurse Practitioner",
   },
   {
-    email: "mira@wardenx.local",
+    email: "mira@chartwarden.local",
     name: "Mira Chen, MSW",
     roleKeys: ["msw"],
     roleName: "Medical Social Worker",
   },
   {
-    email: "cole@wardenx.local",
+    email: "cole@chartwarden.local",
     name: "Cole Jennings, Chaplain",
     roleKeys: ["chaplain"],
     roleName: "Chaplain",
   },
   {
-    email: "vera@wardenx.local",
+    email: "vera@chartwarden.local",
     name: "Vera Simmons",
     roleKeys: ["volunteer_coordinator"],
     roleName: "Volunteer Coordinator",
   },
   {
-    email: "valentina@wardenx.local",
+    email: "valentina@chartwarden.local",
     name: "Valentina Okafor",
     roleKeys: ["volunteer"],
     roleName: "Volunteer",
   },
   {
-    email: "supervisor@wardenx.local",
+    email: "supervisor@chartwarden.local",
     name: "Sam Rivera",
     // `compliance_officer` added for M30's `capVerifyAuthority` two-person-control predicate
     // (incident resolve/close) — a role-key check, not a permission, so granting the `quality`
@@ -146,7 +146,7 @@ const PERSONAS: Persona[] = [
     roleName: "Clinical Supervisor",
   },
   {
-    email: "amy@wardenx.local",
+    email: "amy@chartwarden.local",
     name: "Amy Torres, CHHA",
     roleKeys: ["chha"],
     roleName: "Home Health Aide",
@@ -155,7 +155,7 @@ const PERSONAS: Persona[] = [
     // M5 §5.1 "Privacy flags (`/patients/:id/privacy`)" — the §164.530(a) privacy official. Granted the
     // role's floor (incl. `privacy.admin`) plus read-only chart/intake access (ROLE_GRANT_OVERRIDES), NOT
     // the field-staff categories: the officer reviews restrictions, it does not chart or review intake.
-    email: "privacy@wardenx.local",
+    email: "privacy@chartwarden.local",
     name: "Priya Shah",
     roleKeys: ["hipaa_privacy_officer"],
     roleName: "HIPAA Privacy Officer",
@@ -189,7 +189,7 @@ function genPassword(): string {
 
 function adminPassword(): string {
   const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
-  const line = md.split("\n").find((l) => l.includes("admin@wardenx.local"));
+  const line = md.split("\n").find((l) => l.includes("admin@chartwarden.local"));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m)
     throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
@@ -218,8 +218,8 @@ async function signUp(email: string, password: string, name: string): Promise<st
  *
  * `caseload_or_scope` (the predicate behind M7's care plans, M8's encounters and their siblings) is
  * satisfied by an org-wide role, a session scope attribute, or an OPEN `patient_assignment` row for
- * the calling user. `seed-clinical.ts` anchors that row to `casey@wardenx.local` because at its point
- * in the chain no persona exists yet — but every scenario seed acts as `rita@wardenx.local`, who had
+ * the calling user. `seed-clinical.ts` anchors that row to `casey@chartwarden.local` because at its point
+ * in the chain no persona exists yet — but every scenario seed acts as `rita@chartwarden.local`, who had
  * no assignment. The denial then arrived as `NOT_FOUND`, because those routes use
  * `{ notFoundOnDeny: true }` (the §6.6 existence-non-leak convention), so four seed steps reported a
  * missing resource for a patient that was verifiably there.
@@ -229,7 +229,7 @@ async function signUp(email: string, password: string, name: string): Promise<st
  * then), but this script deletes and re-creates her user row on every run — so an assignment written
  * against a previous run's rita would point at a user id that no longer exists, whatever the order.
  */
-const RN_CASE_MANAGER_EMAIL = "rita@wardenx.local";
+const RN_CASE_MANAGER_EMAIL = "rita@chartwarden.local";
 
 async function anchorDemoCaseload(
   db: Client,
@@ -280,7 +280,7 @@ async function anchorDemoCaseload(
  * `clinician` could not author anything. Give each the discipline role it plays, plus the matching licence.
  */
 const BASE_ACCOUNT_DISCIPLINE_BINDINGS: ReadonlyArray<{ email: string; roleKey: string }> = [
-  { email: "casey@wardenx.local", roleKey: "rn" },
+  { email: "casey@chartwarden.local", roleKey: "rn" },
 ];
 
 async function bindBaseAccountDisciplines(

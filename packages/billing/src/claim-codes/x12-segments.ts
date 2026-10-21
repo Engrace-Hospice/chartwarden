@@ -17,7 +17,7 @@
 //   HI   Occurrence Span Information — each composite `BI:<span code>:RD8:<CCYYMMDD>-<CCYYMMDD>` (UB-04 FL
 //        35-36), max 12 per HI. Today only the late-NOE span 77 (ch. 11 §20.1.1) is derived.
 //
-// CL101/CL102 are NOT derived by WardenX: the caller passes them (the gateway's own claim data). This module
+// CL101/CL102 are NOT derived by ChartWarden: the caller passes them (the gateway's own claim data). This module
 // only guarantees CL103 and the BG/BH composites match the derived codes.
 import type { IsoDate } from "../contracts";
 import { toEpochDay } from "../domain/dates";

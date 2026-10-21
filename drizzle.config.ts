@@ -1,7 +1,7 @@
 import { defineConfig } from "drizzle-kit";
 
 /**
- * WardenX — Drizzle Kit config.
+ * ChartWarden — Drizzle Kit config.
  * The central multi-tenant PostgreSQL schema barrel lives in packages/db (M1-owned); generated
  * migrations land under packages/db/migrations/ (table counts: see the generated audit reports).
  *

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# WardenX pre-push gate — the free, private-repo alternative to GitHub branch protection.
+# ChartWarden pre-push gate — the free, private-repo alternative to GitHub branch protection.
 # Blocks a push that updates `main` unless the full fitness suite passes locally.
 # (GitHub branch protection / rulesets require a paid plan on private repos; this hook
 #  enforces the same intent on the one path that can bypass PR review: a direct push to main.)

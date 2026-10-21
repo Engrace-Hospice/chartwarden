@@ -171,7 +171,7 @@ export function registerElectionAddendumRoutes(
 
   // 418.24(c)(9) on paper: the scanned signed copy was uploaded to M22 first (verified-upload ceremony); this
   // attaches that exact version. Same permission + ABAC as the keyed signature. A draft (paper furnished outside
-  // WardenX) needs `furnishedAt` and is furnished (paper) and signed in one transaction.
+  // ChartWarden) needs `furnishedAt` and is furnished (paper) and signed in one transaction.
   app.post(
     "/api/v1/admissions/:id/election-addendum/:addendumId/signature/uploaded-evidence",
     {

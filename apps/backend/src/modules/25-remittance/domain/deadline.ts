@@ -10,7 +10,7 @@
 // (Council → court: the presumption is stated in §405.1136; the 60 days are in §§405.1130-1134.)
 //
 // The anchor is therefore the NOTICE DATE (the date printed on the remittance advice / decision letter),
-// not the day WardenX ingested the file. The last filing day is usable until it ends: the deadline is the
+// not the day ChartWarden ingested the file. The last filing day is usable until it ends: the deadline is the
 // last millisecond of that calendar day in `zone`. The presumption is rebuttable by documented receipt;
 // that override is intentionally NOT built here (conservative: the presumed date always applies).
 // A last filing day that is a weekend or US federal holiday moves BACK to the previous business day (clinical-

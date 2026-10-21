@@ -17,7 +17,7 @@
 // MSH IDENTITY (F-181). MSH-3/4/5/6 come from `msh_sending_application` / `msh_sending_facility` /
 // `msh_receiving_application` / `msh_receiving_facility`. The old `displayName` fallback is gone: an operator
 // label is not a validated HL7 identifier and reusing one string for three fields is fabrication. MSH-3 alone
-// defaults to the fixed platform identity (`OUTBOUND_SENDING_APPLICATION` — WardenX's own name never varies per
+// defaults to the fixed platform identity (`OUTBOUND_SENDING_APPLICATION` — ChartWarden's own name never varies per
 // feed, so this is a constant, not a guess). If any of the other three is absent the resolver returns
 // `feed_identity_incomplete` naming only the FIELD NAMES (PHI-free) and the worker refuses the send.
 //

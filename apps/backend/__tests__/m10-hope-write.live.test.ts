@@ -800,7 +800,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       providerOf[ORG_A],
     ]);
     vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_ID", "12-3456789");
-    vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_NAME", "WardenX Test Vendor");
+    vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_NAME", "ChartWarden Test Vendor");
     vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_EMAIL", "hope@vendor.test");
     vi.stubEnv("APP_VERSION", "2026.9.26");
     await expect(svc.assembleSubmission(ORG_A, providerOf[ORG_A])).rejects.toMatchObject({
@@ -842,9 +842,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(tag("STATE_CD")).toBe("OR");
       expect(tag("FAC_ID")).toBe(`FAC${ORG_A.slice(0, 4)}`);
       expect(tag("SFTWR_VNDR_ID")).toBe("123456789");
-      expect(tag("SFTWR_VNDR_NAME")).toBe("WardenX Test Vendor");
+      expect(tag("SFTWR_VNDR_NAME")).toBe("ChartWarden Test Vendor");
       expect(tag("SFTWR_VNDR_EMAIL_ADR")).toBe("hope@vendor.test");
-      expect(tag("SFTWR_PROD_NAME")).toBe("WardenX");
+      expect(tag("SFTWR_PROD_NAME")).toBe("ChartWarden");
       expect(tag("SFTWR_PROD_VRSN_CD")).toBe("2026.9.26");
       expect(tag("CRCTN_NUM")).toMatch(/^\d{2}$/);
     }

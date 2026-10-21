@@ -1,8 +1,8 @@
-# ADR-0031 — `wardenx-piv` drops the interactive approve node (review moves to the PR)
+# ADR-0031 — `chartwarden-piv` drops the interactive approve node (review moves to the PR)
 
-- **Status:** Accepted — applied 2026-06-15 (`wardenx-piv` **v0.3.0**, commit `d9bc969`).
+- **Status:** Accepted — applied 2026-06-15 (`chartwarden-piv` **v0.3.0**, commit `d9bc969`).
 - **Date:** 2026-06-15
-- **Phase:** build-harness governance (affects every wave run through `wardenx-piv`).
+- **Phase:** build-harness governance (affects every wave run through `chartwarden-piv`).
 - **Resolves:** the recurring **approve-node hang** that stalled both completed builds after all work
   was done — the M1+M2 slice (PR #3) and Wave A / M3+M4 (PR #4) — each forcing a manual recover; plus a
   latent bug where the workflow **never committed** the work it built.
@@ -12,7 +12,7 @@
 
 ## Context
 
-`wardenx-piv` (≤ v0.2.0) ended each run with two nodes:
+`chartwarden-piv` (≤ v0.2.0) ended each run with two nodes:
 
 ```
 … → fix → approve (interactive: true) → pr (bash: git push + gh pr create)
@@ -70,13 +70,13 @@ the `confirm-plan` "STOP if ambiguous" discipline and the green-gate requirement
 - **Operational guidance (still true):** launch `archon workflow run` from a genuinely independent
   terminal, not a Claude-/editor-spawned one; verify with `echo "$CLAUDECODE"` (must be blank). This
   reduces the odds of *other* nested-execution issues even though the approve hang itself is now moot.
-- **Supersedes** the "human-approve a PR" step described in earlier `wardenx-piv` versions and in
+- **Supersedes** the "human-approve a PR" step described in earlier `chartwarden-piv` versions and in
   `docs/ARCHON_SETUP.md` / `docs/plans/ARCHON_RUN_TRACKER.md` (those describe a pause that no longer
   exists; the run auto-opens the PR).
 
 ## References
 
-- Workflow: `.archon/workflows/wardenx-piv.yaml` (v0.3.0)
+- Workflow: `.archon/workflows/chartwarden-piv.yaml` (v0.3.0)
 - History: PR #3 (slice, recovered 2026-06-14), PR #4 (Wave A, recovered 2026-06-15)
 - Related plan-input fix (same evolution): `{{ inputs.plan }}` → `setup` resolves `.archon/run-plan.txt`
   (v0.2.0), since v0.4.x exposes per-run data only via the message (`$ARGUMENTS`).

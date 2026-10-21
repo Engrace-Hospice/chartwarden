@@ -1,5 +1,5 @@
 /**
- * WardenX — OpenAPI enrichment registry (F0-T01, ADR-0032)
+ * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
  * --------------------------------------------------------
  * Layers request/response schema detail onto the auto-discovered routes
  * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
@@ -3366,7 +3366,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/billing/dde-items/:id/record-submission": {
     summary:
-      "Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: WardenX never calls DDE",
+      "Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: ChartWarden never calls DDE",
     body: RecordDdeSubmissionBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: DdeItemViewSchema,
@@ -6453,7 +6453,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M2AuthContextResponseSchema,
   },
   "GET /api/v1/auth/csrf": {
-    summary: "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+    summary: "Bootstrap the authenticated cookie client's ChartWarden double-submit CSRF nonce",
     response: M2CsrfBootstrapResponseSchema,
   },
   "GET /api/v1/auth/credential-status": {
@@ -8342,7 +8342,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/adrs/:id/submission-receipt": {
     summary:
-      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+      "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
     body: M25SubmissionReceiptRequestSchema,
     response: M25SubmissionReceiptResultSchema,
   },
@@ -8359,7 +8359,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/appeals/:id/submission-receipt": {
     summary:
-      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+      "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
     body: M25SubmissionReceiptRequestSchema,
     response: M25SubmissionReceiptResultSchema,
   },
@@ -8376,7 +8376,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/reopenings/:id/submission-receipt": {
     summary:
-      "Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match)",
+      "Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match)",
     body: M25SubmissionReceiptRequestSchema,
     response: M25SubmissionReceiptResultSchema,
   },
@@ -8487,7 +8487,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/appeals/:id/request-escalation": {
     summary:
-      "Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
+      "Record the OMHA escalation request made outside ChartWarden once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
     body: M25EscalationRequestSchema,
     response: M25QicVersionedResultSchema,
   },
@@ -10573,7 +10573,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // M28 FHIR Gateway — §4.1 request contracts for the thirty-nine-route surface
 // (M28-T08). The FHIR-spec surface (R1-R22) authenticates with a SMART bearer
 // token and returns `application/fhir+json` / OperationOutcome; the admin
-// surface (R23-R39) uses the WardenX envelope. Phase 1 is READ-ONLY US Core
+// surface (R23-R39) uses the ChartWarden envelope. Phase 1 is READ-ONLY US Core
 // R4 (`fhir.write` OFF), so every write-facing summary states what the
 // boundary refuses.
 // ---------------------------------------------------------------------------
@@ -13182,7 +13182,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/ai/invocations": {
     summary:
-      "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
+      "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `chartwarden.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
     query: M32InvocationSearchQuery,
     response: M32InvocationSearchResponse,
   },

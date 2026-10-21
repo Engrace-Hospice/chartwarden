@@ -1,5 +1,5 @@
 // @chartwarden/db — `hope_submission_result_event` (M10 Phase 7). External iQIES / FVR results
-// are stored separately from WardenX-computed `hope_validation_finding` rows so provenance stays clear.
+// are stored separately from ChartWarden-computed `hope_validation_finding` rows so provenance stays clear.
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";

@@ -9,7 +9,7 @@
 //
 // `emergency_terminus` IS AN OPEN STATE. §2.2.2 / M20-F05 / S13 / INT-031 make it the mandated END of the
 // life-safety chain — a tier-3 SLA breach with no acknowledgment enters it, and it auto-dials the consented
-// emergency contact, surfaces M40's PSAP number to every recipient, pages WardenX ops, and KEEPS
+// emergency contact, surfaces M40's PSAP number to every recipient, pages ChartWarden ops, and KEEPS
 // re-escalating until a human acknowledges. So the SLA-watchdog index below INCLUDES it: an index scoped to
 // the three tier states would leave the terminus unscanned, which is precisely how an unacknowledged 3 a.m.
 // SOS stops re-escalating.

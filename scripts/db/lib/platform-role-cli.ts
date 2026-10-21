@@ -1,5 +1,5 @@
 /**
- * WardenX — argument parsing + command runner for the platform-role operator CLI
+ * ChartWarden — argument parsing + command runner for the platform-role operator CLI
  * (`scripts/db/platform-role.ts`). Split from the entry point so the live suite drives the exact code an
  * operator runs, against its own database, without spawning a process.
  */

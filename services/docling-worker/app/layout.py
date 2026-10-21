@@ -1,4 +1,4 @@
-"""Shape a Docling ``DoclingDocument`` into the WardenX ``/parse`` response (pure, no IO).
+"""Shape a Docling ``DoclingDocument`` into the ChartWarden ``/parse`` response (pure, no IO).
 
 The DocLens extractor (M32) never trusts a model-reported coordinate. It asks the model for a VERBATIM
 quote, finds that quote in the text blocks returned here, and takes the bounding box from the block it

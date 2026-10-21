@@ -1,5 +1,5 @@
 /**
- * WardenX — turn DocLens's AI path ON for the DEMO ORG ONLY (local dev; F-236, ADR-0048). NOT for production.
+ * ChartWarden — turn DocLens's AI path ON for the DEMO ORG ONLY (local dev; F-236, ADR-0048). NOT for production.
  *
  * Every gate in the M32 pipeline stays real; this script satisfies them the way an operator and an AI
  * Safety Owner eventually would, for one dev tenant, and prints what it did:
@@ -25,8 +25,8 @@ import { join } from "node:path";
 import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL;
-const ORG_SLUG = "wardenx-demo";
-const ADMIN_EMAIL = "admin@wardenx.local";
+const ORG_SLUG = "chartwarden-demo";
+const ADMIN_EMAIL = "admin@chartwarden.local";
 const LOCAL_BACKEND = "local-llama-3.1-8b-instruct";
 // F-237 — stage 5 needs a model that can see; the local route is Qwen2.5-VL (ADR-0048).
 const LOCAL_VISION_BACKEND = "local-qwen2.5-vl-7b-instruct";

@@ -21,13 +21,13 @@ describe("email transport seam", () => {
     const transport = createConsoleEmailTransport((line) => lines.push(line));
     const msg: EmailMessage = {
       to: "user@example.test",
-      subject: "Reset your WardenX password",
+      subject: "Reset your ChartWarden password",
       text: "Reset here:\nhttps://app.example/reset-password?token=abc123",
     };
     await transport.send(msg);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("user@example.test");
-    expect(lines[0]).toContain("Reset your WardenX password");
+    expect(lines[0]).toContain("Reset your ChartWarden password");
     expect(lines[0]).toContain("token=abc123"); // the link must reach the transport
   });
 });

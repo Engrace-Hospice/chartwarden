@@ -8,7 +8,7 @@
 //   SPEC_VRSN_CD                          (HOPE / 1.00 / 1.00 in v1.00.1)
 //   STATE_CD                            the provider entity's state postal code (its address)
 //   FAC_ID                              the provider entity's iQIES-assigned facility ID
-//   SFTWR_VNDR_ID/_NAME/_EMAIL_ADR,     WardenX as the software vendor: configuration (see below)
+//   SFTWR_VNDR_ID/_NAME/_EMAIL_ADR,     ChartWarden as the software vendor: configuration (see below)
 //   SFTWR_PROD_NAME/_VRSN_CD
 //   CRCTN_NUM                           how many times this record has been corrected (00 original)
 //
@@ -26,7 +26,7 @@ export class HopeSubmissionPayloadError extends Error {
   }
 }
 
-/** WardenX's identity as the HOPE software vendor (CMS SFTWR_* items). */
+/** ChartWarden's identity as the HOPE software vendor (CMS SFTWR_* items). */
 export interface HopeSoftwareVendor {
   /** Federal employer tax ID (EIN), 9 digits, no dash. */
   readonly vendorId: string;
@@ -51,7 +51,7 @@ type EnvLike = Record<string, string | undefined>;
  *   CHARTWARDEN_SOFTWARE_VENDOR_ID     EIN, 9 digits (dash allowed, stripped)
  *   CHARTWARDEN_SOFTWARE_VENDOR_NAME   ≤ 30 characters
  *   CHARTWARDEN_SOFTWARE_VENDOR_EMAIL  ≤ 50 characters
- *   CHARTWARDEN_SOFTWARE_PRODUCT_NAME  optional, default "WardenX", ≤ 50 characters
+ *   CHARTWARDEN_SOFTWARE_PRODUCT_NAME  optional, default "ChartWarden", ≤ 50 characters
  * The product version is the image's APP_VERSION, else its GIT_SHA (both baked in by the Dockerfile).
  */
 export function readHopeSoftwareVendor(env: EnvLike = process.env): HopeSoftwareVendor {

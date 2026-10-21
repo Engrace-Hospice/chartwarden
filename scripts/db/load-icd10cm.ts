@@ -1,5 +1,5 @@
 /**
- * WardenX — M38 ICD-10-CM loader (F-238). Loads the REAL CDC/NCHS ICD-10-CM releases into
+ * ChartWarden — M38 ICD-10-CM loader (F-238). Loads the REAL CDC/NCHS ICD-10-CM releases into
  * `concept_icd10cm`, dated by fiscal year, so "is this code valid on the date it was written?" has an
  * answer. Parsing rules live (and are unit-tested) in `scripts/db/lib/icd10cm-release.ts`.
  *

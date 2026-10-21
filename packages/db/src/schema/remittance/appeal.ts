@@ -68,7 +68,7 @@ export const appealCase = pgTable(
     // The date the QIC received the request; its 60-day decision clock is derived from it on read.
     qicReceivedOn: date("qic_received_on"),
     qicClockExtensions: jsonb("qic_clock_extensions").notNull().default([]), // append-only [{days, recordedAt}]
-    // The OMHA escalation request (made outside WardenX), frozen once recorded, and the date the QIC forwarded the case.
+    // The OMHA escalation request (made outside ChartWarden), frozen once recorded, and the date the QIC forwarded the case.
     escalationRequestedAt: timestamp("escalation_requested_at", { withTimezone: true }),
     escalationChannel: text("escalation_channel"),
     escalationConfirmationRef: text("escalation_confirmation_ref"), // audit-scrubbed

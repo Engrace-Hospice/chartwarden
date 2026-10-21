@@ -1,7 +1,7 @@
 /**
  * M23 DDE work queue (ADR-0052) END TO END over real Postgres, as the NOBYPASSRLS `chartwarden_app` role.
  *
- * The queue is human work tracking for Medicare Direct Data Entry: WardenX never calls DDE. What this proves
+ * The queue is human work tracking for Medicare Direct Data Entry: ChartWarden never calls DDE. What this proves
  * against real rows under REAL RLS, through the real Fastify routes, the real `provider_entity_billing_scope`
  * predicate and the real catalog-validating outbox publisher (never NOOP_OUTBOX):
  *   - a recorded MAC acceptance on an NOE item applies the notice's EXISTING acceptance transition

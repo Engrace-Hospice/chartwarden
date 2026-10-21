@@ -1,4 +1,4 @@
-# WardenX — Docker build-context excludes (TASK-040F). Mirrors .gitignore's secret-file glob
+# ChartWarden — Docker build-context excludes (TASK-040F). Mirrors .gitignore's secret-file glob
 # (never let a real .env/.env.bak.* reach a build context or layer) plus build artifacts (regenerable
 # via `bun install`/`tsc -b`) and content that adds nothing to a running API/worker image.
 

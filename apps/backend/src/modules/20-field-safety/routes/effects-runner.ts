@@ -114,14 +114,14 @@ export class MissingSafetyOutboxPayloadError extends Error {
  *   • `surface_psap_number` — §2.2.2 (b). The number is fetched by the RESPONDER's client from M40 against
  *     the jurisdiction id; it never enters an outbox or audit payload (§8.8.2), so there is nothing here
  *     to write. The `sos_terminus_reached` payload's `psapJurisdictionId` is the caller's to resolve.
- *   • `page_wardenx_ops` — §2.2.2 (c) / INT-031. A PLATFORM page, out of band from the tenant's alert
+ *   • `page_chartwarden_ops` — §2.2.2 (c) / INT-031. A PLATFORM page, out of band from the tenant's alert
  *     fan-out and outside the tenant transaction entirely.
  */
 export const CALLER_OWNED_EFFECT_KINDS = [
   "request_visit_cancellation",
   "dial_emergency_contact",
   "surface_psap_number",
-  "page_wardenx_ops",
+  "page_chartwarden_ops",
 ] as const satisfies readonly SafetySideEffect["kind"][];
 
 const CALLER_OWNED = new Set<string>(CALLER_OWNED_EFFECT_KINDS);

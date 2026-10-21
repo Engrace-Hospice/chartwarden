@@ -1,10 +1,10 @@
-# Keep the WardenX corpus source-only (specs + fitness kit).
+# Keep the ChartWarden corpus source-only (specs + fitness kit).
 # Tooling/build artifacts are reproducible via `bun install`.
 node_modules/
 .DS_Store
 .vscode/
 
-# AI coding-agent tool config/state — personal/local, not part of the WardenX corpus.
+# AI coding-agent tool config/state — personal/local, not part of the ChartWarden corpus.
 .agents/
 .claude/
 .codex/
@@ -53,7 +53,7 @@ CHARTWARDEN_MODULES_21-30.zip
 CHARTWARDEN_MODULES_31-40.zip
 CHARTWARDEN_MODULE_29_TASKS_T29.zip
 
-# wardenx-piv: per-run resolved plan path + module scope (workflow setup node)
+# chartwarden-piv: per-run resolved plan path + module scope (workflow setup node)
 .archon/run-plan.txt
 .archon/run-scope.txt
 .archon/commit-msg.txt

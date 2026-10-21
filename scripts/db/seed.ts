@@ -1,5 +1,5 @@
 /**
- * WardenX — local dev seed (demo org + users + RBAC). NOT for production.
+ * ChartWarden — local dev seed (demo org + users + RBAC). NOT for production.
  *
  * Creates one demo organization, three users (via the running backend's Better Auth sign-up so
  * passwords hash exactly as prod), active memberships, and three roles wired to the real M3
@@ -30,8 +30,11 @@ import { firstRow } from "./lib/query-rows";
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
+/** The demo org's slug before the ChartWarden rename; the reset still removes it. */
+const LEGACY_ORG_SLUG = "wardenx-demo";
+
 const ORG = {
-  slug: "wardenx-demo",
+  slug: "chartwarden-demo",
   legal: "Engrace Hospice, Inc.",
   display: "Engrace Hospice",
 };
@@ -56,7 +59,7 @@ interface SeedUser {
 
 const USERS: SeedUser[] = [
   {
-    email: "admin@wardenx.local",
+    email: "admin@chartwarden.local",
     name: "Ada Administrator",
     roleKey: "administrator",
     roleName: "Administrator",
@@ -74,7 +77,7 @@ const USERS: SeedUser[] = [
     // `hasRole(ctx,"org_admin")` ABAC predicates across M20/M22/M23/M24/M25/M32/M33/M34 (tenant
     // onboarding/account, feature flags, tenant export, DSAR, billing overrides). `administrator` remains a
     // distinct clinical/regulatory role; `org_admin` ⊇ it in every permission.
-    email: "orgadmin@wardenx.local",
+    email: "orgadmin@chartwarden.local",
     name: "Otto OrgAdmin",
     roleKey: "org_admin",
     roleName: "Organization Administrator",
@@ -83,7 +86,7 @@ const USERS: SeedUser[] = [
     grantAll: true,
   },
   {
-    email: "casey@wardenx.local",
+    email: "casey@chartwarden.local",
     name: "Casey Clinician",
     roleKey: "clinician",
     roleName: "Clinician",
@@ -91,7 +94,7 @@ const USERS: SeedUser[] = [
     permCats: ["clinical"],
   },
   {
-    email: "avery@wardenx.local",
+    email: "avery@chartwarden.local",
     name: "Avery Auditor",
     roleKey: "auditor",
     roleName: "Compliance Auditor",
@@ -197,7 +200,7 @@ async function provisionTenantSpine(db: Client, orgId: string): Promise<void> {
      activated_at = COALESCE(tenant_account.activated_at, EXCLUDED.activated_at),
      updated_at = now()
    RETURNING id`,
-    [orgId, ORG.legal, "admin@wardenx.local", JSON.stringify({ source: "dev_seed" })],
+    [orgId, ORG.legal, "admin@chartwarden.local", JSON.stringify({ source: "dev_seed" })],
   );
   const tenantAccountId = firstRow(account, "seed: tenant_account upsert").id;
   console.log(`tenant account ${ORG.slug} → active`);
@@ -323,29 +326,22 @@ async function main(): Promise<void> {
   // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
   await db.query("BEGIN");
   const soleTenantUserIds = new Set<string>();
-  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
-    ORG.slug,
+  // The demo org was seeded as `wardenx-demo` before the ChartWarden rename: reset both slugs so a
+  // reseed over an old database removes the legacy tenant and its identities (usernames are the email
+  // local part, so a leftover `admin@chartwarden.local` would collide with the new sign-up).
+  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = ANY($1)", [
+    [ORG.slug, LEGACY_ORG_SLUG],
   ]);
-  const priorOrgId = prior.rowCount
-    ? firstRow(prior, "seed: existing organization lookup").id
-    : null;
+  const priorOrgIds = prior.rows.map((row) => row.id);
   // Seed emails are global Better Auth identities. If one has been attached to another tenant, abort
   // before deleting any tenant/user data instead of orphaning that tenant under replication mode.
-  const crossTenantSeedUsers = priorOrgId
-    ? await db.query<{ email: string }>(
-        `SELECT DISTINCT u.email
-           FROM "user" u
-           JOIN membership m ON m.user_id = u.id
-          WHERE u.email = ANY($1) AND m.organization_id <> $2`,
-        [emails, priorOrgId],
-      )
-    : await db.query<{ email: string }>(
-        `SELECT DISTINCT u.email
-           FROM "user" u
-           JOIN membership m ON m.user_id = u.id
-          WHERE u.email = ANY($1)`,
-        [emails],
-      );
+  const crossTenantSeedUsers = await db.query<{ email: string }>(
+    `SELECT DISTINCT u.email
+       FROM "user" u
+       JOIN membership m ON m.user_id = u.id
+      WHERE u.email = ANY($1) AND m.organization_id <> ALL($2::uuid[])`,
+    [emails, priorOrgIds],
+  );
   if (crossTenantSeedUsers.rowCount) {
     throw new Error(
       `refusing to reset demo identities shared with another organization: ${crossTenantSeedUsers.rows
@@ -354,8 +350,7 @@ async function main(): Promise<void> {
         .join(", ")}`,
     );
   }
-  if (prior.rowCount) {
-    const orgId = priorOrgId as string;
+  for (const orgId of priorOrgIds) {
     // A user identity is cross-org, so deleting the tenant must not delete an identity that still
     // belongs to another organization. Capture only users whose complete membership set is this
     // demo tenant before purgeOrgOwnedRows removes the membership rows. This also catches persona,
@@ -413,9 +408,9 @@ async function main(): Promise<void> {
         AND NOT EXISTS (
           SELECT 1 FROM membership m
            WHERE m.user_id = u.id
-             AND ($2::uuid IS NULL OR m.organization_id <> $2::uuid)
+             AND m.organization_id <> ALL($2::uuid[])
         )`,
-    [emails, priorOrgId],
+    [emails, priorOrgIds],
   );
   const ids = [...new Set([...soleTenantUserIds, ...uids.rows.map((r) => r.id)])];
   if (ids.length) {
@@ -506,7 +501,7 @@ async function main(): Promise<void> {
 
   // --- Write the gitignored credentials file ---
   const lines = [
-    "# WardenX — Local Dev Credentials",
+    "# ChartWarden — Local Dev Credentials",
     "",
     "> **Gitignored. Local only.** Generated by `bun run db:seed`. Re-running regenerates passwords.",
     // Derived from the connection this run actually used, never a hardcoded container name: the

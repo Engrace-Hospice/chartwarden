@@ -3,7 +3,7 @@
 // that already exist in the domain modules: a greeting, five KPI cards, My Tasks (HOPE windows, orders
 // awaiting signature, my IDG action items, my unsigned notes), the patients those items point at,
 // census and A/R aging, HOPE assessments due, and a right column with alerts, today's visits and
-// quick links. A source the actor lacks the permission for is never called. WardenX keeps no
+// quick links. A source the actor lacks the permission for is never called. ChartWarden keeps no
 // history snapshots for "vs last week" trends or a daily census/revenue series, and no "recently
 // viewed" patient list, so the cards show current detail instead and the patient panel lists the
 // patients the open work refers to.

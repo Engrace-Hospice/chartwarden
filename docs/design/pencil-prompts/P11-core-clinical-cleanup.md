@@ -10,7 +10,7 @@ entries that the original phase prompts skipped. This phase closes the corpus to
 > Recert, Work Queue + Review from P10 Note Lifecycle, Admin Settings from P4, Work Queue from
 > any console screen). Record each node id back into [`../SCREENS.md`](../SCREENS.md).
 
-File: `wardenx-P11-core-clinical-cleanup.pen`
+File: `chartwarden-P11-core-clinical-cleanup.pen`
 
 ---
 

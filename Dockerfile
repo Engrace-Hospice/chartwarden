@@ -1,4 +1,4 @@
-# Dockerfile — WardenX API + worker runtime image
+# Dockerfile — ChartWarden API + worker runtime image
 FROM oven/bun:1.3.5-slim AS base
 
 WORKDIR /app

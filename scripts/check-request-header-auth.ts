@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — request-header authorization gate (F-028)
+ * ChartWarden — request-header authorization gate (F-028)
  * ---------------------------------------------------------------------------
  * A request header is whatever the caller typed. Reading one is fine; deciding an AUTHORIZATION
  * question from one — without verifying it against server-held state — hands the decision to the

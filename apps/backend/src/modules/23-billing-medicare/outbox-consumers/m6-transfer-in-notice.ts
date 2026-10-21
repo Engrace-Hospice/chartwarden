@@ -91,7 +91,7 @@ export function planTransferNoticeDraft(input: {
     electionPeriodId: facts.inheritedElectionPeriodId,
     action: "original",
     supersedesNoticeId: null,
-    // No WardenX provider entity is flagged hospital-based; claims are TOB 81x throughout (tob/derivation.ts).
+    // No ChartWarden provider entity is flagged hospital-based; claims are TOB 81x throughout (tob/derivation.ts).
     tob: transferNoticeTob("81", "original") as "81C",
     statementFromDate: facts.effectiveAt,
     originalTransferDate: null,

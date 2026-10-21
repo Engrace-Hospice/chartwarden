@@ -1,5 +1,5 @@
 /**
- * WardenX — Fitness Gap Checks (event catalog · seam registry · PHI guards)
+ * ChartWarden — Fitness Gap Checks (event catalog · seam registry · PHI guards)
  * -------------------------------------------------------------------------
  * Closes the three enforcement gaps the fitness audit flagged as runtime-only
  * (FITNESS_EVENT_SEAM_CATALOG.md §C). Each sub-check is GROUNDED in the manifest +

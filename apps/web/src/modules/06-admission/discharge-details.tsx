@@ -1,6 +1,6 @@
 import { InlineAlert, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — "Discharge details for billing": the guided screen that completes a death
-// discharge or transfer-out recorded before WardenX captured the detail the final Medicare claim needs (place of
+// discharge or transfer-out recorded before ChartWarden captured the detail the final Medicare claim needs (place of
 // death → patient status 40/41/42; receiving care setting → 50/51). Reached from the admission detail's alert and
 // from a blocked claim's "Fix discharge details" action (`?claimId=` returns there).
 //   GET  /api/v1/admissions/:id/discharge-details

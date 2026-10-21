@@ -1,6 +1,6 @@
 // @chartwarden/saas-tenant-platform · services — the platform-tenant BAA service (M34 §3.8, §7.5, D11).
 //
-// The WardenX → tenant Business Associate Agreement control plane — DISTINCT from M40's tenant →
+// The ChartWarden → tenant Business Associate Agreement control plane — DISTINCT from M40's tenant →
 // external BAA register (`mdm_baa_record`). Three responsibilities, each PURE and IO-free over the
 // `BaaRegisterRepository` data port + a small set of injected ports (clock + outbox publisher), in the
 // MDM job-processor / lifecycle-machine pattern (packages/mdm/src/jobs/processors.ts): every fact is

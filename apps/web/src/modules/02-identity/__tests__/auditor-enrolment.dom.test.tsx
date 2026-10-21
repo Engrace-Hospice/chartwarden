@@ -73,7 +73,7 @@ describe("AuditorEnrolment", () => {
       if (path.endsWith("/totp/begin")) {
         return {
           data: {
-            otpauthUri: "otpauth://totp/WardenX:a@b.test?secret=KEY",
+            otpauthUri: "otpauth://totp/ChartWarden:a@b.test?secret=KEY",
             manualEntryKey: "KEY123",
           },
           error: undefined,

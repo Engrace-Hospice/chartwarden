@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "_comment": "WardenX shared compiler options (Phase 0). Per-package tsconfig.json extends this and sets composite project-reference fields. See docs/PHASE_0_SCAFFOLD_PLAN.md §2 D-b.",
+  "_comment": "ChartWarden shared compiler options (Phase 0). Per-package tsconfig.json extends this and sets composite project-reference fields. See docs/PHASE_0_SCAFFOLD_PLAN.md §2 D-b.",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023"],

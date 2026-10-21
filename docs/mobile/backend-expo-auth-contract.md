@@ -20,7 +20,7 @@ aux lots de sécurité mobile suivants.
 | chemin Better Auth | `/api/auth` | `/api/auth` |
 | `BETTER_AUTH_URL` | origine du backend | origine HTTPS du backend |
 | `TRUSTED_ORIGINS` | origines HTTP(S) exactes des SPA web | origines HTTPS exactes des SPA approuvées |
-| `MOBILE_AUTH_TRUSTED_ORIGINS` | scheme de callback exact choisi pour le dev build, par exemple `wardenx-dev://` | scheme/app link exact de l’application signée, à valider humainement |
+| `MOBILE_AUTH_TRUSTED_ORIGINS` | scheme de callback exact choisi pour le dev build, par exemple `chartwarden-dev://` | scheme/app link exact de l’application signée, à valider humainement |
 | WebAuthn | origins web résolues depuis `TRUSTED_ORIGINS` + `BETTER_AUTH_URL` | mêmes origins HTTP(S) uniquement, avec `PASSKEY_RP_ID`/`WEBAUTHN_RP_ID` |
 
 Les schemes natifs ne vont jamais dans CORS ou dans les expected origins WebAuthn. `exp://`, `*`,
@@ -35,7 +35,7 @@ PR C doit pinner une version client compatible avec Better Auth `1.6.25` et conf
 `authClient.getCookie()` fournit le matériel cookie Better Auth conservé par ce plugin. Le code peut
 l’appeler sous une forme compatible sync/async : `await authClient.getCookie()`.
 
-Le helper ne doit pas être supposé propriétaire du cookie applicatif `wardenx_csrf`. Le nonce CSRF
+Le helper ne doit pas être supposé propriétaire du cookie applicatif `chartwarden_csrf`. Le nonce CSRF
 ChartWarden suit le protocole séparé ci-dessous. `withCredentials: true` ne suffit pas à persister ou
 réémettre des cookies dans React Native : l’adaptateur fournit explicitement le header `Cookie`.
 
@@ -53,12 +53,12 @@ Le navigateur conserve son double-submit actuel. Le flux natif utilise le même 
    pré-organisation, MFA-enrolment, changement de mot de passe requis ou auditor-enrolment lorsque cette
    classe de session peut poursuivre son parcours.
 3. Exiger `200`, `Cache-Control: no-store, max-age=0` et un body `{ "token": "<64 hex>" }`. Le serveur
-   émet aussi `Set-Cookie: wardenx_csrf=<token>; Path=/; SameSite=Lax[; Secure]`. Le client natif utilise
+   émet aussi `Set-Cookie: chartwarden_csrf=<token>; Path=/; SameSite=Lax[; Secure]`. Le client natif utilise
    le body comme source explicite, car l’accès React Native à `Set-Cookie` varie selon le transport.
 4. Pour chaque `POST`, `PUT`, `PATCH` ou `DELETE` protégé sous `/api/v1/*`, construire :
 
    ```http
-   Cookie: <cookies Better Auth>; wardenx_csrf=<token>
+   Cookie: <cookies Better Auth>; chartwarden_csrf=<token>
    X-CSRF-Token: <token>
    ```
 
@@ -111,7 +111,7 @@ async function authHeaders(mutating: boolean) {
 
   const csrf = await csrfStore.requireCurrent();
   return {
-    Cookie: `${betterAuthCookie}; wardenx_csrf=${csrf}`,
+    Cookie: `${betterAuthCookie}; chartwarden_csrf=${csrf}`,
     "X-CSRF-Token": csrf,
   };
 }

@@ -5,7 +5,7 @@ import type { Claim837iInput } from "./build-837i-claim";
 const COMMON = {
   submitter: {
     name: "Example Hospice of Oregon",
-    id: "WARDENX01",
+    id: "CHARTWARDEN01",
     contactName: "Billing Office",
     contactPhone: "5035550100",
   },
@@ -29,7 +29,7 @@ const COMMON = {
 } as const;
 
 const envelope = (interchangeControlNumber: number) => ({
-  senderId: "WARDENX01",
+  senderId: "CHARTWARDEN01",
   receiverId: "STEDI",
   applicationReceiverCode: "STEDI",
   interchangeControlNumber,

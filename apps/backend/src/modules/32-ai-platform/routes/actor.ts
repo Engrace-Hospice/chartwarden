@@ -15,7 +15,7 @@
 //
 // ── `phiFullRead` IS READ HERE AND NOWHERE ELSE ────────────────────────────────────────────────────
 //
-// §4.1's R16 masks unless `wardenx.phi.full_read` is granted. It is resolved through
+// §4.1's R16 masks unless `chartwarden.phi.full_read` is granted. It is resolved through
 // `resolveActorPermissions` — the check-don't-gate seam, the same resolver `requirePermission` gates on —
 // and the read service applies it (read-service.ts's `maskInvocationForActor`). Extracting it once,
 // server-side, is what keeps "may see the patient" from becoming a query parameter.

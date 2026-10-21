@@ -3,7 +3,7 @@
 // Shape-identical to `machines/noe.ts`: a flat transition table, a pure `canTransition`, and a non-throwing
 // `reduce(state, event, ctx?) => { state, attemptNumber, error? }`. No clock, no DB, no PHI/MBI. The queue is
 // human work tracking: `submit` records that an operator keyed the item in DDE (an attestation, never a verified
-// fact); WardenX performs no FISS call.
+// fact); ChartWarden performs no FISS call.
 //
 //   queued -> assigned -> in_progress -> submitted -> accepted | returned, then closed.
 //   `cancelled` is reachable only before submission. `returned` (RTP, rejection or ADR request) opens a new

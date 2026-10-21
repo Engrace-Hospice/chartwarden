@@ -19,7 +19,7 @@
 //
 // Signed on paper (M6 v0.9.2): when the acknowledgement came from a scanned paper copy, the acknowledgement block
 // says so (with the filing date and a short document reference). When the version's CONTENT is on that paper
-// (`contentSource: scanned_paper` — an incomplete WardenX draft signed on paper), the render is a RECORD NOTICE:
+// (`contentSource: scanned_paper` — an incomplete ChartWarden draft signed on paper), the render is a RECORD NOTICE:
 // it names the paper copy as the authoritative addendum and does NOT print the (c)(4)–(8) sections, because empty
 // sections would misstate the determinations (an empty list would otherwise print "the hospice will cover
 // everything"). It is still rendered — rather than skipped — so the furnished / acknowledged events keep one

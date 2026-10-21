@@ -277,7 +277,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // encryption, KEK custody as a fail-closed env-sourced port) applied a fifth time — the identical
   // custody model `TWO_FACTOR_ENCRYPTION_KEY`/`M24_CREDENTIAL_ENCRYPTION_KEY`/`MESSAGING_ENCRYPTION_KEY`/
   // `M34_TENANT_KEK` already use, and the module's OWN spec (§4.11 D15/§14.3) independently commits to
-  // "the standard WardenX KMS-wrapped DEK pattern" for this exact table. No real cloud KMS credential or
+  // "the standard ChartWarden KMS-wrapped DEK pattern" for this exact table. No real cloud KMS credential or
   // new security decision was needed: the KEY MATERIAL is a CSPRNG mint (`randomBytes(32)`, the identical
   // mechanism every DEK/KEK mint on this platform already uses — no human chooses or reviews the bytes),
   // and the only operator-configured secret is the wrapping KEK, following the established shape exactly.
@@ -380,7 +380,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // `electionPeriodContextForOrg` seam, injected as a port (M12's manifest has no `dependsOn` edge to 6).
   // Two smaller gaps stay genuinely deferred, reported rather than fabricated: no RxBenefit cache exists
   // anywhere in this repository (the `invalidateRxBenefitCache` flag is preserved on the queue row for a
-  // future cache layer to act on), and no table maps a WardenX patient to its DoseSpot-side id
+  // future cache layer to act on), and no table maps a ChartWarden patient to its DoseSpot-side id
   // (`DosespotPatientIdResolver` stays an honest deny-stub — a MedHx fetch cannot name which vendor
   // patient to pull history for until a successful patient-sync upsert has somewhere to record its
   // response, and the vendor client itself is unbound regardless).

@@ -3,12 +3,12 @@ import { X12FormatError } from "../eligibility/x12-envelope";
 import { parse999 } from "./parse-999";
 
 const ISA =
-  "ISA*00*          *00*          *ZZ*STEDI          *ZZ*WARDENX01      *261009*1500*^*00501*000000777*0*T*:~";
+  "ISA*00*          *00*          *ZZ*STEDI          *ZZ*CHARTWARDEN01  *261009*1500*^*00501*000000777*0*T*:~";
 
 function ack(body: readonly string[]): string {
   return [
     ISA,
-    "GS*FA*STEDI*WARDENX01*20261009*1500*777*X*005010X231A1~",
+    "GS*FA*STEDI*CHARTWARDEN01*20261009*1500*777*X*005010X231A1~",
     "ST*999*0001*005010X231A1~",
     ...body,
     "SE*0*0001~",

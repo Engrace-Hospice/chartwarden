@@ -1,5 +1,5 @@
 /**
- * WardenX — activatable-row gate (#32)
+ * ChartWarden — activatable-row gate (#32)
  * ------------------------------------
  * `bun run arch:interactive-rows`
  *

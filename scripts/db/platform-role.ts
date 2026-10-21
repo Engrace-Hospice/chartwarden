@@ -1,5 +1,5 @@
 /**
- * WardenX — operator CLI: grant or revoke a PLATFORM-OWNED role (GAP-003 / GAP-096 follow-up).
+ * ChartWarden — operator CLI: grant or revoke a PLATFORM-OWNED role (GAP-003 / GAP-096 follow-up).
  *
  * Platform authority (`platform_*` keys, `ai_safety_owner`) confers nothing on a tenant-owned role row,
  * and no tenant route can create or assign one (422 RESERVED_ROLE). This is the one production path that

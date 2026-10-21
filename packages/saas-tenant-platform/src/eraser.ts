@@ -25,7 +25,7 @@
 //     would erase the very proof the destruction certificate is built on.
 //   - The §164.528 DISCLOSURE-ACCOUNTING surfaces (§8.2 PHI-Sensitive / 42 CFR Part 2) —
 //     `dsar_export_job` (+ `dsar_export_job_event`) and `support_session_event`. These record THAT a DSAR
-//     ran for a patient / THAT a WardenX support actor touched a patient's chart; they are
+//     ran for a patient / THAT a ChartWarden support actor touched a patient's chart; they are
 //     disclosure-accounting metadata about access, not the patient record of authority, and must outlive
 //     the tenant for the disclosure-accounting retention window. M34 never shortens that obligation (§8.4).
 //   - `onboarding_task_template` — the org-less reference catalog (shared platform config, not tenant data).

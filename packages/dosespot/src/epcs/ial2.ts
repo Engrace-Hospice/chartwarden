@@ -2,7 +2,7 @@
 // Pure, IO-free.
 //
 // 21 CFR §1311.115 requires IAL2 identity proofing before a prescriber may sign for controlled substances.
-// The proofing *action* is performed by DoseSpot's IDP (per ADR-006); WardenX receives the status back and
+// The proofing *action* is performed by DoseSpot's IDP (per ADR-006); ChartWarden receives the status back and
 // persists it on `dosespot_prescriber.ial2_status`. M12 does not implement an IAL2-equivalent flow itself —
 // it tracks the DoseSpot-administered status and gates signing on it. The status expires per DoseSpot policy
 // (currently 2 years); M12 emits an M36 routine alert 30 days before expiry and a high-severity alert 7 days

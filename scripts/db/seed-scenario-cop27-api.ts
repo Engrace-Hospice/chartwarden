@@ -1,5 +1,5 @@
 /**
- * WardenX — COP27 / FY2027 hospice demo data, written ONLY through the public HTTP API.
+ * ChartWarden — COP27 / FY2027 hospice demo data, written ONLY through the public HTTP API.
  *
  * Built to be run by a human against a deployed environment that holds demo data only (including
  * production while it has no real patients). Every write goes through the same routes the web app uses, so
@@ -48,7 +48,7 @@
  *   … -- --apply                                   # write (default is a dry run)
  *   … -- --apply --i-understand-this-is-production # required too when the host is not localhost
  *   … -- --apply --local-credentials               # localhost only; reads CREDENTIALS.local.md
- * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@wardenx.local), CHARTWARDEN_SEED_ORG_ID,
+ * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@chartwarden.local), CHARTWARDEN_SEED_ORG_ID,
  * CHARTWARDEN_SEED_PROVIDER_ENTITY_ID, CHARTWARDEN_SEED_PHYSICIAN_EMAIL + CHARTWARDEN_SEED_PHYSICIAN_PASSWORD (an EXISTING
  * account holding medical_director / hospice_physician, used only for physician signatures).
  */
@@ -129,7 +129,7 @@ async function optionalPhysicianSession(
 ): Promise<Session | null> {
   const email =
     process.env.CHARTWARDEN_SEED_PHYSICIAN_EMAIL?.trim() ||
-    (useLocalCredentials ? "drharris@wardenx.local" : undefined);
+    (useLocalCredentials ? "drharris@chartwarden.local" : undefined);
   const password =
     process.env.CHARTWARDEN_SEED_PHYSICIAN_PASSWORD ??
     (useLocalCredentials && email ? localPassword(email) : undefined);
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
       : requireEnv("CHARTWARDEN_SEED_BASE_URL"))
   ).replace(/\/+$/, "");
   const baseUrl = new URL(baseUrlText);
-  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
+  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@chartwarden.local";
   const orgId = process.env.CHARTWARDEN_SEED_ORG_ID?.trim() || undefined;
   const local = isLocalHost(baseUrl);
 

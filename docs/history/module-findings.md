@@ -135,7 +135,7 @@ the same pass, since the next 15-second tick reads the alert's current state cor
 alert gets its OWN transaction, so one alert's lost race never aborts the rest of an org's tick.
 **The tier-3 → `emergency_terminus` rung is deliberately refused rather than completed, reusing
 `m36-delivery-failed.ts`'s own reasoning for the identical edge rather than re-deciding it**: that
-transition's entry effects are `dial_emergency_contact` / `surface_psap_number` / `page_wardenx_ops`, all
+transition's entry effects are `dial_emergency_contact` / `surface_psap_number` / `page_chartwarden_ops`, all
 three `CALLER_OWNED_EFFECT_KINDS` `runEffects` deliberately does not execute, and confirmed — no caller
 anywhere in this codebase implements a real telephony dial, an M40 jurisdiction lookup, or a platform
 page (the "manual escalate" path the decider's own header names as the ladder's other trigger has no

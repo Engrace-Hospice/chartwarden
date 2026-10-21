@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Deploy an already-published, immutable WardenX image on the single-VPS Compose topology.
+# Deploy an already-published, immutable ChartWarden image on the single-VPS Compose topology.
 #
 # The workflow uploads this file on each release, then invokes it as:
 #   ./deploy.sh ghcr.io/owner/chartwarden:sha-<sha> ghcr.io/owner/chartwarden-web:sha-<sha> \

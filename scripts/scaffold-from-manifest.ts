@@ -1,5 +1,5 @@
 /**
- * WardenX — Scaffold generator (single source of truth: module-manifest.ts)
+ * ChartWarden — Scaffold generator (single source of truth: module-manifest.ts)
  * -------------------------------------------------------------------------
  * Emits the buildable monorepo skeleton DERIVED FROM the manifest so the tree maps
  * 1:1 to `codePaths`. Per PHASE_0_SCAFFOLD_PLAN.md §3 this guarantees the

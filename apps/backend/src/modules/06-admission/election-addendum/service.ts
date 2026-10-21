@@ -80,7 +80,7 @@ export interface ElectionAddendumServiceDeps {
 export type UploadedAcknowledgementInput = {
   readonly documentId: string;
   readonly documentVersionId: string;
-  /** When the paper was handed over — required when the version was never furnished in WardenX. */
+  /** When the paper was handed over — required when the version was never furnished in ChartWarden. */
   readonly furnishedAt?: string;
 } & (
   | {
@@ -231,7 +231,7 @@ export interface ElectionAddendumService {
   ): Promise<ElectionAddendumView>;
   /**
    * 418.24(c)(9) on paper — attach a scanned signed (or refused) paper copy uploaded to M22. From `furnished`
-   * it is the acknowledgement; from `draft` the paper was furnished outside WardenX, so the version is
+   * it is the acknowledgement; from `draft` the paper was furnished outside ChartWarden, so the version is
    * furnished (paper, at `furnishedAt`) and acknowledged in one transaction. Same events and audit as the
    * structured paths; the scanned copy is linked in `acknowledgementDocument*`, never over the rendered PDF.
    */

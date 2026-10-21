@@ -13,7 +13,7 @@
 // claim the MAC rejected at the payer stage (a 277CA rejection, i.e. the claim is `ack_rejected`). It carries ids only:
 // no MBI, no payer text, no rejection codes in the row (the codes ride in the PHI-free history detail). The deadline is
 // NULL: the ADR gives a claim-level RTP no filing deadline (the 36-month figure is how long FISS holds a returned
-// claim, not a window WardenX tracks). Idempotent through the same open-item unique index as the notices: a replay or a
+// claim, not a window ChartWarden tracks). Idempotent through the same open-item unique index as the notices: a replay or a
 // second rejection while an item is open creates nothing.
 //
 // Runs on the cron's org-scoped tx (system actor, `source = 'watchdog'`, no membership). Payloads carry ids, type and

@@ -5,7 +5,7 @@
 // loaded through the injected {@link AiPlatformAbacResolver} (org-scoped, RLS-backstopped) — never read
 // off the request body.
 //
-//   ai_safety_owner                        — §4.7 `wardenx.ai_safety_owner`: the CROSS-TENANT platform
+//   ai_safety_owner                        — §4.7 `chartwarden.ai_safety_owner`: the CROSS-TENANT platform
 //        operator. The one M32 predicate that cannot be expressed as a permission grant (see below).
 //   ai_capability_tenant_opted_in          — §4.7: an `ai_tenant_opt_in_record` for (org, capability) is
 //        ACTIVE. The SDK gate's tenant arm (§5.3 / W4).
@@ -21,24 +21,24 @@
 //
 // ── THE FOUR ROLE-SHAPED CELLS §4.1 NAMES THAT M32 DOES **NOT** REGISTER ──────────────────────────────
 //
-// §4.1's Predicates column spells `wardenx.organization.member`, `wardenx.tenant_admin`,
-// `wardenx.compliance_officer` and `wardenx.phi.full_read` beside `wardenx.ai_safety_owner`. Only the
+// §4.1's Predicates column spells `chartwarden.organization.member`, `chartwarden.tenant_admin`,
+// `chartwarden.compliance_officer` and `chartwarden.phi.full_read` beside `chartwarden.ai_safety_owner`. Only the
 // last is registered here, and the asymmetry is the whole design:
 //
-//   · `wardenx.organization.member` IS M3's intrinsic `inOrg`, verbatim ("session.organization_id ===
+//   · `chartwarden.organization.member` IS M3's intrinsic `inOrg`, verbatim ("session.organization_id ===
 //     target.organization_id"). Registering a second name for a rule the platform already implements
 //     would create two predicates that must never disagree, and `arch:abac-predicates` would be satisfied
 //     by either. This is the M20 rule-5 decision, unchanged.
-//   · `wardenx.tenant_admin` / `wardenx.compliance_officer` are ROLE facts, and §4.6's DEFAULT GRANTS
+//   · `chartwarden.tenant_admin` / `chartwarden.compliance_officer` are ROLE facts, and §4.6's DEFAULT GRANTS
 //     already carry them: `ai.tenant_opt_in` is granted to `tenant_admin` and nobody else, `ai.invocation
 //     .read` to the Compliance Officer and the AI Safety Owner. A predicate that re-asserted the role
 //     would be a second copy of the grant table that M3's catalog is the source of truth for, and the two
 //     would drift the first time a tenant restricted a template.
-//   · `wardenx.ai_safety_owner` CANNOT be reduced that way, and that is precisely why it is here. It is
+//   · `chartwarden.ai_safety_owner` CANNOT be reduced that way, and that is precisely why it is here. It is
 //     CROSS-TENANT: the operator's session may carry an organization that is not the row's, so `inOrg`
 //     denies them and no per-org grant can express "may act across every tenant". It is the only M32 cell
 //     that names an authority the org-scoped machinery cannot state.
-//   · `wardenx.phi.full_read` is M3/M5's masking grant, consumed by R16's projection rather than by a
+//   · `chartwarden.phi.full_read` is M3/M5's masking grant, consumed by R16's projection rather than by a
 //     guard (an actor without it gets a MASKED row, not a 403 — refusing the compliance officer the whole
 //     search because she may not read the free text would break the §164.528 review the route exists for).
 //

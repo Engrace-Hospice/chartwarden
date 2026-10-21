@@ -4,7 +4,7 @@ import type { TransferNotice837iInput } from "./build-837i-transfer-notice";
 
 export const ORIGINAL_8XC_INPUT: TransferNotice837iInput = {
   envelope: {
-    senderId: "WARDENX01",
+    senderId: "CHARTWARDEN01",
     receiverId: "NGSJ6",
     applicationReceiverCode: "NGSJ6",
     interchangeControlNumber: 42,
@@ -13,7 +13,7 @@ export const ORIGINAL_8XC_INPUT: TransferNotice837iInput = {
   },
   submitter: {
     name: "Example Hospice of Oregon",
-    id: "WARDENX01",
+    id: "CHARTWARDEN01",
     contactName: "Billing Office",
     contactPhone: "5035550100",
   },

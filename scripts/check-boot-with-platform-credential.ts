@@ -1,5 +1,5 @@
 /**
- * WardenX — Production-configuration BOOT check  (F-020 / issue #49)
+ * ChartWarden — Production-configuration BOOT check  (F-020 / issue #49)
  * ------------------------------------------------------------------
  * Start the backend the way a production deployment starts it — with `DATABASE_PLATFORM_URL` set —
  * and prove the process reaches `listen()` with the outbox relay running.

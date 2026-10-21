@@ -1,4 +1,4 @@
-// @chartwarden/terminology-loader — the "WardenX normalized CSV" reader: the documented admin-upload format for
+// @chartwarden/terminology-loader — the "ChartWarden normalized CSV" reader: the documented admin-upload format for
 // code lists that have no single machine-readable vendor release (X12 CARC/RARC, UB-04 revenue codes) and the
 // fallback for HCPCS / ICD-10-PCS / CVX when an operator hand-curates a file.
 //

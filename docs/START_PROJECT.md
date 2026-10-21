@@ -146,7 +146,7 @@ bun run db:seed
 
 The command writes randomly generated local credentials to
 `CREDENTIALS.local.md` (also Git-ignored). Open that file and use the
-`admin@wardenx.local` account to sign in at `http://localhost:5173`; choose the
+`admin@chartwarden.local` account to sign in at `http://localhost:5173`; choose the
 **Engrace Hospice** organization when prompted.
 
 For richer sample data, run these optional seeds after the basic seed. Some require

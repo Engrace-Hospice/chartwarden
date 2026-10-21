@@ -12,8 +12,8 @@
 import type { Client } from "pg";
 
 export const CARE_TEAM_SEATS: ReadonlyArray<{ email: string; role: "rn" | "volunteer" }> = [
-  { email: "dana@wardenx.local", role: "rn" },
-  { email: "vera@wardenx.local", role: "volunteer" },
+  { email: "dana@chartwarden.local", role: "rn" },
+  { email: "vera@chartwarden.local", role: "volunteer" },
 ];
 
 /** Replaces the persona seats on `patientIds`; a persona that does not exist yet is skipped. Returns the seats written. */

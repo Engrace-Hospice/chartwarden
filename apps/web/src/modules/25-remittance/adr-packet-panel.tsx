@@ -1,7 +1,7 @@
 import { Button, SelectField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the ADR RESPONSE PACKET section of the ADR work panel (hospice ADR/TPE/QIC
 // PRD, milestone 2b). While the case is in assembly the specialist attaches the documents the MAC asked for and
-// ticks the checklist; in review a DIFFERENT person signs off; then the filing made outside WardenX is recorded
+// ticks the checklist; in review a DIFFERENT person signs off; then the filing made outside ChartWarden is recorded
 // with its proof (channel, confirmation reference, when) under a step-up. The server owns every rule (reviewer
 // separation, enclosure refusals, the late-filing acknowledgement, the frozen manifest) and its message is shown
 // verbatim (ADR-0030); this component only collects facts and offers the moves the case state allows.

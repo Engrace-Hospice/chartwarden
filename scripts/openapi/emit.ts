@@ -1,5 +1,5 @@
 /**
- * WardenX — OpenAPI contract generator (F0-T01, ADR-0032)
+ * ChartWarden — OpenAPI contract generator (F0-T01, ADR-0032)
  * -------------------------------------------------------
  * Assembles docs/api/openapi.json from the auto-discovered backend routes
  * (scan-routes.ts) + the schema-enrichment registry (enrichments.ts). This file
@@ -172,7 +172,7 @@ function build(routes: ScannedRoute[]): BuildResult {
   const doc: Record<string, unknown> = {
     openapi: "3.1.0",
     info: {
-      title: "WardenX API",
+      title: "ChartWarden API",
       version: readVersion(),
       description:
         "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema.",
@@ -181,7 +181,7 @@ function build(routes: ScannedRoute[]): BuildResult {
     components: {
       responses: {
         Error: {
-          description: "WardenX error envelope",
+          description: "ChartWarden error envelope",
           content: {
             "application/json": {
               schema: {

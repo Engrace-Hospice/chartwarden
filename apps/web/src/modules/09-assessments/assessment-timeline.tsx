@@ -17,7 +17,7 @@ import {
 
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 
-// Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `aSIwN`): a Patient Workspace (banner) over a
+// Matched to the P1 Pencil frame (chartwarden-P1-clinical.pen `aSIwN`): a Patient Workspace (banner) over a
 
 // scale list | the selected scale's captures | a right-rail score trend. Every scale captured for the
 

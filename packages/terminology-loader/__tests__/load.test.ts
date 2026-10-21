@@ -170,7 +170,7 @@ describe("runLoadVersion", () => {
     r.store.addAttestation({
       id: "a1",
       system: "loinc",
-      licensee: "WardenX",
+      licensee: "ChartWarden",
       licenseReference: "LOINC-REF-9",
       attestedBy: "op",
       effectiveFrom: "2026-01-01",
@@ -273,7 +273,7 @@ describe("runScheduledSource", () => {
     lic.store.addAttestation({
       id: "a1",
       system: "snomed",
-      licensee: "WardenX",
+      licensee: "ChartWarden",
       licenseReference: "REF",
       attestedBy: "op",
       effectiveFrom: "2026-01-01",

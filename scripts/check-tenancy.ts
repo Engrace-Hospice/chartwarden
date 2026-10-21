@@ -1,5 +1,5 @@
 /**
- * WardenX — Tenancy & RLS Invariant Check  (ADR-0010; fitness check #10)
+ * ChartWarden — Tenancy & RLS Invariant Check  (ADR-0010; fitness check #10)
  * ------------------------------------------------------------------
  * Enforces, statically, the four tenancy invariants that prose alone let drift
  * across the corpus (audit X3/X4/S5):

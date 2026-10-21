@@ -14,7 +14,7 @@
 // ── WHAT PHASE 1 ACTUALLY SHIPS, STATED PLAINLY ───────────────────────────────────────────────────
 //
 // No `@anthropic-ai/sdk` dependency is installed and no HTTP call is made. `ai.full` is off for the
-// whole of Wave H, so nothing in WardenX dispatches to a model; adding a vendor SDK to the dependency
+// whole of Wave H, so nothing in ChartWarden dispatches to a model; adding a vendor SDK to the dependency
 // tree for code that cannot execute would buy supply-chain surface and nothing else.
 //
 // What ships instead is the adapter's SHAPE and its invariant: the transport is a port

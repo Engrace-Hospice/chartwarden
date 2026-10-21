@@ -244,7 +244,7 @@ export interface UploadedAcknowledgementFacts {
   readonly now: Date;
 }
 
-/** The plan for an uploaded acknowledgement: furnish first (paper furnished outside WardenX), or not. */
+/** The plan for an uploaded acknowledgement: furnish first (paper furnished outside ChartWarden), or not. */
 export interface UploadedAcknowledgementPlan {
   readonly furnishFirst: boolean;
   /** The (c)(10) furnish date to record when `furnishFirst`; null otherwise. */

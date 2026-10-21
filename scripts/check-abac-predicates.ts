@@ -1,5 +1,5 @@
 /**
- * WardenX — ABAC Named-Predicate Resolution Check  (M3 §4.2; fitness check #15)
+ * ChartWarden — ABAC Named-Predicate Resolution Check  (M3 §4.2; fitness check #15)
  * ----------------------------------------------------------------------------
  * Every name a route gates on must be a name some module DECLARES.
  *

@@ -30,7 +30,7 @@ export const STEP_UP = (operationKey: string): PreHandler =>
   requireStepUp(operationKey) as PreHandler;
 
 /**
- * §4.1/§4.2's baseline cell — `wardenx.organization.member`, which IS M3's intrinsic `inOrg`.
+ * §4.1/§4.2's baseline cell — `chartwarden.organization.member`, which IS M3's intrinsic `inOrg`.
  *
  * Bound explicitly so "this route is org-scoped" is a DECLARED fact rather than an absence (the M20/M28
  * rule-5 precedent — M29 registers no second name for M3's intrinsic org-scope rule).

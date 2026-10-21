@@ -54,7 +54,7 @@ export const externalFeed = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     kind: externalFeedKind("kind").notNull(),
     displayName: text("display_name").notNull(),
-    /** null for an inbound listener (WardenX owns the bind address). */
+    /** null for an inbound listener (ChartWarden owns the bind address). */
     host: text("host"),
     port: integer("port").notNull(),
     protocol: externalFeedProtocol("protocol").notNull(),

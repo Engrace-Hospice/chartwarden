@@ -1,5 +1,5 @@
 /**
- * WardenX — narrowing helpers for the gate scripts (F-012 / #34).
+ * ChartWarden — narrowing helpers for the gate scripts (F-012 / #34).
  *
  * `scripts/` compiles under the repo's own `noUncheckedIndexedAccess`, which types every indexed
  * read as `T | undefined`. Most of the resulting diagnostics in the gate scripts are one shape: a

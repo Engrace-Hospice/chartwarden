@@ -4,7 +4,7 @@
 // `request.context`, NEVER the body/query) — the single home for that extraction (the M32/M15/M16/M19/M20
 // precedent). No handler reads an org id, an acting membership id or a step-up flag off the wire.
 //
-// The FHIR-spec surface (R1-R22) authenticates with a SMART bearer token, not a WardenX session, and does
+// The FHIR-spec surface (R1-R22) authenticates with a SMART bearer token, not a ChartWarden session, and does
 // NOT go through this file — its actor is the `fhir_client`, resolved by ./bearer.ts.
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";

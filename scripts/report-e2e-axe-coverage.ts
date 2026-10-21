@@ -1,5 +1,5 @@
 /**
- * WardenX — E2E / Axe Coverage Report (#106, F-046)
+ * ChartWarden — E2E / Axe Coverage Report (#106, F-046)
  * --------------------------------------------------
  * `ui:parity` shows how much of the documented screen surface is BUILT. This report shows how much of
  * the BUILT `web`-app surface (`audit/ui-parity/ui-parity.json`, which `arch:ui-parity` keeps fresh) is
@@ -131,7 +131,7 @@ const axeCount = rows.length - zeroAxe.length;
 
 // ---- render ------------------------------------------------------------------------------------------
 const lines: string[] = [];
-lines.push("# WardenX — E2E / Axe Coverage Report");
+lines.push("# ChartWarden — E2E / Axe Coverage Report");
 lines.push("");
 lines.push(
   "> **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` " +

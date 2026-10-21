@@ -1,7 +1,7 @@
 // apps/backend/src/modules/02-identity/routes/identity-routes.ts — M2-T06 identity route
 // inventory (M2 spec §4.1–4.2; proves the §7.1, §7.2, §7.5, §7.6 happy paths).
 //
-// The WardenX-specific `/api/v1/*` identity routes M2 owns as hand-written Fastify routes
+// The ChartWarden-specific `/api/v1/*` identity routes M2 owns as hand-written Fastify routes
 // (the auth primitives — sign-in, 2FA enroll/verify §7.4, passkey enroll/login §7.3 — are
 // Better-Auth-mounted at `/api/auth/*` by the vendor adapter in packages/auth, M2-T01; the
 // step-up routes are M2-T05; the auditor-invite route is M3-owned per D4 — see §4.1):
@@ -99,7 +99,7 @@ const normalizeEmail = (email: string): string => email.trim().toLowerCase();
  *
  * Both invitation routes used to take this from `request.context.attributes.organizationName` and
  * fall back to the literal `"Organization"`. Nothing has ever written that attribute (F-030), so the
- * fallback was not a fallback — it was the only branch. Every WardenX invitation row was stored with
+ * fallback was not a fallback — it was the only branch. Every ChartWarden invitation row was stored with
  * the name `Organization`, the pre-auth `GET /invitations/:token` preview served that back to the
  * invitee's browser, and the email said "You've been invited to join your organization".
  *

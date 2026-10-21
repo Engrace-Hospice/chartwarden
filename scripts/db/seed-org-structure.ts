@@ -1,5 +1,5 @@
 /**
- * WardenX — org structure demo data: provider_entity + location (local dev). NOT for production.
+ * ChartWarden — org structure demo data: provider_entity + location (local dev). NOT for production.
  *
  * M1 Foundation owns `provider_entity`/`location` (§3.4/§3.5) but exposes NO REST route to create
  * either — confirmed by reading every M1/M2 route file: the only reference anywhere in the backend
@@ -21,7 +21,7 @@
 import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 
 // Fixed id so downstream scenario scripts can reference it without a lookup.
 export const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
        FROM "user" u
       WHERE u.id = m.user_id
         AND m.organization_id = $1
-        AND u.email IN ('admin@wardenx.local', 'orgadmin@wardenx.local')
+        AND u.email IN ('admin@chartwarden.local', 'orgadmin@chartwarden.local')
         AND (m.default_provider_entity_id IS DISTINCT FROM $2
              OR NOT (m.default_location_ids @> $3::jsonb))`,
     [orgId, PROVIDER_ENTITY_ID, JSON.stringify([LOCATION_MAIN_ID, LOCATION_IPU_ID])],

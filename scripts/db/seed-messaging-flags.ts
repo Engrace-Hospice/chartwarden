@@ -1,5 +1,5 @@
 /**
- * WardenX — additive seed: turn the M36 messaging capabilities ON for the demo org.
+ * ChartWarden — additive seed: turn the M36 messaging capabilities ON for the demo org.
  *
  * Every flag defaults OFF and the web shell fails closed, so a freshly (re)seeded tenant shows none of the
  * link-a-record, needs-a-response, ask-a-nurse, urgent/SBAR or IDG controls. `db:seed:all` runs after the demo org is
@@ -17,7 +17,7 @@
 import { Client } from "pg";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 
 // `messaging.role_send` needs `messaging.ack_requests` on too (a role send without a response record is a 503).
 export const MESSAGING_FLAGS = [

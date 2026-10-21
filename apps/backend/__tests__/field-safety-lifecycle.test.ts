@@ -367,7 +367,7 @@ describe("§2.2.2 the escalation ladder and its terminus", () => {
     });
     expect(kinds(t.effects)).toContain("dial_emergency_contact");
     expect(kinds(t.effects)).toContain("surface_psap_number");
-    expect(kinds(t.effects)).toContain("page_wardenx_ops");
+    expect(kinds(t.effects)).toContain("page_chartwarden_ops");
     expect(events(t.effects)).toContain("m20.safety.sos_terminus_reached");
   });
 
@@ -405,7 +405,7 @@ describe("§2.2.2 the escalation ladder and its terminus", () => {
     });
     expect(kinds(effects)).not.toContain("sos_state_history");
     expect(events(effects)).toContain("m20.safety.sos_terminus_reached");
-    expect(kinds(effects)).toContain("page_wardenx_ops");
+    expect(kinds(effects)).toContain("page_chartwarden_ops");
   });
 
   it("refuses to re-page an alert that is not in the terminus", () => {

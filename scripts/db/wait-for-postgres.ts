@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * WardenX — wait for the local compose Postgres, and prove a reset actually reset it (F-016 / #43).
+ * ChartWarden — wait for the local compose Postgres, and prove a reset actually reset it (F-016 / #43).
  *
  * `db:reset` used to be `docker rm -f … && docker volume rm … && db:up && sleep 3 && db:migrate`.
  * Two things were wrong with that, and this script replaces both:

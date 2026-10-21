@@ -51,7 +51,7 @@ export type TriageVendorHandoffResult =
   | { readonly result: "transport_failure"; readonly nextRetryAt: string };
 
 /** What the vendor reports back about a call it is handling. M19 mirrors this onto its own
- *  `triage_call` row; the vendor never writes WardenX state. */
+ *  `triage_call` row; the vendor never writes ChartWarden state. */
 export type TriageVendorCallUpdate =
   | { readonly kind: "in_progress"; readonly observedAt: string }
   | {

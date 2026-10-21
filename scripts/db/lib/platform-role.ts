@@ -1,5 +1,5 @@
 /**
- * WardenX — grant / revoke a PLATFORM-OWNED role (GAP-003, GAP-096). The shared core of the operator CLI
+ * ChartWarden — grant / revoke a PLATFORM-OWNED role (GAP-003, GAP-096). The shared core of the operator CLI
  * (`scripts/db/platform-role.ts`) and the dev seeds (`seed-org-admin.ts`, `seed-scenario-billing.ts`).
  *
  * Since GAP-003 a platform role key (`platform_*`, or the exact key `ai_safety_owner`) or the
@@ -215,7 +215,7 @@ export async function resolveActiveMembership(
  * Run `fn` in one transaction whose write-audit rows carry `correlationId` (the M4 triggers read
  * `app.correlation_id`; `app.org_id` scopes the tenant rows). Rolls back on any error, so a refused grant
  * leaves neither a role row nor an audit row behind. `actor_user_id` stays NULL: the operator acts on a
- * database connection, not a WardenX session — the correlation id carries the change ticket instead.
+ * database connection, not a ChartWarden session — the correlation id carries the change ticket instead.
  */
 export async function withPlatformRoleAudit<T>(
   db: Client,

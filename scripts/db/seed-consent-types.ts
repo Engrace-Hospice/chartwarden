@@ -1,5 +1,5 @@
 /**
- * WardenX — minimal `consent_type_catalog` fixture (local dev / E2E only). NOT for production.
+ * ChartWarden — minimal `consent_type_catalog` fixture (local dev / E2E only). NOT for production.
  *
  * `consent_type_catalog` (M39 §3.3 #1) is a platform-shared reference table (no organization_id) —
  * its own schema comment says it should be "seeded idempotently in M39-T09 / the migration §3.4",

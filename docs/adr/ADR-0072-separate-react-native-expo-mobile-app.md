@@ -44,12 +44,12 @@ transitions, validation, session state and auditing remain ChartWarden server re
    bearer mint, proxy auth service or client-selected organization.
 5. Browser origins and native callbacks are different configuration classes. `TRUSTED_ORIGINS`
    contains exact HTTP(S) browser origins used by CORS and WebAuthn. `MOBILE_AUTH_TRUSTED_ORIGINS`
-   contains exact custom schemes such as `wardenx://` and is consumed only by Better Auth. Wildcards,
+   contains exact custom schemes such as `chartwarden://` and is consumed only by Better Auth. Wildcards,
    `Origin: null`, `exp://` and implicit production localhost values are forbidden. Universal/App Links
    are HTTPS and therefore use the reviewed web-origin list.
 6. ChartWarden's cookie-authenticated `/api/v1/*` mutations keep the double-submit CSRF control. A native
    client obtains the nonce from authenticated `GET /api/v1/auth/csrf`, then sends the Better Auth
-   cookie plus `wardenx_csrf=<nonce>` in `Cookie` and the same nonce in `X-CSRF-Token`. No native
+   cookie plus `chartwarden_csrf=<nonce>` in `Cookie` and the same nonce in `X-CSRF-Token`. No native
    marker, User-Agent or absent Origin bypass exists.
 7. Passkeys remain the existing browser WebAuthn ceremony until native enrollment/assertion is proven
    on iOS and Android with associated domains. Native PR C must support the server's TOTP and backup-code

@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM WAGE-INDEX LOAD (M23 §4.1 #42, GAP-144). The annual CMS
-// hospice wage index into the PLATFORM-SHARED table, by a WardenX platform administrator:
+// hospice wage index into the PLATFORM-SHARED table, by a ChartWarden platform administrator:
 //
 //   POST /api/v1/admin/billing/wage-indexes/load — `billing.rule_config.platform_admin` + a fresh step-up + no AI
 //                                                  actor + `Idempotency-Key`; all-or-nothing; NO PHI.

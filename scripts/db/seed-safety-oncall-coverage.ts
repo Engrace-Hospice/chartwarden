@@ -1,5 +1,5 @@
 /**
- * WardenX — demo safety/on-call coverage seed. Closes the two standing gaps the hourly M20 and half-hourly M19
+ * ChartWarden — demo safety/on-call coverage seed. Closes the two standing gaps the hourly M20 and half-hourly M19
  * coverage-gap watchdogs (deliberately) re-alert on, so the demo inbox stops filling with critical pages:
  *   - M20: one org-wide `safety_supervisor_subscription` (supervisor@) covering every field clinician;
  *   - M19: one long-running active `clinical_rn` `on_call_shift` (rita@) for the demo ProviderEntity.
@@ -14,10 +14,10 @@ import { Client } from "pg";
 import { buildRnCoverageShift, buildSupervisionSubscription } from "./lib/safety-oncall-coverage";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
-const ORG_SLUG = "wardenx-demo";
+const ORG_SLUG = "chartwarden-demo";
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
-const SUPERVISOR_EMAIL = "supervisor@wardenx.local";
-const RN_EMAIL = "rita@wardenx.local";
+const SUPERVISOR_EMAIL = "supervisor@chartwarden.local";
+const RN_EMAIL = "rita@chartwarden.local";
 
 async function membershipId(db: Client, orgId: string, email: string): Promise<string> {
   const res = await db.query<{ id: string }>(

@@ -939,15 +939,15 @@ export const electionAddendumSignerKind = pgEnum("election_addendum_signer_kind"
   "representative",
 ]);
 
-/** `election_addendum_acknowledgement_source` — how the (c)(9) acknowledgement was captured: keyed in WardenX, or a
+/** `election_addendum_acknowledgement_source` — how the (c)(9) acknowledgement was captured: keyed in ChartWarden, or a
  *  scanned signed paper copy linked to its M22 document version (mig 0395). */
 export const electionAddendumAcknowledgementSource = pgEnum(
   "election_addendum_acknowledgement_source",
   ["structured", "uploaded"],
 );
 
-/** `election_addendum_content_source` — where the 418.24(c) content of a version lives: in WardenX, or on a
- *  signed paper copy that was scanned (the version was never completed in WardenX; mig 0396). */
+/** `election_addendum_content_source` — where the 418.24(c) content of a version lives: in ChartWarden, or on a
+ *  signed paper copy that was scanned (the version was never completed in ChartWarden; mig 0396). */
 export const electionAddendumContentSource = pgEnum("election_addendum_content_source", [
   "structured",
   "scanned_paper",
@@ -1499,7 +1499,7 @@ export const hopeValidationSeverity = pgEnum("hope_validation_severity", ["error
 /** `j2051_severity` — the CMS-defined four-level symptom-impact item (D4; drives the 2-day SFV trigger). */
 export const j2051Severity = pgEnum("j2051_severity", ["none", "mild", "moderate", "severe"]);
 
-/** `hope_isc` — WardenX's internal HOPE item-set code for routing active CMS items by timepoint. */
+/** `hope_isc` — ChartWarden's internal HOPE item-set code for routing active CMS items by timepoint. */
 export const hopeIsc = pgEnum("hope_isc", ["HA", "HUV", "HD", "XX"]);
 
 /** `hope_answer_state` — canonical item answer state; skipped+NULL serializes to CMS `^`. */
@@ -3112,7 +3112,7 @@ export const safetyCheckInState = pgEnum("safety_check_in_state", [
  * `emergency_terminus` is ADDED to the spec's §3.2 Phase-A block. §2.2.2 and the M20-F05 / S13 /
  * INT-031 remediation make it the mandated end of the life-safety chain — the state a tier-3 SLA breach
  * with no acknowledgment enters, which auto-dials the consented emergency contact, surfaces the M40 PSAP
- * number to every recipient, pages WardenX ops, and KEEPS re-escalating until a human acknowledges. The
+ * number to every recipient, pages ChartWarden ops, and KEEPS re-escalating until a human acknowledges. The
  * amendment added the state to the state machine, §8.8's audit catalog and the `m20_sos_terminus_reached_total`
  * metric, and never updated the `CREATE TYPE` block it came from. Following Phase A verbatim would leave
  * the terminus unwritable and an unacknowledged 3 a.m. SOS sitting in `escalation_tier_3` forever, which
@@ -3507,7 +3507,7 @@ export const fhirInboundStatus = pgEnum("fhir_inbound_status", [
   "expired",
 ]);
 
-/** `fhir_inbound_owner_module` — the WardenX module that owns the native write on acceptance. Phase 1
+/** `fhir_inbound_owner_module` — the ChartWarden module that owns the native write on acceptance. Phase 1
  *  routes Patient demographics → M5 and MedicationStatement → M12 (§2.3 `KNOWN_OWNER_MODULES`). */
 export const fhirInboundOwnerModule = pgEnum("fhir_inbound_owner_module", ["m5", "m12"]);
 
@@ -3663,7 +3663,7 @@ export const usageEventType = pgEnum("usage_event_type", [
   "hl7_message_outbound",
 ]);
 
-/** `usage_event_source_module` — which WardenX module emitted a usage event. */
+/** `usage_event_source_module` — which ChartWarden module emitted a usage event. */
 export const usageEventSourceModule = pgEnum("usage_event_source_module", [
   "m1",
   "m2",

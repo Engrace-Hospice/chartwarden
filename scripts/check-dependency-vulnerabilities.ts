@@ -1,5 +1,5 @@
 /**
- * WardenX — Dependency vulnerability gate  (GAP-087)
+ * ChartWarden — Dependency vulnerability gate  (GAP-087)
  * ------------------------------------------------------------------
  * `bun audit` was named in CLAUDE.md as a remediated finding ("7→1"), named again in the
  * 2026-08-07 audit's own Section 2 checklist — and invoked by NOTHING. Not `ci.yml`, not

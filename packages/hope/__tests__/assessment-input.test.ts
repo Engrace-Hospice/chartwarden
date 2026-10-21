@@ -78,7 +78,7 @@ describe("sectionJOf", () => {
         J2051: { entries: [{ symptomCode: "pain", severity: "severe" }] },
       },
     });
-    // The instrument's QUESTIONS. `pain` is an answer drawn from a WardenX-internal vocabulary that
+    // The instrument's QUESTIONS. `pain` is an answer drawn from a ChartWarden-internal vocabulary that
     // M10's route boundary already closes; re-checking it against a terminology service would be a
     // weaker asynchronous copy of a synchronous absolute check, incapable of failing.
     expect(j.jCodes).toEqual(["J2030", "J2050", "J2051"]);

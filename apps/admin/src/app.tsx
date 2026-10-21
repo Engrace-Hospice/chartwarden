@@ -8,7 +8,7 @@ import {
   ToastProvider,
 } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-// apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The WardenX-staff control-plane
+// apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The ChartWarden-staff control-plane
 // analogue of apps/web/src/shell + apps/portal's shell: it composes the cross-cutting providers around a
 // react-router router built from the admin screen registry, framed by the console layout (shell/layout.tsx —
 // the clinical app's sidebar + top bar). The shell reads the registry but imports NO module slice

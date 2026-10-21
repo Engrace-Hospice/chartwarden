@@ -2688,7 +2688,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        /** Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match) */
         post: operations["postApiV1AdrsByIdSubmissionreceipt"];
         delete?: never;
         options?: never;
@@ -2980,7 +2980,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`) */
+        /** The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `chartwarden.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`) */
         get: operations["getApiV1AiInvocations"];
         put?: never;
         post?: never;
@@ -3477,7 +3477,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match) */
+        /** Record the OMHA escalation request made outside ChartWarden once the QIC's decision date has passed: step-up, frozen once recorded (If-Match) */
         post: operations["postApiV1AppealsByIdRequestescalation"];
         delete?: never;
         options?: never;
@@ -3528,7 +3528,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        /** Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match) */
         post: operations["postApiV1AppealsByIdSubmissionreceipt"];
         delete?: never;
         options?: never;
@@ -3883,7 +3883,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce */
+        /** Bootstrap the authenticated cookie client's ChartWarden double-submit CSRF nonce */
         get: operations["getApiV1AuthCsrf"];
         put?: never;
         post?: never;
@@ -4925,7 +4925,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: WardenX never calls DDE */
+        /** Attest the item was keyed in DDE (step-up). An operator attestation, not a verified fact: ChartWarden never calls DDE */
         post: operations["postApiV1BillingDdeitemsByIdRecordsubmission"];
         delete?: never;
         options?: never;
@@ -20984,7 +20984,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record (or, once recorded, amend) the receipt of a filing made outside WardenX: step-up, frozen once recorded (If-Match) */
+        /** Record (or, once recorded, amend) the receipt of a filing made outside ChartWarden: step-up, frozen once recorded (If-Match) */
         post: operations["postApiV1ReopeningsByIdSubmissionreceipt"];
         delete?: never;
         options?: never;
@@ -25253,7 +25253,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: never;
     responses: {
-        /** @description WardenX error envelope */
+        /** @description ChartWarden error envelope */
         Error: {
             headers: {
                 [name: string]: unknown;

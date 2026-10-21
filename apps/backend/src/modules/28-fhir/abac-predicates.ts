@@ -17,7 +17,7 @@
 //       holding `fhir.export.bulk.cancel`.
 //
 //   REGISTERED but bound by NO §4.1 route in Phase 1 (the FHIR-spec bearer surface enforces them in the
-//   handler, not through M3 — those routes carry no WardenX session for `requireAbac` to read):
+//   handler, not through M3 — those routes carry no ChartWarden session for `requireAbac` to read):
 //     · fhir_export_scope_satisfied      — requested `_type` ⊆ client `allowed_scopes` (bound at $export).
 //     · fhir_client_active               — status=active AND (IP in allowlist if any) AND BAA active.
 //     · fhir_export_recipient_authorized — per-resource M39 consent intersection at egress.

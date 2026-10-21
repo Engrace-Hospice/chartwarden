@@ -8539,7 +8539,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m20OutboxPublisher,
       policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
-      // GAP-032 — the SOS emergency-terminus effects: the platform page to WardenX ops, the M36 voice call
+      // GAP-032 — the SOS emergency-terminus effects: the platform page to ChartWarden ops, the M36 voice call
       // to the consented emergency contact (gated OFF by CHARTWARDEN_SOS_CONTACT_DIAL), and the M40 PSAP
       // lookup. An unbound port degrades to a RECORDED ledger skip and a loud boot line - it never stops
       // the terminus being entered (see 20-field-safety/terminus/build.ts).

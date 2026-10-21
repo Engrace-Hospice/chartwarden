@@ -1,5 +1,5 @@
 /**
- * WardenX — MDM canonical demo data (local dev). NOT for production / real provider data.
+ * ChartWarden — MDM canonical demo data (local dev). NOT for production / real provider data.
  *
  * Populates the org-less canonical Master Data directory (external_physician / facility / payer) so
  * the M40 MDM console shows records. These are the public-read "golden" entities (RLS USING(true))

@@ -138,7 +138,7 @@ export interface ScannedCopyDraft {
   readonly paperDate: string;
   readonly furnishedDate: string;
   readonly reason: string;
-  /** True when the version was never furnished in WardenX (a draft). */
+  /** True when the version was never furnished in ChartWarden (a draft). */
   readonly needsFurnishDate: boolean;
 }
 

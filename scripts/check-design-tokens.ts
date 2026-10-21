@@ -1,5 +1,5 @@
 /**
- * WardenX — Design-token enforcement  (Lantern; fitness check)
+ * ChartWarden — Design-token enforcement  (Lantern; fitness check)
  * ------------------------------------------------------------------
  * Locks in the "tokens only, zero raw hex" discipline the R0/R1 Lantern reconciliation
  * established (DESIGN.md §2/§10/§11) so it survives future PRs instead of relying on reviewer

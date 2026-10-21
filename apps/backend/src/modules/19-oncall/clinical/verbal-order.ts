@@ -91,7 +91,7 @@ export function assertVerbalOrderStepUp(
  * is that the LPN's selector and the server refuse the same set, and a verbal-order entry point with its
  * own copy of the matrix would be the way around it. The vendor operator is excluded by the same matrix
  * (D13 / §6 grant Ext Triage Op no verbal-order row), which matters more than it looks — a vendor operator
- * has no WardenX membership to be `recordingMembershipId`.
+ * has no ChartWarden membership to be `recordingMembershipId`.
  */
 export function assertVerbalOrderScope(discipline: TriageActorDiscipline): void {
   require_(

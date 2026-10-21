@@ -29,7 +29,7 @@
 //
 // THE TERMINUS RUNG IS ENTERED AT THE TIER-3 BREACH (GAP-032). `escalateSos` from `escalation_tier_3`
 // reaches `emergency_terminus`, whose three life-safety effects (`dial_emergency_contact`,
-// `surface_psap_number`, `page_wardenx_ops`) are `CALLER_OWNED_EFFECT_KINDS` the effects runner does not
+// `surface_psap_number`, `page_chartwarden_ops`) are `CALLER_OWNED_EFFECT_KINDS` the effects runner does not
 // execute: a telephony / webhook round-trip must never hold a pooled tenant connection. They are therefore
 // recorded as INTENT rows in `safety_sos_terminus_action` (`../terminus/`) in the SAME tx as the state
 // change, and an executor performs them out of the tx and settles each row. The state is a fact about an
