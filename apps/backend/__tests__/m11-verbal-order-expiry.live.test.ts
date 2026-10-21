@@ -22,7 +22,7 @@
  * that had tightened its window (§2.3 D3, tighten-only) would have gotten the wrong deadline through
  * this seam. `verbalPolicyForOrg` fixes that; one of the cases below proves it.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:verbal-order-expiry:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m11:verbal-order-expiry:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -48,7 +48,7 @@ import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/events-by-m12";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

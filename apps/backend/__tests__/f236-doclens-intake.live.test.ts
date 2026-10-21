@@ -14,7 +14,7 @@
  * `local_only` pilot tenant is routed to the local backend and the ledger row's payloads are DEK
  * ciphertext; a tenant with no `ai_token_budgets` refuses at the cap gate; `ai.full` off records nothing.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:f236:doclens-intake:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f236:doclens-intake:live
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -36,7 +36,7 @@ import {
 } from "../src/modules/32-ai-platform/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -76,7 +76,7 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

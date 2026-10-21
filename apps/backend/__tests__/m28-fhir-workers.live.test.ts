@@ -22,7 +22,7 @@
  *   7. the session sweeper deletes only sessions past the 90-day retention, per org
  *   8. one org's failure does not stop the others (AggregateError at the end)
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m28:workers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m28:workers:live
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -51,8 +51,8 @@ import {
 } from "../src/modules/28-fhir/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -577,7 +577,7 @@ describe.skipIf(!DB_URL)("GAP-084 — M28 §4.8 workers — LIVE Postgres", () =
     });
   });
 
-  describe("BullMQ wiring (needs WARDENX_TEST_REDIS_URL — a throwaway valkey/valkey:8)", () => {
+  describe("BullMQ wiring (needs CHARTWARDEN_TEST_REDIS_URL — a throwaway valkey/valkey:8)", () => {
     it.skipIf(!REDIS_URL)(
       "the producer's deterministic job id reaches the real processor, which completes the job",
       async () => {

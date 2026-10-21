@@ -15,7 +15,7 @@
  * triggers use the identical mechanism, so these two cases stand in for all 6 — the static gate covers
  * the rest on every CI run.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   packages/db/migrations/__tests__/nested-audit-redaction.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

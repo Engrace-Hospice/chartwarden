@@ -17,8 +17,8 @@
  *   B+C also: both events, published through the real publisher, now DISPATCH (they no longer wait forever
  *     on a declared-but-unbound consumer).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:f218-f219-f224:m19-triage-pairs:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f218-f219-f224:m19-triage-pairs:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -69,7 +69,7 @@ import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -115,7 +115,7 @@ describe.skipIf(!DB_URL)("F-218/F-219/F-224 — M19 triage pairs, LIVE Postgres"
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

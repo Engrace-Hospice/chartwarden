@@ -18,7 +18,7 @@
  *   8. a cancelled engagement refuses the enrolment steps (fail closed, audited); the attempt budget answers
  *      429; an ACTIVE session cannot re-run the enrolment mutations.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-enrolment:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-enrolment:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -49,7 +49,7 @@ import { createDbAuditorAccessGrantor } from "../src/modules/03-authorization/in
 import { enrolFirstTime, enrolmentHttp, totpCode } from "./_auditor-enrol-helper";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",
@@ -153,7 +153,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
           `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
       );
     }
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const file of readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort()) {

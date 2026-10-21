@@ -16,9 +16,9 @@
  * separately, against a real throwaway Redis, via `buildM27RecomputeEnqueue`.
  *
  * Gated on a live DB + Redis so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:6399 \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:6399 \
  *     bunx vitest run apps/backend/__tests__/m27-cost-report-workflow-slice.live.test.ts
- * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1.)
+ * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -41,8 +41,8 @@ import {
 } from "../src/modules/27-cost-report/index";
 import type { M27WriteActor } from "../src/modules/27-cost-report/routes/actor";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     };
 
     async function applyMigrations(): Promise<void> {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

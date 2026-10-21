@@ -9,8 +9,8 @@
  * can neither read nor vote nor see rows (service and raw SQL); a vote cannot name another poll's option (composite FK);
  * the app role cannot edit a poll's identity columns or delete a vote.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:polls:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:polls:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  *
  * Membership for the care_team case is stubbed true (`canViewChannel`): the rule under test is the channel KIND, and a
  * real care_team visibility check needs the patient seams. The kind check runs on the real channel row.
@@ -31,7 +31,7 @@ import {
 } from "../src/modules/36-messaging/polls/poll-service-db";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = randomBytes(32);
@@ -53,7 +53,7 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
   let bereavement: string;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

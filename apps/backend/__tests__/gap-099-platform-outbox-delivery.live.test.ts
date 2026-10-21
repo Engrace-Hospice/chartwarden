@@ -22,8 +22,8 @@
  * the real validating publisher, tick the real dispatcher with the real M40 platform bindings, and assert
  * the canonical actually moved. A missing GRANT, a missing policy or a missing function fails it.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:gap099:platform-outbox:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap099:platform-outbox:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -36,7 +36,7 @@ import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/index";
 import { M40_OUTBOX_EVENTS, buildM29NppesPlatformConsumers } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const EXTRA_ROLES = ["report_writer", "mdm_canonical_writer"];
@@ -134,7 +134,7 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
     ).rows;
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

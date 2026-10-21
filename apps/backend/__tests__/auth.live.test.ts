@@ -7,13 +7,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // apps/backend/__tests__/auth.live.test.ts — AUTH-T06 (ADR-0033) live-Postgres auth integration.
 // Proves the Better Auth ↔ M1 schema reconciliation (migration 0024): a real email+password sign-up
 // writes user/account/session rows against the migrated schema, and sign-in + the DB-backed session
-// store resolve. Skipped without WARDENX_TEST_DATABASE_URL (the CI `auth-live` lane / local pg18).
+// store resolve. Skipped without CHARTWARDEN_TEST_DATABASE_URL (the CI `auth-live` lane / local pg18).
 // Also proves 2FA-at-rest encryption (ADR-0034) and the password-reset flow (token issuance via the
 // sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
 // (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
 /**
  * Wrap a Drizzle client so every transaction runs as the RLS-enforced tenant role (`wardenx_app`),
@@ -67,7 +67,7 @@ describe.skipIf(!DB_URL)(
             `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
         );
       }
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

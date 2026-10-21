@@ -11,7 +11,7 @@
  *   4c. GUARD      an overlay row naming ANOTHER tenant's active hold does not make the message undeletable (org-matched join).
  *   5. PERMISSION  messaging.retention.manage is in the catalog table and granted to the three roles.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:message-legal-hold:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -23,7 +23,7 @@ import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/er
 import { isMessageHeldNow } from "../src/modules/36-messaging/jobs/retention-hold-sql";
 import { type LiveKit, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a860001";
 const ORG_B = "22222222-2222-4222-8222-22220a860002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a86a1";

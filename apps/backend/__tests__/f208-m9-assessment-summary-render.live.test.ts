@@ -21,8 +21,8 @@
  * mechanism is proven directly: two fresh chart-opens render TWO document versions of the SAME
  * `(aggregate_type, aggregate_id)`, never an `idempotent_skip`.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:f208:m9-assessment-summary-render:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f208:m9-assessment-summary-render:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -68,7 +68,7 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -102,7 +102,7 @@ describe.skipIf(!DB_URL)("F-208 — M9 assessment-summary render, LIVE Postgres"
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

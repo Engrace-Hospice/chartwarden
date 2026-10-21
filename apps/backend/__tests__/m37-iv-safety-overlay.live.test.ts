@@ -18,7 +18,7 @@
  *   • CROSS-TENANT — org B can neither read nor evaluate org A's overlay, an org-B delivery cannot attach to org
  *     A's admission, and the watchdog only ever hands org A's order ids to the activity read for org A.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m37:iv-overlay:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m37:iv-overlay:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ import { runIvBedsideCheckWatchdog } from "../src/modules/37-ipu/jobs/iv-bedside
 import { buildIpuIvSafetyOverlayProvider } from "../src/modules/37-ipu/seams/iv-overlay-provider";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -151,7 +151,7 @@ describe.skipIf(!DB_URL)("M37 IV-continuous safety overlay (GAP-107) — LIVE Po
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

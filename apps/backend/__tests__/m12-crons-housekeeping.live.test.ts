@@ -5,7 +5,7 @@
  * delivery are test doubles. Every guarded UPDATE is asserted through its observable effect (marker set once,
  * exactly one event) rather than through the vendor.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-housekeeping:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-housekeeping:live
  */
 import { createHash, randomUUID } from "node:crypto";
 import { DegradedError } from "@chartwarden/dosespot";
@@ -27,7 +27,7 @@ import { invalidateRxBenefitCacheForPatient } from "../src/modules/12-dosespot/j
 import { FakeDoseSpotVendor, FakeDoseSpotWebhookSender } from "./_fake-dosespot-vendor";
 import { type M12Live, ORG_A, ORG_B, setupM12Live } from "./_m12-live-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const T0 = new Date();
 const hours = (n: number) => new Date(T0.getTime() + n * 3_600_000);
 const days = (n: number) => new Date(T0.getTime() + n * 86_400_000);

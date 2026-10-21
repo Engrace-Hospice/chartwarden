@@ -5,7 +5,7 @@
  * events (live since F-175) and re-publishes M11's own D16-decisive
  * `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:lab-transmission-applier:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m11:lab-transmission-applier:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ import { M11_OUTBOX_EVENTS, type OrderWriteOutboxPort } from "../src/modules/11-
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -7,7 +7,7 @@
  * role, over the REAL M5 `PatientPrivacyFlagReader` (Drizzle) and the REAL M39 `ConsentEvaluator`
  * (Drizzle store) — no stubs on either side of the seams under test.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m37:privacy-gates:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m37:privacy-gates:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +19,7 @@ import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/servic
 import { createDbConsentEvaluator } from "../src/modules/39-consent/consent-store-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -13,7 +13,7 @@
  * writes, the two honest no-op cases (no MBI on file; no cap_period open for the event's year), and
  * cross-tenant isolation on the injected ports themselves.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m26:cap-consumer-store:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m26:cap-consumer-store:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ import { dispatchM26UpstreamEvent } from "../src/modules/26-cap/consumers/index"
 import { M26_OUTBOX_EVENTS } from "../src/modules/26-cap/events-by-m26";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

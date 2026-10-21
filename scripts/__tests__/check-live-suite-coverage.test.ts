@@ -151,7 +151,7 @@ describe("the FILE direction — does every suite have a script at all (#59)", (
 
   it("has a package.json script for every live suite file", () => {
     // 29 files had none. Nothing ran them: not CI, not a git hook, and not `bun run test`, which
-    // never sets WARDENX_TEST_DATABASE_URL — so `skipIf` reported them SKIPPED, never failed.
+    // never sets CHARTWARDEN_TEST_DATABASE_URL — so `skipIf` reported them SKIPPED, never failed.
     expect(report.unscripted).toEqual([]);
   });
 

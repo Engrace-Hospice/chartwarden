@@ -13,7 +13,7 @@
  * Also asserted: re-running every cron is a no-op (no new rows, no new events), and ORG B's data is
  * untouched when only ORG A is swept — the cross-tenant check, made on the app role, not a superuser.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m37:watchdogs:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m37:watchdogs:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -33,7 +33,7 @@ import {
 } from "../src/modules/37-ipu/jobs/watchdog-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-111111111111";

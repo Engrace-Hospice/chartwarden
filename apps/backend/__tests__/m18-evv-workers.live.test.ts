@@ -12,7 +12,7 @@
  * The aggregator is EXTERNAL: every adapter here is an in-memory fake behind the `EvvAggregatorAdapter` seam — no
  * network, and nothing here claims a live aggregator call.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m18:workers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m18:workers:live
  * (`evv_event` is RANGE-partitioned → a throwaway superuser DB needs `max_locks_per_transaction` raised.)
  */
 import { randomUUID } from "node:crypto";
@@ -48,7 +48,7 @@ import { M18_POLL_DEADLINE_MS, M18_SUBMIT_MAX_ATTEMPTS } from "../src/modules/18
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -111,7 +111,7 @@ describe.skipIf(!DB_URL)("M18 §4.8 workers — LIVE Postgres (GAP-056)", () => 
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

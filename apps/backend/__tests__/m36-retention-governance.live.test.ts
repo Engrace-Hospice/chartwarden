@@ -15,7 +15,7 @@
  *   7. OVERVIEW  periods read-only, next scan is Sunday 02:00 UTC, the last scan's counts and pending certificate; destruction_built false.
  *   8. NO PII    every response carries only the contract's keys: no body, no name, no email.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -58,7 +58,7 @@ import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retenti
 import { appRoleConnectionString } from "./_live-app-role";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

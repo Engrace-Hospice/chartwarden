@@ -1,3 +1,4 @@
+import "@chartwarden/types/env-bridge-preload"; // first: maps legacy WARDENX_* env names (see packages/types/src/env-bridge.ts)
 import { createHash, randomUUID } from "node:crypto";
 import {
   AUDIT_HASH_CHAIN_FLAG,
@@ -3384,7 +3385,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
   }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
-  // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
+  // The migrator now gates that grant on CHARTWARDEN_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
   // cluster directly and refuse to serve. Dev/test only warn — the local single-org demo needs the
   // bypass for pre-org reads until the platform pool lands.
@@ -4193,7 +4194,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.log.error({ err, eventType: event.eventType }, "auth audit write failed");
   // GAP-003/GAP-005 — the server-side MFA matrix (M2 §2.3): roles from M3's org-explicit reader (M2 may not read
   // M3's tables), factors from M2's enrolment reader. OPT-IN via
-  // `WARDENX_MFA_ENFORCEMENT=true` (the web app has no enrolment UI yet - see resolveMfaEnforcement).
+  // `CHARTWARDEN_MFA_ENFORCEMENT=true` (the web app has no enrolment UI yet - see resolveMfaEnforcement).
   const mfaGate = dbHandle
     ? createMfaEnrolmentGate({
         enforced: resolveMfaEnforcement(process.env),
@@ -6364,7 +6365,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // mount ran inside buildServer above): refuse to boot in production, and loudly list in dev, every
   // in-memory binding still standing behind a production contract on a DATABASE_URL boot. The ledger
   // notes live beside the bindings that chose them (wireModuleSeams / wireModuleErasers / the mount
-  // notes in registerModuleRoutes). WARDENX_INMEM_ASSERT=warn is the audit's one-iteration rollback.
+  // notes in registerModuleRoutes). CHARTWARDEN_INMEM_ASSERT=warn is the audit's one-iteration rollback.
   assertNoInMemoryBindingsOnDbBoot({ dbPresent: dbHandle !== undefined });
   if (dbHandle && auth) {
     // AC-05 — SECURITY_HARDENING §5.3.1's per-username + per-IP FAILED-attempt budgets. The global
@@ -8540,7 +8541,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       outbox: m20OutboxPublisher,
       policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
       // GAP-032 — the SOS emergency-terminus effects: the platform page to WardenX ops, the M36 voice call
-      // to the consented emergency contact (gated OFF by WARDENX_SOS_CONTACT_DIAL), and the M40 PSAP
+      // to the consented emergency contact (gated OFF by CHARTWARDEN_SOS_CONTACT_DIAL), and the M40 PSAP
       // lookup. An unbound port degrades to a RECORDED ledger skip and a loud boot line - it never stops
       // the terminus being entered (see 20-field-safety/terminus/build.ts).
       terminus: m20TerminusBag,

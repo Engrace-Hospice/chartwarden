@@ -13,7 +13,7 @@
  *      (a card is one of §4.5's three auto-complete kinds) completes the outreach with an
  *      `artifact_rendered` contact-log row (mig 0492) and a validated `outreach_completed`.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m16:document-rendered:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m16:document-rendered:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -42,7 +42,7 @@ import {
 } from "../src/modules/22-documents/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111131";

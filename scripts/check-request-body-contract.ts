@@ -46,7 +46,7 @@ const CHECK_ONLY = !process.argv.includes("--list");
  * not merely on report staleness"). Staleness is asserted by the unit tests over `checkRoutes` instead,
  * where the registry can be varied directly.
  */
-const FIXTURE_ROOT = process.env.WARDENX_FITNESS_ROOT;
+const FIXTURE_ROOT = process.env.CHARTWARDEN_FITNESS_ROOT;
 
 /** Methods that can carry a request payload. GET/DELETE bodies are not a thing this codebase uses. */
 const BODY_METHODS = new Set(["post", "put", "patch"]);

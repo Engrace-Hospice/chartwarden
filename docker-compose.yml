@@ -113,9 +113,9 @@ services:
     environment:
       DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/wardenx
       PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/wardenx
-      WARDENX_APP_PASSWORD: wardenx-app-dev-password
-      WARDENX_PLATFORM_PASSWORD: wardenx-platform-dev-password
-      WARDENX_DESTRUCTION_PASSWORD: wardenx-destruction-dev-password
+      CHARTWARDEN_APP_PASSWORD: wardenx-app-dev-password
+      CHARTWARDEN_PLATFORM_PASSWORD: wardenx-platform-dev-password
+      CHARTWARDEN_DESTRUCTION_PASSWORD: wardenx-destruction-dev-password
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx
       MINIO_SECRET_KEY: wardenx-minio-secret

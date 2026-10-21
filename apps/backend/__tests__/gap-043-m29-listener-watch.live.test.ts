@@ -13,7 +13,7 @@
  * `net.createServer` (listener alive). NOT covered here: a real mTLS listener process dying (the listener supervisor has its
  * own live suite, gap-086-m29-listener, which also proves the heartbeat fact is written).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:gap043:listener-watch:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap043:listener-watch:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -42,7 +42,7 @@ import {
 import { buildM36FeedHealthAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/feed-health-alerts";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -65,7 +65,7 @@ describe.skipIf(!DB_URL)("GAP-043 listener-health watcher - LIVE Postgres", () =
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (process.env.WARDENX_TEST_NO_PGVECTOR) {
+      if (process.env.CHARTWARDEN_TEST_NO_PGVECTOR) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw stripped)");

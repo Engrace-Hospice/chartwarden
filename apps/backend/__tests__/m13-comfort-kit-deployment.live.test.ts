@@ -17,7 +17,7 @@
  * `m13.comfort_kit.controlled_substance_discrepancy`, and emits the aggregate `m13.comfort_kit.returned`
  * ack; and cross-tenant isolation holds throughout.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m13:comfort-kit-deployment:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m13:comfort-kit-deployment:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -31,7 +31,7 @@ import { buildM13ComfortKitReturnReconciliationConsumer } from "../src/modules/1
 import { buildM13ComfortKitReturnedConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-returned";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

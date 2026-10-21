@@ -15,7 +15,7 @@
 | Performance/load | No load/DB query-plan/browser budget gate found | Missing |
 | Dependency/security | `bun audit` available | Currently fails one high advisory |
 
-Main suite result: **504 test files passed, 79 skipped; 7,850 tests passed, 1,011 skipped, 12 todo**. Database-dependent suites skip without `WARDENX_TEST_DATABASE_URL`; CI defines a broad live matrix, and selected live suites passed during this audit.
+Main suite result: **504 test files passed, 79 skipped; 7,850 tests passed, 1,011 skipped, 12 todo**. Database-dependent suites skip without `CHARTWARDEN_TEST_DATABASE_URL`; CI defines a broad live matrix, and selected live suites passed during this audit.
 
 ## TEST-001 - Critical workflows have no browser E2E coverage
 

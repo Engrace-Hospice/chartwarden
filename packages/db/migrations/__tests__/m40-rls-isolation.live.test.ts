@@ -27,15 +27,15 @@
  *
  * This applies the real migrations to a real Postgres and drives the policies as the unprivileged
  * `wardenx_app` role (no BYPASSRLS). Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m40` (SUPERUSER to a THROWAWAY db;
- *     for a local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1).
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m40` (SUPERUSER to a THROWAWAY db;
+ *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
   "wardenx_app",
@@ -97,7 +97,7 @@ describe.skipIf(!DB_URL)(
     }
 
     async function applyMigrations() {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       const files = readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith(".sql"))
         .sort();
@@ -106,7 +106,7 @@ describe.skipIf(!DB_URL)(
         if (stripVector) {
           sql = sql.replace(
             /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-            "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+            "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
           );
           sql = sql.replace(/\bvector\(\d+\)/g, "text");
           sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");
@@ -207,7 +207,7 @@ describe.skipIf(!DB_URL)(
 
     // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
     // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
-    // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable.
+    // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable.
     it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
       const { rows } = await db.query<{ rolbypassrls: boolean }>(
         "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",

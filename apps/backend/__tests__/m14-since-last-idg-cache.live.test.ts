@@ -18,7 +18,7 @@
  * event, idempotent redelivery via the outbox event's own id (no duplicate list entry), the "no matching
  * row" no-op for M10/M11/M12 (never fabricates a patient id), cross-tenant isolation, and the 30-day TTL.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bun run test:m14:since-last-idg-cache:live
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -43,8 +43,8 @@ import { buildM14MedicationOrderDiscontinuedConsumer } from "../src/modules/14-i
 import { SINCE_LAST_IDG_TTL_SEC } from "../src/modules/14-idg/consumers/since-last-idg-cache";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

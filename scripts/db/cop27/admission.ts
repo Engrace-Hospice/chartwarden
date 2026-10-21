@@ -102,7 +102,7 @@ export const POST_ACTIVATION_STATES = new Set([
 ]);
 
 const PHYSICIAN_NEEDED =
-  "needs a signed-in medical_director / hospice_physician account (the admin holds neither role); set WARDENX_SEED_PHYSICIAN_EMAIL/PASSWORD to an existing physician account";
+  "needs a signed-in medical_director / hospice_physician account (the admin holds neither role); set CHARTWARDEN_SEED_PHYSICIAN_EMAIL/PASSWORD to an existing physician account";
 
 export function requirePhysician(ctx: SeedContext): Session {
   if (!ctx.physician) throw new SkipStep(PHYSICIAN_NEEDED);

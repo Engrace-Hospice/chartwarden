@@ -17,7 +17,7 @@
  * role → the REAL catalog-validating publisher writes the outbox row → the REAL dispatcher delivers it →
  * M15's real consumer resolves the siting through M6's real org-explicit reader and inserts under RLS.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m15:plan-bootstrap:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m15:plan-bootstrap:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -65,7 +65,7 @@ const CTI_CLINICAL = {
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

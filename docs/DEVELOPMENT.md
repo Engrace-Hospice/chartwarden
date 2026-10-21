@@ -98,7 +98,7 @@ provision the LOGIN credentials the backend's optional pools connect as:
 
 ```sh
 PROVISION_DATABASE_URL=postgres://postgres:...@host/db \
-WARDENX_PLATFORM_PASSWORD=... WARDENX_DESTRUCTION_PASSWORD=... \
+CHARTWARDEN_PLATFORM_PASSWORD=... CHARTWARDEN_DESTRUCTION_PASSWORD=... \
 bun run db:provision-roles
 ```
 

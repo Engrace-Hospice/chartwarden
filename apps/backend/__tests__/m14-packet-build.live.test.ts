@@ -21,7 +21,7 @@
  *     skipped with `m14.packets.build_failed_for_patient` while a sibling patient's packet still builds.
  *   - Cross-tenant isolation: org B's admission never appears in org A's meeting build.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bun run test:m14:packet-build:live
  */
 import { randomUUID } from "node:crypto";
@@ -79,8 +79,8 @@ import { idgTriageCarePlanChangesForOrg } from "../src/modules/19-oncall/index";
 import { idgQualityFlaggedEventsForOrg } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

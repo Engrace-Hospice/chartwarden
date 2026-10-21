@@ -29,14 +29,14 @@ describe("resolveInMemoryAssertMode", () => {
 
   it("honors the explicit flag, including the production warn-only rollback", () => {
     expect(
-      resolveInMemoryAssertMode({ WARDENX_INMEM_ASSERT: "warn", NODE_ENV: "production" }),
+      resolveInMemoryAssertMode({ CHARTWARDEN_INMEM_ASSERT: "warn", NODE_ENV: "production" }),
     ).toBe("warn");
-    expect(resolveInMemoryAssertMode({ WARDENX_INMEM_ASSERT: "enforce" })).toBe("enforce");
+    expect(resolveInMemoryAssertMode({ CHARTWARDEN_INMEM_ASSERT: "enforce" })).toBe("enforce");
   });
 
   it("fails closed on a typo'd flag value (never silently downgrades to warn)", () => {
-    expect(resolveInMemoryAssertMode({ WARDENX_INMEM_ASSERT: "wran" })).toBe("enforce");
-    expect(resolveInMemoryAssertMode({ WARDENX_INMEM_ASSERT: "off" })).toBe("enforce");
+    expect(resolveInMemoryAssertMode({ CHARTWARDEN_INMEM_ASSERT: "wran" })).toBe("enforce");
+    expect(resolveInMemoryAssertMode({ CHARTWARDEN_INMEM_ASSERT: "off" })).toBe("enforce");
   });
 });
 
@@ -46,13 +46,13 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
     expect(() =>
       assertNoInMemoryBindingsOnDbBoot({
         dbPresent: true,
-        env: { WARDENX_INMEM_ASSERT: "enforce" },
+        env: { CHARTWARDEN_INMEM_ASSERT: "enforce" },
       }),
     ).toThrowError(InMemoryBindingError);
     try {
       assertNoInMemoryBindingsOnDbBoot({
         dbPresent: true,
-        env: { WARDENX_INMEM_ASSERT: "enforce" },
+        env: { CHARTWARDEN_INMEM_ASSERT: "enforce" },
       });
       expect.unreachable("must throw");
     } catch (err) {
@@ -69,7 +69,7 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
     expect(() =>
       assertNoInMemoryBindingsOnDbBoot({
         dbPresent: false,
-        env: { WARDENX_INMEM_ASSERT: "enforce" },
+        env: { CHARTWARDEN_INMEM_ASSERT: "enforce" },
         warn: (m) => {
           warned = m;
         },
@@ -89,7 +89,7 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
     let warned = "";
     assertNoInMemoryBindingsOnDbBoot({
       dbPresent: true,
-      env: { WARDENX_INMEM_ASSERT: "warn" },
+      env: { CHARTWARDEN_INMEM_ASSERT: "warn" },
       warn: (m) => {
         warned = m;
       },

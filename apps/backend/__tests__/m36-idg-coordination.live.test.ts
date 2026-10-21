@@ -16,7 +16,7 @@
  *
  *   The promotion case (WP 3.7) is out of scope here: nothing in 3.6 writes a promotion.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:idg:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:idg:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
@@ -50,7 +50,7 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000d0001";
 const ORG_B = "22222222-2222-4222-8222-2222000d0002";
 const KEK = randomBytes(32);

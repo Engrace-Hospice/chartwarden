@@ -33,9 +33,9 @@
  * workers already existed, so exercising them for real is both possible and the stronger proof).
  *
  * Gated on a live DB + Redis so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bunx vitest run apps/backend/__tests__/m30-quality-scheduled-jobs.live.test.ts
- * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1. Use a Redis
+ * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a Redis
  * instance DEDICATED to this test run, distinct from any locally-running `bun run dev:backend` — sharing one
  * means two independent `registerM30Workers` racing for the same queued jobs, which reads as a mysterious,
  * hard-to-diagnose failure since the OTHER process's worker can win the race and fail against its own DB.)
@@ -58,8 +58,8 @@ import {
   registerM30Workers,
 } from "../src/modules/30-quality/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -98,14 +98,14 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     let workers: Worker[] | undefined;
 
     async function applyMigrations(): Promise<void> {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {
         let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
         if (stripVector) {
           // GAP-067: this suite's original one-line stripper only ever matched the QUOTED, first
-          // occurrence, so `WARDENX_TEST_NO_PGVECTOR=1` never actually worked here — it died on 0014's
+          // occurrence, so `CHARTWARDEN_TEST_NO_PGVECTOR=1` never actually worked here — it died on 0014's
           // unquoted `EXTENSION IF NOT EXISTS vector`. All three strips are required (the M4/M7 form):
           // the extension appears both quoted (0001) and unquoted (0014) → `/gm`; 0014 also declares an
           // `embedding vector(384)` COLUMN whose type must still resolve → shim to `text`; and its

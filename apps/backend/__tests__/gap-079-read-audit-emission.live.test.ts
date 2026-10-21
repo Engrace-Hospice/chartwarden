@@ -18,7 +18,7 @@
  * trail the host emits, not either module's store (covered by their own live suites).
  *
  * Gated on a live DB (default `bun run test` skips it):
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run \
  *     apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -50,7 +50,7 @@ import {
   installPermissiveConsentAbac,
 } from "./consent-abac-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

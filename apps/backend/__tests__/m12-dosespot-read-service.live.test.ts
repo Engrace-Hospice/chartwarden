@@ -9,7 +9,7 @@
  * refill-inbox reads return the seeded rows, RLS denies a cross-tenant read, and every write fail-closes 501.
  *
  * Gated on a live DB (default `bun run test` skips it):
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:read:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:read:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

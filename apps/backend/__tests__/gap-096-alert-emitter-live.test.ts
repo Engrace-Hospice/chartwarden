@@ -15,7 +15,7 @@
  *   4. `disciplineMembers` refuses loudly rather than silently resolving to nobody.
  *   5. Vacation forwarding persists `forwarded_from_user_id` for real (migration 0192).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-096-alert-emitter-live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-096-alert-emitter-live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -38,7 +38,7 @@ import {
 } from "../src/modules/36-messaging/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "99999999-9999-9999-9999-999999999999";
@@ -61,7 +61,7 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

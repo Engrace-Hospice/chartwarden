@@ -9,7 +9,7 @@
  *   3. a tenant-scope caller naming another org is refused and writes nothing;
  *   4. the legitimate tenant path (own org, `withOrgContext`) still works and affects only that org.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m32-kill-switch-tenant-role-key.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m32-kill-switch-tenant-role-key.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +27,7 @@ import {
 } from "../src/modules/32-ai-platform/safety";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -52,7 +52,7 @@ describe.skipIf(!DB_URL)("GAP-096 M32 — tenant-minted role key vs the platform
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

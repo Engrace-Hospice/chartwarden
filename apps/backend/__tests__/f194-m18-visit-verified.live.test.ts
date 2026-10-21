@@ -10,9 +10,9 @@
  * M30's own `hvldl_near_death_recompute` effect and pure handler (`handleEvvVisitVerified`) existed too, also
  * unwired (no `OutboxConsumerBinding` bound it at boot). This proves BOTH halves now work, for real, together.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:f194:m18-visit-verified:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f194:m18-visit-verified:live
  * `evv_event` is RANGE-partitioned → the throwaway superuser DB needs `max_locks_per_transaction` raised. For
- * a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ * a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -36,7 +36,7 @@ import { buildM30VisitVerifiedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -64,7 +64,7 @@ describe.skipIf(!DB_URL)(
         );
     }
     async function applyMigrations() {
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

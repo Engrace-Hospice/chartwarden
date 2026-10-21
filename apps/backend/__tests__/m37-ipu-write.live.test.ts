@@ -3,7 +3,7 @@
  * `buildDrizzleIpuRouteService` as the NOBYPASSRLS `wardenx_app` role: unit create, the admission
  * lifecycle (open → request-bed → assign-bed → discharge with the bed-cleaning cross-effects), the restraint
  * workflow (apply → reassess), and the `ipu_record` destruction eraser. Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m37:write:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m37:write:live
  *
  * F-080 — the outbox port is CATALOG-VALIDATING, not a no-op. It used to be the default no-op, which is
  * why this suite drove `requestBed`, `assignBed`, `confirm` and `discharge` green while all four
@@ -56,7 +56,7 @@ const VALIDATING_OUTBOX = {
   },
 } as never;
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

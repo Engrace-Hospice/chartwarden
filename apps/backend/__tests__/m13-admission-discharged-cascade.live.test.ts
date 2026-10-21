@@ -15,7 +15,7 @@
  * no-op (idempotent redelivery); no reason filter — a non-death discharge reason still cascades; and
  * cross-tenant isolation (org B's rows are untouched by org A's discharge).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m13:admission-discharged-cascade:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m13:admission-discharged-cascade:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ import {
 } from "../src/modules/13-emar/outbox-consumers/m6-admission-discharged-cascade";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

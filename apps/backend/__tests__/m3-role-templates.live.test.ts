@@ -19,7 +19,7 @@
  *   roles' reach (never wider than the membership defaults), so `location_scope` denies a location outside every
  *   scoped grant; an expired scoped grant stops narrowing; an unscoped role restores the defaults.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m3:role-templates:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m3:role-templates:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -42,7 +42,7 @@ import {
 } from "../src/modules/03-authorization/role-template-materializer";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

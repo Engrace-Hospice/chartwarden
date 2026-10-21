@@ -14,17 +14,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * write / route-optimisation surface fail-closes 501 until the M17L write lifecycle lands.
  *
  * Gated on a live DB (default `bun run test` skips it):
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m17:read:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m17:read:live
  *
  * Live notes: `visit`/`visit_state_history` are RANGE-partitioned, so the throwaway superuser DB needs
  * `max_locks_per_transaction` raised (the DROP SCHEMA + partitioned corpus outrun the default 64). For a
- * local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1.
+ * local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDbSchedulingBackend } from "../src/modules/17-scheduling/scheduling-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -53,7 +53,7 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -62,7 +62,7 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
       if (stripVector) {
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
         );
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");

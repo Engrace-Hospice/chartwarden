@@ -1,6 +1,6 @@
 /**
  * ADR-0054 / WP 1.1 — the Socket.IO transport against a real Valkey, across TWO server instances sharing it.
- * Needs WARDENX_TEST_REDIS_URL (a private valkey/valkey:8 container). No Postgres: authentication and rooms are
+ * Needs CHARTWARDEN_TEST_REDIS_URL (a private valkey/valkey:8 container). No Postgres: authentication and rooms are
  * injected exactly as the composition root injects them, so this proves the transport rules, not the session store.
  */
 import { type Server, createServer } from "node:http";
@@ -16,7 +16,7 @@ import {
   startRealtimeServer,
 } from "../src/bootstrap/realtime";
 
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const ORIGIN = "https://app.wardenx.test";
 const ORG_ID = "org_1";
 const HINT = { kind: "message.new", cursor: "c1", ids: { channelId: "ch_1", messageId: "msg_1" } };

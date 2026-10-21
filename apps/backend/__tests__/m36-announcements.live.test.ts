@@ -10,8 +10,8 @@
  *   - department channels: org-scoped subject check, find-or-create on the unique subject index (a race is one row),
  *     the creator is the owner, and a foreign / unknown subject is a 404 that writes nothing.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:announcements:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:announcements:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -43,7 +43,7 @@ import {
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = randomBytes(32);
@@ -75,7 +75,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.9 announcements & departments — LIVE Postgr
   let roleId: string;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

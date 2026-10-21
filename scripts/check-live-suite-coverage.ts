@@ -5,7 +5,7 @@
  * `.github/workflows/ci.yml`, or be an EXPLICIT, reasoned deferral in {@link DEFERRED} below.
  *
  * This gate exists because the failure it catches is silent in both directions. A live suite is
- * `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so with no database it reports as SKIPPED, not failed —
+ * `describe.skipIf(!CHARTWARDEN_TEST_DATABASE_URL)`, so with no database it reports as SKIPPED, not failed —
  * `bun run test` stays green whether the suite passes, would fail, or has rotted beyond running. And a
  * script in package.json looks wired to a reader; nothing distinguishes one a CI job invokes from one
  * nothing has ever run. That combination let 25 lifecycle suites — 205 assertions across the entire

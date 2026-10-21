@@ -108,9 +108,9 @@ export const AI_SAFETY_OWNER_ROLE_KEYS = [
 export const AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS: readonly string[] = ["clinical_safety_lead"];
 
 /** The env flag that declares a single-tenant deployment (§4.7's second clause). Default: multi-tenant. */
-export const SINGLE_TENANT_DEPLOYMENT_ENV = "WARDENX_SINGLE_TENANT_DEPLOYMENT";
+export const SINGLE_TENANT_DEPLOYMENT_ENV = "CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT";
 
-/** True only for an explicit `WARDENX_SINGLE_TENANT_DEPLOYMENT=true` — anything else is multi-tenant. */
+/** True only for an explicit `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT=true` — anything else is multi-tenant. */
 export function isSingleTenantDeployment(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): boolean {
@@ -238,7 +238,7 @@ export interface AiPlatformAbacDeps {
   /**
    * GAP-096 — whether this deployment serves a single tenant, which is the only shape in which §4.7 lets
    * a tenant `clinical_safety_lead` act as the AI Safety Owner. Defaults to
-   * {@link isSingleTenantDeployment} (the `WARDENX_SINGLE_TENANT_DEPLOYMENT` env flag, off by default).
+   * {@link isSingleTenantDeployment} (the `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT` env flag, off by default).
    */
   readonly singleTenantDeployment?: boolean;
 }

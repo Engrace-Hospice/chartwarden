@@ -6,7 +6,7 @@
  * the uuid `resource_id` column, failed, and the best-effort wrapper swallowed it - the read left no trail. The
  * routes now name `?patientId=` and the read is accounted against that patient (45 CFR 164.528).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:eligibility-read-audit:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:eligibility-read-audit:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +27,7 @@ import type { M23WriteRouteService } from "../src/modules/23-billing-medicare/ro
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

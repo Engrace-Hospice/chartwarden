@@ -12,17 +12,17 @@
  * through the INJECTED marker predicate (`isRedactedOrPending`, the port WP 5.x will implement) and listed as `it.todo`
  * for the end-to-end proof. They are NOT closed until WP 5.x lands.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:global-search:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:global-search:live
  * Use a PRIVATE pgvector/pgvector:pg18 container started with `-c max_locks_per_transaction=512
  * -c shared_preload_libraries=pg_stat_statements` (the suite DROPs the public schema and the app role; never the shared
- * cluster). For a local PG without pgvector also set WARDENX_TEST_NO_PGVECTOR=1.
+ * cluster). For a local PG without pgvector also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  *
  * PERFORMANCE TIERS (p95 < 1 s, measured like WP 2.7a: 30 runs per class, `[search-perf]` lines):
- *   default (CI)  WARDENX_GLOBAL_SEARCH_PERF_MESSAGES=50000   every message indexed through the REAL writer.
- *   manual 1M     WARDENX_GLOBAL_SEARCH_PERF_MESSAGES=1000000  messages are bulk-inserted and their token rows are synthesised
+ *   default (CI)  CHARTWARDEN_GLOBAL_SEARCH_PERF_MESSAGES=50000   every message indexed through the REAL writer.
+ *   manual 1M     CHARTWARDEN_GLOBAL_SEARCH_PERF_MESSAGES=1000000  messages are bulk-inserted and their token rows are synthesised
  *                 IN SQL from per-body tag sets (the real tags plus 8 random dummies per message, approximating the padding rule) because 1M writer
  *                 transactions take hours. Above 100000 only; the tier used is printed. Optional:
- *                 WARDENX_TEST_PG_CONTAINER=<name> lets the logging-hygiene test also scan `docker logs <name>`.
+ *                 CHARTWARDEN_TEST_PG_CONTAINER=<name> lets the logging-hygiene test also scan `docker logs <name>`.
  */
 import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
@@ -94,10 +94,10 @@ import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/mess
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 // F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
-process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
-process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+process.env.CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = randomBytes(32);
@@ -108,10 +108,10 @@ const ORG_P = "44444444-4444-4444-8444-4444000f0279"; // performance corpus
 const VERSION = "legacy";
 /** The H2 sizing rule gives every tenant here (< 25k messages of ~16 rows) the 12-bit minimum. */
 const TAG_BITS = 12;
-const PERF_MESSAGES = Number(process.env.WARDENX_GLOBAL_SEARCH_PERF_MESSAGES ?? 50_000);
+const PERF_MESSAGES = Number(process.env.CHARTWARDEN_GLOBAL_SEARCH_PERF_MESSAGES ?? 50_000);
 const PERF_RUNS = 30;
 const P95_BUDGET_MS = 1000;
-const PG_CONTAINER = process.env.WARDENX_TEST_PG_CONTAINER;
+const PG_CONTAINER = process.env.CHARTWARDEN_TEST_PG_CONTAINER;
 
 const CATEGORIES = [
   "clinical_staff",
@@ -201,7 +201,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   const one = async (sql: string, params: unknown[] = []) => (await q(sql, params))[0] as Row;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
@@ -1482,7 +1482,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         expect(serverLog).not.toContain(sentinel);
       } else {
         exclusions.push(
-          "postgres server log scan: set WARDENX_TEST_PG_CONTAINER=<private container> to scan `docker logs`; settings asserted instead",
+          "postgres server log scan: set CHARTWARDEN_TEST_PG_CONTAINER=<private container> to scan `docker logs`; settings asserted instead",
         );
       }
       process.stderr.write(`\n[search-exclusions] ${JSON.stringify(exclusions)}\n`);

@@ -8,9 +8,9 @@ import {
 } from "./hope-submission-header";
 
 const VENDOR_ENV = {
-  WARDENX_SOFTWARE_VENDOR_ID: "12-3456789",
-  WARDENX_SOFTWARE_VENDOR_NAME: "WardenX Inc",
-  WARDENX_SOFTWARE_VENDOR_EMAIL: "hope@wardenx.example",
+  CHARTWARDEN_SOFTWARE_VENDOR_ID: "12-3456789",
+  CHARTWARDEN_SOFTWARE_VENDOR_NAME: "WardenX Inc",
+  CHARTWARDEN_SOFTWARE_VENDOR_EMAIL: "hope@wardenx.example",
   APP_VERSION: "2026.9.26",
 };
 
@@ -68,15 +68,15 @@ describe("HOPE software vendor configuration", () => {
 
   it("refuses with every missing or invalid key named", () => {
     try {
-      readHopeSoftwareVendor({ WARDENX_SOFTWARE_VENDOR_ID: "12345", APP_VERSION: "dev" });
+      readHopeSoftwareVendor({ CHARTWARDEN_SOFTWARE_VENDOR_ID: "12345", APP_VERSION: "dev" });
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(HopeSubmissionPayloadError);
       const e = error as HopeSubmissionPayloadError;
       expect(e.code).toBe("WX-HOPE-SUBMISSION-VENDOR-CONFIG");
-      expect(e.message).toContain("WARDENX_SOFTWARE_VENDOR_ID");
-      expect(e.message).toContain("WARDENX_SOFTWARE_VENDOR_NAME");
-      expect(e.message).toContain("WARDENX_SOFTWARE_VENDOR_EMAIL");
+      expect(e.message).toContain("CHARTWARDEN_SOFTWARE_VENDOR_ID");
+      expect(e.message).toContain("CHARTWARDEN_SOFTWARE_VENDOR_NAME");
+      expect(e.message).toContain("CHARTWARDEN_SOFTWARE_VENDOR_EMAIL");
       expect(e.message).toContain("APP_VERSION or GIT_SHA");
     }
   });
@@ -84,7 +84,7 @@ describe("HOPE software vendor configuration", () => {
   it("enforces the CMS field lengths", () => {
     expect(
       codeOf(() =>
-        readHopeSoftwareVendor({ ...VENDOR_ENV, WARDENX_SOFTWARE_VENDOR_NAME: "x".repeat(31) }),
+        readHopeSoftwareVendor({ ...VENDOR_ENV, CHARTWARDEN_SOFTWARE_VENDOR_NAME: "x".repeat(31) }),
       ),
     ).toBe("WX-HOPE-SUBMISSION-VENDOR-CONFIG");
   });

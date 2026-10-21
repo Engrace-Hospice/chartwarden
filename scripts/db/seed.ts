@@ -281,7 +281,7 @@ async function main(): Promise<void> {
   // `reseed-production` workflow); db:seed:all chains child processes, so it is an env var, not a flag.
   if (
     process.env.NODE_ENV === "production" &&
-    process.env.WARDENX_SEED_ALLOW_PRODUCTION !== "yes-reseed-demo"
+    process.env.CHARTWARDEN_SEED_ALLOW_PRODUCTION !== "yes-reseed-demo"
   ) {
     throw new Error("db:seed is a local dev seed and refuses to run with NODE_ENV=production");
   }

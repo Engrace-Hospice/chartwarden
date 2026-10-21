@@ -15,7 +15,7 @@
  *     range survives);
  *   - tenant isolation: another org's hold does not protect this org's rows, nor vice versa.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m4:legal-hold-supremacy:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m4:legal-hold-supremacy:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -27,7 +27,7 @@ import { createDrizzleAuditEraserPorts } from "../src/modules/04-audit/erasers/a
 import { runDestructionSweepForOrg } from "../src/modules/04-audit/jobs/audit-job-ops";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

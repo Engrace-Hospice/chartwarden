@@ -10,8 +10,8 @@
  * harness bites (an un-scoped app read sees zero rows while the superuser sees all of them); the paging
  * test seeds 250 incidents (more than the old 200-row window) and pages through every one of them.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m30:phi-scope:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m30:phi-scope:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -42,7 +42,7 @@ import {
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { seedM5Patient } from "./_m6-admit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -75,7 +75,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
   let caseload: CaseloadLookup;
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

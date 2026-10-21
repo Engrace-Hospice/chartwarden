@@ -248,9 +248,9 @@ const REQUIREMENTS: readonly Requirement[] = [
     // AI Safety Owner. Optional (unset = multi-tenant, the safe default); a SET value must be exactly
     // `true`/`false`, so a typo such as `TRUE` or `yes` refuses the boot instead of silently reading as
     // multi-tenant on a deployment that meant otherwise.
-    key: "WARDENX_SINGLE_TENANT_DEPLOYMENT",
+    key: "CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT",
     rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
-    when: (env) => env.WARDENX_SINGLE_TENANT_DEPLOYMENT !== undefined,
+    when: (env) => env.CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT !== undefined,
   },
   {
     // GAP-055 follow-up (ADR-0035) — require a valid device attestation and bind M18 EVV capture to the
@@ -264,9 +264,9 @@ const REQUIREMENTS: readonly Requirement[] = [
   {
     // GAP-009 — closed registration. `true`/`false` only (a typo must refuse the boot, not silently read as
     // the default). Unset: strict in production, open in dev (the seeds sign users up without an invite).
-    key: "WARDENX_SIGNUP_REQUIRES_INVITE",
+    key: "CHARTWARDEN_SIGNUP_REQUIRES_INVITE",
     rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
-    when: (env) => env.WARDENX_SIGNUP_REQUIRES_INVITE !== undefined,
+    when: (env) => env.CHARTWARDEN_SIGNUP_REQUIRES_INVITE !== undefined,
   },
   {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,

@@ -11,7 +11,7 @@
  *   3. Cross-tenant: two orgs may both hold a role with the same key, and the attach must grant the
  *      caller's.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m3-proposed-role-attach.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,7 +24,7 @@ import { createDbInvitationStore } from "../src/modules/02-identity/identity-sto
 import { createDbProposedRoleAttacher } from "../src/modules/03-authorization/proposed-role-attacher";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

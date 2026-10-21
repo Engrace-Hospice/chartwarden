@@ -14,15 +14,15 @@
  * assertion below vacuously. That is asserted first, before a single isolation case runs.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m15` (SUPERUSER to a THROWAWAY
- *     db; for a local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1).
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m15` (SUPERUSER to a THROWAWAY
+ *     db; for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -92,7 +92,7 @@ describe.skipIf(!DB_URL)(
     }
 
     async function applyMigrations() {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       const files = readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith(".sql"))
         .sort();

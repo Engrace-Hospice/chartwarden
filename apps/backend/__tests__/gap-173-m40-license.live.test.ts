@@ -4,7 +4,7 @@
  * (re-entering a renewed expiry updates in place, one row per org/entity/state), the 2-letter state CHECK, the
  * scan's read (org-scoped, horizon-bounded) and that a tenant sees neither another tenant's licenses nor grief
  * resources. Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-173:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-173:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ import { runLicenseExpirationScanForOrg } from "../src/modules/40-mdm/jobs/licen
 import { createDbMdmRouteService } from "../src/modules/40-mdm/mdm-store-db";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

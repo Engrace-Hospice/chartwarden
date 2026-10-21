@@ -44,12 +44,12 @@ describe("the MFA matrix (pure)", () => {
     expect(resolveMfaEnforcement({ NODE_ENV: "production" })).toBe(false);
     expect(resolveMfaEnforcement({ NODE_ENV: "development" })).toBe(false);
     expect(
-      resolveMfaEnforcement({ NODE_ENV: "production", WARDENX_MFA_ENFORCEMENT: "false" }),
+      resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "false" }),
     ).toBe(false);
-    expect(resolveMfaEnforcement({ NODE_ENV: "production", WARDENX_MFA_ENFORCEMENT: "true" })).toBe(
+    expect(resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(
       true,
     );
-    expect(resolveMfaEnforcement({ NODE_ENV: "test", WARDENX_MFA_ENFORCEMENT: "true" })).toBe(true);
+    expect(resolveMfaEnforcement({ NODE_ENV: "test", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(true);
   });
 });
 

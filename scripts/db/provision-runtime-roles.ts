@@ -35,7 +35,7 @@
  *
  * Usage:
  *   PROVISION_DATABASE_URL=postgres://postgres:...@host/db \
- *   WARDENX_PLATFORM_PASSWORD=... WARDENX_DESTRUCTION_PASSWORD=... \
+ *   CHARTWARDEN_PLATFORM_PASSWORD=... CHARTWARDEN_DESTRUCTION_PASSWORD=... \
  *   bun run db:provision-roles
  *
  * Idempotent: roles are created only when absent; passwords/attributes are re-ALTERed on every run
@@ -48,10 +48,10 @@
 import { Client } from "pg";
 
 const url = process.env.PROVISION_DATABASE_URL ?? process.env.DATABASE_SUPERUSER_URL;
-const platformPassword = process.env.WARDENX_PLATFORM_PASSWORD;
-const destructionPassword = process.env.WARDENX_DESTRUCTION_PASSWORD;
+const platformPassword = process.env.CHARTWARDEN_PLATFORM_PASSWORD;
+const destructionPassword = process.env.CHARTWARDEN_DESTRUCTION_PASSWORD;
 // M36 WP 2.13: the only login that may call m36_reseal_message_revision (migration 1090). Operator-held, never an app credential.
-const bodyBackfillPassword = process.env.WARDENX_BODY_BACKFILL_PASSWORD;
+const bodyBackfillPassword = process.env.CHARTWARDEN_BODY_BACKFILL_PASSWORD;
 
 if (!url) {
   console.error("PROVISION_DATABASE_URL (superuser/owner) is required");
@@ -59,14 +59,14 @@ if (!url) {
 }
 if (!platformPassword && !destructionPassword && !bodyBackfillPassword) {
   console.error(
-    "set WARDENX_PLATFORM_PASSWORD, WARDENX_DESTRUCTION_PASSWORD and/or WARDENX_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
+    "set CHARTWARDEN_PLATFORM_PASSWORD, CHARTWARDEN_DESTRUCTION_PASSWORD and/or CHARTWARDEN_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
   );
   process.exit(1);
 }
 for (const [name, pw] of [
-  ["WARDENX_PLATFORM_PASSWORD", platformPassword],
-  ["WARDENX_DESTRUCTION_PASSWORD", destructionPassword],
-  ["WARDENX_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
+  ["CHARTWARDEN_PLATFORM_PASSWORD", platformPassword],
+  ["CHARTWARDEN_DESTRUCTION_PASSWORD", destructionPassword],
+  ["CHARTWARDEN_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
 ] as const) {
   if (pw !== undefined && pw.length < 16) {
     console.error(`${name} must be ≥16 characters`);

@@ -191,7 +191,7 @@ Failed with pre-existing unrelated frontend boundary violations:
 
 Not executed:
 
-- Live DB/RLS suites: `WARDENX_TEST_DATABASE_URL` is not set in this environment.
+- Live DB/RLS suites: `CHARTWARDEN_TEST_DATABASE_URL` is not set in this environment.
 - Playwright E2E: `localhost:5173` is not reachable; the new spec is present but the local stack is not
   running.
 - OpenAPI gates: not run because the user explicitly instructed not to read or touch
@@ -392,7 +392,7 @@ Not run after the user's OpenAPI instruction:
 Notes:
 
 - `openapi:emit` and `client:gen` were run before the later "do not read/touch openapi.json" instruction. They passed at that time. After the instruction, `docs/api/openapi.json` was not read or modified again.
-- No live DB suite was run because this environment did not expose `WARDENX_TEST_DATABASE_URL`.
+- No live DB suite was run because this environment did not expose `CHARTWARDEN_TEST_DATABASE_URL`.
 - No Playwright E2E was added or run in this pass; the covered workflow is currently proven through backend route tests and jsdom route/navigation/capture tests.
 
 ## N. Deferred Phase 3 Work

@@ -59,7 +59,7 @@ export interface WebhookOpsPagerOptions {
 /** HTTPS-only webhook pager. Throws at construction on a non-https URL (misconfiguration must be loud). */
 export function createWebhookOpsPager(options: WebhookOpsPagerOptions): SosTerminusPort {
   if (!/^https:\/\//.test(options.url)) {
-    throw new Error("m20: WARDENX_OPS_PAGE_WEBHOOK_URL must be an https:// URL");
+    throw new Error("m20: CHARTWARDEN_OPS_PAGE_WEBHOOK_URL must be an https:// URL");
   }
   const doFetch: OpsPageFetch = options.fetchImpl ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? PAGE_TIMEOUT_MS;

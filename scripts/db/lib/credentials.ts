@@ -8,7 +8,7 @@ import { join } from "node:path";
  * path such as `/tmp/CREDENTIALS.local.md` without changing their working directory.
  */
 export const SEED_CREDENTIALS_PATH =
-  process.env.WARDENX_SEED_CREDENTIALS_FILE ?? join(process.cwd(), "CREDENTIALS.local.md");
+  process.env.CHARTWARDEN_SEED_CREDENTIALS_FILE ?? join(process.cwd(), "CREDENTIALS.local.md");
 
 /** Write local plaintext credentials with owner-only permissions, including over an existing file. */
 export function writeSeedCredentials(contents: string): void {

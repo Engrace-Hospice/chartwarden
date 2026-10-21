@@ -16,7 +16,7 @@
  *   8. PART 2          a restricted patient is a listed, counted, non-actionable row; acting on it is a 404.
  *   9. IDOR            tenant B cannot list or act on tenant A's rows (uniform 404).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:lifecycle-review:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:lifecycle-review:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -51,7 +51,7 @@ import {
   plainDoc,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f2001";
 const ORG_B = "22222222-2222-4222-8222-2222000f2002";
 const REVIEW_BASE = "/api/v1/messaging/review-items";

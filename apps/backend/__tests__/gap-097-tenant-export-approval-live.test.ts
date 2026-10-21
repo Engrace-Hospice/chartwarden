@@ -16,7 +16,7 @@
  *   3. The tenant-scoped download route (`buildDrizzleTenantService`) 409ing before approval and minting
  *      a real presigned URL after — the full SEC-052 hold → release → download round trip.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-097-tenant-export-approval-live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-097-tenant-export-approval-live.test.ts
  */
 import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext } from "@chartwarden/tenancy";
@@ -34,7 +34,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = `${__dirname}/../../../packages/db/migrations`;
 const ROLES = [
   "wardenx_app",
@@ -63,7 +63,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const { readFileSync, readdirSync } = await import("node:fs");
     const { join } = await import("node:path");
     for (const f of readdirSync(MIGRATIONS_DIR)
@@ -115,7 +115,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     // comment on `DATABASE_PLATFORM_URL` names it "a least-privilege platform login role (… + BYPASSRLS)".
     // `wardenx_admin` already carries the right table-level GRANTs (0052's `GRANT ALL … TO wardenx_admin`
     // on tenant_export_job/_event); this test attaches LOGIN + BYPASSRLS to it — the same DEV-ONLY
-    // mechanism `scripts/db/migrate.ts` uses for `wardenx_app` under WARDENX_DEV_BYPASSRLS — to stand in
+    // mechanism `scripts/db/migrate.ts` uses for `wardenx_app` under CHARTWARDEN_DEV_BYPASSRLS — to stand in
     // for that dedicated role without provisioning a new one just for this test cluster.
     await admin.query(
       "ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'wardenx_admin_live_test'",

@@ -12,7 +12,7 @@
  *   - a second POST without If-Match is 428 and with If-Match re-seals (new ciphertext, version bumped);
  *   - without a bound cipher the route is still a fail-closed 503 (never plaintext at rest).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m23:mac-credential-cipher:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:mac-credential-cipher:live
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -37,7 +37,7 @@ import { buildMacSecretCipherFromEnv } from "../src/modules/23-billing-medicare/
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -131,7 +131,7 @@ describe.skipIf(!DB_URL)("M23 MAC credential cipher — LIVE Postgres", () => {
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

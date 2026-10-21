@@ -18,7 +18,7 @@ import { buildM29AbacPredicates } from "../src/modules/29-external-interfaces/ab
  * under test is the real Drizzle reads/writes under RLS, the real envelope encryption round-trip, the real
  * TCP MLLP exchange, and the real ack/retry/DLQ state machine, not the BullMQ scheduler).
  *
- * Gated on a live DB: WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run <this file>
+ * Gated on a live DB: CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run <this file>
  */
 import { buildDrizzleM29AbacResolver } from "../src/modules/29-external-interfaces/abac-resolver-drizzle";
 
@@ -49,7 +49,7 @@ import {
 import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

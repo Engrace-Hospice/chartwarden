@@ -120,8 +120,8 @@ describe("collectEnvProblems", () => {
 
   it("GAP-096: the single-tenant flag is optional, but a set value must be exactly true/false", () => {
     const problemFor = (v: string | undefined) =>
-      collectEnvProblems({ ...GOOD, WARDENX_SINGLE_TENANT_DEPLOYMENT: v }).find(
-        (p) => p.key === "WARDENX_SINGLE_TENANT_DEPLOYMENT",
+      collectEnvProblems({ ...GOOD, CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: v }).find(
+        (p) => p.key === "CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT",
       )?.problem;
     expect(problemFor(undefined)).toBeUndefined();
     expect(problemFor("true")).toBeUndefined();
@@ -144,8 +144,8 @@ describe("collectEnvProblems", () => {
 
   it("GAP-009: the sign-up invite flag is optional, but a set value must be exactly true/false", () => {
     const problemFor = (v: string | undefined) =>
-      collectEnvProblems({ ...GOOD, WARDENX_SIGNUP_REQUIRES_INVITE: v }).find(
-        (p) => p.key === "WARDENX_SIGNUP_REQUIRES_INVITE",
+      collectEnvProblems({ ...GOOD, CHARTWARDEN_SIGNUP_REQUIRES_INVITE: v }).find(
+        (p) => p.key === "CHARTWARDEN_SIGNUP_REQUIRES_INVITE",
       )?.problem;
     expect(problemFor(undefined)).toBeUndefined();
     expect(problemFor("true")).toBeUndefined();

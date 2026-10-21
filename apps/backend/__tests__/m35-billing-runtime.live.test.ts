@@ -3,7 +3,7 @@
  * NOBYPASSRLS `wardenx_app` role for every tenant-scoped path (a second superuser handle stands in for the
  * separately-credentialled platform pool, which is BYPASSRLS in production).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m35:billing-runtime:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m35:billing-runtime:live
  *
  * What is proved (Stripe itself is faked at the `StripeClient` / `StripePaymentMethodVerifier` boundary):
  *   060  attach trusts nothing from the body; createSubscription refuses another org's payment method
@@ -40,7 +40,7 @@ import {
 } from "../src/modules/35-subscription/routes/service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

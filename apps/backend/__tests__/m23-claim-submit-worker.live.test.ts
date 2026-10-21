@@ -21,7 +21,7 @@
  * runClaimSubmit(tx, deps, job))`), with FAKE x12/macPortal ports so no real MAC/x12 sidecar is needed.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-submit-worker.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-submit-worker.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -38,7 +38,7 @@ import {
   runClaimSubmitRetry,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -52,7 +52,7 @@ describe.skipIf(!DB_URL)(
     let handle: { db: DbClient; close: () => Promise<void> };
 
     async function applyMigrations() {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

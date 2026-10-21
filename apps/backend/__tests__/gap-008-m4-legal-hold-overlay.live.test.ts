@@ -9,7 +9,7 @@
  * credential is a SEPARATE client started as `wardenx_destruction` (`options=-c role=...`), the role migration 0157 grants
  * SELECT, DELETE on `audit_event`, so the privilege and trigger assertions are about the production role, not a superuser.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:gap008:legal-hold-overlay:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap008:legal-hold-overlay:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -33,7 +33,7 @@ import {
 } from "../src/modules/04-audit/jobs/audit-job-ops";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_destruction",

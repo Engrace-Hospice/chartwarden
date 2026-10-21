@@ -1309,7 +1309,7 @@
   under withPlatformContext" — but nothing ever built the role/policy path FOR that auditor. The gap
   0119 fixed for the org-scoped `audit()` path was never separately verified for the platform-bypass
   path, and it was invisible locally for the identical reason 0119 names: `scripts/db/migrate.ts` grants
-  the dev role BYPASSRLS unless `WARDENX_DEV_BYPASSRLS` is deliberately unset — every prior session's
+  the dev role BYPASSRLS unless `CHARTWARDEN_DEV_BYPASSRLS` is deliberately unset — every prior session's
   live-RLS testing (this codebase has an extensive `rls-isolation.live.test.ts` suite, 109+ tests) has
   evidently always run either with that dev bypass, or via a superuser test connection for the
   app-facing client specifically (the mistake WX-PR-014's M33 pass itself made on its first draft,
@@ -1351,7 +1351,7 @@
   migration 0186's `outbox_event` pattern) + EXECUTE grant to `wardenx_app`; repoint
   `m34PlatformBypassAuditor` (or `withPlatformContext` itself) at it; add the `report_run`/
   `materialized_view_metadata` equivalents; add a `SET ROLE wardenx_app`-based regression test to
-  `rls-isolation.live.test.ts` (or a new dedicated live suite) so `WARDENX_DEV_BYPASSRLS`/superuser
+  `rls-isolation.live.test.ts` (or a new dedicated live suite) so `CHARTWARDEN_DEV_BYPASSRLS`/superuser
   test connections can never mask this class of bug again.
 - Tests: A live-RLS `withPlatformContext` entry (any module) succeeds under `SET ROLE wardenx_app`,
   NOBYPASSRLS, with a real `platform.bypass_invoked` row landing; a direct-INSERT attempt outside the

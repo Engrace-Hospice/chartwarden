@@ -10,7 +10,7 @@
  * back and fails HERE), and the hour aggregator reads signed volunteer visits through M8's REAL
  * `SignedEncountersReader` over the real `encounter` table.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m15:crons:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m15:crons:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +37,7 @@ import {
 } from "../src/modules/15-discipline-care-plans/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

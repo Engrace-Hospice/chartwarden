@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
@@ -35,7 +35,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 1A spec foundation — LIVE Postgres", 
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -44,7 +44,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 1A spec foundation — LIVE Postgres", 
       if (stripVector) {
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
         );
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");

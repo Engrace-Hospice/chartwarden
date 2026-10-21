@@ -4,9 +4,9 @@
  * cross-tenant RLS, no UPDATE grant, the same-transaction removal hook (delete, edit, but NOT a cipher-only re-wrap),
  * cascade on message delete, an audit trail that carries message ids and never a tag, and exactly four token columns.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:search-index:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:search-index:live
  * Use a PRIVATE pgvector/pgvector:pg18 container (the suite DROPs the public schema and the app role). For a local PG
- * without pgvector, also set WARDENX_TEST_NO_PGVECTOR=1.
+ * without pgvector, also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomInt } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { deleteSearchTokens } from "../src/modules/36-messaging/message-search-tokens";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0277";
@@ -36,7 +36,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
   let channelB: string;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

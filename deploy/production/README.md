@@ -3,7 +3,7 @@
 Merging a change to `main` deploys automatically only after the `CI` workflow succeeds. The release
 workflow builds and pushes immutable backend and web images tagged `sha-<full-commit-sha>`, then runs
 `deploy.sh` over SSH on the VPS. The server updates its local `.env.production` itself; no operator
-edits `WARDENX_IMAGE` or `WARDENX_WEB_IMAGE` for a normal release.
+edits `CHARTWARDEN_IMAGE` or `CHARTWARDEN_WEB_IMAGE` for a normal release.
 
 Before enabling the workflow, configure the GitHub `production` Environment with required reviewers
 and these secrets:
@@ -72,7 +72,7 @@ are not rolled back.
 - **`docling-worker`** — DocLens OCR + layout, CPU-only, models baked into the image, reachable only on the compose
   network with the `DOCLING_WORKER_TOKEN` bearer. The release builds, scans (fixable HIGH/CRITICAL fail the release; unfixed ones are ignored), signs and
   attests `ghcr.io/<owner>/wardenx-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
-  argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `WARDENX_DOCLING_IMAGE`.
+  argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
 - **`minio-provision`** — a one-shot that creates the `wardenx-app` policy and the service account the api/worker use
   (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*` and
@@ -105,7 +105,7 @@ are not rolled back.
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).
 - `DATABASE_DESTRUCTION_URL` (already set on api/worker) is required by attachments: the tenant eraser and the orphan
   reaper delete `message_attachment` rows, which `wardenx_app` cannot. Without it the reaper is disabled (logged at boot)
-  and a messaging erase refuses loudly. Its password, `WARDENX_DESTRUCTION_PASSWORD`, is required by `compose.yml`
+  and a messaging erase refuses loudly. Its password, `CHARTWARDEN_DESTRUCTION_PASSWORD`, is required by `compose.yml`
   (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
   overwrites a value an operator set.
 
@@ -149,7 +149,7 @@ because a loopback probe bypasses the reverse proxy entirely.
 
 ### The synthetic monitor account (required)
 
-Tier 4 needs `WARDENX_SMOKE_EMAIL` and `WARDENX_SMOKE_PASSWORD` in `.env.production`. Provision an
+Tier 4 needs `CHARTWARDEN_SMOKE_EMAIL` and `CHARTWARDEN_SMOKE_PASSWORD` in `.env.production`. Provision an
 account that is:
 
 - **least privilege** — it must resolve an organization membership and nothing more. It does **not**
@@ -161,16 +161,25 @@ account that is:
 If the account is not provisioned yet, the deploy **fails**. That is deliberate: skipping the only
 end-to-end check because a variable happened to be unset is the same defect as the old loopback probe —
 reporting success for something never measured. To deploy without it, set
-`WARDENX_SMOKE_ALLOW_ANONYMOUS=1` explicitly; the skip is then printed to stderr on every deploy.
+`CHARTWARDEN_SMOKE_ALLOW_ANONYMOUS=1` explicitly; the skip is then printed to stderr on every deploy.
 
 ### Optional overrides
 
 | Variable | Default |
 | --- | --- |
-| `WARDENX_SMOKE_APP_URL` | `https://wardenx.chartwarden.cloud` |
-| `WARDENX_SMOKE_API_URL` | `https://be082026.wardenx.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_APP_URL` | `https://wardenx.chartwarden.cloud` |
+| `CHARTWARDEN_SMOKE_API_URL` | `https://be082026.wardenx.chartwarden.cloud` |
 
 Defaults come from the `server_name`s in `nginx/`, so a stock install needs no configuration.
+
+### Env-var rename and rolling back to an older release
+
+`deploy.sh` rewrites the three image pins in `.env.production` to the `CHARTWARDEN_*` names (`CHARTWARDEN_IMAGE`,
+`CHARTWARDEN_WEB_IMAGE`, `CHARTWARDEN_DOCLING_IMAGE`). A release from **before the ChartWarden env-var rename**
+has a `compose.yml` that requires `WARDENX_IMAGE` / `WARDENX_WEB_IMAGE`, so manually re-deploying such an old
+commit fails on the rewritten file. The automatic rollback inside a failed deploy is unaffected: it restores the
+pre-deploy backup of `.env.production`. For a deliberate manual rollback to an older commit, first copy the three
+image lines back under their `WARDENX_*` names.
 
 ### Rollback and migrations
 
@@ -206,7 +215,7 @@ cosign version
 ```
 
 If `cosign` is missing, or a signature does not verify, **the deploy refuses and restores the previous
-release**. To deploy without verification, set `WARDENX_DEPLOY_ALLOW_UNVERIFIED=1` explicitly — it
+release**. To deploy without verification, set `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED=1` explicitly — it
 prints the fact on every deploy that uses it, because an unverified deploy must never be
 indistinguishable from a verified one in the log.
 
@@ -214,8 +223,8 @@ What is actually checked is the **workflow identity**, not a key:
 
 | Variable | Default |
 | --- | --- |
-| `WARDENX_COSIGN_IDENTITY` | `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` |
-| `WARDENX_COSIGN_ISSUER` | `https://token.actions.githubusercontent.com` |
+| `CHARTWARDEN_COSIGN_IDENTITY` | `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` |
+| `CHARTWARDEN_COSIGN_ISSUER` | `https://token.actions.githubusercontent.com` |
 
 A signature produced by any other workflow, repository, branch or actor fails. That property is worth
 more than usual here: `main` has no branch protection and the `production` environment has no approval

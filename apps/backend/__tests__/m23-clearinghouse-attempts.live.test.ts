@@ -5,8 +5,8 @@
  * role (so a cross-tenant leak or a missing grant fails here, not in prod), then proves what only Postgres can:
  * RLS isolation, the immutable-identity / final-status guard, and that the app role cannot delete history.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m23:clearinghouse-attempts:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:clearinghouse-attempts:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDrizzleAttemptStore } from "../src/modules/23-billing-medicare/clearinghouse-attempt-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -41,7 +41,7 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
   let handle: ReturnType<typeof createDbClient>;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

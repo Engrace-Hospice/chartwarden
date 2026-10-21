@@ -12,7 +12,7 @@
  * tier; free text is scrubbed from the audit trail; the overdue cron alerts; another tenant sees nothing; and a
  * redetermination behaves exactly as before.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m25:qic:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m25:qic:live
  * (SUPERUSER to a THROWAWAY db - this file DROPs and recreates the public schema.)
  */
 import { randomUUID } from "node:crypto";
@@ -58,7 +58,7 @@ if (!FormatRegistry.Has("date-time")) {
   FormatRegistry.Set("date-time", (v) => !Number.isNaN(Date.parse(v)));
 }
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

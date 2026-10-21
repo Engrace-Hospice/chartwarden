@@ -34,6 +34,9 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
+          // Transitional: map a developer's legacy WARDENX_* env names (e.g. WARDENX_TEST_DATABASE_URL in a local
+          // .env) to CHARTWARDEN_* so live suites do not silently self-skip. Remove with packages/types/src/env-bridge.ts.
+          setupFiles: ["./packages/types/src/env-bridge-preload.ts"],
           include: [
             "scripts/__tests__/**/*.test.ts",
             "apps/**/*.test.ts",

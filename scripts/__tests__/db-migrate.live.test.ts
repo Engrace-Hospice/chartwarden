@@ -13,8 +13,8 @@ import { join } from "node:path";
  * (non-strict) mode still only warns, which is deliberate (see the file header on migrate.ts).
  *
  * Gated on a live DB, same convention as the RLS-isolation suite:
- *   - CI: the `migration-gate` job provides a postgres service + WARDENX_TEST_DATABASE_URL.
- *   - Local: WARDENX_TEST_DATABASE_URL=postgres://… bun run test:db:migrate:live
+ *   - CI: the `migration-gate` job provides a postgres service + CHARTWARDEN_TEST_DATABASE_URL.
+ *   - Local: CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:db:migrate:live
  * The URL must be a SUPERUSER connection to a THROWAWAY database (this suite drops and recreates
  * the public schema + every role the migrations create).
  */
@@ -22,7 +22,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, applyMigrations } from "../db/migrate";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
 // Every CREATE ROLE across the migration corpus (`grep -rh "CREATE ROLE" packages/db/migrations`),
 // so resetSchema() can drop them all before each fresh-database assertion below.

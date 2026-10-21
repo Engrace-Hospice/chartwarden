@@ -13,7 +13,7 @@
  *     shred function) makes every ring-sealed body unreadable while legacy-sealed ones stay readable until backfilled;
  *   - the boot counts + the fail-closed legacy-key check.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:body-key-ring:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:body-key-ring:live
  * Use a PRIVATE container (the suite DROPs ROLEs); never the shared cluster.
  */
 import { Buffer } from "node:buffer";
@@ -62,7 +62,7 @@ const NO_MESSAGE_HOLDS = {
   openCertificate: async () => ({ id: "", created: false }),
 };
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",
@@ -96,7 +96,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
   const users: Record<string, string> = {};
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

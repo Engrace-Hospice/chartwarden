@@ -9,6 +9,7 @@
 // half; run `./index.ts` (or this repo's existing `dev`/`start` scripts) with `PROCESS_ROLE=api` to
 // get the complementary API-only process. Omitting `PROCESS_ROLE` entirely (the historical single-
 // process shape) still runs everything in one process — this file is additive, not a breaking split.
+import "@chartwarden/types/env-bridge-preload"; // first: maps legacy WARDENX_* env names (see packages/types/src/env-bridge.ts)
 import { bootChartWarden } from "./index";
 
 await bootChartWarden("worker");

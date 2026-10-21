@@ -17,11 +17,11 @@
  * that already has a signed version is left alone.
  *
  * Usage (password only from the environment — never argv, never logged):
- *   WARDENX_SEED_BASE_URL=https://host WARDENX_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-delgado-care-plan-api
+ *   CHARTWARDEN_SEED_BASE_URL=https://host CHARTWARDEN_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-delgado-care-plan-api
  *   … -- --apply                                   # write (default is a dry run)
  *   … -- --apply --i-understand-this-is-production # required too when the host is not localhost
- * Optional env: WARDENX_SEED_ADMIN_EMAIL (default admin@wardenx.local), WARDENX_SEED_ORG_ID,
- * WARDENX_SEED_PHYSICIAN_EMAIL + WARDENX_SEED_PHYSICIAN_PASSWORD (tried when the admin cannot reach the chart).
+ * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@wardenx.local), CHARTWARDEN_SEED_ORG_ID,
+ * CHARTWARDEN_SEED_PHYSICIAN_EMAIL + CHARTWARDEN_SEED_PHYSICIAN_PASSWORD (tried when the admin cannot reach the chart).
  */
 import type { SeedContext } from "./cop27/context";
 import { discoverContext } from "./cop27/context";
@@ -205,11 +205,11 @@ async function seedDelgado(run: ScenarioRun, ctx: SeedContext): Promise<void> {
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const baseUrlText = requireEnv("WARDENX_SEED_BASE_URL").replace(/\/+$/, "");
+  const baseUrlText = requireEnv("CHARTWARDEN_SEED_BASE_URL").replace(/\/+$/, "");
   const baseUrl = new URL(baseUrlText);
-  const password = requireEnv("WARDENX_SEED_ADMIN_PASSWORD");
-  const email = process.env.WARDENX_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
-  const orgId = process.env.WARDENX_SEED_ORG_ID?.trim() || undefined;
+  const password = requireEnv("CHARTWARDEN_SEED_ADMIN_PASSWORD");
+  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
+  const orgId = process.env.CHARTWARDEN_SEED_ORG_ID?.trim() || undefined;
   if (opts.apply && !isLocalHost(baseUrl) && !opts.productionAck) {
     throw new Error(
       `${baseUrl.host} is not localhost: writing to it needs --apply --i-understand-this-is-production`,
@@ -225,8 +225,8 @@ async function main(): Promise<void> {
     password,
     ...(orgId ? { organizationId: orgId } : {}),
   });
-  const physicianEmail = process.env.WARDENX_SEED_PHYSICIAN_EMAIL?.trim();
-  const physicianPassword = process.env.WARDENX_SEED_PHYSICIAN_PASSWORD;
+  const physicianEmail = process.env.CHARTWARDEN_SEED_PHYSICIAN_EMAIL?.trim();
+  const physicianPassword = process.env.CHARTWARDEN_SEED_PHYSICIAN_PASSWORD;
   const physicianSession =
     physicianEmail && physicianPassword
       ? await signIn({

@@ -12,7 +12,7 @@
  *   - Cross-tenant isolation: a membership id only resolves within its OWN org, so a delivery under
  *     the wrong org is a true no-op rather than leaking a shift assignment across tenants.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bun run test:m5:visit-assignment-cache:live
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -36,8 +36,8 @@ import {
 } from "../src/modules/05-patient/seams/shift-caseload-cache";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

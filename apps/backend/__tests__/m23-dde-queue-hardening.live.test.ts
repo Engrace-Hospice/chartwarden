@@ -11,7 +11,7 @@
  *   - deadlines judged on the Eastern day (not UTC); the watchdog's anti-join (no starvation behind >200 served
  *     notices) and its isolation (a failure cannot undo the window warnings).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-hardening:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-hardening:live
  */
 import { randomUUID } from "node:crypto";
 import { createDbActorEnrichmentReader } from "@chartwarden/auth";
@@ -46,7 +46,7 @@ import {
   seedNotr,
 } from "./_dde-live-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const DCN = "2212345678901";
 
 describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)", () => {

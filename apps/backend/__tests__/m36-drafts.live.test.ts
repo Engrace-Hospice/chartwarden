@@ -7,8 +7,8 @@
  * channel; audit rows exist for create and delete, carry no body or cipher, and autosave rewrites write none; a root's
  * or channel's deletion and the tenant erase remove drafts; identity columns are not updatable by the app role.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:drafts:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:drafts:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -25,7 +25,7 @@ import { createDbMessagingRouteService } from "../src/modules/36-messaging/index
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = randomBytes(32);
@@ -46,7 +46,7 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
   let chanB: string;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

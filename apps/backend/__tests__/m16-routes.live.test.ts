@@ -26,7 +26,7 @@
  * The 3-strikes unreachable PROPOSAL is stamped by an admin UPDATE (the cron that stamps it is proven by
  * m16-cron-workers.live.test.ts); a touchpoint's slide into `missed` likewise.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m16:routes:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m16:routes:live
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -60,7 +60,7 @@ import { createBereavementOutreachConsentProbe } from "../src/modules/39-consent
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

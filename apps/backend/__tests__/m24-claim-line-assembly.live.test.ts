@@ -11,7 +11,7 @@
  * `medicaid_state_plan_code` + `medicaid_state_rate_schedule` platform rows come from the migration seeds
  * (0177 / 0182) — not hand-seeded here, proving the seed data is actually usable end-to-end.
  *
- * Gated on a live DB: WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run <this file>
+ * Gated on a live DB: CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run <this file>
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ import {
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

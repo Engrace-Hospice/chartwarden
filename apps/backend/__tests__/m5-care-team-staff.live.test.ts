@@ -7,7 +7,7 @@
  *     matches an email; `limit` bounds the result;
  *   - a patient.read-only caller is refused (403), as is a path org other than the bound org.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m5-care-team-staff.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -28,7 +28,7 @@ import { createDbCareTeamStaffPort } from "../src/modules/05-patient/care-team-s
 import { registerCareTeamStaffRoutes } from "../src/modules/05-patient/routes/care-team-staff-routes";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const DB_ROLES = [
   "wardenx_app",

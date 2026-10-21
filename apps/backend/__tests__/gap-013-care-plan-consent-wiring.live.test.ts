@@ -11,7 +11,7 @@
  * against real Postgres, registering a real (in-memory-backed) M39 `ConsentEvaluator` seam — this is
  * the seam boundary GAP-013's fix crosses, so the test must cross it too, not stub past it.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -38,7 +38,7 @@ import {
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -13,7 +13,7 @@
  * NOT covered here: the M30 command route and the outbox relay in front of the consumer (the consumer is invoked with the
  * event it would receive). Those are covered by their own suites; this one owns the repeat half.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:gap049:alert-repeat:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap049:alert-repeat:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -39,7 +39,7 @@ import {
 import { buildM36QualityAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/quality-alerts";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -65,7 +65,7 @@ describe.skipIf(!DB_URL)("GAP-049 M30 alert repeat cadences - LIVE Postgres", ()
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (process.env.WARDENX_TEST_NO_PGVECTOR) {
+      if (process.env.CHARTWARDEN_TEST_NO_PGVECTOR) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw stripped)");

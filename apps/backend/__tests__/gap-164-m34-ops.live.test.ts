@@ -7,7 +7,7 @@
  * suite, not in prod. It pins what a unit test cannot: the cross-tenant DSAR keyset cursor pages microsecond-distinct
  * rows without skipping or duplicating any (the JS-Date-vs-timestamptz trap), the skip UPDATE asserts its row count and
  * is tenant-scoped, and the tenant account read is RLS-bound to the caller's own org.
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-164:live   (SUPERUSER url, THROWAWAY database)
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-164:live   (SUPERUSER url, THROWAWAY database)
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
@@ -22,7 +22,7 @@ import { createDrizzlePlatformOpsService } from "../src/modules/34-saas-tenant-p
 import { createDrizzleTenantAccountFlagsService } from "../src/modules/34-saas-tenant-platform/routes/tenant/account-flags-service";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",
@@ -81,7 +81,7 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
       env: {
         ...process.env,
         PROVISION_DATABASE_URL: DB_URL,
-        WARDENX_PLATFORM_PASSWORD: PLATFORM_PASSWORD,
+        CHARTWARDEN_PLATFORM_PASSWORD: PLATFORM_PASSWORD,
       },
       encoding: "utf8",
     });

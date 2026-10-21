@@ -59,10 +59,10 @@ const baselineGate = (name: string, fn: () => void | Promise<void>) =>
 // check-design-tokens.ts roots itself off its OWN file location (import.meta.url), not cwd — by
 // design, so it always validates the real repo regardless of the caller's working directory. That
 // means the cwd-swap trick every other fixture here uses can't point it at a fixture tree; instead
-// the script honors a test-only WARDENX_FITNESS_ROOT env override (unset in every real invocation).
+// the script honors a test-only CHARTWARDEN_FITNESS_ROOT env override (unset in every real invocation).
 const designTokensGate = (fixtureRoot: string) =>
   run("bun", ["run", join(SCRIPTS, "check-design-tokens.ts")], ROOT, {
-    WARDENX_FITNESS_ROOT: fixtureRoot,
+    CHARTWARDEN_FITNESS_ROOT: fixtureRoot,
   });
 
 // check-request-body-contract.ts imports the enrichment registry STATICALLY, so a fixture tree cannot
@@ -71,14 +71,14 @@ const designTokensGate = (fixtureRoot: string) =>
 // of whose routes exist in the fixture tree) are not reported as stale; see the script's own note.
 const requestBodyContractGate = (fixtureRoot: string) =>
   run("bun", ["run", join(SCRIPTS, "check-request-body-contract.ts")], ROOT, {
-    WARDENX_FITNESS_ROOT: fixtureRoot,
+    CHARTWARDEN_FITNESS_ROOT: fixtureRoot,
   });
 
 // check-migration-numbering.ts self-roots the same way and for the same reason, so it uses the same
 // override rather than a cwd swap.
 const migrationNumberingGate = (fixtureRoot?: string) =>
   run("bun", ["run", join(SCRIPTS, "check-migration-numbering.ts")], ROOT, {
-    WARDENX_FITNESS_ROOT: fixtureRoot,
+    CHARTWARDEN_FITNESS_ROOT: fixtureRoot,
   });
 
 // client:check (package.json) is a raw shell pipeline, not a standalone script file, so it needs

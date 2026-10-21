@@ -13,7 +13,7 @@
  * catalog-validating publisher, exactly as M13's own write path does, which is what actually proves the
  * wire contract rather than a hand-rolled shortcut would.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:reconciliation-discontinue:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:reconciliation-discontinue:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -30,7 +30,7 @@ import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

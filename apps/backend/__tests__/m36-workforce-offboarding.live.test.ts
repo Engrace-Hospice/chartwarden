@@ -16,7 +16,7 @@
  *   6. ACCESS      no step-up, no key, no review key: refused and nothing changes; another tenant's officer gets the same 404 as an unknown id.
  *   7. AUDIT       the rows carry ids, fixed keys and counts only.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... WARDENX_TEST_REDIS_URL=redis://... bun run test:m36:workforce-offboarding:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:workforce-offboarding:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -64,8 +64,8 @@ import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { appRoleConnectionString } from "./_live-app-role";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

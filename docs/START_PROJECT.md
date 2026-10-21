@@ -42,10 +42,10 @@ DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/wardenx
 
 # Runtime connection: created by `bun run db:migrate` below.
 DATABASE_URL=postgres://wardenx_app:wardenx_app@localhost:5432/wardenx
-WARDENX_APP_PASSWORD=wardenx_app
+CHARTWARDEN_APP_PASSWORD=wardenx_app
 
 # Lets the single-org demo complete pre-organization reads. Never enable in production.
-WARDENX_DEV_BYPASSRLS=1
+CHARTWARDEN_DEV_BYPASSRLS=1
 
 REDIS_URL=redis://localhost:6379
 MINIO_ENDPOINT=http://localhost:9000
@@ -92,7 +92,7 @@ bun run db:migrate
 ```
 
 This applies all migrations and creates/enables the `wardenx_app` login role using
-`WARDENX_APP_PASSWORD`. Re-running it is safe: only pending migrations are applied.
+`CHARTWARDEN_APP_PASSWORD`. Re-running it is safe: only pending migrations are applied.
 
 ## 5. Start the backend, worker, and web app
 
@@ -215,9 +215,9 @@ object-store data. Re-run `bun run db:migrate` after pulling migrations.
 
 | Problem | Resolution |
 |---|---|
-| Backend reports `password authentication failed for user "wardenx_app"` | Ensure `DATABASE_URL` and `WARDENX_APP_PASSWORD` use the same password, then run `bun run db:migrate` to reset the local runtime-role password. |
+| Backend reports `password authentication failed for user "wardenx_app"` | Ensure `DATABASE_URL` and `CHARTWARDEN_APP_PASSWORD` use the same password, then run `bun run db:migrate` to reset the local runtime-role password. |
 | Migration cannot connect | Confirm `docker compose ps` shows `postgres` healthy and that `DATABASE_ADMIN_URL` uses port `5432`. |
-| Sign-in has no users or organization choices | Start the API, run `bun run db:seed`, then read `CREDENTIALS.local.md`. Set `WARDENX_DEV_BYPASSRLS=1` and rerun `bun run db:migrate` for the local single-org demo. |
+| Sign-in has no users or organization choices | Start the API, run `bun run db:seed`, then read `CREDENTIALS.local.md`. Set `CHARTWARDEN_DEV_BYPASSRLS=1` and rerun `bun run db:migrate` for the local single-org demo. |
 | Web app cannot reach the API | Confirm the API is listening on port `3000`; the Vite proxy is configured for that address. |
 | A local reset is required | Stop the local stack, run `docker compose down -v`, then restart from step 3. This permanently removes this Compose project's PostgreSQL and MinIO volumes, so use it only when you intend to discard local data. |
 
@@ -252,14 +252,14 @@ cp deploy/production/smoke.sh /opt/wardenx/smoke.sh
 chmod +x /opt/wardenx/smoke.sh
 Mettez à jour les images dans .env.production :
 sed -i \
-  "s|^WARDENX_IMAGE=.*|WARDENX_IMAGE=wardenx-backend:manual-${COMMIT_SHA}|" \
+  "s|^CHARTWARDEN_IMAGE=.*|CHARTWARDEN_IMAGE=wardenx-backend:manual-${COMMIT_SHA}|" \
   /opt/wardenx/.env.production
 
 sed -i \
-  "s|^WARDENX_WEB_IMAGE=.*|WARDENX_WEB_IMAGE=wardenx-web:manual-${COMMIT_SHA}|" \
+  "s|^CHARTWARDEN_WEB_IMAGE=.*|CHARTWARDEN_WEB_IMAGE=wardenx-web:manual-${COMMIT_SHA}|" \
   /opt/wardenx/.env.production
 Vérifiez que MinIO reste configuré :
-grep -E 'WARDENX_IMAGE|WARDENX_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT' \
+grep -E 'CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT' \
   /opt/wardenx/.env.production
 Puis lancez les migrations, le provisioning et le redémarrage :
 cd /opt/wardenx

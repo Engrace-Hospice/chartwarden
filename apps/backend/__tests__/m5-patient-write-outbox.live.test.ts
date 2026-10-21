@@ -6,7 +6,7 @@
  * (`organizationId` + `patientId`), that a rolled-back write leaves no event, and that RLS hides another
  * tenant's rows.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m5-patient-write-outbox.live.test.ts
  */
 import { randomUUID } from "node:crypto";
@@ -21,7 +21,7 @@ import { createDbPatientRouteService } from "../src/modules/05-patient/patient-r
 import { decidePatientSyncTrigger } from "../src/modules/12-dosespot/consumers/sync-triggers";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

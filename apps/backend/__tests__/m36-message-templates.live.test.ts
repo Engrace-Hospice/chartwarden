@@ -6,8 +6,8 @@
  * overlay that can never loosen it, the PHI lint (nothing stored on a refusal), RLS (a tenant reads the platform scope
  * and can never write it; no cross-tenant read or write), the audit trail with the body scrubbed, and the read audit.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:templates:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:templates:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -31,7 +31,7 @@ import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-s
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111000f0028";
@@ -112,7 +112,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
     Number((await admin.query(sql, params)).rows[0].n);
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

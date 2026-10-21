@@ -4,8 +4,8 @@
  * event lands with its resource id, org-admin-only archive that is idempotent (one write, one audit row), the
  * kind policy (dm 403, care_team / announcement 409), no existence oracle across tenants, and RLS at the DB.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:channel-admin:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:channel-admin:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -35,7 +35,7 @@ import {
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = Buffer.alloc(32, 7);
@@ -152,7 +152,7 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

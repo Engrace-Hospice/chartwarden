@@ -13,12 +13,12 @@
  * M29 `hl7_*` ones). `pg_catalog` cannot be wrong about the schema; a regex over 224 migration files
  * demonstrably can.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:partition-rotation:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:partition-rotation:live
  */
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
 describe.skipIf(!DB_URL)("time-partition rotation — LIVE Postgres (F-033)", () => {
   let db: Client;

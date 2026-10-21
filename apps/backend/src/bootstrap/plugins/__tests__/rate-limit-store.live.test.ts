@@ -9,7 +9,7 @@ import Fastify from "fastify";
  * is exact, not merely "probably fine" — and separately proves the fixed-window expiry actually
  * resets the count instead of accumulating forever.
  *
- * WARDENX_TEST_REDIS_URL=redis://localhost:6399 bunx vitest run \
+ * CHARTWARDEN_TEST_REDIS_URL=redis://localhost:6399 bunx vitest run \
  *   apps/backend/src/bootstrap/plugins/__tests__/rate-limit-store.live.test.ts
  */
 import Redis from "ioredis";
@@ -18,7 +18,7 @@ import { applyErrorHandler } from "../error-handler";
 import { createRedisRateLimitStore } from "../rate-limit-store";
 import { GLOBAL_SEARCH_ROUTE_RATE_LIMIT, createRouteRateLimit } from "../route-rate-limit";
 
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 
 describe.skipIf(!REDIS_URL)("createRedisRateLimitStore — LIVE Redis/Valkey (WX-PR-017)", () => {
   // Constructed in beforeAll, NOT at describe-body eval time: `describe.skipIf` still EXECUTES the

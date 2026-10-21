@@ -14,7 +14,7 @@
  *   6. SOCKETS     the revoked user's sockets are dropped even when a reassignment step fails, and the error is rethrown.
  *   7. ALERT TEXT  fixed generic text; no name, patient or item reaches an alert.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:handoff-lifecycle:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:handoff-lifecycle:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -44,7 +44,7 @@ import {
 } from "../src/modules/36-messaging/outbox-consumers/handoff-notifications";
 import { type LiveKit, as, bootLiveKit } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f1001";
 const ORG_B = "22222222-2222-4222-8222-2222000f1002";
 const ORG_C = "33333333-3333-4333-8333-3333000f1003";

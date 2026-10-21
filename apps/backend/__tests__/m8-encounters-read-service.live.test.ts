@@ -8,8 +8,8 @@
  * as the unprivileged `wardenx_app` role (no BYPASSRLS) — the same role `withOrgContext` runs under in prod.
  *
  * Gated on a live DB (default `bun run test` skips it):
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m8:read:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:read:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ import {
 import { createDbEncounterRouteService } from "../src/modules/08-encounters/encounters-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -52,7 +52,7 @@ describe.skipIf(!DB_URL)("M8 Drizzle read service — LIVE Postgres (M8L-T01)", 
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -61,7 +61,7 @@ describe.skipIf(!DB_URL)("M8 Drizzle read service — LIVE Postgres (M8L-T01)", 
       if (stripVector) {
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
         );
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");

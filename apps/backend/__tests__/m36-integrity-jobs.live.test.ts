@@ -7,8 +7,8 @@
  * nothing destructive: no row is deleted); one tenant's run never sees another's rows; a failing org does not stop
  * the fan-out but does fail the tick; a reply whose parent is in another channel is refused with a typed 422.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:integrity-jobs:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:integrity-jobs:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -49,7 +49,7 @@ import { createDbMessagingProvider } from "../src/modules/36-messaging/messaging
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = randomBytes(32);
@@ -74,7 +74,7 @@ describe.skipIf(!DB_URL)(
     let deps: M36IntegrityJobDeps;
 
     async function applyMigrations() {
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {
@@ -1155,17 +1155,17 @@ describe.skipIf(!DB_URL)(
 );
 
 /**
- * Real BullMQ on a real Valkey (WARDENX_TEST_REDIS_URL): re-adding an already-registered legacy `add({ repeat })`
+ * Real BullMQ on a real Valkey (CHARTWARDEN_TEST_REDIS_URL): re-adding an already-registered legacy `add({ repeat })`
  * trigger with new attempts/backoff does NOT take effect, and a legacy trigger beside a scheduler would run twice.
  * `scheduleM36IntegrityJobs` must leave exactly one schedule per queue carrying the table's options, idempotently.
  */
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 // This suite OBLITERATES the two integrity queues: refuse unless the Redis is local.
 const REDIS_IS_LOCAL =
   !!REDIS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(REDIS_URL).hostname);
 if (REDIS_URL && !REDIS_IS_LOCAL) {
   describe("WP 1.9 — integrity schedules on real BullMQ", () => {
-    it.skip("skipped: WARDENX_TEST_REDIS_URL is not localhost/127.0.0.1, refusing to obliterate its queues", () => {});
+    it.skip("skipped: CHARTWARDEN_TEST_REDIS_URL is not localhost/127.0.0.1, refusing to obliterate its queues", () => {});
   });
 }
 describe.skipIf(!REDIS_IS_LOCAL)("WP 1.9 — integrity schedules on real BullMQ", () => {

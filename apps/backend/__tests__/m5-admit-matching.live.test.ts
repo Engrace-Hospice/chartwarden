@@ -7,7 +7,7 @@
  *   009: a bypassed admit writes a CRITICAL `patient.create_bypass_match` audit_event (justification
  *        recorded) on the same transaction as the patient row.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m5-admit-matching.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -21,7 +21,7 @@ import { type AdmitResult, M5_OUTBOX_EVENTS } from "../src/modules/05-patient/in
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

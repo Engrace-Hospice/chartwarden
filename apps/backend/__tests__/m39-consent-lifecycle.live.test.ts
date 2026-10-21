@@ -5,7 +5,7 @@
  * serialization, transactional outbox writes, Part 2 recipient gating, immutable signed rows, and
  * single-success renewal under concurrent requests.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m39-consent-lifecycle.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -22,7 +22,7 @@ import {
   createDrizzleMergeRepointUow,
 } from "../src/modules/39-consent";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -52,12 +52,12 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
   }
 
   async function applyMigrations(): Promise<void> {
-    // WARDENX_TEST_NO_PGVECTOR: run on a cluster without the pgvector extension (the M4/M7 strip —
+    // CHARTWARDEN_TEST_NO_PGVECTOR: run on a cluster without the pgvector extension (the M4/M7 strip —
     // the extension appears both quoted and unquoted, 0014 also declares a `vector(384)` COLUMN whose
     // type must resolve, and its `USING hnsw` index needs a pgvector-only access method). Without
     // this the suite dies in `beforeAll` on `extension "vector" is not available`, which vitest
     // reports as SKIPPED — indistinguishable from "no database configured".
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const file of readdirSync(MIGRATIONS_DIR)
       .filter((name) => name.endsWith(".sql"))
       .sort()) {

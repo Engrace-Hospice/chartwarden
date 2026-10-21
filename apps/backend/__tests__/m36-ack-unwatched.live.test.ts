@@ -1,6 +1,6 @@
 /**
  * M36 gap closure B (ADR-0079) - the unreachable watch, the supervisor page and the stalled-escalation figure, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role (and, when WARDENX_TEST_REDIS_URL is set, a real Valkey for the notice claims).
+ * NOBYPASSRLS `wardenx_app` role (and, when CHARTWARDEN_TEST_REDIS_URL is set, a real Valkey for the notice claims).
  *
  * The REAL Drizzle ack store, alert-emitter ports (rules seeded as the boot persister writes them, role_set recipients through
  * membership_role, verified endpoints through migration 1123, the M1 feature-flag reader, persistence) and stats reader; only the
@@ -16,7 +16,7 @@
  *           failed_unreachable, and reads 0 when the tenant's escalation flag is off;
  *   6. G-4  the Valkey claim is `SET NX PX`: exactly one of two processes holds it until release.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... [WARDENX_TEST_REDIS_URL=redis://localhost:PORT] bun run test:m36:ack-unwatched:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... [CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT] bun run test:m36:ack-unwatched:live
  * Use a PRIVATE pgvector/pgvector:pg18 container (and a private valkey/valkey:8): the suite resets the public schema and the wardenx_* roles.
  */
 import { createAlertEmitter } from "@chartwarden/messaging";
@@ -31,8 +31,8 @@ import { wireAlertRuleSeed } from "../src/modules/36-messaging/alert-rule-seed-p
 import { createDrizzleAlertEmitterPorts } from "../src/modules/36-messaging/index";
 import { type LiveKit, STAFF_KEYS, bootLiveKit, mkChannel } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a790001";
 const ORG_B = "22222222-2222-4222-8222-22220a790002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a79a1";

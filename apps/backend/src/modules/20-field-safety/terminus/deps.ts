@@ -22,7 +22,7 @@ export interface TerminusDeps {
   readonly pager?: SosTerminusPort;
   /** M36's voice call to the consented contact. Unbound => `dial_contact` rows settle `voice_unbound`. */
   readonly caller?: SosContactCaller;
-  /** Platform kill switch (`WARDENX_SOS_CONTACT_DIAL=enabled`). OFF until the Twilio sandbox run + legal read. */
+  /** Platform kill switch (`CHARTWARDEN_SOS_CONTACT_DIAL=enabled`). OFF until the Twilio sandbox run + legal read. */
   readonly dialEnabled: boolean;
   /** Opens the sealed contact and the SOS coordinate inside M20's boundary. */
   readonly decipher?: SafetyDecipherPort;
