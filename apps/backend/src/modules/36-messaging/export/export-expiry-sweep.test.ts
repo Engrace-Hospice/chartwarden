@@ -6,7 +6,8 @@ import {
   type ExportExpiryStore,
   createExportExpirySweep,
 } from "./export-expiry-sweep";
-import { exportBuildJob, exportExpiryTick } from "./export-worker";
+import * as bullmq from "bullmq";
+import { createExportBuildEnqueuer, exportBuildJob, exportExpiryTick } from "./export-worker";
 
 const ORG = "o1";
 
@@ -77,10 +78,11 @@ describe("export expiry sweep", () => {
   });
 });
 
+const orgs = (...ids: string[]) => ({
+  listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })),
+});
+
 describe("exportExpiryTick", () => {
-  const orgs = (...ids: string[]) => ({
-    listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })),
-  });
   it("totals across orgs and isolates an org failure", async () => {
     const expireForOrg = vi.fn(async (o: string) => {
       if (o === "bad") throw new Error("x");
@@ -112,6 +114,81 @@ describe("exportExpiryTick", () => {
       { organizationId: "a", jobId: "j2" },
       { organizationId: "c", jobId: "j3" },
     ]);
+  });
+});
+
+describe("exportExpiryTick - stale re-enqueue resilience", () => {
+  it("still re-enqueues the stale approved jobs when the expiry throws, and the tick still fails", async () => {
+    const enqueue = vi.fn(async () => undefined);
+    await expect(
+      exportExpiryTick({
+        activeOrgs: orgs("a"),
+        expireForOrg: async () => {
+          throw new AggregateError([new Error("delete failed")], "expiry");
+        },
+        staleApprovedForOrg: async () => ["j1", "j2"],
+        enqueue,
+      }),
+    ).rejects.toThrow();
+    expect(enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it("one failing enqueue does not stop the rest, and the tick reports the failure", async () => {
+    const enqueue = vi.fn(async (d: { jobId: string }) => {
+      if (d.jobId === "j1") throw new Error("redis down");
+    });
+    await expect(
+      exportExpiryTick({
+        activeOrgs: orgs("a"),
+        expireForOrg: async () => ({ expired: 0, timedOut: 0 }),
+        staleApprovedForOrg: async () => ["j1", "j2", "j3"],
+        enqueue,
+      }),
+    ).rejects.toThrow();
+    expect(enqueue.mock.calls.map((c: unknown[]) => (c[0] as { jobId: string }).jobId)).toEqual([
+      "j1",
+      "j2",
+      "j3",
+    ]);
+  });
+});
+
+describe("createExportBuildEnqueuer", () => {
+  const withQueue = (leftover: unknown) => {
+    const add = vi.fn(async () => undefined);
+    const getJob = vi.fn(async () => leftover);
+    vi.spyOn(bullmq.Queue.prototype, "add").mockImplementation(add as never);
+    vi.spyOn(bullmq.Queue.prototype, "getJob").mockImplementation(getJob as never);
+    return { add, getJob };
+  };
+  const make = () => createExportBuildEnqueuer({ host: "127.0.0.1", port: 1 } as never);
+
+  it("adds the build with the export job id as the BullMQ job id", async () => {
+    const q = withQueue(undefined);
+    const e = make();
+    await e.enqueue({ organizationId: "o", jobId: "j9" });
+    expect(q.add).toHaveBeenCalledWith(
+      "build",
+      { organizationId: "o", jobId: "j9" },
+      expect.objectContaining({ jobId: "j9" }),
+    );
+    await e.queue.close().catch(() => undefined);
+  });
+
+  it("removes a failed leftover with that id before adding; leaves a live duplicate alone", async () => {
+    const remove = vi.fn(async () => undefined);
+    withQueue({ isFailed: async () => true, remove });
+    const failed = make();
+    await failed.enqueue({ organizationId: "o", jobId: "j9" });
+    expect(remove).toHaveBeenCalledTimes(1);
+    await failed.queue.close().catch(() => undefined);
+
+    const liveRemove = vi.fn(async () => undefined);
+    withQueue({ isFailed: async () => false, remove: liveRemove });
+    const live = make();
+    await live.enqueue({ organizationId: "o", jobId: "j9" });
+    expect(liveRemove).not.toHaveBeenCalled();
+    await live.queue.close().catch(() => undefined);
   });
 });
 

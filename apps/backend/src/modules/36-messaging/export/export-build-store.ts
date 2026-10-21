@@ -3,7 +3,7 @@
 // legality (forward-only, ready needs every artefact column, failed only from building), and each UPDATE also pins the expected current status
 // so a lost race changes nothing. Held messages are excluded IN SQL with the live legal-hold predicate (the same one the retention scan uses), so
 // a hold the overlay has not materialised yet still protects the message; erased bodies (empty cipher) and author-deleted tombstones (status
-// 'deleted', which keep their cipher) are not exported (D9). A message that references a Part 2 flagged patient (message_entity_reference) is left
+// 'deleted', which keep their cipher) are not exported (D9). A message tied to a Part 2 flagged patient (message_entity_reference, clinical_link, chart_promotion_request) is left
 // out and counted, whatever channel it sits in. Times cross this boundary as database TEXT (microseconds survive; a JS Date keeps milliseconds).
 import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
@@ -41,16 +41,31 @@ function scope(organizationId: string, query: ExportMessageQuery): SQL {
     AND octet_length(m.body_cipher) > 0
     AND m.status <> 'deleted'
     AND m.created_at <= ${query.until}::timestamptz
+    AND coalesce(m.edited_at, m.created_at) <= ${query.until}::timestamptz
     ${query.from ? sql`AND m.created_at >= ${query.from.toISOString()}::timestamptz` : sql``}
     ${query.to ? sql`AND m.created_at < ${query.to.toISOString()}::timestamptz` : sql``}`;
 }
 
-/** SQL boolean over alias `m`: the message references one of these (Part 2 flagged) patients; `false` when there are none. */
+/**
+ * SQL set over alias `m` (message): every patient id the message is tied to - a structured patient reference, a clinical link or a chart-promotion
+ * request. All three are organisation-scoped and joined on the message id; this is the whole Part 2 reference surface.
+ */
+const messagePatientRefs = (alias: string): SQL => {
+  const m = sql.raw(alias);
+  return sql`SELECT r.entity_id AS patient_id FROM message_entity_reference r
+              WHERE r.organization_id = ${m}.organization_id AND r.message_id = ${m}.id AND r.reference_kind = 'patient'
+             UNION
+             SELECT l.patient_id FROM clinical_link l
+              WHERE l.organization_id = ${m}.organization_id AND l.message_id = ${m}.id AND l.patient_id IS NOT NULL
+             UNION
+             SELECT p.patient_id FROM chart_promotion_request p
+              WHERE p.organization_id = ${m}.organization_id AND p.message_id = ${m}.id`;
+};
+
+/** SQL boolean over alias `m`: the message is tied (reference, clinical link, promotion request) to one of these (Part 2 flagged) patients; `false` when there are none. */
 function referencesFlagged(organizationId: string, patientIds: readonly string[]): SQL {
   if (patientIds.length === 0) return sql`false`;
-  return sql`EXISTS (SELECT 1 FROM message_entity_reference r
-                      WHERE r.organization_id = ${organizationId}::uuid AND r.message_id = m.id
-                        AND r.reference_kind = 'patient' AND r.entity_id IN (${uuidList(patientIds)}))`;
+  return sql`EXISTS (SELECT 1 FROM (${messagePatientRefs("m")}) x WHERE x.patient_id IN (${uuidList(patientIds)}))`;
 }
 
 export function createExportBuildStore(deps: {
@@ -128,12 +143,25 @@ export function createExportBuildStore(deps: {
       inTx(organizationId, async (tx) => {
         if (query.channelIds.length === 0) return [];
         const res = await tx.execute<{ entity_id: string }>(
-          sql`SELECT DISTINCT r.entity_id
-                FROM message m JOIN message_entity_reference r
-                  ON r.organization_id = m.organization_id AND r.message_id = m.id AND r.reference_kind = 'patient'
+          sql`SELECT DISTINCT x.patient_id AS entity_id
+                FROM message m CROSS JOIN LATERAL (${messagePatientRefs("m")}) x
                WHERE ${scope(organizationId, query)}`,
         );
         return res.rows.map((r) => r.entity_id);
+      }),
+
+    messageReferences: (organizationId, messageIds) =>
+      inTx(organizationId, async (tx) => {
+        const byMessage = new Map<string, string[]>();
+        if (messageIds.length === 0) return byMessage;
+        const res = await tx.execute<{ message_id: string; patient_id: string }>(
+          sql`SELECT m.id AS message_id, x.patient_id
+                FROM message m CROSS JOIN LATERAL (${messagePatientRefs("m")}) x
+               WHERE m.organization_id = ${organizationId}::uuid AND m.id IN (${uuidList(messageIds)})`,
+        );
+        for (const r of res.rows)
+          byMessage.set(r.message_id, [...(byMessage.get(r.message_id) ?? []), r.patient_id]);
+        return byMessage;
       }),
 
     count: (organizationId, query) =>

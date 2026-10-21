@@ -140,14 +140,29 @@ export async function exportExpiryTick(
 ): Promise<ExportExpirySweepResult & { readonly reenqueued: number }> {
   const totals = { expired: 0, timedOut: 0, reenqueued: 0 };
   await fanOutOrgs(deps, "export_expiry_sweep", async (organizationId) => {
-    const result = await deps.expireForOrg(organizationId);
-    totals.expired += result.expired;
-    totals.timedOut += result.timedOut;
-    if (!deps.staleApprovedForOrg || !deps.enqueue) return;
-    for (const jobId of await deps.staleApprovedForOrg(organizationId)) {
-      await deps.enqueue({ organizationId, jobId });
-      totals.reenqueued += 1;
+    // The stale-approved pass runs even when the expiry throws (e.g. a failed object delete); the expiry error is rethrown after it.
+    let expiryError: unknown;
+    try {
+      const result = await deps.expireForOrg(organizationId);
+      totals.expired += result.expired;
+      totals.timedOut += result.timedOut;
+    } catch (error) {
+      expiryError = error;
     }
+    const enqueueErrors: unknown[] = [];
+    if (deps.staleApprovedForOrg && deps.enqueue) {
+      for (const jobId of await deps.staleApprovedForOrg(organizationId)) {
+        try {
+          await deps.enqueue({ organizationId, jobId });
+          totals.reenqueued += 1;
+        } catch (error) {
+          enqueueErrors.push(error);
+        }
+      }
+    }
+    if (expiryError !== undefined) throw expiryError;
+    if (enqueueErrors.length > 0)
+      throw new AggregateError(enqueueErrors, "export re-enqueue failed");
   });
   return totals;
 }

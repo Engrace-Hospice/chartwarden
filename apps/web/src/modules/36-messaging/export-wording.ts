@@ -35,6 +35,7 @@ export const NOT_EXPORTED_HEADING = "What an export leaves out";
 export const NOT_EXPORTED_ITEMS: readonly string[] = [
   "Messages under a legal hold are left out. The file says how many.",
   "Messages with substance use (Part 2) content are left out. The file says how many.",
+  "Content that is not linked to a patient record (for example a name typed without a link) cannot be detected, so it is not left out.",
   "Attachments are metadata only (name and size). The files themselves are not included.",
   "A second person must approve the request. You cannot approve your own.",
   "After the file is ready, the download link works for 24 hours, then it expires.",

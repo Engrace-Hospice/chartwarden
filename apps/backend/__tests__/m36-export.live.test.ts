@@ -1468,6 +1468,114 @@ describe.skipIf(!DB_URL)("M36 ADR-0089 restricted messaging export - LIVE Postgr
       expect(got.messages).toHaveLength(2);
     });
 
+    const clinicalLinkTo = (messageId: string, patientId: string) =>
+      kit.admin.query(
+        `INSERT INTO clinical_link (organization_id, message_id, link_kind, source_id, patient_id, created_by)
+         VALUES ($1,$2,'visit',$3,$4,$5)`,
+        [ORG_A, messageId, randomUUID(), patientId, author],
+      );
+    const promotionFor = (messageId: string, channelId: string, patientId: string) =>
+      kit.admin.query(
+        `INSERT INTO chart_promotion_request (organization_id, message_id, channel_id, patient_id, target_module, target_kind,
+           requested_by_user_id, source_author_user_id, source_sent_at, source_body_sha256)
+         VALUES ($1,$2,$3,$4,'m8','encounter_addendum',$5,$5,now(),$6)`,
+        [ORG_A, messageId, channelId, patientId, author, "0".repeat(64)],
+      );
+
+    it("(part 2) a message tied to a flagged patient ONLY by a clinical link or a chart-promotion request is left out and counted; an unflagged link is exported", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      const linked = await seedMessage(channel, `${MARKER} link-only-sud`, dayAt(4));
+      await clinicalLinkTo(linked, PART2_PATIENT);
+      const promoted = await seedMessage(channel, `${MARKER} promotion-only-sud`, dayAt(3));
+      await promotionFor(promoted, channel, PART2_PATIENT);
+      const fine = await seedMessage(channel, `${MARKER} link-other-patient`, dayAt(2));
+      await clinicalLinkTo(fine, PATIENT);
+      const id = await buildFlow(await newRequester(), {
+        scopeKind: "channel",
+        channelId: channel,
+      });
+      expect(await jobRow(id)).toMatchObject({
+        status: "ready",
+        message_count: 1,
+        part2_excluded: 2,
+      });
+      const got = await artefactOf(id);
+      expect(JSON.stringify(got)).not.toContain("link-only-sud");
+      expect(JSON.stringify(got)).not.toContain("promotion-only-sud");
+      expect(got.messages.map((m) => m.id)).toEqual([fine]);
+    });
+
+    it("(part 2, TOCTOU) a flagged patient referenced AFTER the up-front decision is caught by the per-page re-check", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await seedMessage(channel, `${MARKER} toctou-stays`, dayAt(3));
+      const late = await seedMessage(channel, `${MARKER} toctou-late-ref`, dayAt(2));
+      const base = createExportBuildStore({ db: kit.handle.db, outbox: outbox() });
+      const racing = createExportBuilder({
+        store: {
+          ...base,
+          // Between the decision (reference lookup + count) and the page read.
+          count: async (o, q) => {
+            const res = await base.count(o, q);
+            await refer(late, PART2_PATIENT);
+            return res;
+          },
+        },
+        keys,
+        openBody: (org, cipher) => bodyCipher.open(org, cipher),
+        part2Patients: async (_org, ids) =>
+          sudPatientsFromFacts(
+            ids.map((i) => ({ patientId: i, privacyFlags: i === PART2_PATIENT ? ["sud"] : [] })),
+            ids,
+          ),
+        putObject: async (a) => {
+          objects.set(objKey(a.organizationId, a.objectKey), Buffer.from(a.bytes));
+        },
+        deleteObject,
+      });
+      stepUpFresh = true;
+      const requester = await newRequester();
+      const made = await create(requester, { scopeKind: "channel", channelId: channel });
+      const id = made.json().id as string;
+      await approve(approver, id);
+      expect(await racing.buildJob(ORG_A, id)).toEqual({ outcome: "ready", messageCount: 1 });
+      expect(await jobRow(id)).toMatchObject({ message_count: 1, part2_excluded: 1 });
+      expect(JSON.stringify(await artefactOf(id))).not.toContain("toctou-late-ref");
+    });
+
+    it("(snapshot edge) a message edited after the build started is not exported", async () => {
+      const channel = await mkChannel(kit, "discipline", randomUUID(), [author]);
+      await seedMessage(channel, `${MARKER} edge-stays`, dayAt(3));
+      const edited = await seedMessage(channel, `${MARKER} edge-edited-late`, dayAt(2));
+      const base = createExportBuildStore({ db: kit.handle.db, outbox: outbox() });
+      const racing = createExportBuilder({
+        store: {
+          ...base,
+          // After the snapshot edge (`until`) is taken, before the pages are read.
+          referencedPatients: async (o, q) => {
+            const res = await base.referencedPatients(o, q);
+            await kit.admin.query(
+              "UPDATE message SET status='edited', edited_at = now() + interval '1 minute' WHERE id=$1",
+              [edited],
+            );
+            return res;
+          },
+        },
+        keys,
+        openBody: (org, cipher) => bodyCipher.open(org, cipher),
+        part2Patients: async () => new Set<string>(),
+        putObject: async (a) => {
+          objects.set(objKey(a.organizationId, a.objectKey), Buffer.from(a.bytes));
+        },
+        deleteObject,
+      });
+      stepUpFresh = true;
+      const made = await create(await newRequester(), { scopeKind: "channel", channelId: channel });
+      const id = made.json().id as string;
+      await approve(approver, id);
+      expect(await racing.buildJob(ORG_A, id)).toEqual({ outcome: "ready", messageCount: 1 });
+      expect(JSON.stringify(await artefactOf(id))).not.toContain("edge-edited-late");
+    });
+
     it("(part 2) a location channel exports normally: its subject (a location id) never reaches the flag reader", async () => {
       const locationId = randomUUID();
       const channel = await mkChannel(kit, "location", locationId, [author]);

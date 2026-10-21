@@ -24,6 +24,8 @@ export const EXPORT_FAIL_PART2 = "EXPORT_PART2_UNKNOWN";
 export const EXPORT_FAIL_REQUESTER = "EXPORT_REQUESTER_INELIGIBLE";
 export const EXPORT_FAIL_STORE = "EXPORT_STORE_FAILED";
 export const EXPORT_FAIL_BUILD = "EXPORT_BUILD_FAILED";
+/** A LOWER bound of the JSON bytes per message beyond its body (three uuids, a timestamp, the keys): the running cap never rejects what the final check would accept. */
+export const EXPORT_MESSAGE_OVERHEAD_BYTES = 256;
 export const EXPORT_OBJECT_PREFIX = "messaging-export";
 
 export interface ExportJobRow {
@@ -94,8 +96,13 @@ export interface ExportBuildStore {
   dbNow(organizationId: string): Promise<{ readonly text: string; readonly date: Date }>;
   /** Whether the requester is still an active, non-excluded-category user (rechecked at claim: an approval does not outlive eligibility). */
   requesterEligible(organizationId: string, userId: string): Promise<boolean>;
-  /** The distinct patient ids the in-scope messages reference (`part2PatientIds` is ignored). */
+  /** The distinct patient ids the in-scope messages are tied to (reference, clinical link, promotion request; `part2PatientIds` is ignored). */
   referencedPatients(organizationId: string, query: ExportMessageQuery): Promise<readonly string[]>;
+  /** The patient ids each of these messages is tied to right now (a message with none is absent): the per-page Part 2 re-check. */
+  messageReferences(
+    organizationId: string,
+    messageIds: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly string[]>>;
   /**
    * Messages with a readable, not author-deleted body in the query; how many of them a legal hold covers (held is a subset of total); and how many
    * NOT held ones reference a `part2PatientIds` patient (part2, disjoint from held).
@@ -222,21 +229,68 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
       allowed: channels.filter((c) => !gated(c)).map((c) => c.id),
       gated: channels.filter(gated).map((c) => c.id),
       flagged: [...flagged],
+      resolved: new Set(candidates),
     };
   }
 
-  // Bounded by EXPORT_MAX_MESSAGES only: a hold released between the count and a page may add rows, which the manifest then counts as listed.
-  async function collect(organizationId: string, query: ExportMessageQuery): Promise<unknown[]> {
+  /**
+   * Per page: the patients tied to these rows right now. Any id the build has not yet resolved is asked of the flag reader here (a throw fails
+   * closed); a row tied to a flagged patient is dropped. Closes the window between the up-front decision and the page read.
+   */
+  async function recheckPart2(
+    organizationId: string,
+    rows: readonly ExportMessageRow[],
+    state: { resolved: Set<string>; flagged: Set<string> },
+  ): Promise<ReadonlySet<string>> {
+    const refs = await deps.store.messageReferences(
+      organizationId,
+      rows.map((r) => r.id),
+    );
+    const fresh = [...new Set([...refs.values()].flat())].filter((id) => !state.resolved.has(id));
+    if (fresh.length > 0) {
+      let nowFlagged: ReadonlySet<string>;
+      try {
+        nowFlagged = await deps.part2Patients(organizationId, fresh);
+      } catch {
+        throw new ExportBuildFailure(EXPORT_FAIL_PART2);
+      }
+      for (const id of fresh) state.resolved.add(id);
+      for (const id of nowFlagged) state.flagged.add(id);
+    }
+    return new Set(
+      rows
+        .filter((r) => (refs.get(r.id) ?? []).some((id) => state.flagged.has(id)))
+        .map((r) => r.id),
+    );
+  }
+
+  // Bounded by EXPORT_MAX_MESSAGES and a running byte total (stops before the whole document is held); a hold released between the count and a page
+  // may add rows, which the manifest then counts as listed.
+  async function collect(
+    organizationId: string,
+    query: ExportMessageQuery,
+    part2: { resolved: Set<string>; flagged: Set<string> },
+  ) {
     const out: unknown[] = [];
+    const maxBytes = deps.maxArtefactBytes ?? EXPORT_MAX_ARTEFACT_BYTES;
+    let bytes = 0;
+    let dropped = 0;
     let after: ExportCursor | null = null;
     while (query.channelIds.length > 0) {
       const rows = await deps.store.page(organizationId, query, after, EXPORT_PAGE_SIZE);
       if (rows.length === 0) break;
+      const newlyFlagged = await recheckPart2(organizationId, rows, part2);
       const attachments = await deps.store.attachments(
         organizationId,
         rows.map((r) => r.id),
       );
       for (const row of rows) {
+        if (newlyFlagged.has(row.id)) {
+          dropped += 1;
+          continue;
+        }
+        const body = await deps.openBody(organizationId, row.bodyCipher);
+        bytes += Buffer.byteLength(body, "utf8") + EXPORT_MESSAGE_OVERHEAD_BYTES;
         out.push({
           id: row.id,
           channelId: row.channelId,
@@ -244,7 +298,7 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
           sentAt: row.createdAt.toISOString(),
           kind: row.bodyKind,
           status: row.status,
-          body: await deps.openBody(organizationId, row.bodyCipher),
+          body,
           attachments: attachments
             .filter((a) => a.messageId === row.id)
             .map((a) => ({
@@ -255,13 +309,14 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
               scanState: a.scanState,
             })),
         });
-        if (out.length > EXPORT_MAX_MESSAGES) throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
+        if (out.length > EXPORT_MAX_MESSAGES || bytes > maxBytes)
+          throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
       }
       const last = rows[rows.length - 1];
       if (!last || rows.length < EXPORT_PAGE_SIZE) break;
       after = { createdAtText: last.createdAtText, id: last.id };
     }
-    return out;
+    return { messages: out, dropped };
   }
 
   async function build(job: ExportJobRow): Promise<ExportBuildOutcome> {
@@ -273,7 +328,7 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
     const { from, to } = windowOf(job);
     const window = { from, to, until: startedAt.text };
     const channels = await deps.store.channelsFor(organizationId, job);
-    const { allowed, gated, flagged } = await split(organizationId, channels, window);
+    const { allowed, gated, flagged, resolved } = await split(organizationId, channels, window);
     const allowedQuery = { ...window, channelIds: allowed, part2PatientIds: flagged };
     const allowedCount = await deps.store.count(organizationId, allowedQuery);
     const gatedCount =
@@ -286,9 +341,13 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
         : { total: 0, held: 0, part2: 0 };
     const included = allowedCount.total - allowedCount.held - allowedCount.part2;
     if (included > EXPORT_MAX_MESSAGES) throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
-    const part2Excluded = gatedCount.total + allowedCount.part2;
 
-    const messages = await collect(organizationId, allowedQuery);
+    const collected = await collect(organizationId, allowedQuery, {
+      resolved: new Set(resolved),
+      flagged: new Set(flagged),
+    });
+    const { messages } = collected;
+    const part2Excluded = gatedCount.total + allowedCount.part2 + collected.dropped;
     const manifest: MessagingExportManifest = {
       manifestVersion: MESSAGING_EXPORT_MANIFEST_VERSION,
       format: MESSAGING_EXPORT_FORMAT,

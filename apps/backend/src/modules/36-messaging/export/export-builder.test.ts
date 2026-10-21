@@ -88,6 +88,12 @@ function fakeStore(opts: {
     referencedPatients: async (_o, q) => [
       ...new Set(opts.messages.filter((m) => inQuery(m, q)).flatMap((m) => m.refs ?? [])),
     ],
+    messageReferences: async (_o, ids) =>
+      new Map(
+        opts.messages
+          .filter((m) => ids.includes(m.id) && m.refs?.length)
+          .map((m) => [m.id, m.refs ?? []]),
+      ),
     count: async (_o, q) => {
       const rows = opts.messages.filter((m) => inQuery(m, q));
       return {
@@ -617,6 +623,71 @@ describe("export builder", () => {
     });
     expect(t.stored.size).toBe(0);
     expect(EXPORT_MAX_ARTEFACT_BYTES).toBeLessThan(256 * 1024 * 1024);
+  });
+
+  it("a patient tied to a message only after the up-front decision is checked per page and the message is left out and counted", async () => {
+    const t = build(
+      {
+        job: job(),
+        channels: [{ id: "ch1", kind: "group", subjectId: null }],
+        messages: [
+          msg("m1", "ch1", "2026-03-01T10:00:00Z"),
+          msg("m2", "ch1", "2026-03-01T11:00:00Z"),
+        ],
+      },
+      {
+        part2Patients: async (_o: string, ids: string[]) =>
+          new Set(ids.filter((i) => i === "p-sud")),
+      },
+    );
+    // After the reference lookup and the count, m2 gains a link to a patient the build has never asked about.
+    const original = t.store.messageReferences;
+    t.store.messageReferences = async (o, ids) => {
+      const map = new Map(await original(o, ids));
+      if (ids.includes("m2")) map.set("m2", ["p-sud"]);
+      return map;
+    };
+    expect(await t.builder.buildJob(ORG, JOB)).toEqual({ outcome: "ready", messageCount: 1 });
+    expect(readArtefact(t.stored).manifest.part2Excluded).toBe(1);
+    expect(JSON.stringify(readArtefact(t.stored))).not.toContain("body of m2");
+  });
+
+  it("fails closed (EXPORT_PART2_UNKNOWN) when the flag of a patient first seen on a page cannot be read", async () => {
+    const t = build(
+      {
+        job: job(),
+        channels: [{ id: "ch1", kind: "group", subjectId: null }],
+        messages: [msg("m1", "ch1", "2026-03-01T10:00:00Z")],
+      },
+      {
+        part2Patients: async () => {
+          throw new Error("unreadable");
+        },
+      },
+    );
+    t.store.messageReferences = async () => new Map([["m1", ["p-new"]]]);
+    expect(await t.builder.buildJob(ORG, JOB)).toMatchObject({
+      outcome: "failed",
+      failureCode: "EXPORT_PART2_UNKNOWN",
+    });
+    expect(t.stored.size).toBe(0);
+  });
+
+  it("stops paging as soon as the running byte total passes the cap (does not build the whole document)", async () => {
+    const messages = Array.from({ length: 1100 }, (_, i) =>
+      msg(`m${String(i).padStart(4, "0")}`, "ch1", "2026-03-01T10:00:00Z"),
+    );
+    const t = build(
+      { job: job(), channels: [{ id: "ch1", kind: "group", subjectId: null }], messages },
+      { maxArtefactBytes: 20_000 },
+    );
+    const page = vi.spyOn(t.store, "page");
+    expect(await t.builder.buildJob(ORG, JOB)).toMatchObject({
+      outcome: "failed",
+      failureCode: "EXPORT_TOO_LARGE",
+    });
+    expect(page).toHaveBeenCalledTimes(1);
+    expect(t.stored.size).toBe(0);
   });
 
   it("the failed outcome names the error class and never its message", async () => {
