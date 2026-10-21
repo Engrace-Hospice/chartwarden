@@ -100,12 +100,30 @@ user's explicit go-ahead.
   and session class.
 
 ### Phase 4 — web (PR B)
-- Tenant host: normal sign-in page with the tenant's name; no org-select. Invite and magic-link emails link
-  to the inviting tenant's host.
-- `app.chartwarden.com` landing (D5): email in, always "check your email", links mailed to the user's tenant
-  hosts, never shown (no user enumeration).
-- Portal served under `/portal/` of the tenant host. Staff cookie never authenticates a portal route and the
-  reverse (401).
+
+PR A merged as #538; its migrations landed as 1144 and 1145 (renumbered on merge). Decisions taken for Phase 4
+(the recommended answers, recorded before building):
+
+- **Link hosts are per organization.** One resolver, `tenantAppOrigin(orgId)`, returns `https://<slug>.<base>` when
+  `TENANT_BASE_DOMAIN` is set and falls back to today's `WEB_APP_URL` / `BETTER_AUTH_URL` otherwise (demo unchanged).
+  It replaces the global `webAppBaseUrl` for staff invitation, auditor redeem, M34 first-admin invite, portal
+  invitation and funeral-home / collaborator links. Better Auth's reset and magic-link `url` is rewritten to the
+  request's origin only when the tenant origin matcher trusts it; otherwise it is left alone.
+- **No second portal cookie.** Staff and portal share the Better Auth cookie on a host. Separation is enforced by
+  session class in one `onRequest` hook beside the tenant-host guard: a portal-class session on a non-portal path,
+  or a staff-class session on `/api/v1/portal/*`, gets 401. Signing in to one replaces the other in that browser;
+  that is acceptable (a person is rarely both) and is stated in the runbook.
+- **Tenant sign-in shows the tenant's name** through `GET /api/v1/public/tenant`: host-derived (no parameter),
+  unauthenticated, rate limited, answers `{ status, displayName }` where `displayName` is present only for an
+  active or created org. Backed by a narrow SECURITY DEFINER function (the `resolve_tenant_host` pattern). The SPA
+  picker is skipped on a tenant host (the pin already makes it a one-org choice).
+- **Closed / suspended / unknown host** renders a static page chosen by the response body `error.code`
+  (`TENANT_CLOSED`, `TENANT_SUSPENDED`, `TENANT_HOST_UNKNOWN`); the response-signal layer learns the codes.
+- **`app.<base>` landing:** `POST /api/v1/public/find-my-organization { email }` always answers 202 "check your
+  email". It mails the user the sign-in link of each active organization they belong to (one email, only when at
+  least one exists), after a per-IP limit and a per-hashed-email limit. A narrow SECURITY DEFINER function maps
+  email to `(slug, display_name)` of active memberships. No link or organization is ever shown in the response.
+- **Portal** is built with `base: "/portal/"` and served under `/portal/` of the tenant host, same origin as `/api`.
 
 ### Phase 5 — edge and environment (PR B)
 - Confirm quillwardhealth.com controls `chartwarden.com` DNS; add the wildcard record and DNS-01 credentials.
