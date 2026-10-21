@@ -30,3 +30,9 @@ export type ExportPermissionCheck = (
   userId: string,
   permissionKey: string,
 ) => Promise<boolean>;
+
+/**
+ * The channel kinds a PATIENT scope exports. The store (request-time scope check) and the build store (channel lookup) both use this one list,
+ * so a kind accepted at request is always built. The Part 2 gate is NOT tied to it: the builder gates every channel that names a subject patient.
+ */
+export const EXPORT_PATIENT_SCOPE_CHANNEL_KINDS = ["care_team"] as const;

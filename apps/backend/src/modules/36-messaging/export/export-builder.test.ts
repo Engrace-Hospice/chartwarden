@@ -262,6 +262,57 @@ describe("export builder", () => {
     expect(t.stored.size).toBe(0);
   });
 
+  it.each(["bereavement", "discipline"])(
+    "gates a %s channel that names a flagged subject in a channel-scope build",
+    async (kind) => {
+      const t = build(
+        {
+          job: job({ channelId: "bc" }),
+          channels: [{ id: "bc", kind, subjectId: "p1" }],
+          messages: [
+            msg("m1", "bc", "2026-03-01T10:00:00Z"),
+            msg("m2", "bc", "2026-03-01T11:00:00Z"),
+          ],
+        },
+        { part2Patients: async () => new Set(["p1"]) },
+      );
+      expect(await t.builder.buildJob(ORG, JOB)).toEqual({ outcome: "ready", messageCount: 0 });
+      const doc = readArtefact(t.stored);
+      expect(doc.manifest).toMatchObject({ messageCount: 0, part2Excluded: 2 });
+      expect(JSON.stringify(doc)).not.toContain("body of m1");
+    },
+  );
+
+  it("exports a bereavement channel whose subject is not flagged", async () => {
+    const t = build({
+      job: job({ channelId: "bc" }),
+      channels: [{ id: "bc", kind: "bereavement", subjectId: "p1" }],
+      messages: [msg("m1", "bc", "2026-03-01T10:00:00Z")],
+    });
+    expect(await t.builder.buildJob(ORG, JOB)).toEqual({ outcome: "ready", messageCount: 1 });
+    expect(readArtefact(t.stored).manifest).toMatchObject({ part2Excluded: 0 });
+  });
+
+  it("fails closed on an unreadable flag for a bereavement channel", async () => {
+    const t = build(
+      {
+        job: job({ channelId: "bc" }),
+        channels: [{ id: "bc", kind: "bereavement", subjectId: "p1" }],
+        messages: [],
+      },
+      {
+        part2Patients: async () => {
+          throw new Error("seam down");
+        },
+      },
+    );
+    expect(await t.builder.buildJob(ORG, JOB)).toEqual({
+      outcome: "failed",
+      failureCode: "EXPORT_PART2_UNKNOWN",
+    });
+    expect(t.stored.size).toBe(0);
+  });
+
   it("fails with EXPORT_TOO_LARGE over the cap and stores nothing", async () => {
     const t = build({
       job: job(),

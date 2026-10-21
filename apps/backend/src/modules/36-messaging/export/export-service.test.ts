@@ -358,6 +358,23 @@ describe("decide", () => {
     ]);
   });
 
+  it.each(["approve", "reject"] as const)(
+    "403 for an ineligible approver on %s: the job stays pending and nothing is published",
+    async (verb) => {
+      const { service, world } = setup();
+      const job = await service.create(asRequester, BODY);
+      const eventsBefore = world.events.length;
+      world.excluded.add(APPROVER);
+      expect(await codeOf(service.decide(asApprover, job.id, verb, {}))).toMatch(/:403$/);
+      expect(world.jobs[0]?.status).toBe("pending_approval");
+      expect(world.events).toHaveLength(eventsBefore);
+      world.excluded.delete(APPROVER);
+      expect((await service.decide(asApprover, job.id, verb, {})).status).not.toBe(
+        "pending_approval",
+      );
+    },
+  );
+
   it("never lets the requester decide their own job, even holding the permission", async () => {
     const { service, world } = setup();
     const job = await service.create(asRequester, BODY);
@@ -478,6 +495,18 @@ describe("download", () => {
     expect(reader).toHaveBeenCalledWith(
       expect.objectContaining({ jobId, organizationId: ORG, artefactKey: "k", wrappedDek: "dek" }),
     );
+  });
+
+  it("an ineligible requester gets the unknown-id 404: no trail row, reader not called", async () => {
+    const { service, world, reader, jobId } = await readyJob();
+    const unknown = await codeOf(
+      service.download(asRequester, "00000000-0000-4000-8000-0000000000ff"),
+    );
+    world.excluded.add(REQUESTER);
+    expect(await codeOf(service.download(asRequester, jobId))).toBe(unknown);
+    expect(unknown).toBe("NOT_FOUND:404");
+    expect(world.downloads).toHaveLength(0);
+    expect(reader).not.toHaveBeenCalled();
   });
 
   it("fails closed: no trail row means no bytes, and nothing is left behind", async () => {

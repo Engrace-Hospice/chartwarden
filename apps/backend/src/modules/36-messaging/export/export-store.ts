@@ -8,6 +8,7 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { excludedMemberUserIds } from "../member-category-gate";
 import { isActiveMessagingUser } from "../messaging-route-service-db";
 import type { Tx } from "../messaging-write-core";
+import { EXPORT_PATIENT_SCOPE_CHANNEL_KINDS } from "./export-ports";
 
 const J = schema.messageExportJobs;
 const D = schema.messageExportDownloads;
@@ -16,8 +17,6 @@ const USER = schema.users;
 
 /** Jobs listed at once (mine, and the approvers' queue). */
 export const EXPORT_LIST_LIMIT = 50;
-/** The channel kinds that carry one patient's conversation (a patient scope exports these). */
-const PATIENT_CHANNEL_KINDS = ["care_team", "bereavement"] as const;
 
 export interface ExportActor {
   readonly organizationId: string;
@@ -176,7 +175,7 @@ export function createDrizzleExportStore(db: DbClient): ExportStore {
                     and(
                       eq(CH.organizationId, orgId),
                       eq(CH.subjectId, scope.patientId),
-                      inArray(CH.channelKind, [...PATIENT_CHANNEL_KINDS]),
+                      inArray(CH.channelKind, [...EXPORT_PATIENT_SCOPE_CHANNEL_KINDS]),
                     ),
                   )
                   .limit(1);

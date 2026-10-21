@@ -266,6 +266,10 @@ export function createExportService(deps: ExportServiceDeps): ExportService {
         throw new ForbiddenError(`requires permission '${MESSAGING_EXPORT_APPROVE_PERMISSION}'`);
       }
       return store.run(actor, async (tx) => {
+        // Same active-user and role-category rule as the request: a decider who was deactivated or moved to an excluded category since holding the key is refused.
+        if (!(await tx.eligible(userId))) {
+          throw new ForbiddenError("this account may not decide exports");
+        }
         const current = await tx.getJob(jobId);
         if (!current) throw jobNotFound(jobId);
         // Two people: never one's own request (the table CHECK refuses it too).
@@ -342,6 +346,8 @@ export function createExportService(deps: ExportServiceDeps): ExportService {
       const job = await store.run(actor, (tx) => tx.getJob(jobId));
       // Only the requester ever downloads; anyone else (an approver included) gets the 404 an unknown id gets.
       if (!job || job.requestedBy !== userId) throw jobNotFound(jobId);
+      // An account no longer active or now in an excluded category gets the same 404, so a removed requester cannot take a ready artefact.
+      if (!(await store.run(actor, (tx) => tx.eligible(userId)))) throw jobNotFound(jobId);
       if (!(await holds(actor, MESSAGING_EXPORT_DOWNLOAD_PERMISSION))) {
         throw new ForbiddenError(`requires permission '${MESSAGING_EXPORT_DOWNLOAD_PERMISSION}'`);
       }

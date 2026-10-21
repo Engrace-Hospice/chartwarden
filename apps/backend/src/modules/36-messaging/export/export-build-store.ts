@@ -19,6 +19,7 @@ import type {
   ExportMessageRow,
 } from "./export-builder";
 import { publishExportEvent } from "./export-events";
+import { EXPORT_PATIENT_SCOPE_CHANNEL_KINDS } from "./export-ports";
 
 const J = schema.messageExportJobs;
 
@@ -77,7 +78,10 @@ export function createExportBuildStore(deps: {
         const where =
           job.scopeKind === "channel"
             ? sql`c.id = ${job.channelId}::uuid`
-            : sql`c.channel_kind = 'care_team' AND c.subject_id = ${job.patientId}::uuid`;
+            : sql`c.channel_kind IN (${sql.join(
+                EXPORT_PATIENT_SCOPE_CHANNEL_KINDS.map((kind) => sql`${kind}`),
+                sql`, `,
+              )}) AND c.subject_id = ${job.patientId}::uuid`;
         const res = await tx.execute<{ id: string; kind: string; subject_id: string | null }>(
           sql`SELECT c.id, c.channel_kind AS kind, c.subject_id FROM channel c
                WHERE c.organization_id = ${organizationId}::uuid AND ${where}`,

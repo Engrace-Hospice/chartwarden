@@ -38,7 +38,7 @@ export interface ExportJobRow {
 export interface ExportChannel {
   readonly id: string;
   readonly kind: string;
-  /** The patient of a care_team channel; null otherwise. */
+  /** The subject patient of the channel (any kind that names one); null otherwise. */
   readonly subjectId: string | null;
 }
 
@@ -170,11 +170,7 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
   const now = deps.now ?? (() => new Date());
 
   async function split(organizationId: string, channels: readonly ExportChannel[]) {
-    const subjects = [
-      ...new Set(
-        channels.flatMap((c) => (c.kind === "care_team" && c.subjectId ? [c.subjectId] : [])),
-      ),
-    ];
+    const subjects = [...new Set(channels.flatMap((c) => (c.subjectId ? [c.subjectId] : [])))];
     let flagged: ReadonlySet<string> = new Set();
     if (subjects.length > 0) {
       try {
@@ -183,8 +179,8 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
         throw new ExportBuildFailure(EXPORT_FAIL_PART2);
       }
     }
-    const gated = (c: ExportChannel) =>
-      c.kind === "care_team" && c.subjectId !== null && flagged.has(c.subjectId);
+    // Every channel that names a subject patient is gated (a channel-scoped export can name a bereavement or any other kind), not only care_team.
+    const gated = (c: ExportChannel) => c.subjectId !== null && flagged.has(c.subjectId);
     return {
       allowed: channels.filter((c) => !gated(c)).map((c) => c.id),
       gated: channels.filter(gated).map((c) => c.id),
