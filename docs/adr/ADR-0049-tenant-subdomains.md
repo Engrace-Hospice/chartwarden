@@ -258,6 +258,6 @@ cache window.
 ## Amendment 2026-10-21 (Phase 4 backend)
 
 Emailed links name the organization's own host (`tenantAppOrigin`), portal and staff are kept apart by session class
-rather than a second cookie, and two narrow SECURITY DEFINER lookups (migration 1146) back the public tenant name and
+rather than a second cookie, and two narrow SECURITY DEFINER lookups (migrations 1148, 1149) back the public tenant name and
 the `app.` "find my organization" mail. None changes D1: the host is still never an authorization source.
 See `docs/TENANT_SUBDOMAINS_PLAN.md` (Phase 4 backend build notes).

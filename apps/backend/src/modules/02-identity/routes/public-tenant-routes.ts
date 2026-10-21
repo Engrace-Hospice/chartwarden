@@ -60,9 +60,9 @@ export interface PublicTenantEmailTransport {
 export interface PublicTenantRouteDeps {
   /** `TENANT_BASE_DOMAIN`; null (single-host mode) makes both routes 404. */
   readonly baseDomain: string | null;
-  /** `resolve_tenant_public(label)` (migration 1146). */
+  /** `resolve_tenant_public(label)` (migration 1148). */
   resolvePublic(label: string): Promise<PublicTenantRow | null>;
-  /** `tenant_links_for_email(email)` (migration 1146). */
+  /** `tenant_links_for_email(email)` (migration 1148). */
   linksForEmail(email: string): Promise<readonly TenantLink[]>;
   readonly emailTransport?: PublicTenantEmailTransport;
   readonly ipLimiter: PublicTenantLimiter;

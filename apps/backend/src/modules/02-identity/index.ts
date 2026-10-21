@@ -643,7 +643,7 @@ export type { TaxIdCipherPort } from "./routes/org-admin-routes";
 export { createTaxIdCipher } from "./tax-id-cipher";
 export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";
-// ADR-0049 Phase 4 — the unauthenticated tenant-discovery routes + their database lookups (migration 1146).
+// ADR-0049 Phase 4 — the unauthenticated tenant-discovery routes + their database lookups (migration 1148).
 export { createDbPublicTenantLookups, createUserMayUseTenantHost } from "./public-tenant-db";
 export {
   FindMyOrganizationRequestSchema,

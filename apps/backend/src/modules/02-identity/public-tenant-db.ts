@@ -1,5 +1,5 @@
 // apps/backend/src/modules/02-identity/public-tenant-db.ts — the database half of the public tenant routes: the two narrow
-// SECURITY DEFINER functions of migration 1146, callable before any organization is bound. Values are bound parameters.
+// SECURITY DEFINER functions of migration 1148, callable before any organization is bound. Values are bound parameters.
 import type { DbClient } from "@chartwarden/db";
 import { classifyTenantHost } from "@chartwarden/types";
 import { sql } from "drizzle-orm";

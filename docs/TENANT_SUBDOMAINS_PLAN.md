@@ -134,7 +134,7 @@ unset) and the M34 first-admin link (`<origin>/tenant-invite/<token>`, via an op
 invitation port; `M34_INVITATION_ACCEPT_URL` still applies when the base is unset). The link-delivery port gained
 `organizationId`. Better Auth reset / magic-link URLs are rewritten to the request origin by
 `rewriteLinkToRequestOrigin` only when `Origin` is a tenant origin the matcher trusts and equals the request `Host`.
-Migration 1146 adds `resolve_tenant_public(label)` and `tenant_links_for_email(email)` (same SECURITY DEFINER shape
+Migration 1148 adds `resolve_tenant_public(label)` and `tenant_links_for_email(email)` (same SECURITY DEFINER shape
 as 1145; the second returns active memberships in active orgs, capped at 20). `GET /api/v1/public/tenant` and
 `POST /api/v1/public/find-my-organization` live in M2 (`routes/public-tenant-routes.ts`); both 404 unless the base
 domain is set. The find route answers 202 for every well-formed address; the per-IP budget (10 / 15 min) answers 429,
@@ -181,7 +181,7 @@ answers 401 `SESSION_CLASS_MISMATCH` for a portal-class session outside `/api/v1
 **Phase 4 pre-PR review fixes** (same branch; findings from the mandatory pre-PR review).
 - *Recipient gate (B1, was a regression)*: `userMayUseTenantHost` read `tenant_links_for_email`, which only knows ACTIVE
   memberships, so a portal-only person (patient / caregiver / bereaved: a `portal_account`, no membership) kept their
-  magic link on the global origin. Migration **1147** adds `email_belongs_to_tenant(p_email, p_label)` (SECURITY DEFINER,
+  magic link on the global origin. Migration **1149** adds `email_belongs_to_tenant(p_email, p_label)` (SECURITY DEFINER,
   owner `chartwarden_admin`, pinned search_path, EXECUTE for `chartwarden_app` only): boolean, no row cap, true for an
   active membership OR a live portal account (invited / active / bereaved, not revoked or suspended) in the organization
   whose CURRENT slug is `p_label` and whose status is `active` / `created` (a retired alias never matches).

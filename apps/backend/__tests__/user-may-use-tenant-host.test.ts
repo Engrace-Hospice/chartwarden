@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUserMayUseTenantHost } from "../src/modules/02-identity/public-tenant-db";
 
-// The database decides "member OR portal-account holder" (migration 1147, proved live); this proves the host handling and
+// The database decides "member OR portal-account holder" (migration 1149, proved live); this proves the host handling and
 // that the answer is the lookup's alone, so a portal-only person (no membership) is accepted when the lookup says so.
 describe("createUserMayUseTenantHost", () => {
   const belongs = vi.fn(async (email: string, label: string) => email === "patient@x.test" && label === "acme");
