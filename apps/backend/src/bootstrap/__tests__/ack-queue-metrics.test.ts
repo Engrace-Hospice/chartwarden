@@ -207,13 +207,13 @@ describe("registerAckQueueMetrics", () => {
     const registry = new Registry();
     registerAckQueueMetrics(registry, async () => sample);
     expect(await values(registry)).toEqual({
-      wardenx_m36_ack_overdue_total: 4,
-      wardenx_m36_ack_failed_unreachable_total: 1,
-      wardenx_m36_ack_oldest_overdue_seconds: 900,
-      wardenx_m36_ack_escalation_stalled_seconds: 420,
-      wardenx_m36_ack_latency_samples: 4,
-      "wardenx_m36_ack_latency_seconds:mean": 100,
-      "wardenx_m36_ack_latency_seconds:max": 250,
+      chartwarden_m36_ack_overdue_total: 4,
+      chartwarden_m36_ack_failed_unreachable_total: 1,
+      chartwarden_m36_ack_oldest_overdue_seconds: 900,
+      chartwarden_m36_ack_escalation_stalled_seconds: 420,
+      chartwarden_m36_ack_latency_samples: 4,
+      "chartwarden_m36_ack_latency_seconds:mean": 100,
+      "chartwarden_m36_ack_latency_seconds:max": 250,
     });
     const labelNames = (await registry.getMetricsAsJSON()).flatMap((m) =>
       Object.keys((m as { labelNames?: Record<string, unknown> }).labelNames ?? {}),
@@ -264,7 +264,7 @@ describe("registerAckQueueMetrics", () => {
       ackLatencySumSeconds: 0,
       ackLatencyMaxSeconds: 0,
     }));
-    expect((await values(registry))["wardenx_m36_ack_latency_seconds:mean"]).toBe(0);
+    expect((await values(registry))["chartwarden_m36_ack_latency_seconds:mean"]).toBe(0);
   });
 });
 

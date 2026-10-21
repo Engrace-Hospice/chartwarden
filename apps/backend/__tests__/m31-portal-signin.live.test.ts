@@ -181,7 +181,7 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
 
   function jar(cookies: ReadonlyArray<{ name: string; value: string }>) {
     const cookie = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-    const csrf = cookies.find((c) => c.name === "wardenx_csrf")?.value;
+    const csrf = cookies.find((c) => c.name === "chartwarden_csrf")?.value;
     return { cookie, csrf: csrf ?? "" };
   }
 
@@ -193,8 +193,8 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
       url: "/api/v1/portal/sign-in/accounts",
       headers: { cookie: session.cookie },
     });
-    const csrf = probe.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "";
-    return { cookie: `${session.cookie}; wardenx_csrf=${csrf}`, csrf };
+    const csrf = probe.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "";
+    return { cookie: `${session.cookie}; chartwarden_csrf=${csrf}`, csrf };
   }
 
   const sessionIdOf = async (userId: string): Promise<string> =>

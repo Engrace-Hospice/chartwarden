@@ -166,7 +166,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       ]);
       return {
         cookie: res.cookies.map((c) => `${c.name}=${c.value}`).join("; "),
-        csrf: res.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "",
+        csrf: res.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "",
         sessionId,
       };
     }

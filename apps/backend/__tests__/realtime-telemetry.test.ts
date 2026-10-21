@@ -35,8 +35,8 @@ describe("realtime telemetry (ADR-0054 item 12)", () => {
     log("realtime.refused", { reason: "made up by a caller" });
     expect(audit).not.toHaveBeenCalled();
     const text = await registry.metrics();
-    expect(text).toContain('wardenx_realtime_refused_total{reason="rate_limited"} 1');
-    expect(text).toContain('wardenx_realtime_refused_total{reason="other"} 1');
+    expect(text).toContain('chartwarden_realtime_refused_total{reason="rate_limited"} 1');
+    expect(text).toContain('chartwarden_realtime_refused_total{reason="other"} 1');
   });
 
   it("reports an audit failure instead of throwing", async () => {

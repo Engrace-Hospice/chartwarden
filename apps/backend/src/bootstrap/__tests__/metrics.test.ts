@@ -33,9 +33,9 @@ describe("registerHttpMetrics", () => {
 
     const text = await registry.metrics();
     expect(text).toContain(
-      'wardenx_http_requests_total{method="GET",route="/widgets/:id",status_code="200"} 1',
+      'chartwarden_http_requests_total{method="GET",route="/widgets/:id",status_code="200"} 1',
     );
-    expect(text).toContain("wardenx_http_request_duration_seconds_bucket");
+    expect(text).toContain("chartwarden_http_request_duration_seconds_bucket");
     // The raw URL (with the actual id) must NOT appear as a label value — cardinality guard.
     expect(text).not.toContain('route="/widgets/abc-123"');
   });
@@ -81,13 +81,13 @@ describe("registerBullMQQueueMetrics", () => {
     registerBullMQQueueMetrics(registry, queues);
 
     const text = await registry.metrics();
-    expect(text).toContain('wardenx_bullmq_queue_jobs{queue="care-plan.gates",state="waiting"} 3');
-    expect(text).toContain('wardenx_bullmq_queue_jobs{queue="care-plan.gates",state="active"} 1');
+    expect(text).toContain('chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="waiting"} 3');
+    expect(text).toContain('chartwarden_bullmq_queue_jobs{queue="care-plan.gates",state="active"} 1');
     expect(text).toContain(
-      'wardenx_bullmq_queue_jobs{queue="assessment.license",state="failed"} 2',
+      'chartwarden_bullmq_queue_jobs{queue="assessment.license",state="failed"} 2',
     );
     expect(text).toContain(
-      'wardenx_bullmq_queue_jobs{queue="assessment.license",state="delayed"} 1',
+      'chartwarden_bullmq_queue_jobs{queue="assessment.license",state="delayed"} 1',
     );
   });
 
@@ -111,11 +111,11 @@ describe("registerBullMQQueueMetrics", () => {
     registerBullMQQueueMetrics(registry, [queue]);
 
     expect(await registry.metrics()).toContain(
-      'wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 1',
+      'chartwarden_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 1',
     );
     counts.waiting = 7;
     expect(await registry.metrics()).toContain(
-      'wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 7',
+      'chartwarden_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 7',
     );
   });
 });
@@ -139,12 +139,12 @@ describe("registerOutboxMetrics", () => {
     );
 
     const text = await registry.metrics();
-    expect(text).toContain('wardenx_outbox_events_total{status="delivered"} 2');
-    expect(text).toContain('wardenx_outbox_events_total{status="retried"} 1');
-    expect(text).toContain('wardenx_outbox_events_total{status="deferred"} 3');
+    expect(text).toContain('chartwarden_outbox_events_total{status="delivered"} 2');
+    expect(text).toContain('chartwarden_outbox_events_total{status="retried"} 1');
+    expect(text).toContain('chartwarden_outbox_events_total{status="deferred"} 3');
     expect(text).not.toContain('status="dead_lettered"');
     expect(text).not.toContain('status="record_only"');
-    expect(text).toContain("wardenx_outbox_tick_duration_seconds_bucket");
+    expect(text).toContain("chartwarden_outbox_tick_duration_seconds_bucket");
   });
 
   it("accumulates across multiple ticks", async () => {
@@ -174,17 +174,17 @@ describe("registerOutboxMetrics", () => {
       },
       10,
     );
-    expect(await registry.metrics()).toContain('wardenx_outbox_events_total{status="delivered"} 5');
+    expect(await registry.metrics()).toContain('chartwarden_outbox_events_total{status="delivered"} 5');
   });
 
   it("reports pendingDepth via the injected thunk, 0 when omitted (no dispatcher running)", async () => {
     const withDepth = buildMetricsRegistry();
     registerOutboxMetrics(withDepth, { pendingDepth: async () => 42 });
-    expect(await withDepth.metrics()).toContain("wardenx_outbox_pending_depth 42");
+    expect(await withDepth.metrics()).toContain("chartwarden_outbox_pending_depth 42");
 
     const withoutDepth = buildMetricsRegistry();
     registerOutboxMetrics(withoutDepth);
-    expect(await withoutDepth.metrics()).toContain("wardenx_outbox_pending_depth 0");
+    expect(await withoutDepth.metrics()).toContain("chartwarden_outbox_pending_depth 0");
   });
 });
 

@@ -57,9 +57,9 @@ describe("registerGeocodeCoverageMetrics", () => {
       ungeocoded: 7,
     };
     registerGeocodeCoverageMetrics(registry, async () => sample);
-    expect(await registry.metrics()).toContain("wardenx_patient_ungeocoded_active_total 7");
+    expect(await registry.metrics()).toContain("chartwarden_patient_ungeocoded_active_total 7");
     sample = null;
-    expect(await registry.metrics()).toContain("wardenx_patient_ungeocoded_active_total -1");
+    expect(await registry.metrics()).toContain("chartwarden_patient_ungeocoded_active_total -1");
   });
 });
 

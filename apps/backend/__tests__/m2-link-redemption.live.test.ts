@@ -183,14 +183,14 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     ).rows[0].id as string;
     // The effect of select-organization (the org bind); the link flow is what is under test here.
     await admin.query("UPDATE session SET active_organization_id=$1 WHERE id=$2", [org, sessionId]);
-    const sessionCookies = signIn.cookies.filter((c) => c.name !== "wardenx_csrf");
+    const sessionCookies = signIn.cookies.filter((c) => c.name !== "chartwarden_csrf");
     // The CSRF double-submit pair: minted on the sign-in response when the request carried none.
-    let csrf = signIn.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "";
+    let csrf = signIn.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "";
     if (!csrf) {
       const probe = await app.inject({ method: "GET", url: "/__probe/open" });
-      csrf = probe.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "";
+      csrf = probe.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "";
     }
-    const cookie = `${sessionCookies.map((c) => `${c.name}=${c.value}`).join("; ")}; wardenx_csrf=${csrf}`;
+    const cookie = `${sessionCookies.map((c) => `${c.name}=${c.value}`).join("; ")}; chartwarden_csrf=${csrf}`;
     return { cookie, csrf, userId, membershipId };
   }
 
@@ -527,12 +527,12 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       (await app.inject({ method: "GET", url: "/__probe/clinical", headers: { cookie } }))
         .statusCode,
     ).toBe(403);
-    const csrf = read.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "x";
+    const csrf = read.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "x";
     const mint = await app.inject({
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: {
-        cookie: `${cookie}; wardenx_csrf=${csrf}`,
+        cookie: `${cookie}; chartwarden_csrf=${csrf}`,
         "x-csrf-token": csrf,
         "idempotency-key": randomUUID(),
       },

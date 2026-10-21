@@ -34,14 +34,14 @@ export function buildMetricsRegistry(): Registry {
 export function registerHttpMetrics(app: FastifyInstance, registry: Registry): void {
   const labelNames = ["method", "route", "status_code"] as const;
   const duration = new Histogram({
-    name: "wardenx_http_request_duration_seconds",
+    name: "chartwarden_http_request_duration_seconds",
     help: "HTTP request duration in seconds",
     labelNames,
     buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   });
   const requestsTotal = new Counter({
-    name: "wardenx_http_requests_total",
+    name: "chartwarden_http_requests_total",
     help: "Total HTTP requests",
     labelNames,
     registers: [registry],
@@ -76,7 +76,7 @@ const JOB_COUNT_STATES = ["waiting", "active", "completed", "failed", "delayed"]
  */
 export function registerBullMQQueueMetrics(registry: Registry, queues: readonly QueueLike[]): void {
   new Gauge({
-    name: "wardenx_bullmq_queue_jobs",
+    name: "chartwarden_bullmq_queue_jobs",
     help: "BullMQ job count per queue and state, read on scrape",
     labelNames: ["queue", "state"] as const,
     registers: [registry],
@@ -122,7 +122,7 @@ export interface OutboxMetricsHooks {
 }
 
 /**
- * Register the outbox dispatcher's counters (`wardenx_outbox_events_total{status}`, one label per
+ * Register the outbox dispatcher's counters (`chartwarden_outbox_events_total{status}`, one label per
  * `OutboxTickSummary` field except `orgsPolled`), a per-tick duration histogram (the closest available
  * proxy for "claim latency" — the dispatcher claims+delivers+finalizes within one tick per org; no
  * existing per-row age instrumentation to build a truer claim-to-dispatch latency without touching
@@ -134,19 +134,19 @@ export function registerOutboxMetrics(
   deps: OutboxMetricsDeps = {},
 ): OutboxMetricsHooks {
   const eventsTotal = new Counter({
-    name: "wardenx_outbox_events_total",
+    name: "chartwarden_outbox_events_total",
     help: "Outbox events processed by the dispatcher, by outcome",
     labelNames: ["status"] as const,
     registers: [registry],
   });
   const tickDuration = new Histogram({
-    name: "wardenx_outbox_tick_duration_seconds",
+    name: "chartwarden_outbox_tick_duration_seconds",
     help: "Outbox dispatcher tick duration in seconds (approximates per-event claim/dispatch latency)",
     buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   });
   new Gauge({
-    name: "wardenx_outbox_pending_depth",
+    name: "chartwarden_outbox_pending_depth",
     help: "Outbox pending-row backlog across active orgs, read on scrape",
     registers: [registry],
     async collect() {
@@ -220,7 +220,7 @@ export function registerPartitionMetrics(
     }
   };
   new Gauge({
-    name: "wardenx_partition_min_headroom_months",
+    name: "chartwarden_partition_min_headroom_months",
     help: "Fewest whole months of created partitions ahead across time-RANGE partitioned tables (-1 = not measured)",
     registers: [registry],
     async collect() {
@@ -229,7 +229,7 @@ export function registerPartitionMetrics(
     },
   });
   new Gauge({
-    name: "wardenx_partition_default_occupied_tables",
+    name: "chartwarden_partition_default_occupied_tables",
     help: "Tables whose DEFAULT partition already holds rows — rotation can no longer repair these (-1 = not measured)",
     registers: [registry],
     async collect() {
@@ -238,7 +238,7 @@ export function registerPartitionMetrics(
     },
   });
   new Gauge({
-    name: "wardenx_partition_missing_creator_tables",
+    name: "chartwarden_partition_missing_creator_tables",
     help: "Time-RANGE partitioned tables with no create_*_partition(date) function (-1 = not measured)",
     registers: [registry],
     async collect() {

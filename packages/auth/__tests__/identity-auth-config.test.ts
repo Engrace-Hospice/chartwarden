@@ -51,7 +51,7 @@ describe("native origins stay separate from browser/WebAuthn origins", () => {
     NODE_ENV: "production",
     BETTER_AUTH_URL: "https://api.wardenx.health",
     TRUSTED_ORIGINS: "https://app.wardenx.health,https://portal.wardenx.health",
-    MOBILE_AUTH_TRUSTED_ORIGINS: "wardenx://,wardenx-staging://,wardenx://",
+    MOBILE_AUTH_TRUSTED_ORIGINS: "chartwarden://,chartwarden-staging://,chartwarden://",
   };
 
   it("adds exact native schemes to Better Auth only", () => {
@@ -59,12 +59,12 @@ describe("native origins stay separate from browser/WebAuthn origins", () => {
       "https://app.wardenx.health",
       "https://portal.wardenx.health",
     ]);
-    expect(resolveMobileAuthOrigins(env)).toEqual(["wardenx://", "wardenx-staging://"]);
+    expect(resolveMobileAuthOrigins(env)).toEqual(["chartwarden://", "chartwarden-staging://"]);
     expect(resolveTrustedOrigins(env)).toEqual([
       "https://app.wardenx.health",
       "https://portal.wardenx.health",
-      "wardenx://",
-      "wardenx-staging://",
+      "chartwarden://",
+      "chartwarden-staging://",
     ]);
   });
 
@@ -80,8 +80,8 @@ describe("native origins stay separate from browser/WebAuthn origins", () => {
     "*",
     "null",
     "https://mobile.wardenx.health",
-    "wardenx://callback",
-    "wardenx://*",
+    "chartwarden://callback",
+    "chartwarden://*",
     "exp://",
   ])("rejects non-exact or non-custom mobile origin %s", (origin) => {
     expect(() => resolveMobileAuthOrigins({ MOBILE_AUTH_TRUSTED_ORIGINS: origin })).toThrow(

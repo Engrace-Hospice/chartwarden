@@ -36,7 +36,7 @@ export interface ApiClientOptions {
  * inbox cannot keep an unattended workstation signed in past the 15-minute idle logoff.
  */
 export const BACKGROUND_REQUEST_HEADERS: Readonly<Record<string, string>> = Object.freeze({
-  "x-wardenx-background": "1",
+  "x-chartwarden-background": "1",
 });
 
 function defaultCorrelationId(): string | undefined {
@@ -80,11 +80,13 @@ function readCookie(name: string): string | undefined {
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 
-const CSRF_COOKIE_NAME = "wardenx_csrf";
+const CSRF_COOKIE_NAME = "chartwarden_csrf";
+/** Pre-rename name; read as a fallback until the server has swapped the cookie. */
+const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 
 /**
  * Double-submit CSRF defense (WX-PR-017; backend half in
- * apps/backend/src/bootstrap/plugins/csrf.ts). The backend mints a non-httpOnly `wardenx_csrf`
+ * apps/backend/src/bootstrap/plugins/csrf.ts). The backend mints a non-httpOnly `chartwarden_csrf`
  * cookie on every response and, for a mutating request that also carries the ambient Better Auth
  * session cookie, requires this same value echoed back in `X-CSRF-Token` — a cross-site attacker
  * page can trigger the request (the session cookie rides along) but cannot read this origin's
@@ -93,7 +95,7 @@ const CSRF_COOKIE_NAME = "wardenx_csrf";
 const csrfToken: Middleware = {
   onRequest({ request }) {
     if (MUTATING_METHODS.has(request.method) && !request.headers.has("X-CSRF-Token")) {
-      const token = readCookie(CSRF_COOKIE_NAME);
+      const token = readCookie(CSRF_COOKIE_NAME) ?? readCookie(LEGACY_CSRF_COOKIE_NAME);
       if (token) request.headers.set("X-CSRF-Token", token);
     }
     return request;

@@ -73,13 +73,13 @@ describe("collectEnvProblems", () => {
     expect(
       collectEnvProblems({
         ...GOOD,
-        MOBILE_AUTH_TRUSTED_ORIGINS: "wardenx://,wardenx-staging://",
+        MOBILE_AUTH_TRUSTED_ORIGINS: "chartwarden://,chartwarden-staging://",
       }),
     ).toEqual([]);
-    expect(collectEnvProblems({ ...GOOD, TRUSTED_ORIGINS: "wardenx://" })).toEqual([
+    expect(collectEnvProblems({ ...GOOD, TRUSTED_ORIGINS: "chartwarden://" })).toEqual([
       { key: "TRUSTED_ORIGINS", problem: expect.stringMatching(/HTTP\(S\) origins/) },
     ]);
-    for (const invalid of ["*", "exp://", "https://app.wardenx.cloud", "wardenx://callback"]) {
+    for (const invalid of ["*", "exp://", "https://app.wardenx.cloud", "chartwarden://callback"]) {
       expect(collectEnvProblems({ ...GOOD, MOBILE_AUTH_TRUSTED_ORIGINS: invalid })).toEqual([
         {
           key: "MOBILE_AUTH_TRUSTED_ORIGINS",

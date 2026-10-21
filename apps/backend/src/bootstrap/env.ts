@@ -135,7 +135,7 @@ const REQUIREMENTS: readonly Requirement[] = [
             !/^exp:/i.test(origin),
         )
         ? null
-        : "must contain exact custom schemes such as wardenx://; exp://, HTTP(S), paths and wildcards are forbidden",
+        : "must contain exact custom schemes such as chartwarden://; exp://, HTTP(S), paths and wildcards are forbidden",
   },
   {
     // M24 §8.7 — the master KEK for state trading-partner secrets (client secret / SFTP key). Required in

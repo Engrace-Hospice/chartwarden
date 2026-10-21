@@ -25,7 +25,7 @@ const ORG = "org_engrace";
 const FEED = "feed_quest_engrace_out";
 
 const ENDPOINT: OrmEndpoint = {
-  sendingApplication: "WARDENX",
+  sendingApplication: "CHARTWARDEN",
   sendingFacility: "ENGRACE",
   receivingApplication: "LAB",
   receivingFacility: "QUEST",
@@ -90,7 +90,7 @@ describe("buildOrmO01", () => {
     });
     const segments = wire.split("\r");
     expect(segments[0]).toBe(
-      "MSH|^~\\&|WARDENX|ENGRACE|LAB|QUEST|20260801120005||ORM^O01|MSH10-1|P|2.5.1",
+      "MSH|^~\\&|CHARTWARDEN|ENGRACE|LAB|QUEST|20260801120005||ORM^O01|MSH10-1|P|2.5.1",
     );
     const obr = segments.find((s) => s.startsWith("OBR"))!;
     const orc = segments.find((s) => s.startsWith("ORC"))!;
@@ -219,14 +219,14 @@ describe("planOutboundDispatch", () => {
 describe("parseAckMsa", () => {
   it("reads MSA-1 code, MSA-2 control id, and MSA-3 text", () => {
     const ack = parseAckMsa(
-      "MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1\rMSA|AA|MSH10-1",
+      "MSH|^~\\&|LAB|QUEST|CHARTWARDEN|ENGRACE|20260801120010||ACK|A1|P|2.5.1\rMSA|AA|MSH10-1",
     );
     expect(ack).toEqual({ ackCode: "AA", messageControlId: "MSH10-1", text: "" });
   });
 
   it("returns null when there is no MSA segment", () => {
     expect(
-      parseAckMsa("MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1"),
+      parseAckMsa("MSH|^~\\&|LAB|QUEST|CHARTWARDEN|ENGRACE|20260801120010||ACK|A1|P|2.5.1"),
     ).toBeNull();
   });
 

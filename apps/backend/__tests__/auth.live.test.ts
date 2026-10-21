@@ -1460,15 +1460,15 @@ describe.skipIf(!DB_URL)(
       expect(csrfBootstrap.statusCode).toBe(200);
       const csrfToken = csrfBootstrap.json().token as string;
       expect(
-        csrfBootstrap.cookies.find((cookie) => cookie.name === "wardenx_csrf")?.value ??
-          signIn.cookies.find((cookie) => cookie.name === "wardenx_csrf")?.value ??
-          preOrg.cookies.find((cookie) => cookie.name === "wardenx_csrf")?.value,
+        csrfBootstrap.cookies.find((cookie) => cookie.name === "chartwarden_csrf")?.value ??
+          signIn.cookies.find((cookie) => cookie.name === "chartwarden_csrf")?.value ??
+          preOrg.cookies.find((cookie) => cookie.name === "chartwarden_csrf")?.value,
       ).toBe(csrfToken);
       expect(csrfToken).toBeTruthy();
       if (!csrfToken) throw new Error("the browser-auth flow did not mint a CSRF cookie");
-      const authenticatedCookieHeader = cookieHeader.includes("wardenx_csrf=")
+      const authenticatedCookieHeader = cookieHeader.includes("chartwarden_csrf=")
         ? cookieHeader
-        : `${cookieHeader}; wardenx_csrf=${csrfToken}`;
+        : `${cookieHeader}; chartwarden_csrf=${csrfToken}`;
       const preOrgCensus = await app.inject({
         method: "GET",
         url: "/api/v1/patients",

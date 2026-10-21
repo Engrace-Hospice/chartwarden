@@ -211,7 +211,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
     }
     return {
       cookie: res.cookies.map((c) => `${c.name}=${c.value}`).join("; "),
-      csrf: res.cookies.find((c) => c.name === "wardenx_csrf")?.value ?? "",
+      csrf: res.cookies.find((c) => c.name === "chartwarden_csrf")?.value ?? "",
     };
   }
 

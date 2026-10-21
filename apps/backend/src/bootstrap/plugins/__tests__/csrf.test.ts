@@ -31,11 +31,11 @@ function extractCookie(
 }
 
 describe("applyCsrfProtection — cookie minting", () => {
-  it("mints a wardenx_csrf cookie on a plain GET with no prior cookie", async () => {
+  it("mints a chartwarden_csrf cookie on a plain GET with no prior cookie", async () => {
     const app = buildApp();
     const res = await app.inject({ method: "GET", url: "/ping" });
     expect(res.statusCode).toBe(200);
-    expect(extractCookie(res, "wardenx_csrf")).toBeTruthy();
+    expect(extractCookie(res, "chartwarden_csrf")).toBeTruthy();
   });
 
   it("does not re-mint when the cookie is already present", async () => {
@@ -43,9 +43,37 @@ describe("applyCsrfProtection — cookie minting", () => {
     const res = await app.inject({
       method: "GET",
       url: "/ping",
-      headers: { cookie: "wardenx_csrf=existing-token" },
+      headers: { cookie: "chartwarden_csrf=existing-token" },
     });
     expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("legacy wardenx_csrf cookie still passes double-submit and is swapped for the new name", async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/mutate",
+      headers: {
+        cookie: "better-auth.session_token=s1; wardenx_csrf=old-token",
+        "x-csrf-token": "old-token",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(extractCookie(res, "chartwarden_csrf")).toBe("old-token");
+    expect(String(res.headers["set-cookie"])).toContain("wardenx_csrf=; Path=/; Max-Age=0");
+  });
+
+  it("legacy cookie with a wrong header is still rejected", async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/mutate",
+      headers: {
+        cookie: "better-auth.session_token=s1; wardenx_csrf=old-token",
+        "x-csrf-token": "nope",
+      },
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("sets Secure when forced on, omits it by default in test/dev", async () => {
@@ -78,7 +106,7 @@ describe("applyCsrfProtection — verification (fail closed)", () => {
       method: "POST",
       url: "/mutate",
       headers: {
-        cookie: "better-auth.session_token=s1; wardenx_csrf=real-token",
+        cookie: "better-auth.session_token=s1; chartwarden_csrf=real-token",
         "x-csrf-token": "wrong-token",
       },
     });
@@ -91,7 +119,7 @@ describe("applyCsrfProtection — verification (fail closed)", () => {
       method: "POST",
       url: "/mutate",
       headers: {
-        cookie: "better-auth.session_token=s1; wardenx_csrf=real-token",
+        cookie: "better-auth.session_token=s1; chartwarden_csrf=real-token",
         "x-csrf-token": "real-token",
       },
     });
@@ -105,13 +133,13 @@ describe("applyCsrfProtection — verification (fail closed)", () => {
       url: "/ping",
       headers: { cookie: "better-auth.session_token=s1" },
     });
-    const token = extractCookie(primed, "wardenx_csrf");
+    const token = extractCookie(primed, "chartwarden_csrf");
     expect(token).toBeTruthy();
     const res = await app.inject({
       method: "POST",
       url: "/mutate",
       headers: {
-        cookie: `better-auth.session_token=s1; wardenx_csrf=${token}`,
+        cookie: `better-auth.session_token=s1; chartwarden_csrf=${token}`,
         "x-csrf-token": token as string,
       },
     });
