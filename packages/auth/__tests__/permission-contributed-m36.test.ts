@@ -47,6 +47,9 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.retention.manage",
         "messaging.break_glass.invoke",
         "messaging.break_glass.review",
+        "messaging.export.request",
+        "messaging.export.approve",
+        "messaging.export.download",
         "alert.inbox.self",
       ].sort(),
     );
@@ -81,6 +84,9 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.retention.manage",
       "messaging.break_glass.invoke",
       "messaging.break_glass.review",
+      "messaging.export.request",
+      "messaging.export.approve",
+      "messaging.export.download",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");
@@ -99,6 +105,16 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
     for (const action of ["invoke", "review"] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[`messaging.break_glass.${action}`]).toMatchObject({
         resource: "message_break_glass",
+        action,
+        category: "compliance",
+      });
+    }
+  });
+
+  it("the export keys are compliance-category on message_export", () => {
+    for (const action of ["request", "approve", "download"] as const) {
+      expect(M36_CONTRIBUTED_PERMISSIONS[`messaging.export.${action}`]).toMatchObject({
+        resource: "message_export",
         action,
         category: "compliance",
       });

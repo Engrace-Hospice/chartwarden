@@ -2311,6 +2311,22 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.export",
+      "path": "/messaging/export",
+      "permission": "messaging.export.request"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.export-approvals",
+      "path": "/messaging/governance/export-approvals",
+      "permission": "messaging.export.approve"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"

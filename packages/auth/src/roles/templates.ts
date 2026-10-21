@@ -336,6 +336,10 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "messaging.retention.manage",
       // WP 5.8 (ADR-0087): the compliance officer completes the post-review of a break-glass grant (migration 1140 covers existing roles).
       "messaging.break_glass.review",
+      // WP 5.7 (ADR-0089): the compliance officer requests, approves and downloads a restricted export (migration 1147 covers existing roles).
+      "messaging.export.request",
+      "messaging.export.approve",
+      "messaging.export.download",
     ],
   },
   {

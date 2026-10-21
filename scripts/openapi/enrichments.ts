@@ -1354,6 +1354,13 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+// M36 WP 5.7 restricted messaging export (ADR-0089, PROPOSED).
+import {
+  CreateExportBodySchema as M36ExportCreateBodySchema,
+  DecideExportBodySchema as M36ExportDecideBodySchema,
+  ExportDetailResponseSchema as M36ExportDetailResponseSchema,
+  ExportListResponseSchema as M36ExportListResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
 // M36 WP 2.7b C4 tenant global search switch.
 import {
   GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
@@ -10238,6 +10245,51 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Complete a break-glass review (messaging.break_glass.review) with the outcome reviewed or concern (a concern needs a note, 422). Never the grantee's own grant (403), only after the grant has ended (409 BREAK_GLASS_STILL_ACTIVE), once (409 BREAK_GLASS_REVIEW_DONE). Publishes m36.break_glass.reviewed (ids and the outcome only, never the note)",
     body: M36BreakGlassCompleteBodySchema,
     response: M36BreakGlassReviewDetailResponseSchema,
+  },
+
+  // restricted messaging export (WP 5.7, ADR-0089 PROPOSED)
+  "POST /api/v1/messaging/export": {
+    summary:
+      "Request a scoped messaging export (messaging.export.request + a fresh step-up for `messaging.export.request`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.export is off). Exactly one of channelId or patientId (a patient's care-team and bereavement channels), an optional date range of at most 366 days (both dates or neither), a justification of 20 to 280 characters (requester and approver only). Nothing is built until a SECOND person approves. Every refusal (flag off, a role without the permission, an excluded role category, an unknown or another tenant's channel, a patient with no channel) is the same 404; 429 EXPORT_LIMIT beyond 3 live or 10 requests a day. Publishes m36.export.requested (ids only) and alerts the approvers",
+    body: M36ExportCreateBodySchema,
+    response: M36ExportDetailResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/export/mine": {
+    summary:
+      "The caller's own export jobs, newest first (messaging.export.request): id, closed status, scope ids, counts and instants. No justification and no message. Not cached",
+    response: M36ExportListResponseSchema,
+  },
+  "GET /api/v1/messaging/export/pending": {
+    summary:
+      "The approvers' queue (messaging.export.approve): jobs waiting for a decision, oldest first, never the caller's own. Ids, scope ids, the requester's name and instants; no justification and no message. Not cached",
+    response: M36ExportListResponseSchema,
+  },
+  "GET /api/v1/messaging/export/:id": {
+    summary:
+      "One export job with its justification and decision note (messaging.export.request or messaging.export.approve; only the requester or an approver, anyone else and an unknown id are the same 404). `downloadable` is true only for the requester while the job is ready and unexpired on the database clock. Read-audited. Not cached",
+    response: M36ExportDetailResponseSchema,
+  },
+  "POST /api/v1/messaging/export/:id/approve": {
+    summary:
+      "Approve an export (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403). Only a pending job: 409 EXPORT_ALREADY_DECIDED otherwise. Publishes m36.export.approved, which the builder consumes; the flag does not gate this",
+    body: M36ExportDecideBodySchema,
+    response: M36ExportDetailResponseSchema,
+  },
+  "POST /api/v1/messaging/export/:id/reject": {
+    summary:
+      "Reject an export with an optional note (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403); 409 EXPORT_ALREADY_DECIDED unless pending. Publishes m36.export.rejected",
+    body: M36ExportDecideBodySchema,
+    response: M36ExportDetailResponseSchema,
+  },
+  "POST /api/v1/messaging/export/:id/cancel": {
+    summary:
+      "Cancel the caller's own export while it is still pending (messaging.export.request). Someone else's job and an unknown id are the same 404; 409 EXPORT_ALREADY_DECIDED once decided",
+    response: M36ExportDetailResponseSchema,
+  },
+  "GET /api/v1/messaging/export/:id/download": {
+    summary:
+      "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
   },
 
   // alerts (§4.2)

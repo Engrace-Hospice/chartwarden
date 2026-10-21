@@ -169,8 +169,29 @@ describe("WP 5.8 (ADR-0087) break-glass keys reach NEW tenants' roles (migration
   it("no template grants both: the person who invokes is not the one who reviews by default", () => {
     for (const t of ROLE_TEMPLATES) {
       const g = t.grants ?? [];
-      const both = g.includes("messaging.break_glass.invoke") && g.includes("messaging.break_glass.review");
+      const both =
+        g.includes("messaging.break_glass.invoke") && g.includes("messaging.break_glass.review");
       expect(both, t.key).toBe(false);
+    }
+  });
+});
+
+describe("WP 5.7 (ADR-0089) export keys reach NEW tenants' compliance officer and no clinical template", () => {
+  const EXPORT_KEYS = [
+    "messaging.export.request",
+    "messaging.export.approve",
+    "messaging.export.download",
+  ];
+
+  it("the compliance_officer template grants all three (migration 1147 only covers existing roles)", () => {
+    const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
+    for (const k of EXPORT_KEYS) expect(grants).toContain(k);
+  });
+
+  it("only the compliance_officer template grants any export key by default", () => {
+    for (const t of ROLE_TEMPLATES) {
+      if (t.key === "compliance_officer") continue;
+      for (const k of EXPORT_KEYS) expect(t.grants ?? [], `${t.key} ${k}`).not.toContain(k);
     }
   });
 });

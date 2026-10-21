@@ -751,6 +751,11 @@ export interface PatientRoomingFacts {
    * grants a permission — see M37's `evaluateRoomOccupancy` for how the consumer reads them.
    */
   readonly privacyFlags: readonly string[];
+  /**
+   * True only when the patient's snapshot is marked INVALIDATED: `privacyFlags` is then reported empty because the cache is stale, NOT because no
+   * flag applies. A consumer that must not guess (the M36 export's Part 2 gate) treats it as unreadable. Absent otherwise.
+   */
+  readonly privacyFlagsStale?: true;
 }
 
 /**

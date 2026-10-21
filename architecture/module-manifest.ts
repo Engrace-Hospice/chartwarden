@@ -299,6 +299,8 @@ export const MODULES: ModuleDef[] = [
       "message_break_glass_grant",
       "message_break_glass_review",
       "message_break_glass_read",
+      "message_export_job",
+      "message_export_download",
       "legal_hold_message",
       "messaging_review_item",
       "chart_promotion_request",

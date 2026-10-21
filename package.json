@@ -547,6 +547,7 @@
     "test:m36:afterhours-link:live": "vitest run apps/backend/__tests__/m36-afterhours-link.live.test.ts",
     "test:m36:thread-grant:live": "vitest run apps/backend/__tests__/m36-thread-grant.live.test.ts",
     "test:m36:break-glass:live": "vitest run apps/backend/__tests__/m36-break-glass.live.test.ts",
+    "test:m36:export:live": "vitest run apps/backend/__tests__/m36-export.live.test.ts",
     "test:m36:message-legal-hold:live": "vitest run apps/backend/__tests__/m36-message-legal-hold.live.test.ts",
     "test:m36:session-devices:live": "vitest run apps/backend/__tests__/m36-session-device-controls.live.test.ts",
     "test:m36:retention-governance:live": "vitest run apps/backend/__tests__/m36-retention-governance.live.test.ts",

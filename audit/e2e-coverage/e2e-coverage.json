@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 187,
+  "totalStaticWebScreens": 189,
   "e2eReachedCount": 19,
-  "axeReachedCount": 177,
+  "axeReachedCount": 179,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -757,10 +757,26 @@
       "axeReached": false
     },
     {
+      "id": "messaging.export",
+      "module": "36-messaging",
+      "path": "/messaging/export",
+      "permission": "messaging.export.request",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.break-glass",
       "module": "36-messaging",
       "path": "/messaging/governance/break-glass",
       "permission": "messaging.break_glass.review",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.export-approvals",
+      "module": "36-messaging",
+      "path": "/messaging/governance/export-approvals",
+      "permission": "messaging.export.approve",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2273,10 +2289,26 @@
       "axeReached": false
     },
     {
+      "id": "messaging.export",
+      "module": "36-messaging",
+      "path": "/messaging/export",
+      "permission": "messaging.export.request",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.break-glass",
       "module": "36-messaging",
       "path": "/messaging/governance/break-glass",
       "permission": "messaging.break_glass.review",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.export-approvals",
+      "module": "36-messaging",
+      "path": "/messaging/governance/export-approvals",
+      "permission": "messaging.export.approve",
       "e2eReached": false,
       "axeReached": true
     },

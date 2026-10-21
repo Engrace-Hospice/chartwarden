@@ -158,6 +158,13 @@ import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from ".
 import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
+import type {
+  ExportArtefactReader as _ExportArtefactReader,
+  ExportFlagReader as _ExportFlagReader,
+  ExportPermissionCheck as _ExportPermissionCheck,
+} from "./export/export-ports";
+import { createExportService as _createExportService } from "./export/export-service";
+import { createDrizzleExportStore as _createDrizzleExportStore } from "./export/export-store";
 import {
   type GlobalSearchMountOptions,
   mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
@@ -191,6 +198,7 @@ import {
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
+import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
 import type { MedicationQuestionRouteDeps as _MedicationQuestionRouteDeps } from "./routes/medication-question-routes";
@@ -285,6 +293,16 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       /** Whether the user still holds messaging.break_glass.invoke; checked at every read under a grant. */
       holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
+    };
+    /**
+     * WP 5.7 (ADR-0089, PROPOSED): restricted messaging export. `flags` is the M1 reader for `messaging.export` (gates REQUESTING only; absent =>
+     * requests are the uniform 404), `holds` rechecks a permission at the point of request, decision and download, `artefactReader` is the
+     * builder side's decrypting reader (absent => a download is refused with 503 before anything is recorded). Omitted => not mounted.
+     */
+    messagingExport?: {
+      flags?: _ExportFlagReader | undefined;
+      holds?: _ExportPermissionCheck | undefined;
+      artefactReader?: _ExportArtefactReader | undefined;
     };
   } = {},
 ): void {
@@ -410,6 +428,19 @@ export function mountMessagingRoutes(
       canViewChannel: service.canViewChannel,
     }),
   });
+  // WP 5.7 (ADR-0089, PROPOSED) - restricted messaging export: request, second-person approval, requester-only expiring download. Requesting
+  // is behind the tenant flag `messaging.export`; approve, reject, cancel and download never are (a job that exists stays decidable).
+  if (opts.messagingExport) {
+    _registerExportRoutes(app, {
+      service: _createExportService({
+        store: _createDrizzleExportStore(db),
+        outbox: opts.outbox,
+        flags: opts.messagingExport.flags,
+        holds: opts.messagingExport.holds,
+        artefactReader: opts.messagingExport.artefactReader,
+      }),
+    });
+  }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -469,6 +500,14 @@ export {
   M36_BREAK_GLASS_NOTIFICATION_CONSUMER,
   buildM36BreakGlassNotificationsConsumer,
 } from "./outbox-consumers/break-glass-notifications";
+// WP 5.7 (ADR-0089): the restricted export's requested event -> a generic in-app alert for the approvers.
+export {
+  M36_EXPORT_NOTIFICATION_CONSUMER,
+  buildM36ExportNotificationsConsumer,
+} from "./outbox-consumers/export-notifications";
+// WP 5.7 (ADR-0089): the export's event helpers (the builder and the expiry sweep publish ready / expired with them) and its reader port.
+export { M36_EXPORT_EVENTS, publishExportEvent } from "./export/export-events";
+export type { ExportArtefactReader, ExportArtefactRef } from "./export/export-ports";
 
 // GAP-101 — out-of-band delivery workers (the §4.4 send_push/sms/voice/email sweeps) + the §4.9 vendor webhooks
 // mounted over a real `delivery_reconcile` service (see ./delivery/*).

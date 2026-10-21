@@ -219,6 +219,7 @@ describe("§7.4 tenant cannot disable system_locked rules", () => {
         "m3.breakglass.invoked",
         "m36.break_glass.granted",
         "m36.break_glass.review_overdue",
+        "m36.export.requested",
         "m37.shift.rn_uncovered",
         "noe.late_risk",
         "system.backup_failure",

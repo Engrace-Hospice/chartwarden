@@ -1,0 +1,155 @@
+/* M36 WP 5.7 - restricted message export: flat rows on the shared kit tokens (no card grid, no shadows). State is a word, never colour alone. */
+.wx-export {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem var(--space-5);
+}
+
+.wx-export-panel,
+.wx-export-detail-pane,
+.wx-export-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-export-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-export-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 1rem;
+  align-items: start;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-export-row:last-child {
+  border-bottom: 0;
+}
+
+.wx-export-main,
+.wx-export-meta {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wx-export-meta {
+  justify-items: end;
+}
+
+.wx-export-title {
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.wx-export-detail {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-export-text {
+  margin: 0;
+  color: var(--color-on-surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-export-reads {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-export-outcome {
+  display: grid;
+  gap: 0.25rem;
+  border: 0;
+  padding: 0;
+}
+
+.wx-export-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 0.875rem;
+}
+
+.wx-export-status {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.wx-export-dialog {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* The persistent banner over a break-glass conversation: not dismissible, so it is part of the page flow, never an overlay. */
+.wx-export-notice {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-card-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-export-notice h3,
+.wx-export-notice ul {
+  margin: 0;
+}
+
+.wx-export-notice ul {
+  padding-left: 1.25rem;
+}
+
+.wx-export-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  border: 0;
+  padding: 0;
+}
+
+.wx-export-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+}
+
+.wx-export-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.wx-export-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
