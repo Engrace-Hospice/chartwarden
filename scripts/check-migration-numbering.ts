@@ -26,7 +26,7 @@
  *     true the note says so without blocking anyone.
  *
  * Deliberately NOT a checksum/ordering check: `migrate.ts` already tracks filename+checksum in
- * `_wardenx_migration` and `--strict` fails the pipeline on drift. This gate answers the one
+ * `_chartwarden_migration` and `--strict` fails the pipeline on drift. This gate answers the one
  * question that is decidable from the filenames alone, at review time, before a deploy discovers it.
  *
  * Run:  bun run arch:migration-numbering   (in `arch:fitness`)

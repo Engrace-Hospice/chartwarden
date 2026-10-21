@@ -366,7 +366,7 @@ DATABASE_ADMIN_URL=postgres://wardenx_admin:<pass>@wardenx-db-01/wardenx \
   bun run db:migrate:deploy
 
 # 4. Verify migration applied
-psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM _wardenx_migration ORDER BY applied_at DESC LIMIT 5;"
+psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM _chartwarden_migration ORDER BY applied_at DESC LIMIT 5;"
 
 # 5. Deploy new backend (with code that dual-writes old + new columns if applicable)
 
