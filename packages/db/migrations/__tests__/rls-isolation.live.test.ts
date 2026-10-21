@@ -14,8 +14,8 @@
  * name, every audited write recurses to "stack depth limit exceeded". See 0004's guard.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - CI: the `rls-live` job provides a postgres service + WARDENX_TEST_DATABASE_URL.
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live`
+ *   - CI: the `rls-live` job provides a postgres service + CHARTWARDEN_TEST_DATABASE_URL.
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live`
  * The URL must be a SUPERUSER connection to a THROWAWAY database (the suite drops and
  * recreates the public schema + roles).
  */
@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = [
   "wardenx_app",
@@ -69,9 +69,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   async function applyMigrations() {
     // The CI `rls-live` job runs pgvector/pgvector:pg18, so the REAL `CREATE EXTENSION vector`
     // applies — M38 (Terminology) ships a pgvector `concept_embedding` table. For a local PG that
-    // lacks pgvector, set WARDENX_TEST_NO_PGVECTOR=1 to strip the extension line (valid only while
+    // lacks pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1 to strip the extension line (valid only while
     // no table uses the `vector` type; once one does, pgvector is required).
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -80,7 +80,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       if (stripVector) {
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "vector".*$/m,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set; local PG without pgvector)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set; local PG without pgvector)",
         );
       }
       await db.query(sql);
@@ -129,7 +129,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
   // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
-  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
   // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
   it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(

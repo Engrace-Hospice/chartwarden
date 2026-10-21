@@ -278,6 +278,6 @@ describe("M4-T05 — deferred immutability proof obligation (infra-gated)", () =
 
 // LIVE cross-tenant isolation against a real Postgres is now implemented in
 // rls-isolation.live.test.ts (applies the migrations, exercises the policies as the
-// unprivileged wardenx_app role). It runs when WARDENX_TEST_DATABASE_URL is set
+// unprivileged wardenx_app role). It runs when CHARTWARDEN_TEST_DATABASE_URL is set
 // (CI `rls-live` job); the previous empty `describe.skip` placeholder is removed —
 // an empty skipped block reads as "covered" when it asserted nothing.

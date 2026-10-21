@@ -46,8 +46,8 @@ import { headPairKey } from "../src/modules/36-messaging/global-search/stats";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
 
 // F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
-process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
-process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+process.env.CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const ROOT = join(__dirname, "../../..");
 const CH_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";

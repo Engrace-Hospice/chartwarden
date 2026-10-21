@@ -22,7 +22,7 @@
  *   - a funeral session holds exactly `funeral.case_read`: it cannot mint links, and the synthetic principal cannot sign in;
  *   - RLS is intact: a bare wardenx_app read of collaborator_link with no tenant returns nothing.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -76,7 +76,7 @@ import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

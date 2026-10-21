@@ -34,7 +34,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 
 const STANZA = "wardenx_drill";
-const PORT = Number(process.env.WARDENX_DRILL_PG_PORT ?? 55432);
+const PORT = Number(process.env.CHARTWARDEN_DRILL_PG_PORT ?? 55432);
 const PROBE_ROWS = 500;
 
 function pgBinDir(): string {

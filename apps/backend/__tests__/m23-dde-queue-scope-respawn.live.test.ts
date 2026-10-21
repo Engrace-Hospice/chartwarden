@@ -10,7 +10,7 @@
  *     once per closure; a cancelled item never respawns; an open item blocks it; an accepted notice never respawns;
  *     two concurrent ticks create one.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-scope:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-scope:live
  */
 import { randomUUID } from "node:crypto";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -40,7 +40,7 @@ import {
   seedNotr,
 } from "./_dde-live-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const NOW = "2026-05-01T15:00:00Z";
 
 describe.skipIf(!DB_URL)(

@@ -12,8 +12,8 @@
 // every binding decision that falls back to an in-memory store while a DB client is present,
 // and `assertNoInMemoryBindingsOnDbBoot` runs after ALL wiring (seams, erasers, route mounts)
 // and before `listen()`:
-//   · production (or WARDENX_INMEM_ASSERT=enforce anywhere): REFUSE TO BOOT, naming every binding.
-//   · everywhere else (or WARDENX_INMEM_ASSERT=warn as the audit's one-iteration rollback in
+//   · production (or CHARTWARDEN_INMEM_ASSERT=enforce anywhere): REFUSE TO BOOT, naming every binding.
+//   · everywhere else (or CHARTWARDEN_INMEM_ASSERT=warn as the audit's one-iteration rollback in
 //     production): log the full list loudly and continue — dev keeps working while Phase 1
 //     (TASK-002/003/004) burns the list down to empty.
 // A db-less boot is NOT asserted: the in-memory slice is the documented test/dev-slice posture.
@@ -60,16 +60,16 @@ export class InMemoryBindingError extends Error {
 export type InMemoryAssertMode = "enforce" | "warn";
 
 /**
- * Resolve the assertion mode. `WARDENX_INMEM_ASSERT` wins when set (`enforce` anywhere,
+ * Resolve the assertion mode. `CHARTWARDEN_INMEM_ASSERT` wins when set (`enforce` anywhere,
  * `warn` as the audit's sanctioned one-iteration rollback in production); otherwise
  * production enforces and every other environment warns. An unrecognized value ENFORCES —
  * a typo in a safety flag must fail closed, not silently downgrade to a warning.
  */
 export function resolveInMemoryAssertMode(env: {
-  WARDENX_INMEM_ASSERT?: string;
+  CHARTWARDEN_INMEM_ASSERT?: string;
   NODE_ENV?: string;
 }): InMemoryAssertMode {
-  const flag = env.WARDENX_INMEM_ASSERT?.trim().toLowerCase();
+  const flag = env.CHARTWARDEN_INMEM_ASSERT?.trim().toLowerCase();
   if (flag === "warn") return "warn";
   if (flag) return "enforce"; // "enforce" or any unrecognized value — a typo'd safety flag fails closed
   return env.NODE_ENV === "production" ? "enforce" : "warn";
@@ -83,7 +83,7 @@ export function resolveInMemoryAssertMode(env: {
  */
 export function assertNoInMemoryBindingsOnDbBoot(opts: {
   dbPresent: boolean;
-  env?: { WARDENX_INMEM_ASSERT?: string; NODE_ENV?: string };
+  env?: { CHARTWARDEN_INMEM_ASSERT?: string; NODE_ENV?: string };
   /** Injected sink for the warn path (default console.warn) — testable, PHI-free by construction. */
   warn?: (message: string) => void;
 }): void {
@@ -95,7 +95,7 @@ export function assertNoInMemoryBindingsOnDbBoot(opts: {
   const mode = resolveInMemoryAssertMode(opts.env ?? process.env);
   if (mode === "enforce") {
     throw new InMemoryBindingError(
-      `Refusing to boot — ${message}\nSet WARDENX_INMEM_ASSERT=warn for the audit's one-iteration rollback.`,
+      `Refusing to boot — ${message}\nSet CHARTWARDEN_INMEM_ASSERT=warn for the audit's one-iteration rollback.`,
     );
   }
   (opts.warn ?? console.warn)(`⚠️  ${message}`);

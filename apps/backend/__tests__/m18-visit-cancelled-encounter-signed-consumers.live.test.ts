@@ -12,7 +12,7 @@
  * (`evvMissingReason`) was fixed by F-146 specifically so this consumer could read it. Neither had a live
  * binding before this build.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m18:visit-cancelled-encounter-signed:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m18:visit-cancelled-encounter-signed:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ import { buildM18EncounterSignedConsumer } from "../src/modules/18-evv/outbox-co
 import { buildM18VisitCancelledConsumer } from "../src/modules/18-evv/outbox-consumers/m17-visit-cancelled";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

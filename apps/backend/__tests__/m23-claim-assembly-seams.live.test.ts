@@ -9,7 +9,7 @@
  * `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`), and — F-124 (#251) —
  * `terminology`, over M38's registered `TerminologyProvider.expand()`; `mdm.resolveProviderEntity` and two
  * of `referenceData`'s four methods are also real (#250). This proves each against real rows under real
- * RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
+ * RLS (`CHARTWARDEN_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
  * `handle.db`, never the admin/superuser client used only to seed). F-122 also fixes a genuine,
  * previously-undocumented production defect: `EncounterReaderStore.encounterFacts` — and therefore
  * `BillableEncounterReader.billability` for EVERY caller, not only M23 — had been live-registered since
@@ -25,7 +25,7 @@
  * its own suite is `m23-rate-table.live.test.ts`) — no longer `SEAM_UNBOUND`.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -96,7 +96,7 @@ const testProviderCcnPort: ProviderCcnPort = {
   },
 };
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -138,7 +138,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   let handle: { db: DbClient; close: () => Promise<void> };
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

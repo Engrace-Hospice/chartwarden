@@ -12,8 +12,8 @@
  * Postgres and RLS — proven on the real NOBYPASSRLS `wardenx_app` role with the REAL catalog-validating publisher
  * (never NOOP_OUTBOX), the audited write running as the typed NULL system actor.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m19:triage-crons:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m19:triage-crons:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -35,7 +35,7 @@ import {
 import { MAX_TRIAGE_ITEMS_PER_ORG_PER_TICK } from "../src/modules/19-oncall/jobs/triage-cron-common";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -160,7 +160,7 @@ describe.skipIf(!DB_URL)("GAP-057 follow-up M19 §4.8 triage crons — LIVE Post
     ]);
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

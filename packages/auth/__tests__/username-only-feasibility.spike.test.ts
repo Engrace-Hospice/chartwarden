@@ -14,14 +14,14 @@ import { argon2idHash, argon2idVerify } from "../src/identity/password-hash";
  *
  * Run only against a disposable database:
  *
- *   WARDENX_USERNAME_SPIKE_DATABASE_URL=postgres://postgres:postgres@localhost:55491/postgres \
+ *   CHARTWARDEN_USERNAME_SPIKE_DATABASE_URL=postgres://postgres:postgres@localhost:55491/postgres \
  *     bunx vitest run packages/auth/__tests__/username-only-feasibility.spike.test.ts
  *
  * This intentionally does not use WardenX's production schema or migration runner. The local table
  * declarations contain only Better Auth's core models plus the official username plugin fields, with
  * `user.email` nullable—the compatibility question this spike exists to answer.
  */
-const DATABASE_URL = process.env.WARDENX_USERNAME_SPIKE_DATABASE_URL;
+const DATABASE_URL = process.env.CHARTWARDEN_USERNAME_SPIKE_DATABASE_URL;
 
 const users = pgTable(
   "spike_user",

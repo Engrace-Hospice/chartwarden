@@ -13,8 +13,8 @@ export const SEARCH_RESPONSE_FLOOR_MS = 1500;
 export const SEARCH_RESPONSE_JITTER_MS = 500;
 
 /** Tests only (honoured only when NODE_ENV is "test"; boot fails if set under production/staging): shrink the floor so route suites stay fast. */
-export const FLOOR_ENV = "WARDENX_GLOBAL_SEARCH_FLOOR_MS";
-export const JITTER_ENV = "WARDENX_GLOBAL_SEARCH_JITTER_MS";
+export const FLOOR_ENV = "CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS";
+export const JITTER_ENV = "CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS";
 
 export interface ResponseFloorConfig {
   readonly floorMs: number;

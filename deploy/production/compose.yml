@@ -121,7 +121,7 @@ services:
   # and passed to deploy.sh by deploy.yml. api/worker deliberately do NOT `depends_on` it: a down worker
   # degrades DocLens to a typed 503, it must never block the rest of the EHR from starting or rolling back.
   docling-worker:
-    image: ${WARDENX_DOCLING_IMAGE:-ghcr.io/engrace-hospice/wardenx-docling-worker:unset}
+    image: ${CHARTWARDEN_DOCLING_IMAGE:-${WARDENX_DOCLING_IMAGE:-ghcr.io/engrace-hospice/wardenx-docling-worker:unset}}
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -135,28 +135,28 @@ services:
       start_period: 30s
 
   migrate:
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     env_file: .env.production
     command: ["bun", "run", "scripts/db/migrate.ts", "--strict"]
     environment:
       NODE_ENV: production
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
-      WARDENX_APP_PASSWORD: ${WARDENX_APP_PASSWORD:?set in .env.production}
+      CHARTWARDEN_APP_PASSWORD: ${CHARTWARDEN_APP_PASSWORD:-${WARDENX_APP_PASSWORD:?set in .env.production}}
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
   provision:
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     env_file: .env.production
     command: ["bun", "run", "scripts/db/provision-runtime-roles.ts"]
     environment:
       PROVISION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
-      WARDENX_PLATFORM_PASSWORD: ${WARDENX_PLATFORM_PASSWORD:?set in .env.production}
-      WARDENX_DESTRUCTION_PASSWORD: ${WARDENX_DESTRUCTION_PASSWORD:?set in .env.production}
+      CHARTWARDEN_PLATFORM_PASSWORD: ${CHARTWARDEN_PLATFORM_PASSWORD:-${WARDENX_PLATFORM_PASSWORD:?set in .env.production}}
+      CHARTWARDEN_DESTRUCTION_PASSWORD: ${CHARTWARDEN_DESTRUCTION_PASSWORD:-${WARDENX_DESTRUCTION_PASSWORD:?set in .env.production}}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -190,7 +190,7 @@ services:
   # before bucket provisioning). Safe to re-run; deploy.sh runs it after `provision` and treats a failure as a warning,
   # because the attachment upload path also creates a missing bucket on demand.
   tenant-buckets:
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     env_file: .env.production
     command: ["bun", "run", "scripts/backfill-tenant-buckets.ts"]
@@ -203,7 +203,7 @@ services:
     restart: "no"
 
   api:
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     restart: unless-stopped
     env_file: .env.production
@@ -211,9 +211,9 @@ services:
     environment:
       PROCESS_ROLE: api
       PORT: "3000"
-      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD:-${WARDENX_APP_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD:-${WARDENX_PLATFORM_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD:-${WARDENX_DESTRUCTION_PASSWORD}}@postgres:5432/wardenx
       # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
       MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
@@ -252,7 +252,7 @@ services:
       start_period: 30s
 
   worker:
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     restart: unless-stopped
     env_file: .env.production
@@ -265,9 +265,9 @@ services:
       # where the listener's feed ports are reachable from this container (the compose service name by default).
       M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
       M29_LISTENER_PROBE_HOST: ${M29_LISTENER_PROBE_HOST:-hl7-listener}
-      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD:-${WARDENX_APP_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD:-${WARDENX_PLATFORM_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD:-${WARDENX_DESTRUCTION_PASSWORD}}@postgres:5432/wardenx
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
       MESSAGING_ATTACHMENT_SCANNER: clamd
       CLAMD_HOST: clamav
@@ -322,7 +322,7 @@ services:
   # below in a compose override. deploy.sh does not roll this service: recreate it explicitly after a release.
   hl7-listener:
     profiles: ["hl7-listener"]
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     restart: unless-stopped
     env_file: .env.production
@@ -333,9 +333,9 @@ services:
       M29_MLLP_LISTENER_ENABLED: ${M29_MLLP_LISTENER_ENABLED:-false}
       # GAP-043 — when on, the worker-role watcher pages listener_down; this process then only leaves its heartbeat.
       M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
-      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
-      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD:-${WARDENX_APP_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD:-${WARDENX_PLATFORM_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD:-${WARDENX_DESTRUCTION_PASSWORD}}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
@@ -363,7 +363,7 @@ services:
       start_period: 30s
 
   web:
-    image: ${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_WEB_IMAGE:-${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     restart: unless-stopped
     ports:
@@ -394,11 +394,11 @@ services:
       # BETTER_AUTH_URL is deliberately NOT overridden: it stays the https origin from .env.production,
       # because production boot (assertProductionEnv) refuses any other value. Only the seed client
       # (seed-runner below) addresses this api as http://localhost:3000.
-      WARDENX_SIGNUP_REQUIRES_INVITE: "false"
+      CHARTWARDEN_SIGNUP_REQUIRES_INVITE: "false"
 
   seed-runner:
     profiles: ["seed"]
-    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    image: ${CHARTWARDEN_IMAGE:-${WARDENX_IMAGE:?set immutable GHCR image in .env.production}}
     pull_policy: always
     env_file: .env.production
     network_mode: "service:seed-api"
@@ -406,11 +406,11 @@ services:
     environment:
       BETTER_AUTH_URL: http://localhost:3000
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
-      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
-      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://wardenx_app:${CHARTWARDEN_APP_PASSWORD:-${WARDENX_APP_PASSWORD}}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD:-${WARDENX_PLATFORM_PASSWORD}}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      WARDENX_SEED_CREDENTIALS_FILE: /tmp/CREDENTIALS.production.md
-      WARDENX_SEED_ALLOW_PRODUCTION: "yes-reseed-demo"
+      CHARTWARDEN_SEED_CREDENTIALS_FILE: /tmp/CREDENTIALS.production.md
+      CHARTWARDEN_SEED_ALLOW_PRODUCTION: "yes-reseed-demo"
     depends_on:
       seed-api:
         condition: service_healthy

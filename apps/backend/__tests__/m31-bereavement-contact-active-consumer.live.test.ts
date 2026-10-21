@@ -9,7 +9,7 @@
  * any contact confirms, so its per-contact loop almost always finds nothing; `contact_active` fires once
  * per CONTACT at the exact moment that contact's own bereavement_outreach_consent is verified.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m31:bereavement-contact-active:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m31:bereavement-contact-active:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ import { createDbConsentStore } from "../src/modules/39-consent/consent-store-db
 import { registerConsentSeams } from "../src/modules/39-consent/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

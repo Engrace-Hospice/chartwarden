@@ -149,7 +149,7 @@ jobs:
           # full replay + raised lock limit this job already provides. Had no runner.
           - { name: "M4 nested audit redaction", script: "test:audit:nested-redaction:live" }
     env:
-      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun
@@ -186,7 +186,7 @@ jobs:
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
     # anywhere — no CI job, no git hook (.githooks/pre-push runs build/arch:fitness/test, and `bun run test`
-    # never sets WARDENX_TEST_DATABASE_URL). They self-SKIP without that variable rather than failing, so
+    # never sets CHARTWARDEN_TEST_DATABASE_URL). They self-SKIP without that variable rather than failing, so
     # the corpus looked green while 205 assertions had never once executed outside their authors' laptops.
     #
     # These are a different proof from `rls-live` above, which asserts the POLICIES at the table level.
@@ -1203,7 +1203,7 @@ jobs:
           # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
     services:
-      # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
+      # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
       # `test:m27:workflow-slice:live` and `test:m30:cost-report-filing-measure:live` all drive a real
       # BullMQ queue. `describe.skipIf(!DB_URL || !REDIS_URL)` means a job without this service would
@@ -1218,8 +1218,8 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
-      WARDENX_TEST_REDIS_URL: redis://localhost:6379
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun
@@ -1246,8 +1246,8 @@ jobs:
       # `skipIf(!DB_URL)` would still exit 0 with every case skipped, so assert the variable is set first.
       - name: ${{ matrix.suite.name }} — production write/read lifecycle over real Postgres + RLS
         run: |
-          test -n "$WARDENX_TEST_DATABASE_URL" || { echo "WARDENX_TEST_DATABASE_URL unset — the suites would silently skip" >&2; exit 1; }
-          test -n "$WARDENX_TEST_REDIS_URL" || { echo "WARDENX_TEST_REDIS_URL unset — the four BullMQ suites would silently skip" >&2; exit 1; }
+          test -n "$CHARTWARDEN_TEST_DATABASE_URL" || { echo "CHARTWARDEN_TEST_DATABASE_URL unset — the suites would silently skip" >&2; exit 1; }
+          test -n "$CHARTWARDEN_TEST_REDIS_URL" || { echo "CHARTWARDEN_TEST_REDIS_URL unset — the four BullMQ suites would silently skip" >&2; exit 1; }
           for script in ${{ matrix.suite.scripts }}; do
             echo "::group::$script"
             bun run "$script"
@@ -1267,7 +1267,7 @@ jobs:
     name: Production migration path (scripts/db/migrate.ts)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
     steps:
       - uses: actions/checkout@v7
@@ -1326,7 +1326,7 @@ jobs:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
     runs-on: [self-hosted, Linux, X64, hostinger]
     env:
-      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3000
       # 32-byte base64 test key for the 2FA at-rest encryption (ADR-0034). Decodes to 32 bytes.
@@ -1386,7 +1386,7 @@ jobs:
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
-      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999
       TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
@@ -1424,7 +1424,7 @@ jobs:
         run: |
           docker rm -f wardenx-ci-pg-boot 2>/dev/null || true
 
-  # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
+  # #41 — the ONLY live suite gated on CHARTWARDEN_TEST_REDIS_URL rather than CHARTWARDEN_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
   # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
   # replicas sharing one Redis enforce ONE combined limit rather than one each, the exact gap the
@@ -1444,7 +1444,7 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      WARDENX_TEST_REDIS_URL: redis://localhost:6379
+      CHARTWARDEN_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun
@@ -1548,7 +1548,7 @@ jobs:
       # the product across it — the relay, the audited active-org enumerator and the platform crons are
       # live for the whole suite rather than a branch nothing but a boot check has taken.
       PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
-      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      CHARTWARDEN_PLATFORM_PASSWORD: ci-platform-password-0123456789
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
       # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
       # deployment's lives in its secret manager (ADR-0045).

@@ -43,7 +43,7 @@
  * parent lookup and the §3.7 eraser's per-alert sweep for no gain at Phase-1 volumes.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m20` (SUPERUSER to a THROWAWAY
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m20` (SUPERUSER to a THROWAWAY
  *     db — this DROPs and recreates `public`, so never point it at a database you care about).
  *   - The target needs **pgvector**: the chain declares COLUMNS of type `vector`, so stripping the
  *     extension DDL cannot make a plain image work. Use `pgvector/pgvector:pgNN`.
@@ -55,7 +55,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -148,7 +148,7 @@ describe.skipIf(!DB_URL)(
     }
 
     async function applyMigrations() {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       const files = readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith(".sql"))
         .sort();

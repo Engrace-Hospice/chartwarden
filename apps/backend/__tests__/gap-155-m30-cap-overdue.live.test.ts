@@ -3,7 +3,7 @@
  * `m30_incident_lifecycle` enum cast) against a real partitioned `incident_report`, LIVE Postgres, as the
  * RLS-enforced `wardenx_app` role. Proves the scan picks only OPEN incidents of THIS org with incomplete past-due
  * actions, skips owners that do not resolve, and ignores another tenant's plans. Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-155:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-155:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanOrgForOverdueCapActions } from "../src/modules/30-quality/jobs/cap-overdue-scan";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

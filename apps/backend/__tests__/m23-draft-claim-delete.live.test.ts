@@ -10,7 +10,7 @@
  *   - cross-tenant: org B can neither delete org A's draft through the service (404) nor by raw SQL (0 rows);
  *   - re-assembly's line rewrite (`updateDraftClaim` deletes then inserts lines) works on a draft and not on a submitted claim.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m23:draft-claim-delete:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:draft-claim-delete:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/ac
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -159,7 +159,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

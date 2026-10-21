@@ -12,11 +12,11 @@
  *   3. NO LEAK          no error carries A's body text, names, or user ids.
  *   4. NO WRITE         the whole battery leaves every M36 table, audit_event and outbox_event byte-identical.
  *   5. RLS AT THE DB    as `wardenx_app` with app.org_id = B: zero A rows readable, A-org INSERT / UPDATE rejected.
- *   6. SOCKETS          (needs WARDENX_TEST_REDIS_URL) a B socket and a non-member socket receive no hint for A's channels
+ *   6. SOCKETS          (needs CHARTWARDEN_TEST_REDIS_URL) a B socket and a non-member socket receive no hint for A's channels
  *                       and cannot choose a room.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… [WARDENX_TEST_REDIS_URL=redis://…] bun run test:m36:tenant-idor:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… [CHARTWARDEN_TEST_REDIS_URL=redis://…] bun run test:m36:tenant-idor:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -111,8 +111,8 @@ import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROUTES_DIR = join(__dirname, "../src/modules/36-messaging/routes");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
@@ -536,7 +536,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   const attackers = new Set<string>();
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
@@ -3418,7 +3418,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         .filter((x) => x.endsWith(".sql"))
         .sort()) {
         let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-        if (process.env.WARDENX_TEST_NO_PGVECTOR) {
+        if (process.env.CHARTWARDEN_TEST_NO_PGVECTOR) {
           sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
           sql = sql.replace(/\bvector\(\d+\)/g, "text");
           sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw stripped)");

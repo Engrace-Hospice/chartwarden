@@ -1,6 +1,6 @@
 // Planted violation for `check-request-body-contract.ts` — ONE route per direction, and nothing else.
 //
-// The gate joins the SCANNED route tree (this directory, via WARDENX_FITNESS_ROOT) against the REAL
+// The gate joins the SCANNED route tree (this directory, via CHARTWARDEN_FITNESS_ROOT) against the REAL
 // `ROUTE_ENRICHMENTS`, because the enrichment registry is a static import and a fixture cannot substitute
 // one. So each plant is a route path chosen for what the real registry says about it:
 //

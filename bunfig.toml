@@ -1,4 +1,7 @@
-# WardenX — Bun config.
+# ChartWarden — Bun config.
+# Transitional: map legacy WARDENX_* env vars to CHARTWARDEN_* before any script runs (see packages/types/src/env-bridge.ts).
+preload = ["./packages/types/src/env-bridge-preload.ts"]
+
 # Use the HOISTED linker so workspace packages (@chartwarden/*) symlink into the top-level
 # node_modules. This matches how TypeScript (moduleResolution: Bundler) and
 # dependency-cruiser resolve cross-package imports from the repo root, keeping the

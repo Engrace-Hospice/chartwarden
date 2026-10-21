@@ -13,7 +13,7 @@
  * the D5 proposal-worker trigger — three previously-named infrastructure gaps (the `visit_proposal_source`
  * enum member, the admission-siting seam, the `visitKind` discriminator) are all proven closed here.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m17:volunteer-triage-consumers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m17:volunteer-triage-consumers:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +27,7 @@ import { buildM17VolunteerAssignmentInactivatedConsumer } from "../src/modules/1
 import { buildM17TriageVisitNeededConsumer } from "../src/modules/17-scheduling/outbox-consumers/m19-triage-visit-needed";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

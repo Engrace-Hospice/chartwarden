@@ -11,7 +11,7 @@
  *   3. AUDIT        a successful resolve lands exactly one `notification_delivery.viewed` row carrying the delivery id; a refusal
  *                   lands no audit row of any kind for the actor.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:delivery-target:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:delivery-target:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -35,7 +35,7 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a480001";
 const ORG_B = "22222222-2222-4222-8222-22220a480002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a48a1";

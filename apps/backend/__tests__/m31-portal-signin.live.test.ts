@@ -19,7 +19,7 @@
  *   - the definer function reveals only the passed user's accounts, and a bare wardenx_app read of portal_account with
  *     no tenant bound still returns nothing (RLS is intact).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m31:portal-signin:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m31:portal-signin:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -63,7 +63,7 @@ import { registerPortalSignInRoutes } from "../src/modules/31-portal/routes/sign
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

@@ -85,8 +85,8 @@ describe("search response floor (F1)", () => {
 
   describe("env overrides (security L3)", () => {
     const overrides = {
-      WARDENX_GLOBAL_SEARCH_FLOOR_MS: "0",
-      WARDENX_GLOBAL_SEARCH_JITTER_MS: "0",
+      CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS: "0",
+      CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS: "0",
     };
     const production = {
       floorMs: SEARCH_RESPONSE_FLOOR_MS,

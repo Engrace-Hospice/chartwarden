@@ -16,8 +16,8 @@
  * methods — over a real Postgres connection, with the real catalog-validating outbox publisher and a spy
  * `AlertEmitter`, and proves all four transitions now actually publish, revoke sessions, and alert.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m34:lifecycle-outbox:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m34:lifecycle-outbox:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -39,7 +39,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
 import { wireM34Tenancy } from "../src/modules/34-saas-tenant-platform/wiring";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -58,7 +58,7 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
   const alertCalls: Array<{ orgId: string; eventType: string; severity: string }> = [];
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
  *
  * Seeds as the superuser; drives every write and the seam read as the NOBYPASSRLS `wardenx_app` role.
  * Gated on a live DB so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:claim-discharge-seam:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:claim-discharge-seam:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -38,7 +38,7 @@ import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 import { seedPhysicianRole } from "./_physician-signer";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

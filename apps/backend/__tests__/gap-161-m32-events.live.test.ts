@@ -7,7 +7,7 @@
  * emit is accepted by the null-org outbox function, or that the emit commits in the SAME transaction as the row -
  * so each store method is driven for real and the `outbox_event` rows are read back. Also pins the
  * `recordHitlOutcome` row-count assertion (a lost update must throw, not return success).
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-161:live   (SUPERUSER url, THROWAWAY database)
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-161:live   (SUPERUSER url, THROWAWAY database)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -35,7 +35,7 @@ import {
 } from "../src/modules/32-ai-platform/safety/store-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

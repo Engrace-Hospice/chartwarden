@@ -19,9 +19,9 @@
  *   - cross-tenant isolation: org B cannot resolve org A's claim/visit, so the consumer refuses rather
  *     than seeding a denial case against a fabricated provider entity.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-denial-seed-consumers.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-denial-seed-consumers.live.test.ts
  * (SUPERUSER to a THROWAWAY db — this file DROPs and recreates the public schema; never point it at a
- * database anything else depends on. For a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1.)
+ * database anything else depends on. For a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -45,7 +45,7 @@ import { buildM23ClaimRejectedConsumer } from "../src/modules/25-remittance/outb
 import type { WriteOutboxPort } from "../src/modules/25-remittance/routes/write-service";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -70,7 +70,7 @@ describe.skipIf(!DB_URL)("M25 denial-seed consumers — LIVE Postgres (M25L)", (
   const seeded: Record<string, Seed> = {};
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

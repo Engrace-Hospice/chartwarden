@@ -16,9 +16,9 @@
  *   5. With M27's seam absent the same job still completes, writing a SUPPRESSED (`insufficient_n`, null
  *      rate) row rather than a fabricated 0% or 100% — the D6/D13 forward-seam posture.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bunx vitest run apps/backend/__tests__/gap-065-cost-report-filing-measure.live.test.ts
- * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1. Use a
+ * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a
  * Redis instance dedicated to this run — a shared one means two worker sets racing for the same job.)
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -32,8 +32,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerM27PublishedSeams } from "../src/modules/27-cost-report/index";
 import { buildM30WorkerDeps, registerM30Workers } from "../src/modules/30-quality/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -91,7 +91,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     let workers: Worker[] | undefined;
 
     async function applyMigrations(): Promise<void> {
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

@@ -5,7 +5,7 @@
  * the upload begin -> stage -> complete lifecycle against real columns (encrypted staging, ciphertext cleared on
  * submit, idempotent complete) and that a rejected / expired stage is DURABLY recorded (not rolled back with the
  * thrown error). Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-031:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-031:live
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -19,7 +19,7 @@ import { createPortalPreferences } from "../src/modules/31-portal/provisioning/p
 import { createPortalUploads } from "../src/modules/31-portal/provisioning/uploads";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

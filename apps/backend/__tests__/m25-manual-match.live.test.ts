@@ -5,7 +5,7 @@
  * publisher and records the rationale in the audit trail; a replay is a no-op; an override of a flagged
  * adjustment takes effect (write-off / PR ledger / denial case) exactly once.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-manual-match.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-manual-match.live.test.ts
  * (SUPERUSER to a THROWAWAY db — this file DROPs and recreates the public schema.)
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -22,7 +22,7 @@ import type { WriteOutboxPort } from "../src/modules/25-remittance/routes/write-
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -147,7 +147,7 @@ describe.skipIf(!DB_URL)("M25 manual match + adjustment override — LIVE Postgr
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

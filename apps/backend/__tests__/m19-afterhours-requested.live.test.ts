@@ -8,8 +8,8 @@
  * throw), the outcome event validates against the real catalog schema, and a patient of another tenant is
  * invisible through the real PatientReader under RLS.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m19:afterhours-requested:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1. Use a PRIVATE container, never the shared cluster.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m19:afterhours-requested:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a PRIVATE container, never the shared cluster.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -32,7 +32,7 @@ import { buildDrizzleEscalationRouterReads } from "../src/modules/19-oncall/seam
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -142,7 +142,7 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

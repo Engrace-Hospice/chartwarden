@@ -48,25 +48,25 @@ type EnvLike = Record<string, string | undefined>;
 /**
  * The software-vendor block from configuration. Checked when a package is built (not at boot), so a
  * deployment without these keys keeps running and only HOPE packaging refuses, naming what to set.
- *   WARDENX_SOFTWARE_VENDOR_ID     EIN, 9 digits (dash allowed, stripped)
- *   WARDENX_SOFTWARE_VENDOR_NAME   ≤ 30 characters
- *   WARDENX_SOFTWARE_VENDOR_EMAIL  ≤ 50 characters
- *   WARDENX_SOFTWARE_PRODUCT_NAME  optional, default "WardenX", ≤ 50 characters
+ *   CHARTWARDEN_SOFTWARE_VENDOR_ID     EIN, 9 digits (dash allowed, stripped)
+ *   CHARTWARDEN_SOFTWARE_VENDOR_NAME   ≤ 30 characters
+ *   CHARTWARDEN_SOFTWARE_VENDOR_EMAIL  ≤ 50 characters
+ *   CHARTWARDEN_SOFTWARE_PRODUCT_NAME  optional, default "WardenX", ≤ 50 characters
  * The product version is the image's APP_VERSION, else its GIT_SHA (both baked in by the Dockerfile).
  */
 export function readHopeSoftwareVendor(env: EnvLike = process.env): HopeSoftwareVendor {
   const problems: string[] = [];
-  const vendorId = (env.WARDENX_SOFTWARE_VENDOR_ID ?? "").replaceAll("-", "").trim();
-  if (!/^\d{9}$/.test(vendorId)) problems.push("WARDENX_SOFTWARE_VENDOR_ID (9-digit EIN)");
-  const vendorName = (env.WARDENX_SOFTWARE_VENDOR_NAME ?? "").trim();
+  const vendorId = (env.CHARTWARDEN_SOFTWARE_VENDOR_ID ?? "").replaceAll("-", "").trim();
+  if (!/^\d{9}$/.test(vendorId)) problems.push("CHARTWARDEN_SOFTWARE_VENDOR_ID (9-digit EIN)");
+  const vendorName = (env.CHARTWARDEN_SOFTWARE_VENDOR_NAME ?? "").trim();
   if (!vendorName || vendorName.length > 30)
-    problems.push("WARDENX_SOFTWARE_VENDOR_NAME (1-30 characters)");
-  const vendorEmail = (env.WARDENX_SOFTWARE_VENDOR_EMAIL ?? "").trim();
+    problems.push("CHARTWARDEN_SOFTWARE_VENDOR_NAME (1-30 characters)");
+  const vendorEmail = (env.CHARTWARDEN_SOFTWARE_VENDOR_EMAIL ?? "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vendorEmail) || vendorEmail.length > 50)
-    problems.push("WARDENX_SOFTWARE_VENDOR_EMAIL (email, ≤ 50 characters)");
-  const productName = (env.WARDENX_SOFTWARE_PRODUCT_NAME ?? "ChartWarden").trim();
+    problems.push("CHARTWARDEN_SOFTWARE_VENDOR_EMAIL (email, ≤ 50 characters)");
+  const productName = (env.CHARTWARDEN_SOFTWARE_PRODUCT_NAME ?? "ChartWarden").trim();
   if (!productName || productName.length > 50)
-    problems.push("WARDENX_SOFTWARE_PRODUCT_NAME (1-50 characters)");
+    problems.push("CHARTWARDEN_SOFTWARE_PRODUCT_NAME (1-50 characters)");
   const appVersion = env.APP_VERSION && env.APP_VERSION !== "dev" ? env.APP_VERSION : undefined;
   const gitSha = env.GIT_SHA && env.GIT_SHA !== "unknown" ? env.GIT_SHA.slice(0, 12) : undefined;
   const productVersion = (appVersion ?? gitSha ?? "").slice(0, 20);

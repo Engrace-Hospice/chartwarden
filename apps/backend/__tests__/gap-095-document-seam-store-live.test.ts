@@ -17,7 +17,7 @@
  *   3. `getDocumentReader().documentMetadata()`/`documentsForPatient()` (M28/M31/M33's read surface).
  *   4. A legal-hold guard proves the store refuses to move a held document's active version.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-095-document-seam-store-live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-095-document-seam-store-live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +37,7 @@ import {
 } from "../src/modules/22-documents/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "77777777-7777-7777-7777-777777777777";
@@ -58,7 +58,7 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

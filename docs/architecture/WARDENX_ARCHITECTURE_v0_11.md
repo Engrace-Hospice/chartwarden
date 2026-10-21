@@ -3175,7 +3175,7 @@ summarized here with pointers; the linked file is authoritative in each case.
 | **The transactional outbox** | The real cross-module event backbone (there is no realtime backbone). Event names are gate-enforced to the `mN.` prefix. | `packages/db` `outbox_event`, `check-fitness-gaps.ts` |
 | **OpenAPI enrichment ratchet** | `openapi.json` is generated offline. An **unenriched route is legal**, so a per-module ratchet keeps the unenriched count from rising; the generated typed client is diffed in CI. | `scripts/openapi/emit.ts`, `scripts/report-openapi-coverage.ts` |
 | **`worker.ts` / `PROCESS_ROLE`** | One image, two roles. The worker serves no public traffic — it listens on `WORKER_PORT` (3001) for `/health` + `/ready` only. | `apps/backend/src/worker.ts`, `Dockerfile` |
-| **Live suites** | `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`. They run as the **NOBYPASSRLS `wardenx_app`** role, so a missing GRANT or policy fails them. Every `test:*:live` script must be wired to a `ci.yml` job (`arch:live-suites`). | `apps/backend/__tests__/*.live.test.ts` |
+| **Live suites** | `describe.skipIf(!CHARTWARDEN_TEST_DATABASE_URL)`. They run as the **NOBYPASSRLS `wardenx_app`** role, so a missing GRANT or policy fails them. Every `test:*:live` script must be wired to a `ci.yml` job (`arch:live-suites`). | `apps/backend/__tests__/*.live.test.ts` |
 
 **Terminology trap — "Phase" is overloaded.** *Audit-remediation phases* (Phase 0/1/2/3 of the
 production-readiness work) and *product-launch phases* (§20.A's v1 / v1.1 / v1.2 / v2 module cut

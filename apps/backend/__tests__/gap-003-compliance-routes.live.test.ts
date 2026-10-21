@@ -5,7 +5,7 @@
  * RLS scoping, the append-only-grant read, the rate limit, and the bounded match-count scan are
  * only provable against a live cluster — the m39-consent-lifecycle.live.test.ts precedent.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/gap-003-compliance-routes.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -29,7 +29,7 @@ import { wireModuleSeams } from "../src/index";
 import { mountAuditRoutes } from "../src/modules/04-audit/index";
 import { openMessageCertificate } from "../src/modules/04-audit/messaging-hold-workflow";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

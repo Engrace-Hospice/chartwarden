@@ -11,7 +11,7 @@
  * header); redelivery after termination is a safe no-op; and cross-tenant isolation holds (org B's
  * session, same patient id, is untouched by org A's delivery).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m2:consent-revoked:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:consent-revoked:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildM2ConsentRevokedConsumer } from "../src/modules/02-identity/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -18,7 +18,7 @@
  *      the same window still escalates once;      13. a flushed Redis: the sweeper escalates exactly once;
  *      14. a job that exhausts its retries lands on the DLQ queue AND leaves an `m36.dlq_job` audit row; a poison payload does too.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... WARDENX_TEST_REDIS_URL=redis://localhost:PORT bun run test:m36:ack-escalation:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT bun run test:m36:ack-escalation:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8 container: the suite resets the public schema and the
  * wardenx_* roles, and obliterates the ack-escalation queues it uses.
  */
@@ -68,8 +68,8 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const REDIS_IS_LOCAL =
   !!REDIS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(REDIS_URL).hostname);
 const ORG_A = "11111111-1111-4111-8111-11110a440001";

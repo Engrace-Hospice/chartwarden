@@ -20,7 +20,7 @@
  * No live MinIO/S3 server is stood up (same established convention as gap-048-dsar-export-live.test.ts —
  * the in-memory `ObjectStorePort` substitutes for the one piece that would need real infra).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-094-tenant-export-live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-094-tenant-export-live.test.ts
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -51,7 +51,7 @@ import {
 import { tenantExportManifestObjectKey } from "../src/modules/34-saas-tenant-platform/tenant-export-bundle-sink";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",
@@ -97,7 +97,7 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

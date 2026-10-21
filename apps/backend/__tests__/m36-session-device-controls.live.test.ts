@@ -17,7 +17,7 @@
  *   5. RE-REGISTER the same push endpoint re-registered from a new session is verified again and linked to it (no unique-index failure).
  *   6. CURRENT    revoking the current session says so, and the next call is 401.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... WARDENX_TEST_REDIS_URL=redis://... bun run test:m36:session-devices:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:session-devices:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -56,8 +56,8 @@ import { wireModuleSeams } from "../src/index";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

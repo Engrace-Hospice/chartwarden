@@ -6,7 +6,7 @@
  * user conflicts, an unknown caregiver is not-found), the seam read resolves the PRIMARY current caregiver's user
  * (and nobody else's, and nothing across tenants), and the grief catalog's Drizzle paths - create / list / update /
  * deactivate - assert their row counts and are tenant-isolated by RLS. Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-158:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-158:live
  * (SUPERUSER url to a THROWAWAY database - the suite drops and recreates `public` and the roles.)
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -25,7 +25,7 @@ import {
 } from "../src/modules/40-mdm/grief-resources";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

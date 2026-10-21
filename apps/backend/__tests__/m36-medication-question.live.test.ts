@@ -21,7 +21,7 @@
  *  11. READ AUDIT    the ask and the options read each land an audit row with a resource id.
  *  12. FLAG          off => 404 on the ask, {enabled:false} on options.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:medication-question:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:medication-question:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -60,7 +60,7 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-11110a100001";
 const ORG_B = "22222222-2222-4222-8222-22220a100002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a1a1a";

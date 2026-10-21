@@ -15,7 +15,7 @@
  *   - the chart-badge read leaves a read-audit event with a real resource id (not swallowed by the best-effort
  *     wrapper).
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run apps/backend/__tests__/m5-patient-wristband.live.test.ts
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run apps/backend/__tests__/m5-patient-wristband.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -44,7 +44,7 @@ import { buildPatientWristbandVerifier } from "../src/modules/05-patient/wristba
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { installPermissiveConsentAbac } from "./consent-abac-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "aaaaaaaa-0000-4000-8000-0000000000a1";

@@ -4,7 +4,7 @@
  * to Drizzle + `withOrgContext` + M6's live `DeathDischargeReader` seam directly — provable only
  * against a live cluster (the gap-003-compliance-routes.live.test.ts precedent).
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/gap-004-death-cascade.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -20,7 +20,7 @@ import {
   buildM5DeathCascadeConsumer,
 } from "../src/modules/05-patient/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

@@ -15,7 +15,7 @@
  *      not); an `ordered` request 30h old emits the vendor-confirmation advisory and does NOT move
  *   4. both orgs are swept independently under their own RLS context
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m21:cron-workers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m21:cron-workers:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -34,7 +34,7 @@ import {
 } from "../src/modules/21-supplies/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -20,7 +20,7 @@
  * NULL and `source_outbox_event_id` set are two columns that have existed since M11's schema landed and
  * that NOTHING in the repository has ever written.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:discharge-cascade:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:discharge-cascade:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -75,7 +75,7 @@ const CTI_CLINICAL = {
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

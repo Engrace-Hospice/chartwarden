@@ -61,29 +61,29 @@ export function buildM20TerminusDeps(input: BuildTerminusDepsInput): TerminusDep
   const { env, log } = input;
 
   let pager: TerminusDeps["pager"];
-  const pagerUrl = env.WARDENX_OPS_PAGE_WEBHOOK_URL?.trim();
+  const pagerUrl = env.CHARTWARDEN_OPS_PAGE_WEBHOOK_URL?.trim();
   if (pagerUrl) {
     try {
-      pager = createWebhookOpsPager({ url: pagerUrl, token: env.WARDENX_OPS_PAGE_WEBHOOK_TOKEN });
+      pager = createWebhookOpsPager({ url: pagerUrl, token: env.CHARTWARDEN_OPS_PAGE_WEBHOOK_TOKEN });
     } catch {
       log(
-        "[m20:terminus] CRITICAL: WARDENX_OPS_PAGE_WEBHOOK_URL is set but invalid (must be https://). " +
+        "[m20:terminus] CRITICAL: CHARTWARDEN_OPS_PAGE_WEBHOOK_URL is set but invalid (must be https://). " +
           "SOS emergency-terminus alerts will NOT page ChartWarden ops until it is fixed.",
       );
     }
   } else {
     log(
-      "[m20:terminus] CRITICAL: WARDENX_OPS_PAGE_WEBHOOK_URL is not set. An SOS alert that reaches the emergency " +
+      "[m20:terminus] CRITICAL: CHARTWARDEN_OPS_PAGE_WEBHOOK_URL is not set. An SOS alert that reaches the emergency " +
         "terminus will be recorded but ChartWarden ops will NOT be paged (ledger: page_ops skipped / pager_unbound). " +
         "Set it to the on-call receiver.",
     );
   }
 
-  const dialEnabled = env.WARDENX_SOS_CONTACT_DIAL === SOS_CONTACT_DIAL_ENABLED_VALUE;
+  const dialEnabled = env.CHARTWARDEN_SOS_CONTACT_DIAL === SOS_CONTACT_DIAL_ENABLED_VALUE;
   log(
     dialEnabled
-      ? "[m20:terminus] emergency-contact auto-dial is ENABLED (WARDENX_SOS_CONTACT_DIAL=enabled)."
-      : "[m20:terminus] emergency-contact auto-dial is OFF (set WARDENX_SOS_CONTACT_DIAL=enabled after the Twilio sandbox run and legal review).",
+      ? "[m20:terminus] emergency-contact auto-dial is ENABLED (CHARTWARDEN_SOS_CONTACT_DIAL=enabled)."
+      : "[m20:terminus] emergency-contact auto-dial is OFF (set CHARTWARDEN_SOS_CONTACT_DIAL=enabled after the Twilio sandbox run and legal review).",
   );
 
   return {

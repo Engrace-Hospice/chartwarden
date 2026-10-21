@@ -8,7 +8,7 @@
  * `patient_merge` audit row is written, and `m5.patient.merged` publishes through the real
  * catalog-validating outbox publisher.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m5-patient-merge.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,7 +24,7 @@ import {
   mergePatients,
 } from "../src/modules/05-patient/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

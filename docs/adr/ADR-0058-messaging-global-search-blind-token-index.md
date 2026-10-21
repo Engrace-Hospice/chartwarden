@@ -977,7 +977,7 @@ product owner's residual-risk acceptance are still pending). No tenant may be en
   "no message contains X" returned faster than "a channel I cannot read contains X". `GET /api/v1/messaging/search` now holds EVERY outcome after
   the gates (hits, empty, refine, errors) to a minimum of `SEARCH_RESPONSE_FLOOR_MS` (1500) plus a per-request random jitter below
   `SEARCH_RESPONSE_JITTER_MS` (500) (`global-search/timing-floor.ts`). The floor never shortens a slower request. Both are named constants; the
-  env vars `WARDENX_GLOBAL_SEARCH_FLOOR_MS` / `WARDENX_GLOBAL_SEARCH_JITTER_MS` override them for tests only: they are read only when `NODE_ENV=test`, ignored otherwise, and boot fails if either is set under a production or staging `NODE_ENV`. **Residual:** a request that needs more than one round, or whose authority calls exceed the floor, still takes longer, so
+  env vars `CHARTWARDEN_GLOBAL_SEARCH_FLOOR_MS` / `CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS` override them for tests only: they are read only when `NODE_ENV=test`, ignored otherwise, and boot fails if either is set under a production or staging `NODE_ENV`. **Residual:** a request that needs more than one round, or whose authority calls exceed the floor, still takes longer, so
   hidden volume beyond the one-round bound remains timing-visible (it is the same population as the `scanCapped` threshold oracle above, and is
   bounded by the 30/min/user rate limit). The floor value was sized against the documented one-round cost, NOT yet against a measurement on a
   production-shaped corpus: the leakage experiment must re-validate it.

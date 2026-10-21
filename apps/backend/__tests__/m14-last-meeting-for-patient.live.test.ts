@@ -9,7 +9,7 @@
  * proves RLS; the query's explicit organization_id predicate is a second wall that RLS masks here, so it is
  * not proven separately by this suite.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m14-last-meeting-for-patient.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m14-last-meeting-for-patient.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ import { createIdgScheduleProvider } from "../src/modules/14-idg/seams/providers
 import { createDrizzleIdgSeamStore } from "../src/modules/14-idg/seams/drizzle-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

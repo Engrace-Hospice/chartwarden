@@ -3,7 +3,7 @@
  * real Drizzle `PortalStore`), connected as the real NOBYPASSRLS `wardenx_app` role. Replaces the never-built
  * `m17.visit.published` -> `m31.telehealth-room-mint` push.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m31:lazy-room-mint:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m31:lazy-room-mint:live
  */
 import { createDecipheriv } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -20,7 +20,7 @@ import {
 } from "../src/modules/31-portal/telehealth/room-mint";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

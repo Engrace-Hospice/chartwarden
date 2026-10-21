@@ -3,9 +3,9 @@
  * `createDbMembershipRoleStore`, the CHECK that bounds every other writer, the quarantine of legacy blobs, the
  * fail-closed reader through the real actor enrichment, and tenant isolation as `wardenx_app` (NOBYPASSRLS).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:gap007:grant-scope:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:gap007:grant-scope:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite DROPs the wardenx_* roles. For a local PG without
- * pgvector also set WARDENX_TEST_NO_PGVECTOR=1.
+ * pgvector also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +37,7 @@ import {
 import { createDbMembershipRoleStore } from "../src/modules/03-authorization/membership-role-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const SHAPE_MIGRATION = "1050_m3_membership_role_scope_shape.sql";
@@ -80,7 +80,7 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
   const ids: Record<string, string> = {};
 
   async function applyMigrations(include: (file: string) => boolean) {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql") && include(x))
       .sort()) {

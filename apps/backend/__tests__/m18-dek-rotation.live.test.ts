@@ -13,7 +13,7 @@
  * The key ring is the in-memory per-tenant DEK ring (`_m18-coords-test-cipher.ts`) with M34's shape; the
  * envelope, the worker and the SQL are production code.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m18:dek-rotation:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m18:dek-rotation:live
  * (`evv_event` is RANGE-partitioned → a throwaway superuser DB needs `max_locks_per_transaction` raised.)
  */
 import { randomUUID } from "node:crypto";
@@ -35,7 +35,7 @@ import {
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { createRotatableTestCoordsKeyRing } from "./_m18-coords-test-cipher";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

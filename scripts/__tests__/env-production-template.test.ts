@@ -48,7 +48,11 @@ describe("deploy/production/.env.production.example", () => {
 
   it("defines every ${VAR:?...} that compose.yml requires of .env.production", () => {
     const compose = readFileSync(COMPOSE, "utf8");
-    const required = [...compose.matchAll(/\$\{([A-Z0-9_]+):\?/g)].map((m) => m[1]);
+    // compose.yml requires `${CHARTWARDEN_X:-${WARDENX_X:?...}}` (legacy fallback); the template defines the
+    // current CHARTWARDEN_* name for either.
+    const required = [...compose.matchAll(/\$\{([A-Z0-9_]+):\?/g)].map((m) =>
+      (m[1] ?? "").replace(/^WARDENX_/, "CHARTWARDEN_"),
+    );
     const defined = Object.keys(render(text));
     for (const key of required) expect(defined).toContain(key);
   });

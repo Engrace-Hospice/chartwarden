@@ -13,7 +13,7 @@
  *     sends nothing, the auditor delivery throws, and the boot line names every missing variable;
  *   - no log line (boot notice or adapter) ever contains the server token, the recipient, or the link token.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:transactional-email:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:transactional-email:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -56,7 +56,7 @@ import { createLinkDelivery } from "../src/modules/02-identity/link-delivery";
 import { bindTransactionalEmail } from "../src/modules/36-messaging/transactional-email-binding";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

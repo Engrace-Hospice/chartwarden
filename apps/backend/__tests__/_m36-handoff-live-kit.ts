@@ -77,7 +77,7 @@ export interface LiveKit {
 }
 
 async function applyMigrations(admin: Client): Promise<void> {
-  const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+  const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
   for (const f of readdirSync(MIGRATIONS_DIR)
     .filter((x) => x.endsWith(".sql"))
     .sort()) {

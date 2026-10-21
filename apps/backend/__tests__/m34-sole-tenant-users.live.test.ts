@@ -19,7 +19,7 @@
  * so a missing production grant fails here, not in a shred.
  *
  * Gated on a live DB so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m34:sole-tenant-users:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m34:sole-tenant-users:live
  * (SUPERUSER connection string to a THROWAWAY db — the suite drops and recreates `public` and the roles.)
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -31,7 +31,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildSoleTenantUserResolver } from "../src/bootstrap/sole-tenant-user-resolver";
 import { m34PlatformBypassAuditor } from "../src/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",
@@ -79,7 +79,7 @@ describe.skipIf(!DB_URL)("M34 shred × M36 D9 — sole-tenant users, LIVE Postgr
   };
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

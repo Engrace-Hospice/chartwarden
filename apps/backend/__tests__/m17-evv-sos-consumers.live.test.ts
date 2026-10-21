@@ -12,7 +12,7 @@
  * D3 handler decides" — no such handler existed either. All three sat in
  * `scripts/outbox-deferred-consumers.ts`'s m17 `handlers-unbound` group.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m17:evv-sos-consumers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m17:evv-sos-consumers:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +27,7 @@ import { buildM17EvvCheckInConsumer } from "../src/modules/17-scheduling/outbox-
 import { buildM17SosVisitCancellationConsumer } from "../src/modules/17-scheduling/outbox-consumers/m20-safety-visit-cancellation";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

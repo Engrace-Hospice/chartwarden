@@ -17,8 +17,8 @@
  * delivery. Out-of-band rows stay `pending`: no dispatcher exists for them, and that is why an alert with
  * a recipient who has out-of-band preferences settles nowhere. That is the honest state, not a new defect.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:alert-outcome:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m36:alert-outcome:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -33,7 +33,7 @@ import {
 } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -56,7 +56,7 @@ describe.skipIf(!DB_URL)("F-109 — alert outcome + §2.4.4 settlement, LIVE Pos
   let service: ReturnType<typeof createDbMessagingRouteService>;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

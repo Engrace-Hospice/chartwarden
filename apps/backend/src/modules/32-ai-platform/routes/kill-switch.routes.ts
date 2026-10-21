@@ -43,7 +43,7 @@ import {
 
 export interface KillSwitchRouteDeps {
   readonly safety: AiSafetyServiceDeps;
-  /** Overrides the `WARDENX_SINGLE_TENANT_DEPLOYMENT` default (tests). */
+  /** Overrides the `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT` default (tests). */
   readonly singleTenantDeployment?: boolean;
 }
 

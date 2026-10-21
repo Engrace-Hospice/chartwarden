@@ -88,16 +88,16 @@ export interface IdentityAuthOptions {
 export const INVITE_TOKEN_HEADER = "x-invite-token";
 
 /**
- * Whether open self-registration is closed. `WARDENX_SIGNUP_REQUIRES_INVITE` (`true`/`false`) wins;
+ * Whether open self-registration is closed. `CHARTWARDEN_SIGNUP_REQUIRES_INVITE` (`true`/`false`) wins;
  * unset, it is STRICT in production and OPEN everywhere else — the dev seeds and the in-process suites
  * create their users through the sign-up API and have no invitation to present.
  */
 export function resolveSignUpRequiresInvite(env: {
-  readonly WARDENX_SIGNUP_REQUIRES_INVITE?: string | undefined;
+  readonly CHARTWARDEN_SIGNUP_REQUIRES_INVITE?: string | undefined;
   readonly NODE_ENV?: string | undefined;
 }): boolean {
-  if (env.WARDENX_SIGNUP_REQUIRES_INVITE === "true") return true;
-  if (env.WARDENX_SIGNUP_REQUIRES_INVITE === "false") return false;
+  if (env.CHARTWARDEN_SIGNUP_REQUIRES_INVITE === "true") return true;
+  if (env.CHARTWARDEN_SIGNUP_REQUIRES_INVITE === "false") return false;
   return env.NODE_ENV === "production";
 }
 

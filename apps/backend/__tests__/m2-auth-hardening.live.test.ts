@@ -17,7 +17,7 @@
  *     still held until a passkey exists;
  *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -54,7 +54,7 @@ import {
 import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",
@@ -184,7 +184,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
     );
     // Enforcement forced ON: the production default, regardless of NODE_ENV in this lane.
     const gate = createMfaEnrolmentGate({
-      enforced: resolveMfaEnforcement({ WARDENX_MFA_ENFORCEMENT: "true" }),
+      enforced: resolveMfaEnforcement({ CHARTWARDEN_MFA_ENFORCEMENT: "true" }),
       factors: createDbMfaEnrollmentReader(handle.db as never),
       sessionProvedFactor: createDbSessionProofReader(handle.db as never),
       roleKeysForMembership: async ({ organizationId, membershipId }) =>

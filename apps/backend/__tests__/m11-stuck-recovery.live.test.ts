@@ -14,7 +14,7 @@
  * worker (a STUB `MllpTransport`), F-177's real applier, and the REAL M36 alert emitter over the REAL platform-default
  * rule seed — so "one page per stage" is proven by the `alert` table's unique correlation id, not asserted on a stub.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:stuck-recovery:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m11:stuck-recovery:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -60,7 +60,7 @@ import {
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

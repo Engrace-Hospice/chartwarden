@@ -14,8 +14,8 @@
  *   · opening touches no publisher (a failing one cannot block or roll back the open)
  *   · the gate is intact: signing the auto-opened period's CTI without a 200-char narrative refuses 422
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:recertification-signed:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:recertification-signed:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -43,7 +43,7 @@ const CTI_CLINICAL = {
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-11111111223a";
@@ -79,7 +79,7 @@ describe.skipIf(!DB_URL)(
         );
     }
     async function applyMigrations() {
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

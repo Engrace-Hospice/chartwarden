@@ -10,7 +10,7 @@
  *   ACK `AA` only after COMMIT → `hl7_message_inbound` row → parse worker → proposal / lab observation / review queue.
  *
  * Needs `openssl` on PATH (the repo has no cert fixtures).
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m29:listener:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m29:listener:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -31,7 +31,7 @@ import type { ParseWorkerDeps } from "../src/modules/29-external-interfaces/inde
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { ackCode, createTlsFixtures, freePort, hasOpenssl, sendMllp } from "./_m29-tls-fixtures";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -145,7 +145,7 @@ describe.skipIf(!DB_URL || !hasOpenssl())("GAP-086 M29 listener + parse worker �
     );
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

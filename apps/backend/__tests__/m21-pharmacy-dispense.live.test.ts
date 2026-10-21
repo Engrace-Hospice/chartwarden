@@ -11,7 +11,7 @@
  *   - idempotent on the outbox event id; an uncorrelated event is settled with a recorded reason;
  *   - org-scoped RLS (FORCE), no UPDATE/DELETE for the app role.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m21:pharmacy-dispense:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m21:pharmacy-dispense:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -30,7 +30,7 @@ import {
 } from "../src/modules/21-supplies/outbox-consumers/m12-pharmacy-dispense";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

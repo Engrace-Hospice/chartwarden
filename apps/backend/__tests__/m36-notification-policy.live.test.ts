@@ -11,7 +11,7 @@
  *   5. tenant isolation: the endpoint reader returns nothing for a user outside the tenant, never an endpoint value, and is not
  *      executable by PUBLIC; flags of one tenant do not leak to another.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:notification-policy:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:notification-policy:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -30,7 +30,7 @@ import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-st
 import { createDrizzleAlertEmitterPorts } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-111111110046";
@@ -115,7 +115,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.6 notification policy - LIVE Postgres", () =>
         `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

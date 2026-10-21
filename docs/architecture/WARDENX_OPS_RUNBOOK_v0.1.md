@@ -2111,7 +2111,7 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
   `SELECT * FROM audit_event WHERE correlation_id LIKE 'ops-cli:platform-role:%:CHG-1234:%'`.
 - **Effect.** Role keys are re-read on every request. Cached permission sets expire within 5 minutes.
 - **`clinical_safety_lead` is not granted here.** It is a tenant role. It carries the AI Safety Owner
-  authority only on a deployment started with `WARDENX_SINGLE_TENANT_DEPLOYMENT=true` (M32 §4.7).
+  authority only on a deployment started with `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT=true` (M32 §4.7).
 - Review platform-role holders in the §12.2 quarterly access review:
   `SELECT u.email, r.key FROM membership_role mr JOIN role r ON r.id = mr.role_id JOIN membership m ON m.id = mr.membership_id JOIN "user" u ON u.id = m.user_id WHERE r.organization_id IS NULL AND r.category = 'platform_staff'`.
 

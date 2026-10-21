@@ -24,7 +24,7 @@
  *   • after the shred, the SAME envelope is unreadable — the property destruction certificates assert.
  *   • an unbound key-ring credential refuses with a STATED reason, not a 42501 no caller can interpret.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m34:tenant-key-provider:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m34:tenant-key-provider:live
  */
 import { Buffer } from "node:buffer";
 import { createDecipheriv } from "node:crypto";
@@ -51,7 +51,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/index";
 import { createConsentInternalNotesCipher } from "../src/modules/39-consent/consent-crypto";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",
@@ -111,7 +111,7 @@ describe.skipIf(!DB_URL)("#105 — M34 tenant key provider, LIVE Postgres", () =
   };
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

@@ -15,7 +15,7 @@
  *
  * Run against a PRIVATE container, never the shared cluster (it DROPs ROLE wardenx_app):
  *   docker run -d --name gapc-C1-ssn-pg -p 55600:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg18
- *   WARDENX_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55600/postgres \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55600/postgres \
  *     bun run test:m5:ssn-identifier:live
  */
 import { Buffer } from "node:buffer";
@@ -55,7 +55,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

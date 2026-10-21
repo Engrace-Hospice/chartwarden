@@ -20,7 +20,7 @@
  *      RLS, so a future M3 PHI table without a denial proof here turns RED, not silent.
  *
  * The live cross-tenant proof against a real Postgres is owned by the shared live harness
- * (rls-isolation.live.test.ts, gated on WARDENX_TEST_DATABASE_URL); the obligation is
+ * (rls-isolation.live.test.ts, gated on CHARTWARDEN_TEST_DATABASE_URL); the obligation is
  * tracked at the foot of this file.
  */
 import { readFileSync } from "node:fs";

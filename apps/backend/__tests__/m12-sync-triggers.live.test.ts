@@ -18,7 +18,7 @@
  * fails honestly at the (genuinely-unbuilt) DoseSpot-patient-id resolver; a patient absent under an org
  * settles as a clean `completed` skip, never a failure; and cross-tenant isolation holds.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:sync-triggers:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:sync-triggers:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -42,7 +42,7 @@ import {
 } from "../src/modules/12-dosespot/jobs/worker";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";

@@ -9,7 +9,7 @@
  * tenants and the app role cannot delete; migration 1119 grants the new keys to existing roles; every write and the
  * detail read leave an audit row; and the routes gate on the new permission keys.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m25:tpe:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m25:tpe:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -33,7 +33,7 @@ import { buildDrizzleTpeService } from "../src/modules/25-remittance/routes/tpe-
 import { registerTpeRoutes } from "../src/modules/25-remittance/routes/tpe.routes";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

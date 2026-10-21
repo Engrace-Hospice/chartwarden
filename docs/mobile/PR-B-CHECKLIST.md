@@ -29,7 +29,7 @@ le choix des schemes/app links et les preuves sur appareils restent des conditio
 | Commande | Résultat |
 |---|---|
 | `bunx vitest run` sur les 12 fichiers ciblés auth/origins/CSRF/Fastify/session/auditeur/realtime | **PASS** — 12 fichiers, 203 tests |
-| `WARDENX_TEST_DATABASE_URL=… bun run test:auth:live` sur un conteneur privé `pgvector/pgvector:pg18` | **PASS** — 1 fichier, 26 tests ; vraie session Better Auth, bootstrap CSRF, binding org et rôle applicatif NOBYPASSRLS ; conteneur supprimé |
+| `CHARTWARDEN_TEST_DATABASE_URL=… bun run test:auth:live` sur un conteneur privé `pgvector/pgvector:pg18` | **PASS** — 1 fichier, 26 tests ; vraie session Better Auth, bootstrap CSRF, binding org et rôle applicatif NOBYPASSRLS ; conteneur supprimé |
 | `bunx tsc -p packages/auth/tsconfig.json --noEmit --pretty false` | **PASS** |
 | `bunx tsc -p apps/backend/tsconfig.json --noEmit --pretty false` | **PASS** |
 | `bunx biome check <fichiers TypeScript modifiés>` | **PASS** après correction de format/imports |

@@ -3,7 +3,7 @@
  * RLS-enforced `wardenx_app` role. Both are update-heavy lifecycle tables whose guards live in the WHERE clause
  * (live-job convergence, predecessor-state-only transitions, single-use consume) - exactly what mocks cannot prove.
  * Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-087:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-087:live
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,7 +24,7 @@ import {
 } from "../src/modules/30-quality/cahps/export-job-store";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

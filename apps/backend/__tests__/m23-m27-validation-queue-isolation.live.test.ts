@@ -10,7 +10,7 @@
  * shared queue (waiting, delayed or failed) moves to the M23 queue with its id and payload, M27's job is left alone,
  * and a repeat sweep is a no-op.
  *
- *   WARDENX_TEST_REDIS_URL=redis://localhost:PORT bun run test:m23:validation-queue-isolation:live
+ *   CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT bun run test:m23:validation-queue-isolation:live
  */
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
@@ -21,7 +21,7 @@ import { M23_LEGACY_VALIDATION_RUN_QUEUE } from "../src/modules/23-billing-medic
 import { M27_QUEUES } from "../src/modules/27-cost-report/jobs/queues";
 import { buildM27RecomputeEnqueue } from "../src/modules/27-cost-report/wiring";
 
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const ORG = "11111111-1111-4111-8111-111111111111";
 const WAIT_MS = 1500;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -65,7 +65,7 @@ export function evaluateMfa(roleKeys: readonly string[], factors: MfaFactorState
 }
 
 /**
- * Whether the server enforces the matrix. OPT-IN: only `WARDENX_MFA_ENFORCEMENT=true` turns it on, in every
+ * Whether the server enforces the matrix. OPT-IN: only `CHARTWARDEN_MFA_ENFORCEMENT=true` turns it on, in every
  * environment, production included.
  *
  * Why not strict-by-default in production: refusing a staff session until a factor is enrolled needs an in-app
@@ -75,8 +75,8 @@ export function evaluateMfa(roleKeys: readonly string[], factors: MfaFactorState
  * the variable. Flip this default back to strict once the enrolment UI ships.
  */
 export function resolveMfaEnforcement(env: {
-  readonly WARDENX_MFA_ENFORCEMENT?: string | undefined;
+  readonly CHARTWARDEN_MFA_ENFORCEMENT?: string | undefined;
   readonly NODE_ENV?: string | undefined;
 }): boolean {
-  return env.WARDENX_MFA_ENFORCEMENT === "true";
+  return env.CHARTWARDEN_MFA_ENFORCEMENT === "true";
 }

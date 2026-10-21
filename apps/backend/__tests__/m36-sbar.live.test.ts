@@ -15,7 +15,7 @@
  *   8. AUDIT         the write-audit trigger fires on insert/update/delete and never copies a hint.
  *   9. DESTRUCTION   wardenx_destruction can read and remove the org's own row only.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:sbar:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:sbar:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
@@ -45,7 +45,7 @@ import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/mess
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_destruction",
@@ -111,7 +111,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.3 SBAR - LIVE Postgres", () => {
   let careTeam: string;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

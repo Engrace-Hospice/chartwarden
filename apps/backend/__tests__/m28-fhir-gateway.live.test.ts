@@ -17,8 +17,8 @@
  * The suite drives the real HTTP surface end to end: mint a token at R3, present it at R4, and get a US
  * Core Patient back. Then the isolation proof — org A's bearer against org B's patient id.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m28:fhir-gateway:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m28:fhir-gateway:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -45,7 +45,7 @@ import {
 import { registerFhirR4Routes } from "../src/modules/28-fhir/routes/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -69,7 +69,7 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
   let baaActive = true;
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

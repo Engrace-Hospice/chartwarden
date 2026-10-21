@@ -232,11 +232,11 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
       expect(hasPlatformKillSwitchAuthority([], true)).toBe(false);
     });
 
-    it("reads the single-tenant flag from WARDENX_SINGLE_TENANT_DEPLOYMENT, default off", () => {
+    it("reads the single-tenant flag from CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT, default off", () => {
       expect(isSingleTenantDeployment({})).toBe(false);
-      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "false" })).toBe(false);
-      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "1" })).toBe(false);
-      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "true" })).toBe(true);
+      expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "false" })).toBe(false);
+      expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "1" })).toBe(false);
+      expect(isSingleTenantDeployment({ CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT: "true" })).toBe(true);
     });
 
     it("denies an unreadable resolver and a role set that carries no safety authority", async () => {

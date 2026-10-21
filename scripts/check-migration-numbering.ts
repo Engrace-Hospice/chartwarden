@@ -38,10 +38,10 @@ import { fileURLToPath } from "node:url";
 // Rooted off the script's own file location (not process.cwd()) so it always validates the real
 // migrations directory regardless of the caller's working directory. `import.meta.dir` is a Bun
 // extension and is undefined under vitest's node runner, which imports this module directly;
-// `import.meta.url` is standard and resolves the same path in both. `WARDENX_FITNESS_ROOT` is the
+// `import.meta.url` is standard and resolves the same path in both. `CHARTWARDEN_FITNESS_ROOT` is the
 // test-only escape hatch this repo's other self-rooting gate already uses
 // (check-design-tokens.ts / fitness-gates.test.ts) — unset in every real invocation.
-const FITNESS_ROOT_OVERRIDE = process.env.WARDENX_FITNESS_ROOT;
+const FITNESS_ROOT_OVERRIDE = process.env.CHARTWARDEN_FITNESS_ROOT;
 const ROOT = FITNESS_ROOT_OVERRIDE ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = join("packages", "db", "migrations");
 

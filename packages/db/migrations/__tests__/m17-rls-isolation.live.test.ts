@@ -19,18 +19,18 @@
  * `visit_state_history.visit_id` is a plain app-validated uuid.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m17` (SUPERUSER to a THROWAWAY
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m17` (SUPERUSER to a THROWAWAY
  *     db — this DROPs and recreates `public`, so never point it at a database you care about).
  *   - Raise `max_locks_per_transaction` (512 is ample): `DROP SCHEMA public CASCADE` takes one lock per
  *     relation and the corpus's partitioned tables put the default 64 out of reach.
- *   - For a local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1.
+ *   - For a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -95,7 +95,7 @@ describe.skipIf(!DB_URL)("M17 Scheduling — RLS cross-tenant denial — LIVE Po
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -104,7 +104,7 @@ describe.skipIf(!DB_URL)("M17 Scheduling — RLS cross-tenant denial — LIVE Po
       if (stripVector) {
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
         );
         sql = sql.replace(/\bvector\(\d+\)/g, "text");
         sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");

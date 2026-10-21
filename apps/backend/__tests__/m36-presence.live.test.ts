@@ -7,9 +7,9 @@
  * another tenant get exactly what a random channel id gets and write nothing; a tenant row / kill switch is honoured per
  * tenant; a Part 2 denied member of a patient-linked care_team channel is refused exactly like the message read.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... WARDENX_TEST_REDIS_URL=redis://... bun run test:m36:presence:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:presence:live
  * Valkey, NOT Redis: a private `valkey/valkey:8` container (the keyspace assertions FLUSHDB it). For a local PG without
- * pgvector also set WARDENX_TEST_NO_PGVECTOR=1.
+ * pgvector also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  *
  * STATUS: written against the repo's live-suite conventions and type-checked; NOT YET RUN (no Docker available on the
  * authoring host). The first CI run is its first execution.
@@ -45,8 +45,8 @@ import {
 import { PRESENCE_FLAG_KEY } from "../src/modules/36-messaging/routes/presence-routes";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const KEK = Buffer.alloc(32, 7);
@@ -161,7 +161,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
         );
       }
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

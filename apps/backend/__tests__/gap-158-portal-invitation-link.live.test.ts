@@ -6,7 +6,7 @@
  * accepting it activates the account, inserts the grant, emits `activated` + `portal_access_grant.granted`, and
  * stamps `caregiver.user_id` in the SAME transaction; a caregiver already linked to a DIFFERENT login refuses the
  * accept and rolls everything back (the token stays unconsumed, no grant, no events). Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:gap-158-invitation:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-158-invitation:live
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -22,7 +22,7 @@ import { createPortalPhiCipher } from "../src/modules/31-portal/portal-crypto";
 import { createPortalInvitations } from "../src/modules/31-portal/provisioning/invitations";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

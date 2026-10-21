@@ -19,7 +19,7 @@
  *   7. AUDIT         the queue rows scrub patient_id and trigger_ref.
  *   8. IDOR          tenant B's event cannot queue tenant A's task and tenant B cannot read A's row.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:care-team-review:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:care-team-review:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -51,7 +51,7 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f3901";
 const ORG_B = "22222222-2222-4222-8222-2222000f3902";
 const REVIEW_BASE = "/api/v1/messaging/review-items";

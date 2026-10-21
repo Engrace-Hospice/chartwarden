@@ -28,7 +28,7 @@ const URL =
   process.env.DATABASE_URL ??
   "postgres://postgres:postgres@localhost:5432/wardenx";
 
-const TIMEOUT_MS = Number(process.env.WARDENX_DB_WAIT_TIMEOUT_MS ?? 60_000);
+const TIMEOUT_MS = Number(process.env.CHARTWARDEN_DB_WAIT_TIMEOUT_MS ?? 60_000);
 const EXPECT_EMPTY = process.argv.includes("--expect-empty");
 
 /** Redact the password so a CI log never carries it. */

@@ -18,15 +18,15 @@
  *     writable by NONE.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live` (SUPERUSER to a THROWAWAY db;
- *     for a local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1).
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live` (SUPERUSER to a THROWAWAY db;
+ *     for a local PG without pgvector, set CHARTWARDEN_TEST_NO_PGVECTOR=1).
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -81,7 +81,7 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
@@ -92,7 +92,7 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
         // there is more than one occurrence, so this must be global, not the first match only.
         sql = sql.replace(
           /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          "-- (vector extension stripped: CHARTWARDEN_TEST_NO_PGVECTOR set)",
         );
         // Dropping the extension is not enough: 0014 declares an `embedding vector(384)` COLUMN, so the
         // TYPE must still resolve. A test-only text shim keeps the DDL applying without touching any
@@ -164,7 +164,7 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
 
   // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
   // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
-  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // scripts/db/migrate.ts grants exactly that behind CHARTWARDEN_DEV_BYPASSRLS=1, so this is reachable,
   // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
   it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
     const { rows } = await db.query<{ rolbypassrls: boolean }>(

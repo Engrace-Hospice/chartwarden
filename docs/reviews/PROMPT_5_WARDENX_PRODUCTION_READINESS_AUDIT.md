@@ -163,7 +163,7 @@ Most of this audit's power lives behind infra, and skipping it silently is the f
 Phase 0 baseline above shows **1349 skipped tests across 120 skipped files** — that is the size of
 what you are otherwise not auditing.
 
-- **Live DB.** Live suites are `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`. With no database they
+- **Live DB.** Live suites are `describe.skipIf(!CHARTWARDEN_TEST_DATABASE_URL)`. With no database they
   report **SKIPPED, not failed**, and `bun run test` stays green on them. Bring up Postgres
   (`docker compose up -d postgres redis minio`), run `bun run db:migrate`, then execute the live
   suites (`test:rls:live:*` — one per module M1–M40 — plus `test:m*:write:live`, `test:m*:read:live`,
@@ -172,7 +172,7 @@ what you are otherwise not auditing.
   `_live-app-role.ts`. A suite that connects as superuser proves nothing; this bug has recurred twice.
   Verify `current_user` **and** `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user`
   inside the suite's own connection — not from your shell.
-  **`docs/START_PROJECT.md` sets `WARDENX_DEV_BYPASSRLS=1`**, which grants `BYPASSRLS` to
+  **`docs/START_PROJECT.md` sets `CHARTWARDEN_DEV_BYPASSRLS=1`**, which grants `BYPASSRLS` to
   `wardenx_app` for the single-org demo. A local database provisioned by that runbook will therefore
   **pass RLS suites vacuously**. Check the attribute before you trust any RLS result.
 - **E2E.** `bun run test:e2e` (Playwright, `e2e/playwright.config.ts`) needs the app running.

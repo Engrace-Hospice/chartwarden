@@ -126,7 +126,7 @@ export async function asAnyone<T>(
     refusals.push(`${s.email}: ${r.status} ${r.code}`);
   }
   throw new SkipStep(
-    `${step}: no available account can reach it (${refusals.join("; ")}) — the admin lacks the caseload / provider-entity scope or role; supply an existing medical_director account via WARDENX_SEED_PHYSICIAN_EMAIL/PASSWORD`,
+    `${step}: no available account can reach it (${refusals.join("; ")}) — the admin lacks the caseload / provider-entity scope or role; supply an existing medical_director account via CHARTWARDEN_SEED_PHYSICIAN_EMAIL/PASSWORD`,
   );
 }
 
@@ -222,7 +222,7 @@ export async function signIn(input: SignInInput): Promise<Session> {
     throw new Error(
       memberships.length === 0
         ? `${email} has no organization membership`
-        : `${email} belongs to ${memberships.length} organizations (${list}); set WARDENX_SEED_ORG_ID to pick one`,
+        : `${email} belongs to ${memberships.length} organizations (${list}); set CHARTWARDEN_SEED_ORG_ID to pick one`,
     );
   }
 

@@ -11,8 +11,8 @@
  * seam exactly as `index.ts` does; the M29 adapter resolves it through `getSeam`. The only stub is the M39 consent
  * evaluator (its own suite owns it) — the SUD *classification* is never stubbed.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m29:sud-loinc-seed:live
- * (a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1)
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m29:sud-loinc-seed:live
+ * (a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -30,8 +30,8 @@ import { createDbTerminologyStore } from "../src/modules/38-terminology/index";
 import { registerTerminologySeams } from "../src/modules/38-terminology/seams";
 import { appRoleConnectionString, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const NO_PGVECTOR = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const NO_PGVECTOR = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const SEED_MIGRATION = "0500_terminology_sud_test_loinc_value_set.sql";
 const ROLES = [

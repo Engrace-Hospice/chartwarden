@@ -6,8 +6,8 @@
  * drives it as the NOBYPASSRLS `wardenx_app` role (GAP-086) so the RLS + the partial unique-index
  * idempotency guard (`report_definition_system_org_base_uq`, migration 0248) are proven, not assumed.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m33:system-dashboards:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m33:system-dashboards:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbSystemDashboardSeeder } from "../src/modules/33-reporting/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111138";
 const ORG_B = "22222222-2222-2222-2222-222222222138";
@@ -38,7 +38,7 @@ describe.skipIf(!DB_URL)("#138/F-060/F-116 — M33 day-one dashboards, LIVE Post
   let appHandle: ReturnType<typeof createDbClient>;
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

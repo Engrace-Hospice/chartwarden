@@ -69,7 +69,7 @@ if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
     >"$tmp_env"
   mv "$tmp_env" "$DEPLOY_DIR/.env.production"
   echo "created $DEPLOY_DIR/.env.production with generated secrets"
-  echo "edit WARDENX_IMAGE, WARDENX_WEB_IMAGE, GHCR owner/SHA, and provider gateway URLs before full app deploy"
+  echo "edit CHARTWARDEN_IMAGE, CHARTWARDEN_WEB_IMAGE, GHCR owner/SHA, and provider gateway URLs before full app deploy"
 else
   echo "kept existing $DEPLOY_DIR/.env.production"
 fi

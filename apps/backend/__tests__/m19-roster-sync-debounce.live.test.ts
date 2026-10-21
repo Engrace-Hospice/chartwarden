@@ -27,8 +27,8 @@
  * RESET semantics are an `ON CONFLICT ... DO UPDATE` only Postgres can prove; and the cross-tenant
  * isolation claim is a real RLS read on the NOBYPASSRLS `wardenx_app` role.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m19:roster-sync-debounce:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m19:roster-sync-debounce:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -48,7 +48,7 @@ import {
 } from "../src/modules/19-oncall/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -66,7 +66,7 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
   const seeded: Record<string, Seed> = {};
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

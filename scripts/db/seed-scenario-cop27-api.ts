@@ -44,12 +44,12 @@
  *   · Nothing is ever created with a known password: the script signs in only to accounts that already exist.
  *
  * Usage (password only from the environment — never argv, never logged):
- *   WARDENX_SEED_BASE_URL=https://host WARDENX_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-cop27-api
+ *   CHARTWARDEN_SEED_BASE_URL=https://host CHARTWARDEN_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-cop27-api
  *   … -- --apply                                   # write (default is a dry run)
  *   … -- --apply --i-understand-this-is-production # required too when the host is not localhost
  *   … -- --apply --local-credentials               # localhost only; reads CREDENTIALS.local.md
- * Optional env: WARDENX_SEED_ADMIN_EMAIL (default admin@wardenx.local), WARDENX_SEED_ORG_ID,
- * WARDENX_SEED_PROVIDER_ENTITY_ID, WARDENX_SEED_PHYSICIAN_EMAIL + WARDENX_SEED_PHYSICIAN_PASSWORD (an EXISTING
+ * Optional env: CHARTWARDEN_SEED_ADMIN_EMAIL (default admin@wardenx.local), CHARTWARDEN_SEED_ORG_ID,
+ * CHARTWARDEN_SEED_PROVIDER_ENTITY_ID, CHARTWARDEN_SEED_PHYSICIAN_EMAIL + CHARTWARDEN_SEED_PHYSICIAN_PASSWORD (an EXISTING
  * account holding medical_director / hospice_physician, used only for physician signatures).
  */
 import { readFileSync } from "node:fs";
@@ -128,10 +128,10 @@ async function optionalPhysicianSession(
   useLocalCredentials: boolean,
 ): Promise<Session | null> {
   const email =
-    process.env.WARDENX_SEED_PHYSICIAN_EMAIL?.trim() ||
+    process.env.CHARTWARDEN_SEED_PHYSICIAN_EMAIL?.trim() ||
     (useLocalCredentials ? "drharris@wardenx.local" : undefined);
   const password =
-    process.env.WARDENX_SEED_PHYSICIAN_PASSWORD ??
+    process.env.CHARTWARDEN_SEED_PHYSICIAN_PASSWORD ??
     (useLocalCredentials && email ? localPassword(email) : undefined);
   if (!email || !password) return null;
   return signIn({ baseUrl, email, password, ...(orgId ? { organizationId: orgId } : {}) });
@@ -139,16 +139,16 @@ async function optionalPhysicianSession(
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const configuredBaseUrl = process.env.WARDENX_SEED_BASE_URL?.trim();
+  const configuredBaseUrl = process.env.CHARTWARDEN_SEED_BASE_URL?.trim();
   const baseUrlText = (
     configuredBaseUrl ||
     (opts.localCredentials
       ? (process.env.BETTER_AUTH_URL ?? "http://localhost:3000")
-      : requireEnv("WARDENX_SEED_BASE_URL"))
+      : requireEnv("CHARTWARDEN_SEED_BASE_URL"))
   ).replace(/\/+$/, "");
   const baseUrl = new URL(baseUrlText);
-  const email = process.env.WARDENX_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
-  const orgId = process.env.WARDENX_SEED_ORG_ID?.trim() || undefined;
+  const email = process.env.CHARTWARDEN_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
+  const orgId = process.env.CHARTWARDEN_SEED_ORG_ID?.trim() || undefined;
   const local = isLocalHost(baseUrl);
 
   if (opts.localCredentials && !local) {
@@ -160,8 +160,8 @@ async function main(): Promise<void> {
     );
   }
   const password =
-    process.env.WARDENX_SEED_ADMIN_PASSWORD ??
-    (opts.localCredentials ? localPassword(email) : requireEnv("WARDENX_SEED_ADMIN_PASSWORD"));
+    process.env.CHARTWARDEN_SEED_ADMIN_PASSWORD ??
+    (opts.localCredentials ? localPassword(email) : requireEnv("CHARTWARDEN_SEED_ADMIN_PASSWORD"));
   console.log(
     `COP27 demo seed → ${baseUrl.origin} — ${opts.apply ? "APPLY (writes enabled)" : "DRY RUN (no writes; pass --apply to write)"}`,
   );
@@ -180,8 +180,8 @@ async function main(): Promise<void> {
   const ctx: SeedContext = await discoverContext({
     admin,
     physicianSession,
-    ...(process.env.WARDENX_SEED_PROVIDER_ENTITY_ID
-      ? { providerEntityId: process.env.WARDENX_SEED_PROVIDER_ENTITY_ID }
+    ...(process.env.CHARTWARDEN_SEED_PROVIDER_ENTITY_ID
+      ? { providerEntityId: process.env.CHARTWARDEN_SEED_PROVIDER_ENTITY_ID }
       : {}),
   });
   const cal = seedCalendar(ctx.location?.timezone ?? "America/New_York");

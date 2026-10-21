@@ -19,7 +19,7 @@
  * step-up rows and refuses without it. The SOS cancel-window expiry is advanced by an admin UPDATE (the
  * cron that does it is proven by m20-sos-sla-watchdog.live.test.ts).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m20:routes:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m20:routes:live
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -52,7 +52,7 @@ import { registerFieldSafetySeams } from "../src/modules/20-field-safety/seams/i
 import { buildDrizzleSafetySeamStore } from "../src/modules/20-field-safety/seams/store-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

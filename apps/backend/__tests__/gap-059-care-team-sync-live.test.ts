@@ -20,8 +20,8 @@
  * find-or-create + diff + reconcile over `channel`/`channel_member`, across three rounds (initial
  * seed, a roster change with a manual member present, and a no-op re-run).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-059-care-team-sync-live.test.ts
- * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1.)
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/gap-059-care-team-sync-live.test.ts
+ * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -34,7 +34,7 @@ import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/driz
 import { createDbMessagingProvider } from "../src/modules/36-messaging/messaging-provider-db";
 import { appRoleConnectionString, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -60,7 +60,7 @@ describe.skipIf(!DB_URL)(
         );
     }
     async function applyMigrations() {
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

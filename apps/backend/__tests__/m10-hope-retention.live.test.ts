@@ -7,8 +7,8 @@
  * port refuses to run, and — the invariant that matters — the scan never deletes a clinical row.
  *
  * Gated on a live DB so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m10:retention:live   (SUPERUSER, THROWAWAY db;
- *   WARDENX_TEST_NO_PGVECTOR=1 for a local PG without pgvector).
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m10:retention:live   (SUPERUSER, THROWAWAY db;
+ *   CHARTWARDEN_TEST_NO_PGVECTOR=1 for a local PG without pgvector).
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -21,7 +21,7 @@ import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { runHopeRetentionCron } from "../src/modules/10-hope/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -135,7 +135,7 @@ describe.skipIf(!DB_URL)("M10 hope-retention-scan — LIVE Postgres (GAP-181)", 
         `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

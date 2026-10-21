@@ -12,7 +12,7 @@
  *   - MBI-shaped notes are refused; cross-tenant isolation (read, write, forged insert); the history is append-only;
  *   - the NOE window-watch cron files ONE item per at-risk notice, idempotently, through the wired watchdog.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue:live
  */
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -36,7 +36,7 @@ import {
   seedNoe as seedNoeRow,
 } from "./_dde-live-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const NOTE = "keyed under option 28, call the MAC back Tuesday";
 const DDE_KEYS = [
   "billing.dde.read",

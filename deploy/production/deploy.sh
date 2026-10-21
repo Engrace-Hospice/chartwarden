@@ -7,7 +7,7 @@
 #
 # The third argument (the DocLens docling-worker image, GAP-138) is optional so a rollback or a hand
 # deploy of an older release that predates the image still works; without it the already-configured
-# WARDENX_DOCLING_IMAGE (if any) is left alone.
+# CHARTWARDEN_DOCLING_IMAGE (if any) is left alone.
 #
 # It deliberately never accepts `latest`: a deploy must always be attributable to one commit and
 # a rollback must always name an already-published immutable image.
@@ -35,7 +35,7 @@ case "$docling_image" in
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
 esac
 
-deploy_dir=${WARDENX_DEPLOY_DIR:-/opt/wardenx}
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-${WARDENX_DEPLOY_DIR:-/opt/wardenx}}
 cd "$deploy_dir"
 
 if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
@@ -47,7 +47,10 @@ fi
 # appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the
 # new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
 ensure_secret() {
-  if ! grep -q "^$1=" .env.production; then
+  # A CHARTWARDEN_* secret also counts as present under its legacy WARDENX_* name (an .env.production that
+  # predates the rename): generating a second value would no longer match the already-provisioned DB role.
+  legacy_key="WARDENX_${1#CHARTWARDEN_}"
+  if ! grep -q -e "^$1=" -e "^${legacy_key}=" .env.production; then
     printf '%s=%s\n' "$1" "$2" >> .env.production
     echo "generated $1 in .env.production"
   fi
@@ -62,7 +65,7 @@ ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
 ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
 # The least-privilege destruction login (tenant erase, attachment reaper). compose.yml requires it and the
 # `migrate` one-shot provisions the role with it, so a server whose env file predates it gets one generated.
-ensure_secret WARDENX_DESTRUCTION_PASSWORD "$(openssl rand -hex 24)"
+ensure_secret CHARTWARDEN_DESTRUCTION_PASSWORD "$(openssl rand -hex 24)"
 
 backup_file=$(mktemp .env.production.before-deploy.XXXXXX)
 next_file=$(mktemp .env.production.next.XXXXXX)
@@ -76,13 +79,13 @@ trap cleanup EXIT
 
 awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" '
   BEGIN { saw_backend = 0; saw_web = 0; saw_docling = 0 }
-  /^WARDENX_IMAGE=/ { print "WARDENX_IMAGE=" backend; saw_backend = 1; next }
-  /^WARDENX_WEB_IMAGE=/ { print "WARDENX_WEB_IMAGE=" web; saw_web = 1; next }
-  /^WARDENX_DOCLING_IMAGE=/ { if (docling != "") { print "WARDENX_DOCLING_IMAGE=" docling } else { print }; saw_docling = 1; next }
+  /^(CHARTWARDEN|WARDENX)_IMAGE=/ { print "CHARTWARDEN_IMAGE=" backend; saw_backend = 1; next }
+  /^(CHARTWARDEN|WARDENX)_WEB_IMAGE=/ { print "CHARTWARDEN_WEB_IMAGE=" web; saw_web = 1; next }
+  /^(CHARTWARDEN|WARDENX)_DOCLING_IMAGE=/ { if (docling != "") { print "CHARTWARDEN_DOCLING_IMAGE=" docling } else { print }; saw_docling = 1; next }
   { print }
   END {
     if (!saw_backend || !saw_web) exit 1
-    if (!saw_docling && docling != "") print "WARDENX_DOCLING_IMAGE=" docling
+    if (!saw_docling && docling != "") print "CHARTWARDEN_DOCLING_IMAGE=" docling
   }
 ' .env.production >"$next_file" || {
   echo "could not update immutable image references in .env.production" >&2
@@ -139,8 +142,8 @@ restore_previous_release() {
 # It also closes the gap between "verify" and "pull": cosign reports the digest it verified, and that
 # digest is written back into `.env.production`, so Compose pulls THAT artefact rather than re-resolving
 # the tag a moment later and possibly getting a different one.
-cosign_identity=${WARDENX_COSIGN_IDENTITY:-https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main}
-cosign_issuer=${WARDENX_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
+cosign_identity=${CHARTWARDEN_COSIGN_IDENTITY:-${WARDENX_COSIGN_IDENTITY:-https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main}}
+cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-${WARDENX_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}}
 
 # Prints the verified digest on success; anything else is a failure the caller must treat as fatal.
 verify_image_digest() {
@@ -156,15 +159,15 @@ backend_ref=$backend_image
 web_ref=$web_image
 docling_ref=$docling_image
 
-if [ "${WARDENX_DEPLOY_ALLOW_UNVERIFIED:-}" = "1" ]; then
+if [ "${CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED:-${WARDENX_DEPLOY_ALLOW_UNVERIFIED:-}}" = "1" ]; then
   # A named opt-out, not a fallback. It exists so a first deploy predating the signing workflow can
   # still land, and it is printed on every deploy that uses it — an unverified deploy must never be
   # indistinguishable from a verified one in the log.
-  echo "!! WARDENX_DEPLOY_ALLOW_UNVERIFIED=1 — image signatures were NOT checked for this deploy." >&2
+  echo "!! CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED=1 — image signatures were NOT checked for this deploy." >&2
   echo "!! Nothing establishes that these images are the ones CI built." >&2
 elif ! command -v cosign >/dev/null 2>&1; then
   echo "cosign is not installed on this host, so image signatures cannot be verified." >&2
-  echo "Install it (see deploy/production/README.md) or set WARDENX_DEPLOY_ALLOW_UNVERIFIED=1." >&2
+  echo "Install it (see deploy/production/README.md) or set CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED=1." >&2
   restore_previous_release
   exit 1
 else
@@ -204,9 +207,9 @@ else
 
   # Rewrite the staged file with the digest-pinned references before it becomes live.
   awk -v backend="$backend_ref" -v web="$web_ref" -v docling="$docling_ref" '
-    /^WARDENX_IMAGE=/ { print "WARDENX_IMAGE=" backend; next }
-    /^WARDENX_WEB_IMAGE=/ { print "WARDENX_WEB_IMAGE=" web; next }
-    /^WARDENX_DOCLING_IMAGE=/ { if (docling != "") { print "WARDENX_DOCLING_IMAGE=" docling } else { print }; next }
+    /^(CHARTWARDEN|WARDENX)_IMAGE=/ { print "CHARTWARDEN_IMAGE=" backend; next }
+    /^(CHARTWARDEN|WARDENX)_WEB_IMAGE=/ { print "CHARTWARDEN_WEB_IMAGE=" web; next }
+    /^(CHARTWARDEN|WARDENX)_DOCLING_IMAGE=/ { if (docling != "") { print "CHARTWARDEN_DOCLING_IMAGE=" docling } else { print }; next }
     { print }
   ' "$next_file" >"$next_file.pinned" && mv "$next_file.pinned" "$next_file"
   chmod 600 "$next_file"

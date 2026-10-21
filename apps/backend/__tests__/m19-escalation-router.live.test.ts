@@ -5,8 +5,8 @@
  * RLS isolation between two orgs, the repeated wall-clock hour of 2026-11-01 America/New_York read against ABSOLUTE shift instants,
  * back-to-back shifts, and that the router writes nothing.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m19:escalation-router:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1. Use a PRIVATE container, never the shared cluster.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m19:escalation-router:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a PRIVATE container, never the shared cluster.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +26,7 @@ import { buildDrizzleEscalationRouterReads } from "../src/modules/19-oncall/seam
 import { buildDrizzleOncallSeamStore } from "../src/modules/19-oncall/seams/store-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-4111-8111-1111e5ca1a19";
@@ -169,7 +169,7 @@ describe.skipIf(!DB_URL)("M19 EscalationRouter tier 1 - LIVE Postgres as wardenx
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

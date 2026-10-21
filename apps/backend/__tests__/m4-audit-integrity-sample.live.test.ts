@@ -13,7 +13,7 @@
  *   8. a month covered by an executed destruction certificate is exempt (legitimately erased rows);
  *   9. `GET /api/v1/audit/integrity/report` shows `sealChain.contiguous=false` + `brokenAt` for the tampered org.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m4:audit-integrity:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m4:audit-integrity:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -42,7 +42,7 @@ import {
 } from "../src/modules/04-audit/jobs/audit-integrity-job";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",
@@ -137,7 +137,7 @@ describe.skipIf(!DB_URL)("M4 audit hash-chain seal + sampled verification — LI
           `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
       );
     }
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const file of readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort()) {

@@ -12,7 +12,7 @@
  *     outbox publisher;
  *   - another tenant sees the patient as absent (404) — RLS, not a superuser connection.
  *
- * WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run \
+ * CHARTWARDEN_TEST_DATABASE_URL=postgres://... bunx vitest run \
  *   apps/backend/__tests__/m5-assignment-routes.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
@@ -38,7 +38,7 @@ import { createDrizzleCaseloadStore } from "../src/modules/05-patient/seams/driz
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_app",

@@ -100,9 +100,9 @@ function migrateAndProvision(pg: Pg, db: string): void {
     ...process.env,
     DATABASE_ADMIN_URL: pg.url(db),
     PROVISION_DATABASE_URL: pg.url(db),
-    WARDENX_APP_PASSWORD: APP_PW,
-    WARDENX_PLATFORM_PASSWORD: PLATFORM_PW,
-    WARDENX_DESTRUCTION_PASSWORD: DESTRUCTION_PW,
+    CHARTWARDEN_APP_PASSWORD: APP_PW,
+    CHARTWARDEN_PLATFORM_PASSWORD: PLATFORM_PW,
+    CHARTWARDEN_DESTRUCTION_PASSWORD: DESTRUCTION_PW,
   };
   for (const script of ["scripts/db/migrate.ts", "scripts/db/provision-runtime-roles.ts"]) {
     const res = spawnSync("bun", ["run", script], { env, encoding: "utf8" });

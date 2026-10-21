@@ -15,7 +15,7 @@
  *
  * Reads/writes run as the NOBYPASSRLS `wardenx_app` role (_live-app-role.ts); only seeding uses the superuser.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:election-cert-view:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:election-cert-view:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -31,7 +31,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-1111111139a8";

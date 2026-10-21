@@ -14,8 +14,8 @@
  *     platform_ops (or was deactivated), re-syncs a returning operator, and never resurrects a revoked membership
  *     or re-adds a role a tenant admin removed; a failed bind is reported to the failure sink.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m34:platform-staff-binding:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m34:platform-staff-binding:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -32,7 +32,7 @@ import { createDrizzleRoleSetMembersReader } from "../src/modules/36-messaging/a
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 
@@ -64,7 +64,7 @@ describe.skipIf(!DB_URL)(
             `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
         );
       }
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

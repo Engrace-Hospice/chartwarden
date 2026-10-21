@@ -88,7 +88,7 @@ describe("one local provisioning path", () => {
     // `db:migrate` does owner-level DDL and creates the wardenx_* roles, so it cannot be one of
     // them; and it sets the app role's password. Both were absent, so copying this file could not
     // start the stack.
-    for (const key of ["DATABASE_ADMIN_URL", "DATABASE_URL", "WARDENX_APP_PASSWORD"]) {
+    for (const key of ["DATABASE_ADMIN_URL", "DATABASE_URL", "CHARTWARDEN_APP_PASSWORD"]) {
       expect(env.has(key), `.env.example must set ${key}`).toBe(true);
     }
     for (const key of ["DATABASE_ADMIN_URL", "DATABASE_URL"]) {

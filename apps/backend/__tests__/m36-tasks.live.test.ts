@@ -16,7 +16,7 @@
  *   9. TILE         the open-tasks count is the caller's own, on channels the caller can still view.
  *  10. FLAG         off => 404 / disabled list.  11. WIRING: the boot builds, binds and reassigns (bound is computing).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:tasks:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:tasks:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomBytes, randomUUID } from "node:crypto";
@@ -49,7 +49,7 @@ import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/mess
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_destruction",
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
   const granted: Array<{ orgId: string; userId: string }> = [];
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

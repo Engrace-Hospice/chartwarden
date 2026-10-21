@@ -9,7 +9,7 @@
  * platform-default `alert_rule` existed; (3) `alert` is unique on `(organization_id, correlation_id)` and the old id
  * `m29-outbound:<kind>:<feedId>` never changed, so only the first alert per kind per feed could ever notify.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m29-alert-routing.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m29-alert-routing.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -32,7 +32,7 @@ import {
 } from "../src/modules/36-messaging/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "99999999-9999-9999-9999-999999999999";

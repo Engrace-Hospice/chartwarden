@@ -62,7 +62,7 @@ readable; the reader stays deployed).
    deployment's `.env.production`). In `NODE_ENV=production` a real run without it is refused by `backfillBodiesForOrg` itself (library
    and CLI) before touching a row. A dry run is always allowed. **This flag is a self-attestation keyed on `NODE_ENV`: it is an
    operational control, not a technical proof that the drill happened.** The recorded drill (who, when, key versions) is the evidence.
-5. Provision the re-seal credential once: `WARDENX_BODY_BACKFILL_PASSWORD=… bun run db:provision-roles`, and give the operator
+5. Provision the re-seal credential once: `CHARTWARDEN_BODY_BACKFILL_PASSWORD=… bun run db:provision-roles`, and give the operator
    `DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:…`. Revisions are append-only for every other role; the function
    validates the envelope shape (version, label, exact length) but cannot verify GCM authenticity, so `hash_verify` after each tenant is mandatory.
 

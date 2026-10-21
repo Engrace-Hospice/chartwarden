@@ -13,7 +13,7 @@
  *   W4  redelivery, receipt lost, ROUTING CHANGED   → REAL    the key hashes the feed the resolver picked NOW
  *   W5  resend racing the applier / a request already at M29 → UNREACHABLE  see the F-182 resend suite + the pin below
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:orm-duplicate-windows:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m11:orm-duplicate-windows:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -45,7 +45,7 @@ import { ormDispatchExistsForOrder } from "../src/modules/29-external-interfaces
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

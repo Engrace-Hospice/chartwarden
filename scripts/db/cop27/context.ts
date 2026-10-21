@@ -218,7 +218,7 @@ export function describeContext(ctx: SeedContext): string[] {
       ? []
       : [
           "NOTE: no physician account — CTI signatures, F2F, prescribing, the transfer-in scenarios (03-06, 08-09)",
-          "      and anything past a sited admission are skipped. Set WARDENX_SEED_PHYSICIAN_EMAIL/PASSWORD to an",
+          "      and anything past a sited admission are skipped. Set CHARTWARDEN_SEED_PHYSICIAN_EMAIL/PASSWORD to an",
           "      existing medical_director account for full coverage.",
         ]),
   ];

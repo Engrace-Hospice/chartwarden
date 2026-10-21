@@ -22,7 +22,7 @@
  * media-release photo from a wound-care photo). Seeding a type whose cascade doesn't exist would be the
  * "looks fixed, isn't" mistake this pass was told to avoid.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:f171:consent-type-seed:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:f171:consent-type-seed:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +37,7 @@ import { buildM31ConsentRevokedGrantCascadeConsumer } from "../src/modules/31-po
 import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

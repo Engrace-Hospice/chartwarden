@@ -22,11 +22,11 @@
  *     update this row at all" are different guarantees and the ledger relies on the second one.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m16` (SUPERUSER to a THROWAWAY
+ *   - Local: `CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:rls:live:m16` (SUPERUSER to a THROWAWAY
  *     db — this DROPs and recreates `public`, so never point it at a database you care about).
  *   - The target needs **pgvector**: the chain does not merely `CREATE EXTENSION vector`, it declares
  *     COLUMNS of type `vector`, so stripping the extension DDL cannot make a plain image work. A
- *     `pgvector/pgvector:pgNN` container is the throwaway to use. `WARDENX_TEST_NO_PGVECTOR=1` removes
+ *     `pgvector/pgvector:pgNN` container is the throwaway to use. `CHARTWARDEN_TEST_NO_PGVECTOR=1` removes
  *     only the extension statements, which is enough for the earlier migrations but not the whole chain.
  *   - Raise `max_locks_per_transaction` (512 is ample). `DROP SCHEMA public CASCADE` takes one lock per
  *     relation, and the chain's partitioned tables put the default 64 well out of reach.
@@ -38,7 +38,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
   }
 
   async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();

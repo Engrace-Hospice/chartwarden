@@ -6,7 +6,7 @@
  * organization_id predicate is a second wall that RLS masks here, so this suite proves RLS plus the shape
  * (ids and status only), not the predicate in isolation.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m12-link-summary.live.test.ts
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m12-link-summary.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ import { createMedicationOrderProvider } from "../src/modules/12-dosespot/seams/
 import { createDrizzleDoseSpotSeamStore } from "../src/modules/12-dosespot/seams/drizzle-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

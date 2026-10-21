@@ -12,7 +12,7 @@
  *   - M19 creates `on_call_shift` rows from them (idempotently) and, once an entry is cancelled, cancels the
  *     scheduled shift it produced.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m17:oncall-roster:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m17:oncall-roster:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ import { createVisitAssignmentReader } from "../src/modules/17-scheduling/seams/
 import { reconcileOrgOnCallRoster } from "../src/modules/19-oncall/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "a2900000-0000-4000-8000-0000000000a1";
@@ -100,7 +100,7 @@ describe.skipIf(!DB_URL)("GAP-029 M17 on-call roster — LIVE Postgres", () => {
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     }
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

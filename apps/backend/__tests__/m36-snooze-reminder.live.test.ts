@@ -17,7 +17,7 @@
  *      are never touched.
  *   6. IDEMPOTENT RETRY: the same Idempotency-Key replays the stored answer. Audit rows exist and carry no text.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:snooze-reminder:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:snooze-reminder:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
 import { randomUUID } from "node:crypto";
@@ -52,7 +52,7 @@ import {
   mkChannel,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111104a0001";
 const ORG_B = "22222222-2222-4222-8222-2222104a0002";
 const PATIENT = "aaaaaaaa-aaaa-4aaa-8aaa-0000104a00a1";

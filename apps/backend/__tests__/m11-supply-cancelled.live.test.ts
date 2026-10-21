@@ -11,7 +11,7 @@
  * correct for BOTH: it releases the still-in-flight order on the second producer's path, and is a genuine
  * no-op on the first's (the order is already `discontinued` by construction).
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:supply-cancelled:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m11:supply-cancelled:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ import { M11_OUTBOX_EVENTS, type OrderWriteOutboxPort } from "../src/modules/11-
 import { buildM11SupplyCancelledConsumer } from "../src/modules/11-orders/outbox-consumers/m21-supply-cancelled";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

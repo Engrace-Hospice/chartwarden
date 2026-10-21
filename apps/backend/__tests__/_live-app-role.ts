@@ -30,7 +30,7 @@ export const LIVE_APP_ROLE_PASSWORD = "wardenx_app_live_test";
 
 /**
  * Grant `wardenx_app` LOGIN (the migrations create it NOLOGIN) and return the connection string that logs
- * in as it. Pass the SUPERUSER client and the suite's `WARDENX_TEST_DATABASE_URL`.
+ * in as it. Pass the SUPERUSER client and the suite's `CHARTWARDEN_TEST_DATABASE_URL`.
  *
  * Throws on a url that cannot be parsed rather than degrading to the caller's identity — the failure mode
  * this replaces was precisely a silent fallback to superuser.

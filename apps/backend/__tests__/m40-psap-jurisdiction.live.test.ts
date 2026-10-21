@@ -4,7 +4,7 @@
  * of the number or its coverage clears it, verify restores it), the partial-unique defaults, the CHECKs, the
  * seam reader against a real polygon, and that a tenant sees neither another tenant's PSAP rows nor can write
  * into them. Gated on a live DB:
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m40:psap-jurisdiction:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m40:psap-jurisdiction:live
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ import {
 } from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = [
   "wardenx_platform_login",

@@ -17,7 +17,7 @@
 #   4  authenticated— can a real session be minted and a tenant-scoped read served? (the tier that
 #                     proves the database, RLS, and the auth stack are actually working together)
 #
-# Tier 4 is fail-closed with a NAMED opt-out (`WARDENX_SMOKE_ALLOW_ANONYMOUS=1`) rather than skipped
+# Tier 4 is fail-closed with a NAMED opt-out (`CHARTWARDEN_SMOKE_ALLOW_ANONYMOUS=1`) rather than skipped
 # when unconfigured. A deploy that quietly omits its only end-to-end check because a variable was unset
 # is the same defect as the loopback probe: it reports success for something it never measured. If the
 # synthetic account is not provisioned yet, that has to be typed out, once, and it is visible in the
@@ -27,7 +27,7 @@ set -eu
 fail() { echo "SMOKE FAIL [$1] $2" >&2; exit 1; }
 ok()   { echo "  ✓ $1"; }
 
-deploy_dir=${WARDENX_DEPLOY_DIR:-/opt/wardenx}
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-${WARDENX_DEPLOY_DIR:-/opt/wardenx}}
 compose="docker compose --env-file .env.production -f compose.yml"
 cd "$deploy_dir"
 
@@ -158,8 +158,8 @@ ok "web serving on 8080"
 # deploy/production/nginx/*.conf so a stock install needs no configuration, and are overridable for a
 # staging host.
 echo "tier 3 — public ingress"
-app_url=${WARDENX_SMOKE_APP_URL:-https://wardenx.chartwarden.cloud}
-api_url=${WARDENX_SMOKE_API_URL:-https://be082026.wardenx.chartwarden.cloud}
+app_url=${CHARTWARDEN_SMOKE_APP_URL:-${WARDENX_SMOKE_APP_URL:-https://wardenx.chartwarden.cloud}}
+api_url=${CHARTWARDEN_SMOKE_API_URL:-${WARDENX_SMOKE_API_URL:-https://be082026.wardenx.chartwarden.cloud}}
 
 # Deliberately NOT `-k`. Certificate validation is the point: an expired or mis-issued certificate is
 # a production outage for every browser, and a smoke test that passes `-k` would be blind to the single
@@ -198,13 +198,13 @@ ok "web app carries the §9.6 security headers (CSP frame-ancestors, X-Frame-Opt
 # deploy-time credential with chart access would be a worse liability than the check is worth — see
 # deploy/production/README.md for the account this expects.
 # echo "tier 4 — authenticated round trip"
-# if [ -z "${WARDENX_SMOKE_EMAIL:-}" ] || [ -z "${WARDENX_SMOKE_PASSWORD:-}" ]; then
-#   if [ "${WARDENX_SMOKE_ALLOW_ANONYMOUS:-}" = "1" ]; then
-#     echo "  ! SKIPPED — WARDENX_SMOKE_ALLOW_ANONYMOUS=1 is set." >&2
+# if [ -z "${CHARTWARDEN_SMOKE_EMAIL:-}" ] || [ -z "${CHARTWARDEN_SMOKE_PASSWORD:-}" ]; then
+#   if [ "${CHARTWARDEN_SMOKE_ALLOW_ANONYMOUS:-}" = "1" ]; then
+#     echo "  ! SKIPPED — CHARTWARDEN_SMOKE_ALLOW_ANONYMOUS=1 is set." >&2
 #     echo "  ! This deploy did NOT verify that anyone can log in or that any tenant-scoped read works." >&2
 #   else
 #     fail "tier4/config" \
-#       "WARDENX_SMOKE_EMAIL/WARDENX_SMOKE_PASSWORD are unset. Provision the synthetic monitor account (see deploy/production/README.md), or set WARDENX_SMOKE_ALLOW_ANONYMOUS=1 to deploy without an end-to-end check."
+#       "CHARTWARDEN_SMOKE_EMAIL/CHARTWARDEN_SMOKE_PASSWORD are unset. Provision the synthetic monitor account (see deploy/production/README.md), or set CHARTWARDEN_SMOKE_ALLOW_ANONYMOUS=1 to deploy without an end-to-end check."
 #   fi
 # else
 #   cookie_jar=$(mktemp)
@@ -212,7 +212,7 @@ ok "web app carries the §9.6 security headers (CSP frame-ancestors, X-Frame-Opt
 #   trap "rm -f $cookie_jar" EXIT
 
 #   login=$($CURL -c "$cookie_jar" -H 'content-type: application/json' \
-#     -d "{\"email\":\"${WARDENX_SMOKE_EMAIL}\",\"password\":\"${WARDENX_SMOKE_PASSWORD}\"}" \
+#     -d "{\"email\":\"${CHARTWARDEN_SMOKE_EMAIL}\",\"password\":\"${CHARTWARDEN_SMOKE_PASSWORD}\"}" \
 #     "$api_url/api/auth/sign-in/email") \
 #     || fail "tier4/login" "sign-in failed against $api_url — auth stack, database, or credentials"
 

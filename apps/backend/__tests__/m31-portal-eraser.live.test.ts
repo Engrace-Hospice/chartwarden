@@ -10,8 +10,8 @@
  *   • an account that STILL has an active grant to another patient LEFT ACTIVE (the orphan test).
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m31-portal-eraser.live.test.ts
- * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1.)
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m31-portal-eraser.live.test.ts
+ * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzlePortalEraseStore, erasePortalRecord } from "../src/modules/31-portal/eraser";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -42,7 +42,7 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
   let acctShared: string; // USER_2 — grants to PATIENT and OTHER_PATIENT → survives
 
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

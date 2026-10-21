@@ -234,7 +234,7 @@ describe("M3-T11 IDOR suite (§9.3) — object-level endpoints", () => {
 describe("M3-T11 — deferred proof obligations (infra/frontend-gated)", () => {
   // §9.3 cross-tenant object IDOR on a real Postgres (tenant-B actor, tenant-A id → 404):
   // enforced by RLS, proven behaviourally in authz-rls-isolation.test.ts; the live form is
-  // owned by the shared live harness (WARDENX_TEST_DATABASE_URL).
+  // owned by the shared live harness (CHARTWARDEN_TEST_DATABASE_URL).
   it.todo("§9.3 live: tenant-B actor using a tenant-A break_glass_event/engagement id → 404");
   // §9.4 Playwright E2E — M3 admin/console screens (M3-T09) are DEFERRED out of the manifest
   // scope (no apps/web codePath for M3; follows the M2-T09 / ADR-0030 precedent).

@@ -5,7 +5,7 @@
  * reclaim, the status-poll + timeout sweep, and the breaker-edge events. Only the DoseSpot vendor is a test double
  * (`FakeDoseSpotVendor`); every UPDATE asserted here matches by id and checks its row count.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-transmit:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-transmit:live
  */
 import { DegradedError } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -21,7 +21,7 @@ import {
 import { FakeDoseSpotVendor } from "./_fake-dosespot-vendor";
 import { GOOD_DATA, type M12Live, ORG_A, ORG_B, setupM12Live } from "./_m12-live-harness";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const T0 = new Date();
 const minutes = (n: number) => new Date(T0.getTime() + n * 60_000);
 

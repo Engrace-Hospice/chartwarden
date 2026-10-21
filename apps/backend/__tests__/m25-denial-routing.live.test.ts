@@ -9,7 +9,7 @@
  * proof (service and database CHECK), the database freezes a filed reopening and a terminal one, the app role cannot
  * delete, a stale If-Match is a 409, and another tenant sees nothing.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m25:routing:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m25:routing:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -27,7 +27,7 @@ import { buildDrizzleReopeningService } from "../src/modules/25-remittance/route
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";

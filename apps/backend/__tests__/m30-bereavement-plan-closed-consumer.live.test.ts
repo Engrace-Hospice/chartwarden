@@ -5,8 +5,8 @@
  * `bereavementPlanSitingForOrg` read and enqueues exactly one `bereavement_coverage_rate`
  * `measure_recompute_queue` row — never the whole `operational` family — under real RLS.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m30:bereavement-plan-closed-consumer:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m30:bereavement-plan-closed-consumer:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ import { bereavementPlanSitingForOrg } from "../src/modules/16-bereavement/seams
 import { buildM30BereavementPlanClosedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

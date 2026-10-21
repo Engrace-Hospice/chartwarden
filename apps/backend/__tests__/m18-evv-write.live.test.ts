@@ -10,9 +10,9 @@
  * validating transactional publisher (buildBootOutboxCatalog([M18_OUTBOX_EVENTS]) → the caller's tx) and asserts
  * the `m18.evv.*` rows land in `outbox_event`. RLS is exercised end-to-end.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m18:write:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m18:write:live
  * `evv_event` is RANGE-partitioned → the throwaway superuser DB needs `max_locks_per_transaction` raised. For a
- * local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ * local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -39,7 +39,7 @@ const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { TEST_COORDS_DEK_VERSION, createTestEvvCoordsCipher } from "./_m18-coords-test-cipher";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -75,7 +75,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       );
   }
   async function applyMigrations() {
-    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
       .filter((x) => x.endsWith(".sql"))
       .sort()) {

@@ -14,7 +14,7 @@
  * `m6-compliance-window-write.live.test.ts` (M6L-T05) — duplicating that ceremony here would only slow the
  * suite down without adding coverage of what this file actually exists to prove.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m6:t5:counts:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:t5:counts:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createComplianceWindowCountsProvider } from "../src/modules/06-admission/seams/compliance-window-counts-provider";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -16,7 +16,7 @@
  *        body hash or the message text; another tenant sees nothing.
  *   NONE no row is written to orders (M11) or the care plan (M7) by any path above.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:promotion-targets:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:promotion-targets:live
  * Use a PRIVATE pgvector/pgvector:pg18 container (max_locks_per_transaction=2048): the suite resets the public schema and the
  * wardenx_* roles.
  */
@@ -66,7 +66,7 @@ import {
   plainDoc,
 } from "./_m36-handoff-live-kit";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f0801";
 const ORG_B = "22222222-2222-4222-8222-2222000f0802";
 const FLAG = "messaging.promotions";

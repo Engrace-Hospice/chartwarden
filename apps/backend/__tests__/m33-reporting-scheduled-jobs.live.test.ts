@@ -64,10 +64,10 @@
  *      the SAME catalog entry via the cron-path payload shape).
  *
  * Gated on a live DB + Redis so the default `bun run test` stays green:
- *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… CHARTWARDEN_TEST_REDIS_URL=redis://localhost:PORT \
  *     bunx vitest run apps/backend/__tests__/m33-reporting-scheduled-jobs.live.test.ts
  * (SUPERUSER connection string to a THROWAWAY db — this test bootstraps `wardenx_app` LOGIN itself and
- * connects the worker separately; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1. Use a
+ * connects the worker separately; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1. Use a
  * Redis instance DEDICATED to this run — the WX-PR-014 M30 test's own note applies identically here:
  * sharing a Redis with a locally-running `bun run dev:backend` means two independent `registerM33Workers`
  * racing for the same queued jobs.)
@@ -100,8 +100,8 @@ import {
 } from "../src/modules/33-reporting/index";
 import { M33_QUEUES } from "../src/modules/33-reporting/jobs/index";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
-const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = [
   "wardenx_app",
@@ -151,7 +151,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     let viewId: string;
 
     async function applyMigrations(): Promise<void> {
-      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

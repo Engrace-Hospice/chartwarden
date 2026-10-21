@@ -10,7 +10,7 @@
  * the route uses) and writes nothing; a missing If-Match is a 400; another tenant's denial id is a 404 for
  * read AND transition (RLS), and the same id stays untouched.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m25:denial-version:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m25:denial-version:live
  * (SUPERUSER to a THROWAWAY db — this file DROPs and recreates the public schema.)
  */
 import { randomUUID } from "node:crypto";
@@ -45,7 +45,7 @@ if (!FormatRegistry.Has("date-time")) {
   FormatRegistry.Set("date-time", (v) => !Number.isNaN(Date.parse(v)));
 }
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
@@ -138,7 +138,7 @@ describe.skipIf(!DB_URL)(
             `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
         );
       }
-      const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const strip = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
       for (const f of readdirSync(MIGRATIONS_DIR)
         .filter((x) => x.endsWith(".sql"))
         .sort()) {

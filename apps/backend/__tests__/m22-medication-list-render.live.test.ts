@@ -19,8 +19,8 @@
  * because the backing read opens `withOrgContextFromRequest` and a dispatcher tick is not a request. The
  * render itself goes through the REAL `DocumentRenderer`/`DocumentSeamStore`, under RLS throughout.
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m22:medication-list-render:live
- * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m22:medication-list-render:live
+ * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -48,7 +48,7 @@ import {
 } from "../src/modules/22-documents/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";

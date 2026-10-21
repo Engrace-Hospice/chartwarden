@@ -23,7 +23,7 @@
  *   6. the M4 write-audit trigger's extended denylist actually scrubs `caregiver_signature_evidence_jsonb`
  *      from the audit diff (the migration 0268 change this suite is the regression test for)
  *
- *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m21:caregiver-signature:live
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m21:caregiver-signature:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -39,7 +39,7 @@ import {
 import type { M21WriteActor } from "../src/modules/21-supplies/routes/actor";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
-const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 

@@ -36,7 +36,7 @@
  *
  * Env (Bun auto-loads `.env`):
  *   DATABASE_ADMIN_URL   superuser/owner conn string for DDL (falls back to DATABASE_URL)
- *   WARDENX_APP_PASSWORD password set on the wardenx_app login role (default "wardenx_app";
+ *   CHARTWARDEN_APP_PASSWORD password set on the wardenx_app login role (default "wardenx_app";
  *                        irrelevant with --schema-only)
  *
  * Run:
@@ -281,7 +281,7 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
   // cannot scope; the production answer is a SECOND pooled credential for those reads, not a blanket
   // bypass on the app role. (The pre-org `/auth/memberships` picker no longer needs one: it reads
   // through the m2_list_own_memberships SECURITY DEFINER function, migration 0231.)
-  // Until that pool exists, a local single-org demo opts in explicitly with WARDENX_DEV_BYPASSRLS=1.
+  // Until that pool exists, a local single-org demo opts in explicitly with CHARTWARDEN_DEV_BYPASSRLS=1.
   if (opts.bypassRlsRequested && !opts.isProduction) {
     console.log(
       `⚠️  DEV ONLY: granting BYPASSRLS to ${APP_ROLE} (RLS is not enforced for this role)`,
@@ -291,10 +291,10 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
     // Idempotent and safe to run against a cluster where a previous migrate granted it.
     await db.query(`ALTER ROLE ${APP_ROLE} WITH NOBYPASSRLS`);
     if (opts.bypassRlsRequested) {
-      console.log("✗ WARDENX_DEV_BYPASSRLS ignored: NODE_ENV=production. BYPASSRLS revoked.");
+      console.log("✗ CHARTWARDEN_DEV_BYPASSRLS ignored: NODE_ENV=production. BYPASSRLS revoked.");
     } else {
       console.log(
-        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 only for local demos that need the\n  cross-org reads RLS cannot scope, e.g. M26 cap).`,
+        `RLS enforced for ${APP_ROLE} (set CHARTWARDEN_DEV_BYPASSRLS=1 only for local demos that need the\n  cross-org reads RLS cannot scope, e.g. M26 cap).`,
       );
     }
   }
@@ -307,18 +307,18 @@ const STRICT = process.argv.includes("--strict");
 const STRICT_ORPHANS = process.argv.includes("--strict-orphans");
 const SCHEMA_ONLY = process.argv.includes("--schema-only");
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const BYPASSRLS_REQUESTED = process.env.WARDENX_DEV_BYPASSRLS === "1";
+const BYPASSRLS_REQUESTED = process.env.CHARTWARDEN_DEV_BYPASSRLS === "1";
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   // A guessable default password on a LOGIN role is only tolerable on a throwaway local cluster.
-  if (IS_PRODUCTION && !SCHEMA_ONLY && !process.env.WARDENX_APP_PASSWORD) {
+  if (IS_PRODUCTION && !SCHEMA_ONLY && !process.env.CHARTWARDEN_APP_PASSWORD) {
     throw new Error(
-      `WARDENX_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default login password on ${APP_ROLE}. (Pass --schema-only for the per-deploy step, which never touches this credential.)`,
+      `CHARTWARDEN_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default login password on ${APP_ROLE}. (Pass --schema-only for the per-deploy step, which never touches this credential.)`,
     );
   }
-  const appPassword = process.env.WARDENX_APP_PASSWORD ?? "wardenx_app";
+  const appPassword = process.env.CHARTWARDEN_APP_PASSWORD ?? "wardenx_app";
 
   const db = new Client({ connectionString: url });
   await db.connect();
