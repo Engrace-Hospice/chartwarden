@@ -389,6 +389,27 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 5.7 (ADR-0089, PROPOSED): restricted export. REQUEST asks for a scoped export, APPROVE decides it (never the requester's own), DOWNLOAD
+  //     reads the finished artefact (the requester only, checked in the service). A fresh step-up is demanded on request, approve, reject and
+  //     download. Migration 1147 grants all three to compliance_officer, administrator, org_admin only; no clinical or aide role holds them. ---
+  "messaging.export.request": {
+    resource: "message_export",
+    action: "request",
+    category: "compliance",
+    abac: "none",
+  },
+  "messaging.export.approve": {
+    resource: "message_export",
+    action: "approve",
+    category: "compliance",
+    abac: "none",
+  },
+  "messaging.export.download": {
+    resource: "message_export",
+    action: "download",
+    category: "compliance",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
