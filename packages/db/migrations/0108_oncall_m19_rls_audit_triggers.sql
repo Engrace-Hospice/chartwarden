@@ -28,7 +28,7 @@
 --    app role never gets DELETE anywhere in M19. wardenx_admin keeps ALL everywhere.
 --
 -- 2. M4 write-audit triggers (§3.6). Every M19 table stamps retention_class 'compliance', matching
---    `M19_AUDIT_RETENTION_CLASS` in @chartwarden/types. That uniformity is the considered answer, not a
+--    `M19_AUDIT_RETENTION_CLASS` in @wardenx/types. That uniformity is the considered answer, not a
 --    default: the call tables ARE the clinical record (CoP 418.104); `on_call_shift` is the CoP
 --    418.100(c)(2) proof that a nurse was reachable at 2 a.m.; `tenant_oncall_policy` and the protocol pair
 --    hold the D7 mandatory-escalation floor, so an edit to them is exactly what a suppression investigation
@@ -36,7 +36,7 @@
 --    evidence that the paper-origin calls were reconciled — its 72-hour operational LIFETIME says nothing
 --    about how long the audit of it must live.
 --
---    Denylists mirror `M19_AUDIT_DENYLIST` (@chartwarden/types) VERBATIM so the code-side export view and the
+--    Denylists mirror `M19_AUDIT_DENYLIST` (@wardenx/types) VERBATIM so the code-side export view and the
 --    DB-side scrub cannot drift:
 --      triage_call             caller_phone_e164 / caller_quote_cipher / transcript_cipher / chief_complaint_text
 --      triage_call_answer      answer_value_text

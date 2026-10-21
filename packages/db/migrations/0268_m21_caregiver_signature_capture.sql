@@ -20,7 +20,7 @@
 -- SHAPE mirrors the ALREADY-BUILT, proven precedent for exactly this kind of record in this codebase:
 -- `packages/consent/src/routes/service.ts`'s `ConsentCaptureEvidence` (M39) — a `captureMethod` enum plus
 -- evidence fields including a reference to an already-rendered M22 document. NOT the literal M39 type:
--- M21's manifest `dependsOn` is [1, 11, 40] with no edge to 39, so M21 cannot import `@chartwarden/consent`'s
+-- M21's manifest `dependsOn` is [1, 11, 40] with no edge to 39, so M21 cannot import `@wardenx/consent`'s
 -- types; this is M21's own local equivalent (`apps/backend/src/modules/21-supplies/lifecycle/
 -- caregiver-signature.ts`), narrowed to what is plausible for a courier-delivery caregiver signature:
 -- `typed_signature_in_app` / `witnessed_verbal_documented` / `declined` — no portal session (no patient

@@ -27,7 +27,7 @@
 -- core) and intra-M16 parents get real FK constraints. patient_id (M5), admission_id (M6),
 -- care_plan_version_id_at_discharge (M7), source_encounter_id (M8), portal_account_id (M31),
 -- consent_record_id (M39), the M22 document ids, the M32 augmentation refs, legal_hold_id (M4) and every
--- `*_user_id` / `*_membership_id` (M2 membership — the spec's `user_id` NAME is kept, but @chartwarden/types
+-- `*_user_id` / `*_membership_id` (M2 membership — the spec's `user_id` NAME is kept, but @wardenx/types
 -- already types them `MembershipId`) are LOGICAL uuid, validated at the write boundary.
 CREATE TYPE "public"."bereavement_plan_status" AS ENUM('eligible', 'initiating', 'active', 'paused', 'closed_completed', 'closed_declined', 'closed_early', 'closed_legal_hold_extended');--> statement-breakpoint
 CREATE TYPE "public"."bereaved_contact_status" AS ENUM('proposed', 'active', 'opted_out', 'deceased', 'unreachable', 'ineligible_post_review');--> statement-breakpoint

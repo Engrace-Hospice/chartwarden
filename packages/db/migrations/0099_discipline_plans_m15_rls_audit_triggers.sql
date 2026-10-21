@@ -12,7 +12,7 @@
 --    eraseFn (§8.5). wardenx_admin keeps ALL (migration/eraser role).
 --
 -- 2. M4 write-audit triggers (§3.6, retention class 'compliance' — CoP 418.56/418.76/418.78 records, M4 D1).
---    Denylists mirror @chartwarden/types M15_AUDIT_DENYLIST verbatim, so the code-side eraser/export view and
+--    Denylists mirror @wardenx/types M15_AUDIT_DENYLIST verbatim, so the code-side eraser/export view and
 --    the DB-side scrub cannot drift:
 --      discipline_care_plan            spiritual_care_declined
 --      discipline_care_plan_version    (nested) state_snapshot → goals / interventions / data

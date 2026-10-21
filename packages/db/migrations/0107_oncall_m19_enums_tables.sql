@@ -89,7 +89,7 @@ CREATE TYPE "public"."triage_ai_confidence" AS ENUM('low', 'medium', 'high');-->
 -- `external_triage_vendor` session class. There is deliberately no secret / api_key / token column here —
 -- the absence is the control.
 --
--- NO `baa_in_effect ⇒ baa_expires_on IS NOT NULL` CHECK: `@chartwarden/triage-vendors`'
+-- NO `baa_in_effect ⇒ baa_expires_on IS NOT NULL` CHECK: `@wardenx/triage-vendors`'
 -- `assertVendorBindingActive` (already published at M19-T01) types `baaExpiresOn` as `string | null` and
 -- documents null as "no stated expiry". A NOT NULL pairing here would make a perpetual BAA unwritable and
 -- would contradict a locked contract.

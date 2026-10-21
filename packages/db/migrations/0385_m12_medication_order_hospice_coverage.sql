@@ -28,7 +28,7 @@
 --
 -- CHECK `medication_order_coverage_reason_chk`: a NOT-covered value requires a non-blank reason AND a
 -- determination instant (the app enforces the same rule first — `validateCoverageDetermination` in
--- @chartwarden/types — this is the backstop). PostgreSQL validates the CHECK against every existing row, which
+-- @wardenx/types — this is the backstop). PostgreSQL validates the CHECK against every existing row, which
 -- are all `covered_related` after the default, so the ADD never fails.
 --
 -- AUDIT: `coverage_reason` is NOT added to the M4 write-audit denylist. It is the explanation the hospice is

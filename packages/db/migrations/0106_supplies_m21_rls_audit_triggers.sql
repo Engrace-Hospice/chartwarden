@@ -35,13 +35,13 @@
 --
 -- 2. M4 write-audit triggers (§3.1.11). RETENTION CLASS NOTE: `audit_event.retention_class` is M1's
 --    `audit_retention_class` enum (operational | compliance | legal_hold | compliance_42cfr_part2), which
---    has NO `clinical` value — so `supply_request`, which `M21_AUDIT_RETENTION_CLASS` in @chartwarden/types
+--    has NO `clinical` value — so `supply_request`, which `M21_AUDIT_RETENTION_CLASS` in @wardenx/types
 --    marks `clinical`, stamps 'compliance' here (the 7-year HIPAA floor). That is not in tension: the
---    @chartwarden/types value is the M4 RETENTION/eraser DATA CLASS for the ROWS, registered through M4's
+--    @wardenx/types value is the M4 RETENTION/eraser DATA CLASS for the ROWS, registered through M4's
 --    retention API at boot and carried by the eraser's `dataClass` (landing with the routes task). Two
 --    different axes; both apply. Same resolution as M16-T02.
 --
---    Denylists mirror `M21_AUDIT_DENYLIST` in @chartwarden/types VERBATIM, so the code-side eraser/export view
+--    Denylists mirror `M21_AUDIT_DENYLIST` in @wardenx/types VERBATIM, so the code-side eraser/export view
 --    and the DB-side scrub cannot drift:
 --      supply_request                  delivery_instructions / cancellation_reason
 --      comfort_kit_dispatch            special_handling_notes

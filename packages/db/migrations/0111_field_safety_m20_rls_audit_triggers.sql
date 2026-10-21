@@ -28,7 +28,7 @@
 --    including on the location stream, whose resolve+90d physical delete is a privileged sweep.
 --
 -- 2. M4 write-audit triggers (§3.6 / §8.8.1). Eleven tables stamp `compliance`; `safety_supervisor_subscription`
---    and `safety_high_risk_area` stamp `operational`, matching `M20_AUDIT_RETENTION_CLASS` in @chartwarden/types
+--    and `safety_high_risk_area` stamp `operational`, matching `M20_AUDIT_RETENTION_CLASS` in @wardenx/types
 --    and §8.8.4's summary (3 years from deactivation and 5 years from retirement respectively — neither is
 --    survey evidence about a person).
 --
@@ -43,7 +43,7 @@
 --    an SOS bracket costs the agency the workers-comp timeline §1.1 exists to preserve. The same argument
 --    applies to `safety_acknowledgment`, whose §3.7 class is "matches parent target's".
 --
---    Denylists mirror `M20_AUDIT_DENYLIST` (@chartwarden/types) VERBATIM so the code-side export view and the
+--    Denylists mirror `M20_AUDIT_DENYLIST` (@wardenx/types) VERBATIM so the code-side export view and the
 --    DB-side scrub cannot drift:
 --      safety_check_in                    concern_note / posted_coordinates_cipher / posted_coordinates_accuracy_m
 --      safety_sos_alert                   posted_coordinates_cipher / resolution_narrative_cipher / acknowledger_dispatch_payload_cipher
@@ -82,7 +82,7 @@
 --    stop. It fails CLOSED in both directions: an unknown parent (or one hidden from the caller by RLS)
 --    raises rather than inserting.
 --
---    The OPEN set here is `SAFETY_SOS_OPEN_STATES` from @chartwarden/types verbatim, `emergency_terminus`
+--    The OPEN set here is `SAFETY_SOS_OPEN_STATES` from @wardenx/types verbatim, `emergency_terminus`
 --    INCLUDED. The terminus is an OPEN state per M20-F05/S13 — it re-escalates on a loop and exits only on
 --    acknowledgment, never on timeout — and it is precisely the state during which knowing where the
 --    clinician is matters most. Excluding it would cut the location feed at the worst possible moment.
@@ -688,7 +688,7 @@ BEGIN
     RAISE EXCEPTION 'M20_SOS_STREAM_UNKNOWN_ALERT: %', NEW.sos_alert_id
       USING ERRCODE = '23514';
   END IF;
-  -- SAFETY_SOS_OPEN_STATES (@chartwarden/types), `emergency_terminus` included.
+  -- SAFETY_SOS_OPEN_STATES (@wardenx/types), `emergency_terminus` included.
   IF v_state NOT IN (
     'raised','cancel_window_open','acknowledging','acknowledged',
     'escalation_tier_1','escalation_tier_2','escalation_tier_3',

@@ -6,7 +6,7 @@
 -- §2.3 state machine has emitted `{ kind: 'persist_assembled_output' }` on every finalize since M8-T04
 -- and a unit test asserts it does; no service ever performed the effect. So the note was RECOMPUTED from
 -- `hearthnote_selection` on every read, which defeats the D11 vocabulary pin at the last step — a
--- `@chartwarden/narrative-vocab` release that edits a phrase would change the rendered text of an
+-- `@wardenx/narrative-vocab` release that edits a phrase would change the rendered text of an
 -- already-signed encounter, and there was no record of what was signed independent of the inputs it was
 -- derived from. For a 42 CFR 418.104 legal record, "we can rebuild it" is not the claim "here is what it
 -- said".
