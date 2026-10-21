@@ -234,6 +234,25 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
   }
 
   /**
+   * Once more before anything is stored: every patient the build resolved is asked of the flag reader again. A patient flagged while the build ran
+   * (after the up-front decision, so the rows already listed cannot be told apart) fails the build closed; the requester asks again.
+   */
+  async function assertNoNewlyFlagged(
+    organizationId: string,
+    state: { resolved: Set<string>; flagged: Set<string> },
+  ): Promise<void> {
+    if (state.resolved.size === 0) return;
+    let now: ReadonlySet<string>;
+    try {
+      now = await deps.part2Patients(organizationId, [...state.resolved]);
+    } catch {
+      throw new ExportBuildFailure(EXPORT_FAIL_PART2);
+    }
+    for (const id of now)
+      if (!state.flagged.has(id)) throw new ExportBuildFailure(EXPORT_FAIL_PART2);
+  }
+
+  /**
    * Per page: the patients tied to these rows right now. Any id the build has not yet resolved is asked of the flag reader here (a throw fails
    * closed); a row tied to a flagged patient is dropped. Closes the window between the up-front decision and the page read.
    */
@@ -342,10 +361,9 @@ export function createExportBuilder(deps: ExportBuilderDeps) {
     const included = allowedCount.total - allowedCount.held - allowedCount.part2;
     if (included > EXPORT_MAX_MESSAGES) throw new ExportBuildFailure(EXPORT_TOO_LARGE_CODE);
 
-    const collected = await collect(organizationId, allowedQuery, {
-      resolved: new Set(resolved),
-      flagged: new Set(flagged),
-    });
+    const part2State = { resolved: new Set(resolved), flagged: new Set(flagged) };
+    const collected = await collect(organizationId, allowedQuery, part2State);
+    await assertNoNewlyFlagged(organizationId, part2State);
     const { messages } = collected;
     const part2Excluded = gatedCount.total + allowedCount.part2 + collected.dropped;
     const manifest: MessagingExportManifest = {

@@ -350,7 +350,11 @@ describe("export builder", () => {
       },
     );
     expect(await t.builder.buildJob(ORG, JOB)).toEqual({ outcome: "ready", messageCount: 1 });
-    expect(asked).toEqual([["p-ok", "p-sud"]]);
+    // asked up front, then once more before anything is stored
+    expect(asked).toEqual([
+      ["p-ok", "p-sud"],
+      ["p-ok", "p-sud"],
+    ]);
     const doc = readArtefact(t.stored);
     expect(doc.messages.map((m: { id: string }) => m.id)).toEqual(["clean"]);
     // a held message is counted as held, not twice
@@ -650,6 +654,31 @@ describe("export builder", () => {
     expect(await t.builder.buildJob(ORG, JOB)).toEqual({ outcome: "ready", messageCount: 1 });
     expect(readArtefact(t.stored).manifest.part2Excluded).toBe(1);
     expect(JSON.stringify(readArtefact(t.stored))).not.toContain("body of m2");
+  });
+
+  it("fails closed when a patient the build already resolved is flagged while it runs (final re-ask before storing)", async () => {
+    let asks = 0;
+    const t = build(
+      {
+        job: job(),
+        channels: [{ id: "ch1", kind: "group", subjectId: null }],
+        messages: [msg("m1", "ch1", "2026-03-01T10:00:00Z")],
+      },
+      {
+        // Unflagged at the up-front decision, flagged on every later ask.
+        part2Patients: async (_o: string, ids: string[]) => {
+          asks += 1;
+          return asks === 1 ? new Set<string>() : new Set(ids);
+        },
+      },
+    );
+    t.store.referencedPatients = async () => ["p-late"];
+    t.store.messageReferences = async () => new Map([["m1", ["p-late"]]]);
+    expect(await t.builder.buildJob(ORG, JOB)).toMatchObject({
+      outcome: "failed",
+      failureCode: "EXPORT_PART2_UNKNOWN",
+    });
+    expect(t.stored.size).toBe(0);
   });
 
   it("fails closed (EXPORT_PART2_UNKNOWN) when the flag of a patient first seen on a page cannot be read", async () => {

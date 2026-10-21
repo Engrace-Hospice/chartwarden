@@ -160,9 +160,9 @@ export async function exportExpiryTick(
         }
       }
     }
-    if (expiryError !== undefined) throw expiryError;
-    if (enqueueErrors.length > 0)
-      throw new AggregateError(enqueueErrors, "export re-enqueue failed");
+    const errors = expiryError === undefined ? enqueueErrors : [expiryError, ...enqueueErrors];
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, "export expiry sweep failed");
   });
   return totals;
 }
