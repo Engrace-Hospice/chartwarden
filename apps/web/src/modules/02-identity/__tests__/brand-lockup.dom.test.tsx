@@ -8,8 +8,10 @@ describe("BrandLockup", () => {
   it("renders the ChartWarden mark image beside the wordmark", () => {
     const { container } = render(<BrandLockup />);
 
-    expect(screen.getByText("ChartWarden")).toBeTruthy();
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/chartwarden-mark.svg");
+    expect(screen.getByText("ChartWarden").className).toContain("wx-brand");
+    const mark = container.querySelector("img");
+    expect(mark?.getAttribute("src")).toBe("/chartwarden-mark.svg");
+    expect(mark?.getAttribute("alt")).toBe(""); // decorative: the adjacent wordmark names it
     expect(container.querySelector("svg")).toBeNull();
   });
 });

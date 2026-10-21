@@ -5,7 +5,7 @@ import type { JSX, ReactNode } from "react";
 export function PortalOnboardingBrand(): JSX.Element {
   return (
     <div className="wx-portal-auth-brand">
-      <span className="wx-portal-auth-brand__mark" aria-hidden="true">W</span>
+      <img className="wx-portal-auth-brand__mark" src="/chartwarden-mark.svg" alt="" />
       <div><strong>ChartWarden</strong><span>Patient & Family Portal</span></div>
     </div>
   );
