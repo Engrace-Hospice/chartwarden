@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { authClient } from "./auth-client";
+import { BrandLockup } from "./brand-lockup";
 
 const MIN_PASSWORD_LENGTH = 12; // mirrors emailAndPassword.minPasswordLength (server is authoritative)
 
@@ -141,7 +142,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "checking") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <p>Checking your invitation…</p>
       </CenteredCardLayout>
     );
@@ -149,7 +150,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "invalid") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-error)" }}>{error}</p>
       </CenteredCardLayout>
@@ -158,7 +159,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "accepted") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p>Your membership is active. Continue to select your organization.</p>
         <button type="button" onClick={() => navigate("/login/organization")} style={primaryBtn}>
@@ -170,7 +171,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "wrong-account") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-on-surface-variant)" }}>
           This invitation to <strong>{invite?.organizationName}</strong> was sent to{" "}
@@ -191,7 +192,7 @@ export function AcceptInvitation(): JSX.Element {
 
   if (phase === "ready-to-accept") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-on-surface-variant)" }}>
           Accept your invitation to <strong>{invite?.organizationName}</strong> with your current
@@ -207,7 +208,7 @@ export function AcceptInvitation(): JSX.Element {
 
   // "needs-account" | "creating" — the invitee has no session yet: create their account first.
   return (
-    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+    <CenteredCardLayout brand={<BrandLockup />}>
       <form
         onSubmit={createAccountAndAccept}
         style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}

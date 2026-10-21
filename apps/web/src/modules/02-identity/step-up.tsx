@@ -6,11 +6,12 @@ import { StepUpCard } from "@chartwarden/ui";
 // console runs the same implementation; this route only supplies the tenant app's brand and footer.
 import type { JSX } from "react";
 import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { BrandLockup } from "./brand-lockup";
 
 export function StepUp(): JSX.Element {
   return (
     <StepUpCard
-      brand={<strong>ChartWarden</strong>}
+      brand={<BrandLockup />}
       footer={<a href="/login">Sign in as someone else</a>}
       signInPath="/login"
       enrolPasskeyPath="/security/passkeys"

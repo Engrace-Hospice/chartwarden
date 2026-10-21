@@ -26,9 +26,7 @@ function Brand({
 }): JSX.Element {
   return (
     <Link className="wx-portal-brand" to={destination} aria-label="ChartWarden Family Portal home">
-      <span className="wx-portal-brand__mark" aria-hidden="true">
-        W
-      </span>
+      <img className="wx-portal-brand__mark" src="/chartwarden-mark.svg" alt="" />
       {!compact ? (
         <span>
           <strong>ChartWarden</strong>

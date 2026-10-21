@@ -7,6 +7,7 @@ import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@c
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { takePendingNotificationLink } from "../../shell/pending-deep-link";
+import { BrandLockup } from "./brand-lockup";
 
 // Wire shape mirrored from the M2 route (apps/backend/.../identity-routes.ts toView), re-declared
 // here rather than imported — the UI consumes the HTTP response, not the backend package.
@@ -110,7 +111,7 @@ export function OrganizationSelect(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+    <CenteredCardLayout brand={<BrandLockup />}>
       <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Select organization</h1>
       {state.kind === "loading" ? <LoadingSpinner /> : null}
       {state.kind === "error" ? (
