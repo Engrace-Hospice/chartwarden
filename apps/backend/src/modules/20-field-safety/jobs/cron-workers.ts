@@ -403,7 +403,7 @@ type AlertAnchorRow = {
 
 /** At terminus entry nothing has been paged, dialled or resolved yet - the ledger rows are only intents. */
 const NO_EFFECTS_YET: TerminusLedgerFlags = {
-  wardenxOpsPaged: false,
+  chartwardenOpsPaged: false,
   emergencyContactCallInitiated: false,
   psapJurisdictionId: null,
 };
@@ -426,7 +426,7 @@ function terminusPayload(
     loopIteration,
     emergencyContactCallInitiated: flags.emergencyContactCallInitiated,
     psapJurisdictionId: flags.psapJurisdictionId,
-    wardenxOpsPaged: flags.wardenxOpsPaged,
+    chartwardenOpsPaged: flags.chartwardenOpsPaged,
   };
 }
 

@@ -85,7 +85,7 @@ export async function listDialRows(tx: DbClient, sosAlertId: string): Promise<Pr
 
 /** What the ledger can truthfully say about an alert's terminus effects so far (the event payload source). */
 export interface TerminusLedgerFlags {
-  readonly wardenxOpsPaged: boolean;
+  readonly chartwardenOpsPaged: boolean;
   readonly emergencyContactCallInitiated: boolean;
   /** The jurisdiction the latest successful `resolve_psap` row used, or null. */
   readonly psapJurisdictionId: string | null;
@@ -107,7 +107,7 @@ export async function readLedgerFlags(
     .orderBy(asc(ACTION.loopIteration));
   const latestPsap = [...rows].reverse().find((r) => r.kind === "resolve_psap" && r.jurisdictionId);
   return {
-    wardenxOpsPaged: rows.some((r) => r.kind === "page_ops"),
+    chartwardenOpsPaged: rows.some((r) => r.kind === "page_ops"),
     emergencyContactCallInitiated: rows.some((r) => r.kind === "dial_contact"),
     psapJurisdictionId: latestPsap?.jurisdictionId ?? null,
   };

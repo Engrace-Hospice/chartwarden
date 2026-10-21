@@ -761,7 +761,9 @@ export interface M20SosTerminusReachedPayload extends M20SafetyEventBase {
   /** §8.8.2 — the M40 jurisdiction is referenced by id; the PSAP number itself never enters an audit or
    *  outbox payload. Null when M40 could not resolve one for the last known location. */
   readonly psapJurisdictionId: PsapJurisdictionId | null;
-  readonly wardenxOpsPaged: boolean;
+  /** Legacy key on rows persisted before the rename; readers use `chartwardenOpsPaged ?? wardenxOpsPaged`. */
+  readonly wardenxOpsPaged?: boolean;
+  readonly chartwardenOpsPaged?: boolean;
 }
 
 /** `m20.safety.sos_alert_resolved` — info, to the poster + subscribers + the resolver. */

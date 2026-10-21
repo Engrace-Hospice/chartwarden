@@ -532,7 +532,7 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     );
     expect(entry?.payload).toMatchObject({
       loopIteration: 0,
-      wardenxOpsPaged: false,
+      chartwardenOpsPaged: false,
       emergencyContactCallInitiated: false,
       psapJurisdictionId: null,
     });
@@ -591,7 +591,7 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     expect(events).toHaveLength(2);
     expect(events[1]?.payload).toMatchObject({
       loopIteration: 1,
-      wardenxOpsPaged: true,
+      chartwardenOpsPaged: true,
       emergencyContactCallInitiated: true,
       psapJurisdictionId: PSAP_ID,
     });
@@ -635,7 +635,7 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
     const entry = (await outboxFor(sosAlertId)).find(
       (r) => r.event_type === "m20.safety.sos_terminus_reached",
     );
-    expect(entry?.payload).toMatchObject({ wardenxOpsPaged: false });
+    expect(entry?.payload).toMatchObject({ chartwardenOpsPaged: false });
   });
 
   it("GAP-032: the contact auto-dial is gated OFF by the platform flag (dial_disabled, zero calls)", async () => {
@@ -946,7 +946,7 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
       loopIteration: 2,
       emergencyContactCallInitiated: false,
       psapJurisdictionId: null,
-      wardenxOpsPaged: false,
+      chartwardenOpsPaged: false,
     });
   });
 
