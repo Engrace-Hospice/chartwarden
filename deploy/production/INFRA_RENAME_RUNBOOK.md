@@ -232,9 +232,12 @@ records and certificate were never removed.
 
 ## Explicitly NOT renamed (by design)
 
-- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`, default `wardenx`; flipped only in the downtime window below), `_wardenx_migration` table, applied migration SQL, legacy function names
+- Postgres database name `wardenx` (parameterized by `CHARTWARDEN_DB_NAME`, default `wardenx`; flipped only in the downtime window below), applied migration SQL, legacy function names
   (renaming a database requires dropping connections and updating every `DATABASE_*_URL`; applied-migration
   checksums forbid editing SQL). The `wardenx_destruction` role alias was dropped by migration 1142.
+- The `_wardenx_migration` ledger IS renamed to `_chartwarden_migration` (by `scripts/db/migrate.ts`
+  `ensureLedger`). A `_wardenx_migration` compat view remains so a rollback to the previous release's runner
+  keeps working; a later cleanup step drops it.
 - Compose project name `wardenx` and the `wardenx_*` volumes/network (data loss, see Phase 4).
 - Wire names (metrics, cookies, HL7, `wardenx://`, `x-wardenx-background`, `/_wardenx-internal/*`): other owner.
 - The `wardenx-demo` organization slug and `*@wardenx.local` demo accounts: now `chartwarden-demo` / `*@chartwarden.local` in the seed. Production needs one demo reseed (`reseed-production.yml`); `scripts/db/seed.ts` removes the legacy `wardenx-demo` org and its sole-tenant identities.

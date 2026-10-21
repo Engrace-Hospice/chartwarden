@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +20,7 @@ import { join } from "node:path";
  * the public schema + every role the migrations create).
  */
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, applyMigrations } from "../db/migrate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -72,7 +73,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
     expect(result.drifted).toEqual([]);
 
     const { rows } = await db.query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM _wardenx_migration",
+      "SELECT count(*)::int AS n FROM _chartwarden_migration",
     );
     expect(rows[0]!.n).toBe(result.ran.length);
   }, 300_000);
@@ -85,11 +86,11 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
 
   it("--strict fails on checksum drift in an already-applied file; the default mode only warns", async () => {
     const { rows } = await db.query<{ filename: string }>(
-      "SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1",
+      "SELECT filename FROM _chartwarden_migration ORDER BY filename LIMIT 1",
     );
     const target = rows[0]!.filename;
     await db.query(
-      `UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
+      `UPDATE _chartwarden_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
       [target],
     );
 
@@ -115,7 +116,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       await expect(applyMigrations(db, { migrationsDir })).resolves.toMatchObject({ ran: [first] });
 
       await db.query(
-        `UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
+        `UPDATE _chartwarden_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
         [first],
       );
       await writeFile(join(migrationsDir, second), `CREATE TABLE ${secondTable} (id integer);\n`);
@@ -130,8 +131,127 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       expect(rows[0]!.relation).toBeNull();
     } finally {
       await db.query(`DROP TABLE IF EXISTS ${firstTable}, ${secondTable}`);
-      await db.query("DELETE FROM _wardenx_migration WHERE filename = ANY($1)", [[first, second]]);
+      await db.query("DELETE FROM _chartwarden_migration WHERE filename = ANY($1)", [[first, second]]);
       await rm(migrationsDir, { force: true, recursive: true });
     }
   }, 60_000);
+});
+
+// The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums and keep a
+// rolled-back PREVIOUS release's runner working through the compat view. Uses a tiny temp migrations dir
+// so it does not depend on the full chain.
+describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + rollback compat (LIVE Postgres)", () => {
+  const OLD = "_wardenx_migration";
+  const NEW = "_chartwarden_migration";
+  const FILE_A = "9101_ledger_a.sql";
+  const FILE_B = "9102_ledger_b.sql";
+  let db: Client;
+  let dir: string;
+
+  const kindOf = async (name: string) =>
+    (
+      await db.query<{ relkind: string }>(
+        "SELECT relkind FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = $1",
+        [name],
+      )
+    ).rows[0]?.relkind ?? null;
+
+  async function legacyLedger(rows: readonly (readonly [string, string])[]) {
+    await db.query(
+      `CREATE TABLE ${OLD} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    for (const [f, c] of rows) {
+      await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2)`, [f, c]);
+    }
+  }
+
+  beforeAll(async () => {
+    db = new Client({ connectionString: DB_URL });
+    await db.connect();
+    dir = await mkdtemp(join(tmpdir(), "chartwarden-ledger-"));
+    await writeFile(join(dir, FILE_A), "SELECT 1;\n");
+    await writeFile(join(dir, FILE_B), "SELECT 2;\n");
+  });
+
+  beforeEach(async () => {
+    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await db.query("CREATE SCHEMA public");
+  });
+
+  afterAll(async () => {
+    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await db.query("CREATE SCHEMA public");
+    await db.end();
+    await rm(dir, { force: true, recursive: true });
+  });
+
+  const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+  it("renames a populated legacy ledger, preserving rows and checksums, and leaves a compat view", async () => {
+    await legacyLedger([[FILE_A, sha("SELECT 1;\n")]]);
+
+    const result = await applyMigrations(db, { migrationsDir: dir, strict: true });
+
+    expect(result.ran).toEqual([FILE_B]);
+    expect(await kindOf(NEW)).toBe("r");
+    expect(await kindOf(OLD)).toBe("v");
+    const { rows } = await db.query("SELECT filename, checksum FROM _chartwarden_migration ORDER BY filename");
+    expect(rows).toEqual([
+      { filename: FILE_A, checksum: sha("SELECT 1;\n") },
+      { filename: FILE_B, checksum: sha("SELECT 2;\n") },
+    ]);
+    const view = await db.query("SELECT filename FROM _wardenx_migration ORDER BY filename");
+    expect(view.rows.map((r) => r.filename)).toEqual([FILE_A, FILE_B]);
+  });
+
+  it("a second run is a no-op", async () => {
+    await legacyLedger([]);
+    await applyMigrations(db, { migrationsDir: dir });
+    const again = await applyMigrations(db, { migrationsDir: dir });
+    expect(again.ran).toEqual([]);
+    expect(await kindOf(NEW)).toBe("r");
+    expect(await kindOf(OLD)).toBe("v");
+  });
+
+  it("a fresh database gets the ledger table and the compat view", async () => {
+    await applyMigrations(db, { migrationsDir: dir });
+    expect(await kindOf(NEW)).toBe("r");
+    expect(await kindOf(OLD)).toBe("v");
+  });
+
+  it("rollback compat: the previous runner's CREATE IF NOT EXISTS is a no-op and its INSERT lands in the table", async () => {
+    await applyMigrations(db, { migrationsDir: dir });
+
+    // exactly what the previous release's runner executes
+    await db.query(
+      `CREATE TABLE IF NOT EXISTS ${OLD} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2)`, ["9199_old_runner.sql", "abc"]);
+    await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [
+      "9199_old_runner.sql",
+      "abc",
+    ]);
+
+    expect(await kindOf(OLD)).toBe("v");
+    const { rows } = await db.query(`SELECT checksum, applied_at FROM ${NEW} WHERE filename = '9199_old_runner.sql'`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.checksum).toBe("abc");
+    expect(rows[0]!.applied_at).toBeInstanceOf(Date);
+  });
+
+  it("still detects a tampered checksum after the rename", async () => {
+    await legacyLedger([[FILE_A, "deliberately-corrupted"]]);
+    const lenient = await applyMigrations(db, { migrationsDir: dir });
+    expect(lenient.drifted).toEqual([FILE_A]);
+    await expect(applyMigrations(db, { migrationsDir: dir, strict: true })).rejects.toThrow(
+      /checksum drift/i,
+    );
+  });
+
+  it("refuses to guess when both ledgers are tables", async () => {
+    await legacyLedger([]);
+    await db.query(`CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
+    await expect(applyMigrations(db, { migrationsDir: dir })).rejects.toThrow(/both .* are tables/);
+    expect(await kindOf(OLD)).toBe("r");
+  });
 });

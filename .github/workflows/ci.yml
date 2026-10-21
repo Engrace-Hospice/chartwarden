@@ -1314,7 +1314,7 @@ jobs:
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
           docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
-            "UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = (SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1);"
+            "UPDATE _chartwarden_migration SET checksum = 'deliberately-corrupted' WHERE filename = (SELECT filename FROM _chartwarden_migration ORDER BY filename LIMIT 1);"
           if bun run db:migrate:deploy; then
             echo "expected --strict to fail on checksum drift, but it exited 0" >&2
             exit 1
