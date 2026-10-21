@@ -1,3 +1,4 @@
+import * as bullmq from "bullmq";
 // WP 5.7 - the expiry sweep over an in-memory store: only due jobs, an already-gone object is fine, paging past one batch, a failed delete is
 // retried (job stays ready) and fails the run after the others; and the tick fans out and isolates an org failure.
 import { describe, expect, it, vi } from "vitest";
@@ -6,7 +7,6 @@ import {
   type ExportExpiryStore,
   createExportExpirySweep,
 } from "./export-expiry-sweep";
-import * as bullmq from "bullmq";
 import { createExportBuildEnqueuer, exportBuildJob, exportExpiryTick } from "./export-worker";
 
 const ORG = "o1";
