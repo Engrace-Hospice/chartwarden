@@ -51,6 +51,10 @@ const violations: Violation[] = [];
 // Rule 4 (ratchet): migration 1143 renamed these database objects. Earlier migrations keep the old text
 // (they replay before 1143 and are checksummed); a later one that still says it would fail at replay.
 const FUNCTION_RENAME_ORDINAL = 1143;
+// Highest migration already on main when 1143 was written. The runner applies ANY unapplied file regardless of
+// ordinal, so a late-merging 1141/1142 that still names the old objects would run after 1143 in prod and fail
+// the deploy while its fresh-replay CI stays green: the ratchet therefore covers everything above this line.
+const LAST_PRE_RENAME_ORDINAL = 1140;
 const LEGACY_DB_OBJECT_RE =
   /\bwardenx_(?:audit_trigger|secure_new_partition(?:_trg)?|tenant_step_up_tighten_only)\b/;
 // Track SQL `CREATE TYPE` and Drizzle `pgEnum` definitions SEPARATELY: the normal Drizzle pattern is
@@ -112,7 +116,11 @@ for (const base of SCAN_DIRS) {
     // a real partition declaration.
     const srcNoComments = src.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
     const ordinal = /(?:^|\/)migrations\/(\d+)_[^/]*\.sql$/.exec(file)?.[1];
-    if (ordinal && Number(ordinal) > FUNCTION_RENAME_ORDINAL) {
+    if (
+      ordinal &&
+      Number(ordinal) > LAST_PRE_RENAME_ORDINAL &&
+      Number(ordinal) !== FUNCTION_RENAME_ORDINAL
+    ) {
       const legacy = LEGACY_DB_OBJECT_RE.exec(srcNoComments)?.[0];
       if (legacy) {
         violations.push({
