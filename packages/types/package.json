@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./env-bridge-preload": "./src/env-bridge-preload.ts"
+    ".": "./src/index.ts"
   },
   "types": "./src/index.ts"
 }
