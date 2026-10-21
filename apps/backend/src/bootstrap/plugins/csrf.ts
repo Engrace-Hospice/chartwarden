@@ -26,7 +26,9 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { CsrfValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-const CSRF_COOKIE_NAME = "chartwarden_csrf";
+const PLAIN_CSRF_COOKIE_NAME = "chartwarden_csrf";
+/** ADR-0049 D4 — the host-only name used on per-tenant hosts (the `__Host-` prefix needs Secure + Path=/ + no Domain). */
+const HOST_ONLY_CSRF_COOKIE_NAME = "__Host-chartwarden_csrf";
 /** Pre-rename cookie name. Still accepted (and then expired) so a browser holding it is not locked out on deploy. */
 const LEGACY_CSRF_COOKIE_NAME = "wardenx_csrf";
 const CSRF_HEADER_NAME = "x-csrf-token";
@@ -58,6 +60,8 @@ export interface CsrfOptions {
   readonly exemptPrefixes?: readonly string[];
   /** Force the cookie's `Secure` attribute; defaults to `NODE_ENV === "production"`. */
   readonly secure?: boolean;
+  /** Host-only `__Host-` cookie (forces Secure). Defaults to on when TENANT_BASE_DOMAIN is set (ADR-0049 D4). */
+  readonly hostOnly?: boolean;
 }
 
 declare module "fastify" {
@@ -111,7 +115,9 @@ function appendSetCookie(reply: FastifyReply, cookie: string): void {
 export function applyCsrfProtection(app: FastifyInstance, opts: CsrfOptions = {}): void {
   if (opts.enabled === false) return;
   const exemptPrefixes = opts.exemptPrefixes ?? DEFAULT_EXEMPT_PREFIXES;
-  const secure = opts.secure ?? process.env.NODE_ENV === "production";
+  const hostOnly = opts.hostOnly ?? Boolean(process.env.TENANT_BASE_DOMAIN?.trim());
+  const secure = hostOnly || (opts.secure ?? process.env.NODE_ENV === "production");
+  const CSRF_COOKIE_NAME = hostOnly ? HOST_ONLY_CSRF_COOKIE_NAME : PLAIN_CSRF_COOKIE_NAME;
 
   // Mint the double-submit cookie on any request that doesn't already carry one, so it is in
   // place before the browser's first mutating call. Runs on every route (not just exempt-filtered
@@ -120,7 +126,8 @@ export function applyCsrfProtection(app: FastifyInstance, opts: CsrfOptions = {}
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     const cookies = parseCookies(request.headers.cookie);
     const legacyToken = cookies[LEGACY_CSRF_COOKIE_NAME];
-    let token = cookies[CSRF_COOKIE_NAME] ?? legacyToken;
+    // Host-only mode never adopts the legacy cookie: a sibling tenant can plant a Domain-scoped one (cookie tossing).
+    let token = hostOnly ? cookies[CSRF_COOKIE_NAME] : (cookies[CSRF_COOKIE_NAME] ?? legacyToken);
     if (legacyToken !== undefined) {
       // Transition: stop the browser sending the legacy cookie; the new one carries the same value.
       appendSetCookie(

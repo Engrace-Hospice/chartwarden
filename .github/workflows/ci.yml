@@ -106,6 +106,8 @@ jobs:
           - { name: "M4 Audit", script: "test:rls:live:m4" }
           - { name: "M5 Patient", script: "test:rls:live:m5" }
           - { name: "M1 Foundation", script: "test:rls:live:m1" }
+          - { name: "M1 slug aliases", script: "test:m1:slug-alias:live" }
+          - { name: "M1 tenant host", script: "test:m1:tenant-host:live" }
           - { name: "M2 Identity", script: "test:rls:live:m2" }
           - { name: "M3 Authorization", script: "test:rls:live:m3" }
           - { name: "M6 Admission", script: "test:rls:live:m6" }

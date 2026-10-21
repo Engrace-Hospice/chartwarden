@@ -29,7 +29,7 @@ export interface EnvProblem {
 /** A required-in-production secret + an optional strength rule (returns a problem string, or null when OK). */
 interface Requirement {
   readonly key: string;
-  readonly rule?: (value: string) => string | null;
+  readonly rule?: (value: string, env: EnvLike) => string | null;
   /** A requirement may belong to an explicitly disabled integration capability. */
   readonly when?: (env: EnvLike) => boolean;
 }
@@ -119,6 +119,22 @@ const REQUIREMENTS: readonly Requirement[] = [
         }
       }
       return null;
+    },
+  },
+  {
+    // ADR-0049 D2 — optional: unset is single-host mode. Set, it must be a bare domain AND the passkey RP id must be
+    // that same domain (ADR-0049 D4: a WebAuthn RP id may be a registrable suffix of the origin, so one registration
+    // works on every tenant host; any other value would silently break passkeys on tenant hosts).
+    key: "TENANT_BASE_DOMAIN",
+    when: (env) => Boolean(env.TENANT_BASE_DOMAIN?.trim()),
+    rule: (value, env) => {
+      const domain = value.trim().toLowerCase();
+      if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
+        return "must be a bare domain such as chartwarden.com";
+      }
+      return env.PASSKEY_RP_ID?.trim().toLowerCase() === domain
+        ? null
+        : "PASSKEY_RP_ID must equal TENANT_BASE_DOMAIN";
     },
   },
   {
@@ -482,7 +498,7 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
       problems.push({ key, problem: "is required in production" });
       continue;
     }
-    const ruleProblem = rule?.(value);
+    const ruleProblem = rule?.(value, env);
     if (ruleProblem) {
       problems.push({ key, problem: ruleProblem });
       continue;

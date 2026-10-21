@@ -123,6 +123,7 @@ exports.MODULES = [
     dependsOn: [],
     ownedTables: [
       "organization",
+      "organization_slug_alias",
       "provider_entity",
       "location",
       "user",

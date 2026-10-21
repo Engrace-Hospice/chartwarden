@@ -257,4 +257,57 @@ describe("M2-T05 step-up route", () => {
       await app.close();
     });
   });
+  describe("ADR-0049 D6: the tenant host is the WebAuthn origin in subdomain mode", () => {
+    const ASSERTION = { credentialId: "c", authenticatorData: "a", clientDataJSON: "d", signature: "s" };
+
+    async function verifyOnHost(hostOrgHeader: string | undefined) {
+      const seen: Array<string | undefined> = [];
+      const app = buildServer({
+        authenticate: (request) => {
+          headerAuth(request);
+          const hostOrg = request.headers["x-test-host-org"];
+          if (typeof hostOrg === "string") request.context.attributes.tenantHostOrgId = hostOrg;
+        },
+        security: { rateLimitEnabled: false },
+      });
+      registerSessionStepUpRoutes(app, {
+        sessions: createFixedSessionResolver(SESSION),
+        writer: createInMemorySessionStepUpWriter().writer,
+        enrollment: createInMemoryMfaEnrollment({ user_1: ["webauthn"] }),
+        verifier: {
+          verify: (input) => {
+            seen.push(input.requestOrigin);
+            return { ok: true };
+          },
+        },
+        challenges: createInMemoryStepUpChallengeStore(),
+        audit: createInMemoryAuditExecutor().executor,
+        webauthnRpId: "wardenx.test",
+      });
+      const headers: Record<string, string> = { ...AUTH_HEADERS, host: "sunrise.chartwarden.com" };
+      if (hostOrgHeader) headers["x-test-host-org"] = hostOrgHeader;
+      const initiate = await app.inject({
+        method: "POST",
+        url: "/api/v1/sessions/step-up/initiate",
+        headers,
+        payload: { factor: "webauthn" },
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/sessions/step-up",
+        headers,
+        payload: { challengeId: initiate.json().challengeId, factor: "webauthn", assertion: ASSERTION },
+      });
+      await app.close();
+      return seen;
+    }
+
+    it("passes https://<host> to the verifier when the tenant-host guard stamped the request", async () => {
+      expect(await verifyOnHost(ORG)).toEqual(["https://sunrise.chartwarden.com"]);
+    });
+
+    it("passes nothing in single-host mode", async () => {
+      expect(await verifyOnHost(undefined)).toEqual([undefined]);
+    });
+  });
 });

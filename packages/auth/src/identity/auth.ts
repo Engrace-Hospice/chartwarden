@@ -22,6 +22,8 @@ import { passkey } from "@better-auth/passkey";
 // session seams (M2-T07) land in their own tasks.
 import { type DbClient, schema } from "@chartwarden/db";
 import { betterAuth } from "better-auth";
+import { hostOnlyCookieOptions } from "./host-only-cookies";
+import type { TenantOriginMatcher } from "./tenant-origin";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
@@ -82,6 +84,12 @@ export interface IdentityAuthOptions {
   readonly auditSink?: AuthAuditSink;
   /** Called when the audit sink rejects; a failed audit write never fails the password reset. */
   readonly onAuditError?: (err: unknown, event: AuthAuditEvent) => void;
+  /**
+   * ADR-0049 D6 — subdomain mode. A request whose Origin is `https://<live tenant>.<base domain>` is trusted by
+   * rule on top of the static allowlist, and the passkey ceremony takes the (already validated) request origin.
+   * Omitted in single-host mode, which keeps the static allowlist byte for byte.
+   */
+  readonly tenantOrigins?: TenantOriginMatcher;
 }
 
 /** The header the invitee's sign-up carries; its value is the one-time invitation token. */
@@ -312,12 +320,29 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // check rejects it (INVALID_ORIGIN). `trustedOrigins` is the additive allowlist for those front-end
     // hosts (comma-separated `TRUSTED_ORIGINS`); dev falls back to the Vite origin. `baseURL` is always
     // trusted regardless, so production that serves the SPA same-origin needs no entry here.
-    trustedOrigins: resolveTrustedOrigins(),
+    trustedOrigins: options.tenantOrigins
+      ? async (request?: Request) => {
+          const origin = request?.headers.get("origin");
+          const fixed = resolveTrustedOrigins();
+          if (!origin || !request) return fixed;
+          // A tenant origin is only valid for its own host (tenant hosts are same-site, so a sibling tenant's page
+          // must not pass); the lookup runs only once the host matches.
+          const requestHost = request.headers.get("host")?.toLowerCase() ?? new URL(request.url).host;
+          let originHost: string;
+          try {
+            originHost = new URL(origin).host;
+          } catch {
+            return fixed;
+          }
+          if (originHost !== requestHost) return fixed;
+          return (await options.tenantOrigins?.isTrusted(origin)) ? [...fixed, origin] : fixed;
+        }
+      : resolveTrustedOrigins(),
     // M1's identity PKs are `uuid` (defaultRandom) — Better Auth's default id generator emits non-UUID
     // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
     // text id. (ADR-0033.)
-    advanced: { database: { generateId: () => crypto.randomUUID() } },
+    advanced: { database: { generateId: () => crypto.randomUUID() }, ...hostOnlyCookieOptions() },
     // ADR-0034: wrap the Drizzle adapter so the twoFactor secret + backup codes are AES-256-GCM-encrypted
     // at rest (Better Auth's plugin stores them plaintext). The key loads lazily (only on a 2FA op), so
     // construction never requires TWO_FACTOR_ENCRYPTION_KEY. `database` accepts an adapter factory
@@ -416,7 +441,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       passkey({
         rpName: "ChartWarden",
         rpID: resolvePasskeyRpId(),
-        origin: [...resolvePasskeyOrigins()],
+        // Subdomain mode: Better Auth's global origin check (trustedOrigins above) has already validated the
+        // request Origin, and `null` makes the ceremony expect exactly that origin.
+        origin: options.tenantOrigins ? null : [...resolvePasskeyOrigins()],
         // Field-map: Better Auth's `credentialID` → M1's drizzle property `credentialId` (the other
         // passkey fields — publicKey/deviceType/backedUp/transports/counter/aaguid — already match the
         // M1 bindings). The WebAuthn ceremony is browser-only, so this is e2e- (not CI-) verified.

@@ -38,6 +38,8 @@ export interface RealtimeOptions {
   readonly stillValid: (principal: RealtimePrincipal) => Promise<boolean>;
   /** Browser origins allowed to open a socket; an absent Origin header (non-browser client) is allowed. */
   readonly trustedOrigins: readonly string[];
+  /** ADR-0049 D6 — subdomain mode: an origin outside `trustedOrigins` is also accepted when this rule trusts it. */
+  readonly tenantOrigins?: { isTrusted(origin: string): Promise<boolean> };
   readonly maxSocketsPerUser?: number;
   readonly recheckIntervalMs?: number;
   /** Handshake attempts per client key per minute (default 60); over it the request is refused BEFORE any DB work. */
@@ -120,46 +122,75 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
     transports: ["websocket", "polling"],
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
-      if (origin && !trusted.has(origin)) {
+      const refuseOrigin = () => {
         log("realtime.refused", { reason: "origin" });
         callback("unauthorized", false);
-        return;
-      }
-      // Cheapest check first: nothing below touches the database once the client budget is spent. The per-session
-      // budget is charged AFTER authentication, on the session id the authenticator resolved: keying on the raw cookie
-      // would have to mirror its parsing (decoding, quoting, which cookie name it reads), and any difference lets a
-      // caller mint a fresh bucket per request. A throw here fails closed.
-      try {
-        if (!clientLimiter.allow(clientKey(req))) {
-          log("realtime.refused", { reason: "rate_limited" });
-          callback("unauthorized", false);
-          return;
+      };
+      if (origin && !trusted.has(origin)) {
+        if (!options.tenantOrigins) return refuseOrigin();
+        // A tenant origin is only valid for its own host: tenant hosts are same-site, so without this a page on one
+        // tenant could open a socket to another tenant's host with the user's cookie.
+        let originHost: string;
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          return refuseOrigin();
         }
-      } catch {
-        log("realtime.refused", { reason: "throttle_error" });
-        callback("unauthorized", false);
+        if (originHost !== req.headers.host?.toLowerCase()) return refuseOrigin();
+        // The client budget is charged before the (database-backed) tenant lookup, so unknown hosts cannot drive it.
+        if (!throttle()) return;
+        // A throw or rejection fails closed.
+        options.tenantOrigins
+          .isTrusted(origin)
+          .then((ok) => (ok ? admit(true) : refuseOrigin()))
+          .catch(refuseOrigin);
         return;
       }
-      options
-        .authenticate(req.headers)
-        .then((principal) => {
-          if (!principal) {
-            log("realtime.refused", { reason: "unauthenticated" });
+      admit(false);
+
+      /** Charges the per-client budget; false means the request was already answered. A throw fails closed. */
+      function throttle(): boolean {
+        try {
+          if (!clientLimiter.allow(clientKey(req))) {
+            log("realtime.refused", { reason: "rate_limited" });
             callback("unauthorized", false);
-            return;
+            return false;
           }
-          if (!sessionLimiter.allow(principal.sessionId)) {
-            log("realtime.refused", { reason: "rate_limited_session", userId: principal.userId });
-            callback("unauthorized", false);
-            return;
-          }
-          principals.set(req, principal);
-          callback(null, true);
-        })
-        .catch(() => {
-          log("realtime.refused", { reason: "auth_error" });
+        } catch {
+          log("realtime.refused", { reason: "throttle_error" });
           callback("unauthorized", false);
-        });
+          return false;
+        }
+        return true;
+      }
+
+      function admit(alreadyThrottled: boolean): void {
+        // Cheapest check first: nothing below touches the database once the client budget is spent. The per-session
+        // budget is charged AFTER authentication, on the session id the authenticator resolved: keying on the raw cookie
+        // would have to mirror its parsing (decoding, quoting, which cookie name it reads), and any difference lets a
+        // caller mint a fresh bucket per request.
+        if (!alreadyThrottled && !throttle()) return;
+        options
+          .authenticate(req.headers)
+          .then((principal) => {
+            if (!principal) {
+              log("realtime.refused", { reason: "unauthenticated" });
+              callback("unauthorized", false);
+              return;
+            }
+            if (!sessionLimiter.allow(principal.sessionId)) {
+              log("realtime.refused", { reason: "rate_limited_session", userId: principal.userId });
+              callback("unauthorized", false);
+              return;
+            }
+            principals.set(req, principal);
+            callback(null, true);
+          })
+          .catch(() => {
+            log("realtime.refused", { reason: "auth_error" });
+            callback("unauthorized", false);
+          });
+      }
     },
   });
 

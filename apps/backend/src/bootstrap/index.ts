@@ -21,6 +21,7 @@ import { buildLoggerOptions } from "./plugins/logger";
 import { applyReadAuditCoverage } from "./plugins/read-audit";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
+import type { TenantHostGuard } from "./tenant-host";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
 import { registerOpsOutboxRoutes } from "./routes/ops-outbox";
 import {
@@ -43,6 +44,11 @@ export interface ServerDeps {
   idempotencyStore?: IdempotencyStore;
   readinessProbe?: ReadinessProbe;
   authenticate?: AuthenticateHook;
+  /**
+   * ADR-0049 — the per-tenant-host guard (`createTenantHostGuard`); absent in single-host mode. Registered right
+   * after `authenticate`, because the host-vs-session org check reads the org that hook stamps.
+   */
+  tenantHost?: TenantHostGuard | null;
   security?: SecurityOptions;
   /** Double-submit-cookie CSRF protection (WX-PR-017). Defaults to enabled. */
   csrf?: CsrfOptions;
@@ -317,6 +323,8 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     });
   }
   applySecurityBaseline(app, deps.security); // CORS + rate-limit read the (now-auth'd) context
+  // After the rate limiter: an unknown `<x>.<base>` host costs a database lookup, so it must be throttled first.
+  if (deps.tenantHost) app.addHook("onRequest", deps.tenantHost);
   applyErrorHandler(app);
   applyIdempotency(app, deps.idempotencyStore ?? createInMemoryIdempotencyStore());
   // PHI read-audit (M4 §2.5): coverage gate refuses a GET/HEAD under a covered PHI prefix lacking a
@@ -360,5 +368,7 @@ export * from "./plugins/idempotency";
 export * from "./routes/health";
 export * from "./routes/system";
 export * from "./plugins/authenticate";
+export * from "./tenant-host";
+export * from "./tenant-host-resolver-db";
 export * from "./env";
 export type * from "./interfaces";

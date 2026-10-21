@@ -242,6 +242,17 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const actor = await resolveActor(deps, request);
     const organizationId = readString(request.body, "organizationId");
     if (actor.organizationId) throw orgAlreadyBound(); // one-time binding (§4.2)
+    // ADR-0049 D4 — on a tenant host the session's org is pinned to that host: the picker becomes navigation between
+    // hosts, not an in-session switch. The key is stamped by the tenant-host guard (bootstrap/tenant-host.ts) from the
+    // host's own resolution, never from the request body; absent in single-host mode.
+    const hostOrganizationId = request.context.attributes?.tenantHostOrgId;
+    if (typeof hostOrganizationId === "string" && hostOrganizationId !== organizationId) {
+      throw new ChartWardenError(
+        "TENANT_HOST_MISMATCH",
+        "this address serves a different organization; sign in on that organization's address",
+        403,
+      );
+    }
 
     const membership = await deps.memberships.findActive(actor.userId, organizationId);
     if (!membership) throw noActiveMembership();

@@ -70,3 +70,4 @@ export * from "./messaging-review";
 export * from "./messaging-promotion";
 export * from "./messaging-xss-corpus";
 export * from "./mrn";
+export * from "./tenant-slug";

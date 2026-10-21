@@ -94,6 +94,10 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     producer:
       "authenticate hook — resolved through `stepUpFreshFor` against the real session state and the platform-floor policy (F-029). Floor answer only; `requireStepUp(opKey)` is the per-operation form.",
   },
+  tenantHostOrgId: {
+    producer:
+      "tenant-host guard — the organization the request HOST resolves to (ADR-0049), stamped only on a known tenant host from the guard's own database lookup, never from a header or body; read by select-organization to pin the session's org to its host (bootstrap/tenant-host.ts).",
+  },
   orgTimezone: {
     producer:
       "M17 scheduling routes — stamped per request from the org's configured IANA zone before the visit-window predicates read it.",
