@@ -118,14 +118,17 @@ Bucket inventory (code/config references):
 | Audit webhook target id | `compose.yml` `MINIO_AUDIT_WEBHOOK_*_wardenx` (suffix is the target name) |
 | Docs | `deploy/production/README.md`, `docs/` (other owner) |
 
-Prerequisite code change (do in a PR BEFORE the data move, not part of this branch): add
-`arn:aws:s3:::chartwarden-*` and `.../chartwarden-*/*` to the `wardenx-app` policy in `compose.yml`
-(keep the `wardenx-*` entries until cleanup), and change `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET`
-to the new names. Deploying that policy first is additive and safe. The `minio-provision` one-shot applies the policy,
-so confirm the deploy re-ran it (check `mc admin policy info local wardenx-app`) BEFORE any cutover. Only then may
-`TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`; setting it first makes every
-terminology read/write fail with AccessDenied because the policy still only allows `wardenx-*`.
-`READINESS_PROBE_BUCKET` is hardcoded (not env-overridable), so that bucket needs the code change.
+Order of the bucket change (production holds only `tenant-*` buckets today; neither `wardenx-platform-terminology` nor
+`wardenx-readiness` exists on disk, so no data copy is needed unless a terminology release has been uploaded since):
+1. Policy PR (additive, done first): the `wardenx-app` policy in `compose.yml` also allows `chartwarden-*`. After its deploy,
+   confirm with `mc admin policy info local wardenx-app` that both prefixes are present.
+2. Code PR (only after step 1 is live): `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET` switch to the new names.
+3. Cleanup (after the rollback window): drop the `wardenx-*` entries and rename the policy/account.
+
+Only after step 1 is deployed may `TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`;
+setting it earlier makes every terminology read/write fail with AccessDenied because the policy would still only allow
+`wardenx-*`. `minio-provision` re-applies the policy on every deploy, before api/worker are recreated. `READINESS_PROBE_BUCKET`
+is hardcoded (not env-overridable), so that bucket needs the code change (step 2).
 
 Procedure (on the VPS; `mc` alias `local` points at the MinIO root):
 
