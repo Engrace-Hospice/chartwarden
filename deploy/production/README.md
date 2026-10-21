@@ -71,7 +71,7 @@ are not rolled back.
 
 - **`docling-worker`** — DocLens OCR + layout, CPU-only, models baked into the image, reachable only on the compose
   network with the `DOCLING_WORKER_TOKEN` bearer. The release builds, scans (fixable HIGH/CRITICAL fail the release; unfixed ones are ignored), signs and
-  attests `ghcr.io/<owner>/wardenx-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
+  attests `ghcr.io/<owner>/chartwarden-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
 - **`minio-provision`** — a one-shot that creates the `wardenx-app` policy and the service account the api/worker use
@@ -241,6 +241,8 @@ export DEPLOY_USER="deploy"
 export DEPLOY_PORT="22"
 
 SHA="94b4ca9dfb56e3c1d0551d08e18b78532e26728f"
+# Image names: releases built before the infra rename were published as `wardenx` / `wardenx-web` (and
+# `wardenx-docling-worker`); newer ones as `chartwarden*`. Use the name the target SHA was published under.
 BACKEND_IMAGE="ghcr.io/engrace-hospice/wardenx:sha-${SHA}"
 WEB_IMAGE="ghcr.io/engrace-hospice/wardenx-web:sha-${SHA}"
 

@@ -2,8 +2,11 @@
 # Deploy an already-published, immutable WardenX image on the single-VPS Compose topology.
 #
 # The workflow uploads this file on each release, then invokes it as:
-#   ./deploy.sh ghcr.io/owner/wardenx:sha-<sha> ghcr.io/owner/wardenx-web:sha-<sha> \
-#               ghcr.io/owner/wardenx-docling-worker:sha-<sha>
+#   ./deploy.sh ghcr.io/owner/chartwarden:sha-<sha> ghcr.io/owner/chartwarden-web:sha-<sha> \
+#               ghcr.io/owner/chartwarden-docling-worker:sha-<sha>
+#
+# Releases published before the infra rename used the image names wardenx / wardenx-web /
+# wardenx-docling-worker. Both spellings are accepted so a rollback to such a release still works.
 #
 # The third argument (the DocLens docling-worker image, GAP-138) is optional so a rollback or a hand
 # deploy of an older release that predates the image still works; without it the already-configured
@@ -22,16 +25,16 @@ backend_image=$1
 web_image=$2
 docling_image=${3:-}
 case "$backend_image" in
-  ghcr.io/*/wardenx:sha-*) ;;
+  ghcr.io/[!/]*/chartwarden:sha-*|ghcr.io/[!/]*/wardenx:sha-*) ;;
   *) echo "refusing non-immutable backend image: $backend_image" >&2; exit 64 ;;
 esac
 case "$web_image" in
-  ghcr.io/*/wardenx-web:sha-*) ;;
+  ghcr.io/[!/]*/chartwarden-web:sha-*|ghcr.io/[!/]*/wardenx-web:sha-*) ;;
   *) echo "refusing non-immutable web image: $web_image" >&2; exit 64 ;;
 esac
 
 case "$docling_image" in
-  ''|ghcr.io/*/wardenx-docling-worker:sha-*) ;;
+  ''|ghcr.io/[!/]*/chartwarden-docling-worker:sha-*|ghcr.io/[!/]*/wardenx-docling-worker:sha-*) ;;
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
 esac
 

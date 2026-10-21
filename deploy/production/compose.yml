@@ -121,7 +121,7 @@ services:
   # and passed to deploy.sh by deploy.yml. api/worker deliberately do NOT `depends_on` it: a down worker
   # degrades DocLens to a typed 503, it must never block the rest of the EHR from starting or rolling back.
   docling-worker:
-    image: ${CHARTWARDEN_DOCLING_IMAGE:-ghcr.io/engrace-hospice/wardenx-docling-worker:unset}
+    image: ${CHARTWARDEN_DOCLING_IMAGE:-ghcr.io/engrace-hospice/chartwarden-docling-worker:unset}
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -387,7 +387,7 @@ services:
     profiles: ["seed"]
     extends:
       service: api
-    container_name: wardenx-seed-api
+    container_name: chartwarden-seed-api
     restart: "no"
     ports: !reset []
     environment:
