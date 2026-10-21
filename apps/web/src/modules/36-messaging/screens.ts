@@ -38,6 +38,10 @@ const RetentionGovernance = lazy(() =>
 const BreakGlassReview = lazy(() =>
   import("./break-glass-review").then((m) => ({ default: m.BreakGlassReview })),
 );
+const ExportMine = lazy(() => import("./export-mine").then((m) => ({ default: m.ExportMine })));
+const ExportApprovals = lazy(() =>
+  import("./export-approvals").then((m) => ({ default: m.ExportApprovals })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -124,6 +128,24 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.break_glass.review",
       screen: BreakGlassReview,
+    },
+    {
+      // WP 5.7 (ADR-0089, proposed): the caller's own message exports and the request entry (the entry also needs the tenant flag messaging.export).
+      id: "messaging.export",
+      path: "/messaging/export",
+      title: "Message exports",
+      navGroup: "Admin",
+      requiredPermission: "messaging.export.request",
+      screen: ExportMine,
+    },
+    {
+      // WP 5.7 (ADR-0089, proposed): the approver queue for message exports. Approving never depends on the tenant flag.
+      id: "messaging.export-approvals",
+      path: "/messaging/governance/export-approvals",
+      title: "Export approvals",
+      navGroup: "Admin",
+      requiredPermission: "messaging.export.approve",
+      screen: ExportApprovals,
     },
     {
       id: "messaging.saved-replies",

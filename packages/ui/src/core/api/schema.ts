@@ -14775,6 +14775,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a scoped messaging export (messaging.export.request + a fresh step-up for `messaging.export.request`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.export is off). Exactly one of channelId or patientId (a patient's care-team and bereavement channels), an optional date range of at most 366 days (both dates or neither), a justification of 20 to 280 characters (requester and approver only). Nothing is built until a SECOND person approves. Every refusal (flag off, a role without the permission, an excluded role category, an unknown or another tenant's channel, a patient with no channel) is the same 404; 429 EXPORT_LIMIT beyond 3 live or 10 requests a day. Publishes m36.export.requested (ids only) and alerts the approvers */
+        post: operations["postApiV1MessagingExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One export job with its justification and decision note (messaging.export.request or messaging.export.approve; only the requester or an approver, anyone else and an unknown id are the same 404). `downloadable` is true only for the requester while the job is ready and unexpired on the database clock. Read-audited. Not cached */
+        get: operations["getApiV1MessagingExportById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve an export (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403). Only a pending job: 409 EXPORT_ALREADY_DECIDED otherwise. Publishes m36.export.approved, which the builder consumes; the flag does not gate this */
+        post: operations["postApiV1MessagingExportByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the caller's own export while it is still pending (messaging.export.request). Someone else's job and an unknown id are the same 404; 409 EXPORT_ALREADY_DECIDED once decided */
+        post: operations["postApiV1MessagingExportByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited */
+        get: operations["getApiV1MessagingExportByIdDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject an export with an optional note (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403); 409 EXPORT_ALREADY_DECIDED unless pending. Publishes m36.export.rejected */
+        post: operations["postApiV1MessagingExportByIdReject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own export jobs, newest first (messaging.export.request): id, closed status, scope ids, counts and instants. No justification and no message. Not cached */
+        get: operations["getApiV1MessagingExportMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/export/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The approvers' queue (messaging.export.approve): jobs waiting for a decision, oldest first, never the caller's own. Ids, scope ids, the requester's name and instants; no justification and no message. Not cached */
+        get: operations["getApiV1MessagingExportPending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/global-search/settings": {
         parameters: {
             query?: never;
@@ -68837,6 +68973,401 @@ export interface operations {
                             overdue: number;
                             failed_unreachable: number;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeKind: "channel" | "patient";
+                    channelId?: string;
+                    patientId?: string;
+                    dateFrom?: string;
+                    dateTo?: string;
+                    justification: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        requestedBy: string;
+                        requestedByName: string | null;
+                        requestedAt: string;
+                        scope: {
+                            scopeKind: "channel" | "patient";
+                            channelId: string | null;
+                            patientId: string | null;
+                            dateFrom: string | null;
+                            dateTo: string | null;
+                        };
+                        decidedBy: string | null;
+                        decidedAt: string | null;
+                        readyAt: string | null;
+                        expiresAt: string | null;
+                        messageCount: number | null;
+                        heldExcluded: number | null;
+                        part2Excluded: number | null;
+                        downloadCount: number;
+                        failureCode: string | null;
+                        justification: string;
+                        decisionNote: string | null;
+                        buildingAt: string | null;
+                        artefactBytes: number | null;
+                        artefactSha256: string | null;
+                        downloadable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingExportById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        requestedBy: string;
+                        requestedByName: string | null;
+                        requestedAt: string;
+                        scope: {
+                            scopeKind: "channel" | "patient";
+                            channelId: string | null;
+                            patientId: string | null;
+                            dateFrom: string | null;
+                            dateTo: string | null;
+                        };
+                        decidedBy: string | null;
+                        decidedAt: string | null;
+                        readyAt: string | null;
+                        expiresAt: string | null;
+                        messageCount: number | null;
+                        heldExcluded: number | null;
+                        part2Excluded: number | null;
+                        downloadCount: number;
+                        failureCode: string | null;
+                        justification: string;
+                        decisionNote: string | null;
+                        buildingAt: string | null;
+                        artefactBytes: number | null;
+                        artefactSha256: string | null;
+                        downloadable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExportByIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        requestedBy: string;
+                        requestedByName: string | null;
+                        requestedAt: string;
+                        scope: {
+                            scopeKind: "channel" | "patient";
+                            channelId: string | null;
+                            patientId: string | null;
+                            dateFrom: string | null;
+                            dateTo: string | null;
+                        };
+                        decidedBy: string | null;
+                        decidedAt: string | null;
+                        readyAt: string | null;
+                        expiresAt: string | null;
+                        messageCount: number | null;
+                        heldExcluded: number | null;
+                        part2Excluded: number | null;
+                        downloadCount: number;
+                        failureCode: string | null;
+                        justification: string;
+                        decisionNote: string | null;
+                        buildingAt: string | null;
+                        artefactBytes: number | null;
+                        artefactSha256: string | null;
+                        downloadable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExportByIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        requestedBy: string;
+                        requestedByName: string | null;
+                        requestedAt: string;
+                        scope: {
+                            scopeKind: "channel" | "patient";
+                            channelId: string | null;
+                            patientId: string | null;
+                            dateFrom: string | null;
+                            dateTo: string | null;
+                        };
+                        decidedBy: string | null;
+                        decidedAt: string | null;
+                        readyAt: string | null;
+                        expiresAt: string | null;
+                        messageCount: number | null;
+                        heldExcluded: number | null;
+                        part2Excluded: number | null;
+                        downloadCount: number;
+                        failureCode: string | null;
+                        justification: string;
+                        decisionNote: string | null;
+                        buildingAt: string | null;
+                        artefactBytes: number | null;
+                        artefactSha256: string | null;
+                        downloadable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingExportByIdDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingExportByIdReject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        requestedBy: string;
+                        requestedByName: string | null;
+                        requestedAt: string;
+                        scope: {
+                            scopeKind: "channel" | "patient";
+                            channelId: string | null;
+                            patientId: string | null;
+                            dateFrom: string | null;
+                            dateTo: string | null;
+                        };
+                        decidedBy: string | null;
+                        decidedAt: string | null;
+                        readyAt: string | null;
+                        expiresAt: string | null;
+                        messageCount: number | null;
+                        heldExcluded: number | null;
+                        part2Excluded: number | null;
+                        downloadCount: number;
+                        failureCode: string | null;
+                        justification: string;
+                        decisionNote: string | null;
+                        buildingAt: string | null;
+                        artefactBytes: number | null;
+                        artefactSha256: string | null;
+                        downloadable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingExportMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        jobs: {
+                            id: string;
+                            status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            requestedBy: string;
+                            requestedByName: string | null;
+                            requestedAt: string;
+                            scope: {
+                                scopeKind: "channel" | "patient";
+                                channelId: string | null;
+                                patientId: string | null;
+                                dateFrom: string | null;
+                                dateTo: string | null;
+                            };
+                            decidedBy: string | null;
+                            decidedAt: string | null;
+                            readyAt: string | null;
+                            expiresAt: string | null;
+                            messageCount: number | null;
+                            heldExcluded: number | null;
+                            part2Excluded: number | null;
+                            downloadCount: number;
+                            failureCode: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingExportPending: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        jobs: {
+                            id: string;
+                            status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            requestedBy: string;
+                            requestedByName: string | null;
+                            requestedAt: string;
+                            scope: {
+                                scopeKind: "channel" | "patient";
+                                channelId: string | null;
+                                patientId: string | null;
+                                dateFrom: string | null;
+                                dateTo: string | null;
+                            };
+                            decidedBy: string | null;
+                            decidedAt: string | null;
+                            readyAt: string | null;
+                            expiresAt: string | null;
+                            messageCount: number | null;
+                            heldExcluded: number | null;
+                            part2Excluded: number | null;
+                            downloadCount: number;
+                            failureCode: string | null;
+                        }[];
                     };
                 };
             };

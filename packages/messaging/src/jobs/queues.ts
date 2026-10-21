@@ -52,6 +52,8 @@ export const MESSAGING_QUEUES = {
   ackEscalationSweep: "messaging.ack_escalation_sweep",
   reminderSweep: "messaging.reminder_sweep",
   breakGlassReviewSweep: "messaging.break_glass_review_sweep",
+  exportBuild: "messaging.export_build",
+  exportExpirySweep: "messaging.export_expiry_sweep",
 } as const;
 
 /** A queue name from the catalog. */
@@ -233,6 +235,32 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "alert correlationId = break-glass:<reviewId>:overdue; the (organization, correlation_id) alert dedupe absorbs a repeat emit",
   },
+  // WP 5.7 (ADR-0089): builds ONE approved export into its encrypted artefact. Enqueued by the `m36.export.approved` consumer with the job id as
+  // the BullMQ job id; the build claims the row approved -> building (a guarded forward-only transition), so a duplicate or retried job is a
+  // no-op. Concurrency 1: a build pages up to 50 000 messages. Runs for flag-off tenants too (approval already happened).
+  "messaging.export_build": {
+    name: "messaging.export_build",
+    priority: 5,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.export_build.dlq",
+    idempotency:
+      "jobId = export job id; the build claims approved -> building under the guard trigger, so a repeat finds a job already past approved and does nothing",
+  },
+  // WP 5.7: an hourly sweep that deletes the stored artefact of every ready export past its 24 h expiry and moves it ready -> expired (the guard
+  // nulls the wrapped key). Each job is its own transaction; an object already gone is fine. Flag-independent: an artefact must expire even
+  // when the feature is switched off.
+  "messaging.export_expiry_sweep": {
+    name: "messaging.export_expiry_sweep",
+    priority: 5,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.export_expiry_sweep.dlq",
+    idempotency:
+      "export job id; ready -> expired is guarded (expires_at <= now(), DB clock) and the object delete tolerates an already-gone object",
+  },
   // WP 4.4 (ADR-0070): ONE delayed job per (request, tier, window deadline) with a deterministic job id, so a duplicate add is a
   // no-op. The job only WAKES the escalation: the database decides what is due and the guarded write decides who escalates, so a
   // retry, a duplicate or a second worker cannot escalate twice. Five attempts with exponential backoff; a payload that is not
@@ -301,4 +329,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   reminderSweep: "* * * * *",
   /** break_glass_review_sweep: hourly at :20 (alerts the compliance reviewers to a review still open three days after its grant ended). */
   breakGlassReviewSweep: "20 * * * *",
+  /** export_expiry_sweep: hourly at :40 (deletes the artefact of each export past its 24 h link and marks it expired). */
+  exportExpirySweep: "40 * * * *",
 } as const;

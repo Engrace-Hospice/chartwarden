@@ -612,4 +612,79 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // WP 5.7 (ADR-0089, PROPOSED): restricted messaging export. PHI-free by construction: the job id, the organisation and actor ids and instants.
+  // Never the justification, a decision note, a scope id, a name or a message. Each is published in the same transaction as the write.
+  {
+    eventName: "m36.export.requested",
+    moduleOwner: "m36",
+    description:
+      "A user asked for a scoped messaging export (WP 5.7, ADR-0089). The job id, the requester and one instant; never the scope or the justification. Published in the same transaction as the job. M36 tells the approvers with one generic in-app alert (rule m36.export.requested, the holders of messaging.export.approve, the tenant administrators when nobody holds it).",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, requestedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.export.approved",
+    moduleOwner: "m36",
+    description:
+      "A second person approved a messaging export (WP 5.7, ADR-0089). Ids and one instant; never the note. Published in the same transaction as the decision (pending_approval -> approved). The M36 export builder consumes it to build the artefact (approved -> building -> ready | failed).",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, requestedBy: id, decidedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.export.rejected",
+    moduleOwner: "m36",
+    description:
+      "A second person rejected a messaging export (WP 5.7, ADR-0089). Ids and one instant; never the note. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, requestedBy: id, decidedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.export.ready",
+    moduleOwner: "m36",
+    description:
+      "A messaging export artefact was built and is downloadable until expiresAt (WP 5.7, ADR-0089; published by the builder in the same transaction as approved/building -> ready). Ids and two instants. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, requestedBy: id, at: isoInstant, expiresAt: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.export.downloaded",
+    moduleOwner: "m36",
+    description:
+      "The requester downloaded a messaging export (WP 5.7, ADR-0089). Ids and one instant. Published in the same transaction as the download trail row and the count bump. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, downloadedBy: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.export.expired",
+    moduleOwner: "m36",
+    description:
+      "A messaging export's link expired and its artefact was deleted (WP 5.7, ADR-0089; published by the expiry sweep). Ids and one instant. Trail only: no consumer.",
+    payloadSchema: Type.Object(
+      { organizationId: id, jobId: id, at: isoInstant },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

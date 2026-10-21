@@ -20,10 +20,10 @@ import {
   createDbSessionContextStore,
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
-  createTenantOriginMatcher,
   createIdentityCredentialAdmin,
   createInMemoryFailedLoginStore,
   createLinkSessionMinter,
+  createTenantOriginMatcher,
   getIdentitySession,
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
@@ -302,6 +302,7 @@ import {
   sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
+import { buildM36ExportBinding } from "./m36-export-binding";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
 import {
   M2_OUTBOX_EVENTS,
@@ -1461,6 +1462,13 @@ import {
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import {
+  buildM36ExportBuildConsumer,
+  createExportBuildEnqueuer,
+  registerM36ExportBuildWorker,
+  registerM36ExportExpiryWorker,
+  scheduleM36ExportExpiryJobs,
+} from "./modules/36-messaging/export/export-worker";
 import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
@@ -1553,6 +1561,7 @@ import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
+import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
 import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-consumers/feed-health-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 import { buildM36HandoffNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/handoff-notifications";
@@ -4220,7 +4229,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // than a guard that silently never runs.
   const tenantBaseDomain = parseTenantBaseDomain();
   if (tenantBaseDomain && !dbHandle) {
-    throw new Error("TENANT_BASE_DOMAIN is set but there is no database to resolve tenant hosts from");
+    throw new Error(
+      "TENANT_BASE_DOMAIN is set but there is no database to resolve tenant hosts from",
+    );
   }
   const tenantHostResolver =
     tenantBaseDomain && dbHandle
@@ -4490,6 +4501,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // Same `dbHandle`-gated swap shape as `featureFlagReader` immediately above; `system_status` carries no
   // RLS, so the reader is safe on the same handle with no org envelope (see the store file's own header).
   const systemStatusReader = dbHandle ? createDrizzleSystemStatusReader(dbHandle.db) : undefined;
+  // ── WP 5.7 export builder/sweep (ADR-0089, PROPOSED): the artefact builder, the download reader and the expiry sweep, bound once over the
+  // object store, the tenant KEK and the message body cipher; the build queue's enqueuer feeds the `m36.export.approved` consumer below.
+  const m36Export = dbHandle
+    ? buildM36ExportBinding({
+        db: dbHandle.db,
+        outbox: m36OutboxPublisher,
+        env: process.env,
+        kekRing: loadPlatformKekRing(process.env),
+        bodyCipher: m36MessageBodyCipher,
+      })
+    : null;
+  const m36ExportBuildEnqueuer = queueConnection
+    ? createExportBuildEnqueuer(queueConnection)
+    : null;
+  // ── end WP 5.7 export builder/sweep binding
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
@@ -4977,6 +5003,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
+            // ── WP 5.7 (ADR-0089, PROPOSED) restricted messaging export: request / decide / read side (B1). Requesting is behind the tenant
+            // flag `messaging.export`; approve, reject, cancel and download never are. The builder side adds `artefactReader` here.
+            messagingExport: {
+              flags: featureFlagReader,
+              holds: async (organizationId, userId, permissionKey) =>
+                (await resolveActorPermissions({ organizationId, userId })).has(permissionKey),
+              // WP 5.7 export builder/sweep: the decrypting reader the download route calls (absent => the download is refused 503).
+              ...(m36Export ? { artefactReader: m36Export.artefactReader } : {}),
+            },
+            // ── end WP 5.7 export mount
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
               flags: featureFlagReader,
@@ -9218,6 +9254,52 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     }
 
+    // ── WP 5.7 export builder/sweep (ADR-0089, PROPOSED) — `messaging.export_build` (event-driven: approved -> encrypted artefact) and
+    // `messaging.export_expiry_sweep` (hourly: deletes the artefact of each export past its 24 h link). Both run for flag-off tenants too: an
+    // approved export still builds and an artefact must still expire. The sweep's active-org fan-out needs the platform pool.
+    if (m36Export && m36ExportBuildEnqueuer) {
+      const m36ExportBuildWorkers = registerM36ExportBuildWorker({
+        connection: queueConnection,
+        builder: m36Export.builder,
+      });
+      attachDlqAlertsToAll(m36ExportBuildWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36ExportBuildWorkers.map((w) => w.close()));
+        await m36ExportBuildEnqueuer.queue.close();
+      });
+    }
+    if (m36Export && platformDbHandle) {
+      const m36ExportExpiryWorkers = registerM36ExportExpiryWorker({
+        connection: queueConnection,
+        expireForOrg: m36Export.sweep.expireForOrg,
+        activeOrgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+          reason: "M36 WP 5.7 export_expiry_sweep active-org fan-out",
+        }),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 export expiry sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36ExportExpiryWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36ExportExpiryWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36ExportExpiryQueues = await scheduleM36ExportExpiryJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36ExportExpiryQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 export expiry sweep schedule registration failed");
+      }
+    }
+    // ── end WP 5.7 export builder/sweep workers
+
     // ── M36 WP 4.10 — `messaging.reminder_sweep` (every minute): raises the alert of each reminder that came due and deletes the row.
     // A tenant with `messaging.notification_policy` off is skipped (its reminders wait). Active-org fan-out needs the platform pool.
     if (platformDbHandle && m36SnoozeReminders) {
@@ -10473,6 +10555,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM36BreakGlassNotificationsConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
           }),
+          // ── WP 5.7 (ADR-0089, PROPOSED) - one fixed-text in-app alert for the approvers when a messaging export is requested (B1).
+          buildM36ExportNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
+          // ── end WP 5.7 export notification consumer
+          // ── WP 5.7 export builder/sweep: an approved export becomes one build job (job id = export job id, so a redelivery is a no-op).
+          ...(m36ExportBuildEnqueuer
+            ? [buildM36ExportBuildConsumer({ enqueue: m36ExportBuildEnqueuer.enqueue })]
+            : []),
+          // ── end WP 5.7 export builder/sweep consumer
           buildM36MessageMentionConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),

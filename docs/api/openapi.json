@@ -174390,6 +174390,2249 @@
         }
       }
     },
+    "/api/v1/messaging/export": {
+      "post": {
+        "operationId": "postApiV1MessagingExport",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Request a scoped messaging export (messaging.export.request + a fresh step-up for `messaging.export.request`, else 403 STEP_UP_REQUIRED; 404 while the tenant flag messaging.export is off). Exactly one of channelId or patientId (a patient's care-team and bereavement channels), an optional date range of at most 366 days (both dates or neither), a justification of 20 to 280 characters (requester and approver only). Nothing is built until a SECOND person approves. Every refusal (flag off, a role without the permission, an excluded role category, an unknown or another tenant's channel, a patient with no channel) is the same 404; 429 EXPORT_LIMIT beyond 3 live or 10 requests a day. Publishes m36.export.requested (ids only) and alerts the approvers",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "requestedBy",
+                    "requestedByName",
+                    "requestedAt",
+                    "scope",
+                    "decidedBy",
+                    "decidedAt",
+                    "readyAt",
+                    "expiresAt",
+                    "messageCount",
+                    "heldExcluded",
+                    "part2Excluded",
+                    "downloadCount",
+                    "failureCode",
+                    "justification",
+                    "decisionNote",
+                    "buildingAt",
+                    "artefactBytes",
+                    "artefactSha256",
+                    "downloadable"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_approval",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "requestedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "scopeKind",
+                        "channelId",
+                        "patientId",
+                        "dateFrom",
+                        "dateTo"
+                      ],
+                      "properties": {
+                        "scopeKind": {
+                          "anyOf": [
+                            {
+                              "const": "channel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateFrom": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readyAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messageCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "heldExcluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Excluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "buildingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactBytes": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "scopeKind",
+                  "justification"
+                ],
+                "properties": {
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "channel",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "channelId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "dateFrom": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "dateTo": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "justification": {
+                    "minLength": 20,
+                    "maxLength": 480,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/{id}": {
+      "get": {
+        "operationId": "getApiV1MessagingExportById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One export job with its justification and decision note (messaging.export.request or messaging.export.approve; only the requester or an approver, anyone else and an unknown id are the same 404). `downloadable` is true only for the requester while the job is ready and unexpired on the database clock. Read-audited. Not cached",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "requestedBy",
+                    "requestedByName",
+                    "requestedAt",
+                    "scope",
+                    "decidedBy",
+                    "decidedAt",
+                    "readyAt",
+                    "expiresAt",
+                    "messageCount",
+                    "heldExcluded",
+                    "part2Excluded",
+                    "downloadCount",
+                    "failureCode",
+                    "justification",
+                    "decisionNote",
+                    "buildingAt",
+                    "artefactBytes",
+                    "artefactSha256",
+                    "downloadable"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_approval",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "requestedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "scopeKind",
+                        "channelId",
+                        "patientId",
+                        "dateFrom",
+                        "dateTo"
+                      ],
+                      "properties": {
+                        "scopeKind": {
+                          "anyOf": [
+                            {
+                              "const": "channel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateFrom": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readyAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messageCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "heldExcluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Excluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "buildingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactBytes": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1MessagingExportByIdApprove",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Approve an export (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403). Only a pending job: 409 EXPORT_ALREADY_DECIDED otherwise. Publishes m36.export.approved, which the builder consumes; the flag does not gate this",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "requestedBy",
+                    "requestedByName",
+                    "requestedAt",
+                    "scope",
+                    "decidedBy",
+                    "decidedAt",
+                    "readyAt",
+                    "expiresAt",
+                    "messageCount",
+                    "heldExcluded",
+                    "part2Excluded",
+                    "downloadCount",
+                    "failureCode",
+                    "justification",
+                    "decisionNote",
+                    "buildingAt",
+                    "artefactBytes",
+                    "artefactSha256",
+                    "downloadable"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_approval",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "requestedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "scopeKind",
+                        "channelId",
+                        "patientId",
+                        "dateFrom",
+                        "dateTo"
+                      ],
+                      "properties": {
+                        "scopeKind": {
+                          "anyOf": [
+                            {
+                              "const": "channel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateFrom": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readyAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messageCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "heldExcluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Excluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "buildingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactBytes": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "maxLength": 1200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1MessagingExportByIdCancel",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Cancel the caller's own export while it is still pending (messaging.export.request). Someone else's job and an unknown id are the same 404; 409 EXPORT_ALREADY_DECIDED once decided",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "requestedBy",
+                    "requestedByName",
+                    "requestedAt",
+                    "scope",
+                    "decidedBy",
+                    "decidedAt",
+                    "readyAt",
+                    "expiresAt",
+                    "messageCount",
+                    "heldExcluded",
+                    "part2Excluded",
+                    "downloadCount",
+                    "failureCode",
+                    "justification",
+                    "decisionNote",
+                    "buildingAt",
+                    "artefactBytes",
+                    "artefactSha256",
+                    "downloadable"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_approval",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "requestedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "scopeKind",
+                        "channelId",
+                        "patientId",
+                        "dateFrom",
+                        "dateTo"
+                      ],
+                      "properties": {
+                        "scopeKind": {
+                          "anyOf": [
+                            {
+                              "const": "channel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateFrom": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readyAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messageCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "heldExcluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Excluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "buildingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactBytes": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/{id}/download": {
+      "get": {
+        "operationId": "getApiV1MessagingExportByIdDownload",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/{id}/reject": {
+      "post": {
+        "operationId": "postApiV1MessagingExportByIdReject",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reject an export with an optional note (messaging.export.approve + a fresh step-up for `messaging.export.approve`). Never the requester's own (403); 409 EXPORT_ALREADY_DECIDED unless pending. Publishes m36.export.rejected",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "requestedBy",
+                    "requestedByName",
+                    "requestedAt",
+                    "scope",
+                    "decidedBy",
+                    "decidedAt",
+                    "readyAt",
+                    "expiresAt",
+                    "messageCount",
+                    "heldExcluded",
+                    "part2Excluded",
+                    "downloadCount",
+                    "failureCode",
+                    "justification",
+                    "decisionNote",
+                    "buildingAt",
+                    "artefactBytes",
+                    "artefactSha256",
+                    "downloadable"
+                  ],
+                  "properties": {
+                    "id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_approval",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    },
+                    "requestedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "scopeKind",
+                        "channelId",
+                        "patientId",
+                        "dateFrom",
+                        "dateTo"
+                      ],
+                      "properties": {
+                        "scopeKind": {
+                          "anyOf": [
+                            {
+                              "const": "channel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "channelId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateFrom": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dateTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readyAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messageCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "heldExcluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Excluded": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "justification": {
+                      "type": "string"
+                    },
+                    "decisionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "buildingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactBytes": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artefactSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "maxLength": 1200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/mine": {
+      "get": {
+        "operationId": "getApiV1MessagingExportMine",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own export jobs, newest first (messaging.export.request): id, closed status, scope ids, counts and instants. No justification and no message. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "jobs"
+                  ],
+                  "properties": {
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "requestedBy",
+                          "requestedByName",
+                          "requestedAt",
+                          "scope",
+                          "decidedBy",
+                          "decidedAt",
+                          "readyAt",
+                          "expiresAt",
+                          "messageCount",
+                          "heldExcluded",
+                          "part2Excluded",
+                          "downloadCount",
+                          "failureCode"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending_approval",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "building",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requestedBy": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "requestedByName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "object",
+                            "required": [
+                              "scopeKind",
+                              "channelId",
+                              "patientId",
+                              "dateFrom",
+                              "dateTo"
+                            ],
+                            "properties": {
+                              "scopeKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "channel",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "channelId": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patientId": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "dateFrom": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "dateTo": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "decidedBy": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decidedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "expiresAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "messageCount": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heldExcluded": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "part2Excluded": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "downloadCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "failureCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/export/pending": {
+      "get": {
+        "operationId": "getApiV1MessagingExportPending",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The approvers' queue (messaging.export.approve): jobs waiting for a decision, oldest first, never the caller's own. Ids, scope ids, the requester's name and instants; no justification and no message. Not cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "jobs"
+                  ],
+                  "properties": {
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "requestedBy",
+                          "requestedByName",
+                          "requestedAt",
+                          "scope",
+                          "decidedBy",
+                          "decidedAt",
+                          "readyAt",
+                          "expiresAt",
+                          "messageCount",
+                          "heldExcluded",
+                          "part2Excluded",
+                          "downloadCount",
+                          "failureCode"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending_approval",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "building",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requestedBy": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "requestedByName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "object",
+                            "required": [
+                              "scopeKind",
+                              "channelId",
+                              "patientId",
+                              "dateFrom",
+                              "dateTo"
+                            ],
+                            "properties": {
+                              "scopeKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "channel",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "channelId": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patientId": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "dateFrom": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "dateTo": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "decidedBy": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decidedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "expiresAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "messageCount": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heldExcluded": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "part2Excluded": {
+                            "anyOf": [
+                              {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "downloadCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "failureCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/global-search/settings": {
       "get": {
         "operationId": "getApiV1MessagingGlobalsearchSettings",

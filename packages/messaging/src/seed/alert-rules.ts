@@ -1155,6 +1155,24 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: true,
     enabled: true,
   },
+  // ── M36 restricted messaging export (WP 5.7, ADR-0089 PROPOSED) ─────────────────────────────────────────────────────
+  // `m36.export.requested` is published in the job's own transaction and delivered by M36's `export-notifications` consumer: one fixed-text
+  // alert (no name, scope or justification) per request, to the holders of messaging.export.approve, the tenant administrators as the
+  // backstop when nobody holds it. `system_locked`: an export of conversations waiting on a second person is an audit-critical control, so a
+  // tenant may tighten this rule but never disable, downgrade or re-route it (GAP-102 tighten-only floor).
+  {
+    eventType: "m36.export.requested",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "permission_holders",
+    resolverArgs: {
+      permissionKeys: ["messaging.export.approve"],
+      fallbackToTenantAdmins: true,
+    },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
   // ── M11 stuck lab-order recovery (F-201, #248) ─────────────────────────────────────────────────────────────────────
   // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
   // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a
@@ -1595,6 +1613,7 @@ export const SYSTEM_LOCKED_EVENT_TYPES = [
   "m3.breakglass.invoked",
   "m36.break_glass.granted",
   "m36.break_glass.review_overdue",
+  "m36.export.requested",
   "m20.safety.coverage_gap_detected",
   "m19.oncall.coverage_gap_detected",
   "m37.shift.rn_uncovered",
