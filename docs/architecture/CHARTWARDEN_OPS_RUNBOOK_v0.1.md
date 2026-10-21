@@ -353,7 +353,7 @@ Migrations follow the **two-phase pattern** for breaking changes (Architecture v
 # Verify it's additive: adds columns/tables, no DROP, no RENAME of existing columns
 
 # 2. Take pre-migration backup
-ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=wardenx --type=incr --tag=pre-migration-<sha> backup"
+ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden --type=incr --tag=pre-migration-<sha> backup"
 
 # 3. Run migration against primary
 # scripts/db/migrate.ts is the real production migration path (TASK-040E, OPS-016) — a
@@ -1135,17 +1135,17 @@ NEW_PASS=$(openssl rand -base64 48)
 # Approach: create new stanza with new cipher; cut over
 
 # 3. Configure new stanza
-sudo -u postgres pgbackrest --stanza=wardenx-v2 --repo1-cipher-pass=$NEW_PASS stanza-create
+sudo -u postgres pgbackrest --stanza=chartwarden-v2 --repo1-cipher-pass=$NEW_PASS stanza-create
 
 # 4. Take fresh full backup under new stanza
-sudo -u postgres pgbackrest --stanza=wardenx-v2 --type=full backup
+sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full backup
 
 # 5. Verify backup is good
-sudo -u postgres pgbackrest --stanza=wardenx-v2 --type=full verify
+sudo -u postgres pgbackrest --stanza=chartwarden-v2 --type=full verify
 
 # 6. Update postgresql.conf to use new stanza for archive-push
-# 7. Cut over backup scheduling to wardenx-v2
-# 8. Retain old stanza wardenx for historical backup restoration only
+# 7. Cut over backup scheduling to chartwarden-v2
+# 8. Retain old stanza chartwarden for historical backup restoration only
 # 9. After 6 months (per retention class), retire old stanza
 ```
 
@@ -2266,7 +2266,7 @@ redis-cli -h wardenx-data-01 PING
 mc admin info wardenx-primary
 
 # Backup status
-ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=wardenx info"
+ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden info"
 
 # All VMs status
 for vm in $(get_all_vms); do

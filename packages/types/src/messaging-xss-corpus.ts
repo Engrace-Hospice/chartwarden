@@ -60,7 +60,7 @@ export const XSS_CORPUS: readonly XssPayload[] = [
   p("file-url", "url-scheme", "file:///etc/passwd"),
   p("blob-url", "url-scheme", "blob:https://evil.example/uuid"),
   p("protocol-relative", "url-scheme", "//evil.example/phish"),
-  p("userinfo-deception", "url-scheme", "https://wardenx.example.com@evil.example/login"),
+  p("userinfo-deception", "url-scheme", "https://chartwarden.example.com@evil.example/login"),
   p("http-plain", "url-scheme", "http://evil.example/downgrade"),
   p("ftp-url", "url-scheme", "ftp://evil.example/x"),
   p("bidi-override", "unicode", "\u202Eexe.txt\u202D https://evil.example"),

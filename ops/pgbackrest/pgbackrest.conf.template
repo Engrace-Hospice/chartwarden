@@ -46,17 +46,17 @@ start-fast=y
 # Off-site repository (S3-compatible — MinIO, see file header for the TLS caveat)
 repo3-type=s3
 repo3-s3-endpoint=<off-site MinIO endpoint — production host, NOT the docker-compose.yml dev container>
-repo3-s3-bucket=wardenx-pg-backup
+repo3-s3-bucket=chartwarden-pg-backup
 repo3-s3-key=<sealed in SOPS>
 repo3-s3-key-secret=<sealed in SOPS>
 repo3-s3-region=us-east-1
-repo3-path=/wardenx
+repo3-path=/chartwarden
 repo3-cipher-type=aes-256-cbc
 repo3-cipher-pass=<third sealed key>
 repo3-retention-full=90
 repo3-retention-diff=30
 
-[wardenx]
+[chartwarden]
 pg1-path=/var/lib/postgresql/18/main
 pg1-port=5432
 pg1-user=postgres

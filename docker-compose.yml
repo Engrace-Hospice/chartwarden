@@ -21,7 +21,7 @@
 x-m34-provision-gateway-env: &m34-provision-gateway-env
   M34_PROVISION_GATEWAY_ENABLED: "true"
   M34_PROVISION_GATEWAY_URL: http://provision-gateway:8080
-  M34_PROVISION_GATEWAY_TOKEN: wardenx-local-provision-gateway-dev-token-not-for-production
+  M34_PROVISION_GATEWAY_TOKEN: chartwarden-local-provision-gateway-dev-token-not-for-production
   M34_INVITATION_ACCEPT_URL: http://localhost:5173/tenant-invite
 
 services:
@@ -162,7 +162,7 @@ services:
       <<: *m34-provision-gateway-env
       # F-236 (ADR-0048) — DocLens stage 2. A worker-specific dev placeholder secret, not INTERNAL_SERVICE_TOKEN.
       DOCLING_WORKER_URL: http://docling-worker:8000
-      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
+      DOCLING_WORKER_TOKEN: chartwarden-local-docling-dev-token-not-for-production
       # Billing credential KEK (M24 trading-partner + M23 MAC-portal secrets), 32 bytes base64, from your .env. Unset =>
       # saving a MAC/trading-partner credential answers 503 (fail closed). Generate: openssl rand -base64 32.
       M24_CREDENTIAL_ENCRYPTION_KEY: ${M24_CREDENTIAL_ENCRYPTION_KEY:-}
@@ -234,7 +234,7 @@ services:
       M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
       <<: *m34-provision-gateway-env
       DOCLING_WORKER_URL: http://docling-worker:8000
-      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
+      DOCLING_WORKER_TOKEN: chartwarden-local-docling-dev-token-not-for-production
     ports:
       - "3001:3001"
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
@@ -265,7 +265,7 @@ services:
     build:
       context: ./services/docling-worker
     environment:
-      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
+      DOCLING_WORKER_TOKEN: chartwarden-local-docling-dev-token-not-for-production
       LOG_LEVEL: info
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
@@ -283,7 +283,7 @@ services:
       dockerfile: Dockerfile
     command: ["bun", "run", "scripts/dev/m34-provision-gateway.ts"]
     environment:
-      M34_PROVISION_GATEWAY_TOKEN: wardenx-local-provision-gateway-dev-token-not-for-production
+      M34_PROVISION_GATEWAY_TOKEN: chartwarden-local-provision-gateway-dev-token-not-for-production
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:8080/health')).ok ? 0 : 1)"]
       interval: 5s
