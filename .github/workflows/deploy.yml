@@ -136,6 +136,7 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/engrace-hospice/chartwarden:sha-${{ env.RELEASE_SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           # AD-05 — bake the identity the /version probe reports, so the runbook's post-deploy
           # "is the new build actually live?" check can pass. Without these, /version answers
           # {"version":"dev","gitSha":"unknown"} on every deploy.
@@ -153,6 +154,7 @@ jobs:
           file: Dockerfile.web
           push: true
           tags: ghcr.io/engrace-hospice/chartwarden-web:sha-${{ env.RELEASE_SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       # GAP-138 — the DocLens docling-worker image. Production compose had no such service, so DOCLING_WORKER_URL
@@ -165,6 +167,7 @@ jobs:
           context: services/docling-worker
           push: true
           tags: ghcr.io/engrace-hospice/chartwarden-docling-worker:sha-${{ env.RELEASE_SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=docling-worker
           cache-to: type=gha,mode=max,scope=docling-worker
       # ── supply chain (F-040/#100) ──────────────────────────────────────────────────────────────────

@@ -25,16 +25,16 @@ backend_image=$1
 web_image=$2
 docling_image=${3:-}
 case "$backend_image" in
-  ghcr.io/*/chartwarden:sha-*|ghcr.io/*/wardenx:sha-*) ;;
+  ghcr.io/[!/]*/chartwarden:sha-*|ghcr.io/[!/]*/wardenx:sha-*) ;;
   *) echo "refusing non-immutable backend image: $backend_image" >&2; exit 64 ;;
 esac
 case "$web_image" in
-  ghcr.io/*/chartwarden-web:sha-*|ghcr.io/*/wardenx-web:sha-*) ;;
+  ghcr.io/[!/]*/chartwarden-web:sha-*|ghcr.io/[!/]*/wardenx-web:sha-*) ;;
   *) echo "refusing non-immutable web image: $web_image" >&2; exit 64 ;;
 esac
 
 case "$docling_image" in
-  ''|ghcr.io/*/chartwarden-docling-worker:sha-*|ghcr.io/*/wardenx-docling-worker:sha-*) ;;
+  ''|ghcr.io/[!/]*/chartwarden-docling-worker:sha-*|ghcr.io/[!/]*/wardenx-docling-worker:sha-*) ;;
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
 esac
 

@@ -50,6 +50,9 @@ or `deploy.sh` with the old names (accepted). No data is involved.
 ssh deploy@2.25.109.137
 cd /opt/wardenx
 docker compose --env-file .env.production -f compose.yml exec -T postgres pg_dump -U postgres -d wardenx | gzip > ~/pre-rename-$(date +%F).sql.gz
+# pg_dump omits cluster roles and their passwords; without this a restore onto a fresh cluster fails on ownership/grants
+docker compose --env-file .env.production -f compose.yml exec -T postgres pg_dumpall -U postgres --globals-only > ~/pre-rename-globals-$(date +%F).sql
+# MinIO: mirror every bucket first (mc mirror) - this step is mandatory, not optional
 cp .env.production ~/.env.production.pre-rename && chmod 600 ~/.env.production.pre-rename
 docker compose --env-file .env.production -f compose.yml config > ~/compose.resolved.pre-rename.yml
 ```
@@ -70,9 +73,9 @@ rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `...
 2. Update local remotes everywhere: `git remote set-url origin git@github.com:Engrace-Hospice/chartwarden.git`.
 3. Change the default identity in `deploy/production/deploy.sh` (the `cosign_identity=` line) to
    `https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main`.
-   To keep rollback to pre-rename signed images working, make `deploy.sh` try the new identity first
-   and then the old one (loop over both, take the first that yields a digest), OR for a one-off
-   rollback export `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
+   MANDATORY before step 1: land a PR that makes `deploy.sh` accept BOTH identities (try the new, then the old), so no
+   main push in the window between the rename and this change can fail a deploy and pre-rename signed images still roll
+   back. The alternative for a one-off rollback is to export `CHARTWARDEN_COSIGN_IDENTITY=https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main`
    before running `deploy.sh` (the env override already exists). Pre-rename images were signed
    under the OLD identity and will fail verification against the new default.
 4. The first release after the rename signs with the new identity. Merge the identity change as the
@@ -87,8 +90,8 @@ rename carry `.../Engrace-Hospice/wardenx/...`; signatures made AFTER carry `...
    re-register if it logs "repository not found": `./config.sh remove` then `./config.sh --url
    https://github.com/Engrace-Hospice/chartwarden --token <new>`), Dependabot/other integrations, and
    any external link to `ghcr.io/engrace-hospice/wardenx*`.
-6. GHCR package -> repo links: new packages built from the renamed repo link automatically via the
-   `org.opencontainers.image.source` label; old `wardenx*` packages stay linked to the renamed repo.
+6. GHCR package -> repo links: new packages built from the renamed repo link via the
+   `org.opencontainers.image.source` label that `deploy.yml` now sets on every build; old `wardenx*` packages stay linked to the renamed repo.
 
 Verification: `gh repo view Engrace-Hospice/chartwarden`; push a no-op commit to a branch and confirm CI
 starts; after the first `main` release, `cosign verify ghcr.io/engrace-hospice/chartwarden@<digest>
@@ -118,8 +121,11 @@ Bucket inventory (code/config references):
 Prerequisite code change (do in a PR BEFORE the data move, not part of this branch): add
 `arn:aws:s3:::chartwarden-*` and `.../chartwarden-*/*` to the `wardenx-app` policy in `compose.yml`
 (keep the `wardenx-*` entries until cleanup), and change `DEFAULT_PLATFORM_BUCKET` / `READINESS_PROBE_BUCKET`
-to the new names. Deploying that policy first is additive and safe. Prefer the env override for a
-no-code cutover: set `TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` in `.env.production`.
+to the new names. Deploying that policy first is additive and safe. The `minio-provision` one-shot applies the policy,
+so confirm the deploy re-ran it (check `mc admin policy info local wardenx-app`) BEFORE any cutover. Only then may
+`TERMINOLOGY_PLATFORM_BUCKET=chartwarden-platform-terminology` be set in `.env.production`; setting it first makes every
+terminology read/write fail with AccessDenied because the policy still only allows `wardenx-*`.
+`READINESS_PROBE_BUCKET` is hardcoded (not env-overridable), so that bucket needs the code change.
 
 Procedure (on the VPS; `mc` alias `local` points at the MinIO root):
 
@@ -172,7 +178,7 @@ sudo systemctl stop <runner or cron that deploys> || true        # make sure no 
 sudo mv /opt/wardenx /opt/chartwarden
 sudo ln -s /opt/chartwarden /opt/wardenx                          # old path still works
 cd /opt/chartwarden
-docker compose --env-file .env.production -f compose.yml up -d    # recreates containers whose bind mount path changed
+docker compose --env-file .env.production -f compose.yml up -d --force-recreate    # force: a moved bind-mount path (clamav) is not always detected as a change
 ./smoke.sh   # or: bash smoke.sh
 ```
 
