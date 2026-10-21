@@ -142,22 +142,21 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
     },
   );
 
-  // Two literal registrations (not a loop over the decision) so the static route extractor behind the OpenAPI emit sees both paths.
-  const decideRoute = (decision: "approve" | "reject") => ({
-    options: {
-      preHandler: [requireUuidParams("id"), APPROVE, APPROVE_STEP_UP],
-      schema: { response: { 200: ExportDetailResponseSchema } },
-    },
-    handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      const { id } = parse(ExportIdParamsSchema, request.params);
-      const body = parse(DecideExportBodySchema, request.body);
-      return noStore(reply).send(await service.decide(actorOf(request), id, decision, body));
-    },
+  // Two literal registrations with the body read inline (not a loop, not a shared handler) so the static route and request-body gates see both.
+  const decideOptions = {
+    preHandler: [requireUuidParams("id"), APPROVE, APPROVE_STEP_UP],
+    schema: { response: { 200: ExportDetailResponseSchema } },
+  };
+  app.post("/api/v1/messaging/export/:id/approve", decideOptions, async (request, reply) => {
+    const { id } = parse(ExportIdParamsSchema, request.params);
+    const body = parse(DecideExportBodySchema, request.body);
+    return noStore(reply).send(await service.decide(actorOf(request), id, "approve", body));
   });
-  const approve = decideRoute("approve");
-  const reject = decideRoute("reject");
-  app.post("/api/v1/messaging/export/:id/approve", approve.options, approve.handler);
-  app.post("/api/v1/messaging/export/:id/reject", reject.options, reject.handler);
+  app.post("/api/v1/messaging/export/:id/reject", decideOptions, async (request, reply) => {
+    const { id } = parse(ExportIdParamsSchema, request.params);
+    const body = parse(DecideExportBodySchema, request.body);
+    return noStore(reply).send(await service.decide(actorOf(request), id, "reject", body));
+  });
 
   app.post(
     "/api/v1/messaging/export/:id/cancel",
