@@ -113,11 +113,11 @@ export async function buildVersionQueries(
       // would silently search nothing).
       const searchKeys = await keys.tagKeysForRead(organizationId, keyVersion);
       if (searchKeys.length === 0) throw new SearchKeyUnavailableError();
-      // The writer's label set first (it is what the index holds today), then the others.
-      const ordered = [...searchKeys].sort(
-        (a, b) =>
-          Number(b.labels === SEARCH_LABELS_WRITE) - Number(a.labels === SEARCH_LABELS_WRITE),
-      );
+      // The stored set is the one whose labels equal SEARCH_LABELS_WRITE (the release-2 flip changes that constant, not this
+      // logic); a provider that returned no set for the writer's labels cannot search the index as stored: fail closed.
+      const stored = searchKeys.find(({ labels }) => labels === SEARCH_LABELS_WRITE);
+      if (!stored) throw new SearchKeyUnavailableError();
+      const ordered = [stored, ...searchKeys.filter((entry) => entry !== stored)];
       const channels: ChannelQuery[] = [];
       for (const channelId of channelIds) {
         const perLabel = ordered.map(({ labels, key }) =>
@@ -127,7 +127,7 @@ export async function buildVersionQueries(
             tagBits,
           ),
         );
-        // Head-bucket stats describe only the index AS STORED. In release 1 that is the writer's label set (`perLabel[0]`),
+        // Head-bucket stats describe only the index AS STORED. In release 1 that is the writer's label set (`ordered[0]`, `perLabel[0]`),
         // so it alone decides the skip; a head verdict on any OTHER set is a chance collision with those stats, and that
         // set is simply dropped (it never hides the stored set's hits).
         const [stored = [], ...rest] = perLabel;

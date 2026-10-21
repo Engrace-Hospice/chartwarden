@@ -61,6 +61,8 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     const deks = deriveOrgReadDeks(KEK, ORG);
     const wrong = await errorOf(() => openMessageBody(mk("otherapp"), deks));
     const tampered = await errorOf(() => openMessageBody(flip(mk("wardenx")), deks));
+    // positive control: the same fixture layout with the real legacy label opens
+    expect(openMessageBody(mk("wardenx"), deks)).toBe("x");
     sameFailure(wrong, tampered);
   });
 
@@ -72,6 +74,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     };
     const wrong = await errorOf(() => openMessageBodyRing(mk("otherapp"), key, ORG));
     const tampered = await errorOf(() => openMessageBodyRing(flip(mk("wardenx")), key, ORG));
+    expect(openMessageBodyRing(mk("wardenx"), key, ORG)).toBe("x");
     sameFailure(wrong, tampered);
   });
 
@@ -84,6 +87,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     };
     const wrong = await errorOf(() => port.open(ORG, b64(mk("otherapp"))));
     const tampered = await errorOf(() => port.open(ORG, b64(flip(mk("wardenx")))));
+    expect(port.open(ORG, b64(mk("wardenx")))).toBe("x");
     sameFailure(wrong, tampered);
   });
 
@@ -99,6 +103,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     const tampered = await errorOf(() =>
       openPseudonymKeyMaterial(ring, "k", "e1", b64(flip(mk("wardenx")))),
     );
+    expect(openPseudonymKeyMaterial(ring, "k", "e1", b64(mk("wardenx"))).length).toBe(32);
     sameFailure(wrong, tampered);
     expect(wrong).toBeInstanceOf(PseudonymKekError);
   });
@@ -116,6 +121,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
       adapter.unwrap({ organizationId: ORG, kekWrappedCiphertext: b, kekId: "k" });
     const wrong = await errorOf(() => unwrap(mk("otherapp")));
     const tampered = await errorOf(() => unwrap(flip(mk("wardenx"))));
+    expect((await unwrap(mk("wardenx"))).length).toBe(32);
     sameFailure(wrong, tampered);
     expect(wrong).toBeInstanceOf(PlatformKekError);
   });
@@ -131,6 +137,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     };
     const wrong = await errorOf(() => cipher.decrypt(ORG, ctx, b64(mk("otherapp"))));
     const tampered = await errorOf(() => cipher.decrypt(ORG, ctx, b64(flip(mk("wardenx")))));
+    expect(await cipher.decrypt(ORG, ctx, b64(mk("wardenx")))).toBe("x");
     sameFailure(wrong, tampered);
   });
 
@@ -149,6 +156,7 @@ describe("unknown label fails exactly like a tampered ciphertext", () => {
     };
     const wrong = await errorOf(() => cipher.open(ORG, row, "ssn", mk("otherapp")));
     const tampered = await errorOf(() => cipher.open(ORG, row, "ssn", flip(mk("wardenx"))));
+    expect(await cipher.open(ORG, row, "ssn", mk("wardenx"))).toBe("123456789");
     sameFailure(wrong, tampered);
     expect(wrong).toBeInstanceOf(IdentifierCipherIntegrityError);
   });
