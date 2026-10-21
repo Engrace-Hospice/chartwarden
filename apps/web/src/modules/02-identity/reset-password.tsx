@@ -8,6 +8,7 @@ import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "./auth-client";
+import { BrandLockup } from "./brand-lockup";
 
 const MIN_PASSWORD_LENGTH = 12; // mirrors emailAndPassword.minPasswordLength (server is authoritative)
 
@@ -26,7 +27,7 @@ export function ResetPassword(): JSX.Element {
   if (!token || linkError) {
     return (
       <CenteredCardLayout
-        brand={<strong>ChartWarden</strong>}
+        brand={<BrandLockup />}
         footer={<a href="/forgot">Request a new link</a>}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -68,7 +69,7 @@ export function ResetPassword(): JSX.Element {
 
   return (
     <CenteredCardLayout
-      brand={<strong>ChartWarden</strong>}
+      brand={<BrandLockup />}
       footer={<a href="/login">Back to sign in</a>}
     >
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

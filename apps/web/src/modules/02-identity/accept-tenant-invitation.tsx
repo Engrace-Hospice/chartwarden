@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
 import { authClient } from "./auth-client";
+import { BrandLockup } from "./brand-lockup";
 
 type Phase = "ready" | "accepting" | "invalid" | "accepted";
 
@@ -73,7 +74,7 @@ export function AcceptTenantInvitation(): JSX.Element {
 
   if (!token || phase === "invalid") {
     return (
-      <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+      <CenteredCardLayout brand={<BrandLockup />}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p role="alert" style={{ color: "var(--color-error)" }}>
           {INVALID_MESSAGE}
@@ -85,7 +86,7 @@ export function AcceptTenantInvitation(): JSX.Element {
   if (phase === "accepted") {
     return (
       <CenteredCardLayout
-        brand={<strong>ChartWarden</strong>}
+        brand={<BrandLockup />}
         footer={<a href="/login">Back to sign in</a>}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -109,7 +110,7 @@ export function AcceptTenantInvitation(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>ChartWarden</strong>}>
+    <CenteredCardLayout brand={<BrandLockup />}>
       <form onSubmit={accept} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Accept your invitation</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>

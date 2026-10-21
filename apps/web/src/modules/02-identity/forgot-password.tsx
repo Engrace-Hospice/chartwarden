@@ -7,6 +7,7 @@ import { CenteredCardLayout } from "@chartwarden/ui";
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { authClient } from "./auth-client";
+import { BrandLockup } from "./brand-lockup";
 
 export function ForgotPassword(): JSX.Element {
   const [email, setEmail] = useState("");
@@ -26,7 +27,7 @@ export function ForgotPassword(): JSX.Element {
 
   return (
     <CenteredCardLayout
-      brand={<strong>ChartWarden</strong>}
+      brand={<BrandLockup />}
       footer={<a href="/login">Back to sign in</a>}
     >
       {sent ? (
