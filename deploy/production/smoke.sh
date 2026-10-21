@@ -27,7 +27,7 @@ set -eu
 fail() { echo "SMOKE FAIL [$1] $2" >&2; exit 1; }
 ok()   { echo "  ✓ $1"; }
 
-deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-${WARDENX_DEPLOY_DIR:-/opt/wardenx}}
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-/opt/wardenx}
 compose="docker compose --env-file .env.production -f compose.yml"
 cd "$deploy_dir"
 
@@ -158,8 +158,8 @@ ok "web serving on 8080"
 # deploy/production/nginx/*.conf so a stock install needs no configuration, and are overridable for a
 # staging host.
 echo "tier 3 — public ingress"
-app_url=${CHARTWARDEN_SMOKE_APP_URL:-${WARDENX_SMOKE_APP_URL:-https://wardenx.chartwarden.cloud}}
-api_url=${CHARTWARDEN_SMOKE_API_URL:-${WARDENX_SMOKE_API_URL:-https://be082026.wardenx.chartwarden.cloud}}
+app_url=${CHARTWARDEN_SMOKE_APP_URL:-https://wardenx.chartwarden.cloud}
+api_url=${CHARTWARDEN_SMOKE_API_URL:-https://be082026.wardenx.chartwarden.cloud}
 
 # Deliberately NOT `-k`. Certificate validation is the point: an expired or mis-issued certificate is
 # a production outage for every browser, and a smoke test that passes `-k` would be blind to the single

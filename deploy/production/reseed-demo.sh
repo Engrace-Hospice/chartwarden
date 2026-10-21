@@ -18,7 +18,7 @@ case "$mode" in
   *) echo "usage: $0 inventory|reseed" >&2; exit 64 ;;
 esac
 
-deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-${WARDENX_DEPLOY_DIR:-/opt/wardenx}}
+deploy_dir=${CHARTWARDEN_DEPLOY_DIR:-/opt/wardenx}
 cd "$deploy_dir"
 if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   echo "expected .env.production and compose.yml in $deploy_dir" >&2

@@ -174,12 +174,7 @@ Defaults come from the `server_name`s in `nginx/`, so a stock install needs no c
 
 ### Env-var rename and rolling back to an older release
 
-`deploy.sh` rewrites the three image pins in `.env.production` to the `CHARTWARDEN_*` names (`CHARTWARDEN_IMAGE`,
-`CHARTWARDEN_WEB_IMAGE`, `CHARTWARDEN_DOCLING_IMAGE`). A release from **before the ChartWarden env-var rename**
-has a `compose.yml` that requires `WARDENX_IMAGE` / `WARDENX_WEB_IMAGE`, so manually re-deploying such an old
-commit fails on the rewritten file. The automatic rollback inside a failed deploy is unaffected: it restores the
-pre-deploy backup of `.env.production`. For a deliberate manual rollback to an older commit, first copy the three
-image lines back under their `WARDENX_*` names.
+`deploy.sh` and `compose.yml` read only `CHARTWARDEN_*` keys (the temporary `WARDENX_*` bridge is gone). A release from **before the ChartWarden env-var rename** (before #528) reads `WARDENX_*` only, so a deliberate manual rollback to such a commit needs every `CHARTWARDEN_*` key in `.env.production` renamed back to `WARDENX_*`, not just the three image pins. The automatic rollback inside a failed deploy is unaffected: it restores the pre-deploy backup of `.env.production`.
 
 ### Rollback and migrations
 
