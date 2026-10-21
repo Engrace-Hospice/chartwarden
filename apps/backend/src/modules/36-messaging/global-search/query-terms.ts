@@ -22,6 +22,7 @@ import {
   tokenizeForSearch,
 } from "@chartwarden/messaging";
 import { ChartWardenError } from "@chartwarden/types";
+import { SearchKeyUnavailableError } from "./search-key-provider";
 import { headPairKey } from "./stats";
 
 export const MAX_QUERY_TERMS = 8;
@@ -108,31 +109,37 @@ export async function buildVersionQueries(
   const queries = await Promise.all(
     versions.map(async ({ keyVersion, tagBits, headBuckets }) => {
       // Every accepted label set (current + legacy): rows indexed under either stay searchable across the ChartWarden label
-      // flip. A provider without `tagKeysForRead` probes only the writer's set.
-      const searchKeys = keys.tagKeysForRead
-        ? await keys.tagKeysForRead(organizationId, keyVersion)
-        : [{ labels: SEARCH_LABELS_WRITE, key: await keys.tagKey(organizationId, keyVersion) }];
+      // flip. An empty answer is a provider fault: fail closed (an empty VALUES list would be a SQL error, and zero sets
+      // would silently search nothing).
+      const searchKeys = await keys.tagKeysForRead(organizationId, keyVersion);
+      if (searchKeys.length === 0) throw new SearchKeyUnavailableError();
+      // The writer's label set first (it is what the index holds today), then the others.
+      const ordered = [...searchKeys].sort(
+        (a, b) =>
+          Number(b.labels === SEARCH_LABELS_WRITE) - Number(a.labels === SEARCH_LABELS_WRITE),
+      );
       const channels: ChannelQuery[] = [];
       for (const channelId of channelIds) {
-        // The writer's label set first (it is what the index holds today), then the others.
-        const perLabel = [...searchKeys]
-          .sort(
-            (a, b) =>
-              Number(b.labels === SEARCH_LABELS_WRITE) - Number(a.labels === SEARCH_LABELS_WRITE),
-          )
-          .map(({ labels, key }) =>
-            tagsForTerms(
-              deriveChannelKey(key, keyVersion, tagBits, channelId, labels),
-              terms,
-              tagBits,
-            ),
-          );
-        // Head-bucket skipping reads the stats of the stored tags: skip when any label set's tags are all head buckets.
-        if (perLabel.some((termTags) => isHeadBucketQuery(channelId, termTags, headBuckets))) {
+        const perLabel = ordered.map(({ labels, key }) =>
+          tagsForTerms(
+            deriveChannelKey(key, keyVersion, tagBits, channelId, labels),
+            terms,
+            tagBits,
+          ),
+        );
+        // Head-bucket stats describe only the index AS STORED. In release 1 that is the writer's label set (`perLabel[0]`),
+        // so it alone decides the skip; a head verdict on any OTHER set is a chance collision with those stats, and that
+        // set is simply dropped (it never hides the stored set's hits).
+        const [stored = [], ...rest] = perLabel;
+        if (isHeadBucketQuery(channelId, stored, headBuckets)) {
           headSkipped += 1;
           continue;
         }
-        const [primary = [], ...others] = perLabel.map((tags) => [...new Set(tags)]);
+        const kept = [
+          stored,
+          ...rest.filter((tags) => !isHeadBucketQuery(channelId, tags, headBuckets)),
+        ];
+        const [primary = [], ...others] = kept.map((tags) => [...new Set(tags)]);
         channels.push({ channelId, tags: primary, alternateTagSets: others });
       }
       return { keyVersion, channels };

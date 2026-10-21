@@ -16,7 +16,7 @@ export interface SearchKeyProvider {
   tagKey(orgId: string, version: string): Promise<Buffer>;
   /**
    * QUERY side only: the K_search for (org, version) under every accepted label set (current first), each paired with its
-   * labels so the channel key is derived with the matching set. Absent = only the writer's set (`tagKey`).
+   * labels so the channel key is derived with the matching set. Must return at least one entry (callers fail closed on zero).
    */
-  tagKeysForRead?(orgId: string, version: string): Promise<readonly SearchKeyForLabels[]>;
+  tagKeysForRead(orgId: string, version: string): Promise<readonly SearchKeyForLabels[]>;
 }

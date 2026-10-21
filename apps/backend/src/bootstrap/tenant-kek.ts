@@ -204,10 +204,10 @@ export function createPlatformKekAdapter(ring: PlatformKekRing): PlatformKekAdap
       const tag = kekWrappedCiphertext.subarray(1 + NONCE_LEN + DEK_LEN);
       // Both labels, current first. The refusal after the last is one message that names no label, so the retry is no oracle.
       for (const label of WRAP_AAD_LABELS_READ) {
+        const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+        decipher.setAAD(aad(label, kekId, organizationId));
+        decipher.setAuthTag(tag);
         try {
-          const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-          decipher.setAAD(aad(label, kekId, organizationId));
-          decipher.setAuthTag(tag);
           return Buffer.concat([decipher.update(ct), decipher.final()]);
         } catch {
           // authentication failed under this label; try the next

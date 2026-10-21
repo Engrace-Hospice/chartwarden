@@ -129,14 +129,14 @@ export function buildMacSecretCipher(kek: Buffer): MacSecretCipher {
       }
       // Try each label set (current, then legacy). Every failure is the same generic error: no label is named.
       for (const labels of READ_LABELS) {
+        const decipher = createDecipheriv(
+          "aes-256-gcm",
+          deriveDek(root, organizationId, labels),
+          raw.subarray(1, 1 + NONCE_LEN),
+        );
+        decipher.setAAD(aadFor(labels, MAC_SECRET_CIPHER_VERSION, organizationId, context));
+        decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
         try {
-          const decipher = createDecipheriv(
-            "aes-256-gcm",
-            deriveDek(root, organizationId, labels),
-            raw.subarray(1, 1 + NONCE_LEN),
-          );
-          decipher.setAAD(aadFor(labels, MAC_SECRET_CIPHER_VERSION, organizationId, context));
-          decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
           return Buffer.concat([
             decipher.update(raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN)),
             decipher.final(),

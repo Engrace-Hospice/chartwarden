@@ -180,10 +180,10 @@ export function openPseudonymKeyMaterial(
   const ct = wrapped.subarray(1 + NONCE_LEN, 1 + NONCE_LEN + KEY_LEN);
   const tag = wrapped.subarray(1 + NONCE_LEN + KEY_LEN);
   for (const label of AAD_LABELS_READ) {
+    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+    decipher.setAAD(aad(label, kekId, keyEpoch));
+    decipher.setAuthTag(tag);
     try {
-      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-      decipher.setAAD(aad(label, kekId, keyEpoch));
-      decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ct), decipher.final()]);
     } catch {
       // authentication failed under this label; try the next

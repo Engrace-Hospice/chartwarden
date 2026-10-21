@@ -76,6 +76,12 @@ export async function selectQueryChannels(
   return result.rows.map((row) => row.id);
 }
 
+/** `set_id` is an array index we generated: inlined as a validated integer literal, never user input. */
+function setIdLiteral(setId: number) {
+  if (!Number.isInteger(setId) || setId < 0) throw new Error("invalid tag set id");
+  return sql.raw(`${setId}::int`);
+}
+
 const ISO_MS = sql`'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 export async function selectCandidates(
@@ -93,7 +99,7 @@ export async function selectCandidates(
         tagSetsOf(channel).flatMap((set, setId) =>
           set.map(
             (tag) =>
-              sql`(${setId}::int, ${query.keyVersion}::text, ${channel.channelId}::uuid, ${tag}::int, ${set.length}::int)`,
+              sql`(${setIdLiteral(setId)}, ${query.keyVersion}::text, ${channel.channelId}::uuid, ${tag}::int, ${set.length}::int)`,
           ),
         ),
       ),

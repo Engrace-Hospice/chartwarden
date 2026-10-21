@@ -24,6 +24,7 @@ import {
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
+  SEARCH_LABELS_WRITE,
 } from "../src/search/global";
 
 const KEK = Buffer.alloc(32, 7);
@@ -35,6 +36,9 @@ const stubProvider: SearchKeyProvider = {
   activeVersion: async () => "legacy",
   liveVersions: async () => ["legacy"],
   tagKey: async (orgId, version) => deriveSearchKey(deriveOrgDek(KEK, orgId), orgId, version),
+  tagKeysForRead: async (orgId, version) => [
+    { labels: SEARCH_LABELS_WRITE, key: deriveSearchKey(deriveOrgDek(KEK, orgId), orgId, version) },
+  ],
 };
 
 describe("known-answer vectors (independent HKDF/HMAC reference, fixed inputs)", () => {

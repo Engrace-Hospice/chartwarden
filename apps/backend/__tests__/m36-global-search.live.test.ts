@@ -102,12 +102,7 @@ process.env.CHARTWARDEN_GLOBAL_SEARCH_JITTER_MS = "0";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
+const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111000f0279";
 const ORG_B = "22222222-2222-4222-8222-2222000f0279";
@@ -1950,6 +1945,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   describe("fix-round hardening", () => {
     it("MED-3 key-rotation overlap: >500 raw rows across two live versions drop no match (dedupe happens before the LIMIT)", async () => {
       const keys2 = {
+        ...keys, // tagKeysForRead derives for any version label
         activeVersion: async () => VERSION,
         liveVersions: async () => [VERSION, "v2"],
         tagKey: async (org: string, version: string) =>

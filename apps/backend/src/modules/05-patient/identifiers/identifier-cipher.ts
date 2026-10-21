@@ -240,12 +240,12 @@ export function createPatientIdentifierCipher(
       // Try the current label, then the legacy one. A failure under both is the same generic integrity error: it does not
       // say which label (if any) was close, so the retry adds no oracle.
       for (const label of AAD_LABELS_READ) {
+        const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
+          authTagLength: TAG_BYTES,
+        });
+        decipher.setAAD(aadFor(label, organizationId, identifierId, kind));
+        decipher.setAuthTag(parsed.tag);
         try {
-          const decipher = createDecipheriv("aes-256-gcm", key, parsed.nonce, {
-            authTagLength: TAG_BYTES,
-          });
-          decipher.setAAD(aadFor(label, organizationId, identifierId, kind));
-          decipher.setAuthTag(parsed.tag);
           return Buffer.concat([decipher.update(parsed.ct), decipher.final()]).toString("utf8");
         } catch {
           // authentication failed under this label; try the next

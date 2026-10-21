@@ -44,7 +44,11 @@ export function loadMessagingKek(
   raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY,
 ): Buffer {
   if (!raw) {
-    throw new ChartWardenError(MESSAGING_KEY_UNAVAILABLE, MESSAGING_KEY_UNAVAILABLE_MESSAGE, 503);
+    throw new ChartWardenError(
+      MESSAGING_KEY_UNAVAILABLE,
+      MESSAGING_KEY_UNAVAILABLE_MESSAGE,
+      503,
+    );
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
@@ -61,7 +65,8 @@ export function deriveOrgDek(kek: Buffer, orgId: string): Buffer {
 
 function deriveDekFor(kek: Buffer, orgId: string, prefix: string): Buffer {
   // hkdfSync returns an ArrayBuffer; wrap as a Buffer for the cipher APIs.
-  return Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), `${prefix}${orgId}`, KEY_LEN));
+  const derived = hkdfSync("sha256", kek, Buffer.alloc(0), `${prefix}${orgId}`, KEY_LEN);
+  return Buffer.from(derived);
 }
 
 /** Every DEK a legacy (v1) body of this tenant may have been sealed under: current label first, then legacy. */
@@ -88,12 +93,12 @@ export function openMessageBody(cipher: Buffer, dek: Buffer | readonly Buffer[])
   const ct = cipher.subarray(1 + NONCE_LEN, cipher.length - TAG_LEN);
   // A list of DEKs (current, legacy label) is tried in order; the error after the last is the first key's GCM error, so
   // which label (if any) matched is not observable.
-  const deks = Buffer.isBuffer(dek) ? [dek] : (dek as readonly Buffer[]);
+  const deks = Array.isArray(dek) ? dek : [dek];
   let firstError: unknown;
   for (const candidate of deks) {
+    const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
+    decipher.setAuthTag(tag);
     try {
-      const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
-      decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
     } catch (err) {
       firstError ??= err;
@@ -183,10 +188,10 @@ export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string):
   const ct = cipher.subarray(body + NONCE_LEN, cipher.length - TAG_LEN);
   let firstError: unknown;
   for (const prefix of RING_AAD_PREFIXES_READ) {
+    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+    decipher.setAAD(ringAad(prefix, orgId, version));
+    decipher.setAuthTag(tag);
     try {
-      const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-      decipher.setAAD(ringAad(prefix, orgId, version));
-      decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
     } catch (err) {
       firstError ??= err;

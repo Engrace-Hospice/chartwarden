@@ -104,12 +104,12 @@ export function openCredentialSecret(cipherB64: string, dek: Buffer | readonly B
   const ct = raw.subarray(1 + NONCE_LEN, raw.length - TAG_LEN);
   // A list of DEKs (current, legacy label) is tried in order; the failure after the last one is the GCM error of the first
   // key, so which label (if any) matched is not observable.
-  const deks = Buffer.isBuffer(dek) ? [dek] : (dek as readonly Buffer[]);
+  const deks = Array.isArray(dek) ? dek : [dek];
   let firstError: unknown;
   for (const candidate of deks) {
+    const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
+    decipher.setAuthTag(tag);
     try {
-      const decipher = createDecipheriv("aes-256-gcm", candidate, nonce);
-      decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
     } catch (err) {
       firstError ??= err;
